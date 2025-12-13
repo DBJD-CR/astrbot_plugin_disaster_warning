@@ -55,7 +55,7 @@
             "hint": "通过FAN Studio WebSocket接收日本气象厅地震情报"
           },
           "usgs_earthquake": {
-            "description": "USGS：地震测定",
+            "description": "美国地质调查局（USGS）：地震测定",
             "type": "bool",
             "default": true,
             "hint": "通过FAN Studio WebSocket接收USGS地震测定信息"
@@ -171,28 +171,76 @@
       }
     }
   },
-  "earthquake_thresholds": {
-    "description": "地震信息过滤阈值 (全局配置) - ",
+  "earthquake_filters": {
+    "description": "地震信息过滤器配置",
     "type": "object",
-    "hint": "使用AND逻辑，必须满足所有配置的条件才进行推送",
+    "hint": "根据不同数据源类型使用不同的过滤器",
     "items": {
-      "min_magnitude": {
-        "description": "最小震级",
-        "type": "float",
-        "hint": "低于此震级的消息将被过滤。",
-        "default": 2.0
+      "intensity_filter": {
+        "description": "基于震级和烈度的地震过滤器",
+        "type": "object",
+        "hint": "适用于中国地震预警网、中国地震台网等使用烈度的数据源",
+        "items": {
+          "enabled": {
+            "description": "启用烈度过滤器",
+            "type": "bool",
+            "default": true
+          },
+          "min_magnitude": {
+            "description": "最小震级",
+            "type": "float",
+            "hint": "低于此震级的消息将被过滤。",
+            "default": 2.0
+          },
+          "min_intensity": {
+            "description": "最小烈度",
+            "type": "float",
+            "hint": "中国标准，低于此烈度的消息将被过滤。",
+            "default": 4.0
+          }
+        }
       },
-      "min_intensity": {
-        "description": "最小烈度",
-        "type": "float",
-        "hint": "中国标准，低于此烈度的消息将被过滤。",
-        "default": 4.0
+      "scale_filter": {
+        "description": "基于震级和震度的地震过滤器",
+        "type": "object",
+        "hint": "适用于台湾中央气象署、日本气象厅等使用震度的数据源",
+        "items": {
+          "enabled": {
+            "description": "启用震度过滤器",
+            "type": "bool",
+            "default": true
+          },
+          "min_magnitude": {
+            "description": "最小震级",
+            "type": "float",
+            "hint": "低于此震级的消息将被过滤。",
+            "default": 2.0
+          },
+          "min_scale": {
+            "description": "最小震度",
+            "type": "float",
+            "hint": "日本标准，低于此震度的消息将被过滤。",
+            "default": 1.0
+          }
+        }
       },
-      "min_scale": {
-        "description": "最小震度",
-        "type": "float",
-        "hint": "日本标准，低于此震度的消息将被过滤。",
-        "default": 1.0
+      "magnitude_only_filter": {
+        "description": "USGS震级过滤器",
+        "type": "object",
+        "hint": "适用于USGS等只有震级信息的数据源",
+        "items": {
+          "enabled": {
+            "description": "启用仅震级过滤器",
+            "type": "bool",
+            "default": true
+          },
+          "min_magnitude": {
+            "description": "最小震级",
+            "type": "float",
+            "hint": "低于此震级的消息将被过滤。",
+            "default": 4.5
+          }
+        }
       }
     }
   },
@@ -253,19 +301,19 @@
         "description": "重连间隔",
         "type": "int",
         "hint": "单位：秒",
-        "default": 30
+        "default": 10
       },
       "max_reconnect_retries": {
         "description": "最大重连次数",
         "type": "int",
         "hint": "超过此次数将停止重连",
-        "default": 2
+        "default": 3
       },
       "connection_timeout": {
         "description": "连接超时",
         "type": "int",
         "hint": "单位：秒",
-        "default": 10
+        "default": 15
       },
       "heartbeat_interval": {
         "description": "心跳间隔",
