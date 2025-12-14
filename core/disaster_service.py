@@ -907,6 +907,7 @@ class DisasterWarningService:
                         "source_id": "cea_fanstudio",
                         "magnitude": 5.5,
                         "depth": 10.0,
+                        "intensity": 6.0,
                         "place_name": "测试地名",
                         "latitude": 31.2,
                         "longitude": 103.8,
