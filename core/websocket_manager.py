@@ -88,6 +88,8 @@ class WebSocketManager:
                     asyncio.get_event_loop().time()
                 )
                 logger.info(f"[灾害预警] WebSocket连接成功: {name}")
+                # 连接成功，重置重试计数
+                self.connection_retry_counts[name] = 0
 
                 # 处理消息
                 async for message in websocket:
