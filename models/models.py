@@ -218,6 +218,9 @@ class DisasterEvent:
     is_filtered: bool = False  # 是否被过滤
     filter_reason: str = ""  # 过滤原因
     push_count: int = 0  # 推送次数
+    
+    # 原始数据
+    raw_data: dict[str, Any] = field(default_factory=dict)
 
 
 # 辅助函数

@@ -12,10 +12,10 @@ from typing import Any
 
 from astrbot.api import logger
 
-from .data_source_config import (
+from ..models.data_source_config import (
     get_data_source_config,
 )
-from .models import (
+from ..models.models import (
     DataSource,
     DisasterEvent,
     DisasterType,
@@ -23,6 +23,7 @@ from .models import (
     TsunamiData,
     WeatherAlarmData,
 )
+from ..utils.fe_regions import translate_place_name
 
 
 class BaseDataHandler:
@@ -1103,7 +1104,7 @@ class USGSEarthquakeHandler(BaseDataHandler):
             usgs_id = get_field(msg_data, "id") or ""
             usgs_latitude = float(get_field(msg_data, "latitude") or 0)
             usgs_longitude = float(get_field(msg_data, "longitude") or 0)
-            usgs_place_name = get_field(msg_data, "placeName") or ""
+            usgs_place_name_en = get_field(msg_data, "placeName") or ""
 
             # 验证关键字段 - 如果缺少关键信息，不创建地震对象
             if not usgs_id:
@@ -1118,7 +1119,7 @@ class USGSEarthquakeHandler(BaseDataHandler):
                 # 心跳包检测已经处理了这种情况，这里不再重复记录
                 return None
 
-            if not usgs_place_name and not magnitude:
+            if not usgs_place_name_en and not magnitude:
                 # 只有在非心跳包情况下才记录警告，且避免重复警告
                 if not self._is_heartbeat_message(msg_data):
                     warning_msg = (
@@ -1129,6 +1130,21 @@ class USGSEarthquakeHandler(BaseDataHandler):
                     ):
                         logger.warning(warning_msg)
                 return None
+
+            # 🌏 FE Regions 中文翻译
+            # 将 USGS 英文地名翻译为中文（基于 F-E 地震区划）
+            usgs_place_name = translate_place_name(
+                usgs_place_name_en, 
+                usgs_latitude, 
+                usgs_longitude,
+                fallback_to_original=True  # 翻译失败时保留英文
+            )
+            
+            # 记录翻译结果（仅在翻译成功时）
+            if usgs_place_name != usgs_place_name_en:
+                logger.debug(
+                    f"[灾害预警] {self.source_id} FE翻译: '{usgs_place_name_en}' → '{usgs_place_name}'"
+                )
 
             earthquake = EarthquakeData(
                 id=usgs_id,

@@ -12,24 +12,25 @@ import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
-from .data_source_config import (
+from ..models.data_source_config import (
     get_intensity_based_sources,
     get_scale_based_sources,
     get_sources_needing_report_control,
 )
-from .message_formatters import (
+from ..utils.message_formatters import (
     BaseMessageFormatter,
     format_earthquake_message,
     format_tsunami_message,
     format_weather_message,
 )
-from .models import (
+from ..models.models import (
     DataSource,
     DisasterEvent,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
 )
+from .intensity_calculator import IntensityCalculator
 
 
 class IntensityFilter:
@@ -112,6 +113,47 @@ class USGSFilter:
             return True
 
         return False
+
+class LocalIntensityFilter:
+    """本地烈度过滤器"""
+    def __init__(self, config: dict):
+        self.enabled = config.get("enabled", False)
+        self.latitude = config.get("latitude", 0.0)
+        self.longitude = config.get("longitude", 0.0)
+        self.threshold = config.get("intensity_threshold", 2.0)
+        self.strict_mode = config.get("strict_mode", False)
+        self.place_name = config.get("place_name", "本地")
+
+    def check_event(self, earthquake: EarthquakeData) -> tuple[bool, float, float]:
+        """
+        检查事件是否需要推送
+        :return: (is_allowed, distance, intensity)
+        """
+        if not self.enabled:
+            return True, 0.0, 0.0
+
+        if earthquake.latitude is None or earthquake.longitude is None:
+             # 如果没有坐标，严格模式下过滤，非严格模式下允许
+            return not self.strict_mode, 0.0, 0.0
+
+        distance = IntensityCalculator.calculate_distance(
+            earthquake.latitude, earthquake.longitude,
+            self.latitude, self.longitude
+        )
+        
+        intensity = IntensityCalculator.calculate_estimated_intensity(
+            earthquake.magnitude or 0.0,
+            distance,
+            earthquake.depth or 10.0,
+            event_longitude=earthquake.longitude # 传入经度以区分东西部
+        )
+        
+        if self.strict_mode:
+            if intensity < self.threshold:
+                logger.info(f"[灾害预警] 本地烈度 {intensity:.1f} < 阈值 {self.threshold}，严格模式已过滤")
+                return False, distance, intensity
+        
+        return True, distance, intensity
 
 
 class ReportCountController:
@@ -462,6 +504,9 @@ class MessagePushManager:
 
         # 目标会话
         self.target_sessions = self._parse_target_sessions()
+        
+        # 初始化本地监控过滤器
+        self.local_monitor = LocalIntensityFilter(config.get("local_monitoring", {}))
 
     def _parse_target_sessions(self) -> list[str]:
         """解析目标会话 - 使用正确的配置键名"""
@@ -517,6 +562,17 @@ class MessagePushManager:
         if not self.report_controller.should_push_report(event):
             logger.info(f"[灾害预警] 事件被报数控制器过滤: {source_id}")
             return False
+
+        # 本地烈度过滤
+        is_allowed, distance, intensity = self.local_monitor.check_event(earthquake)
+        if not is_allowed:
+            return False
+            
+        # 保存计算结果供消息构建使用
+        event.raw_data["local_estimation"] = {
+            "distance": distance,
+            "intensity": intensity
+        }
 
         return True
 
@@ -626,14 +682,25 @@ class MessagePushManager:
             logger.warning(f"[灾害预警] 未知事件类型: {type(event.data)}")
             message_text = f"🚨[未知事件]\n📋事件ID：{event.id}\n⏰时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-        # 构建消息链
-        chain = [Comp.Plain(message_text)]
+            message_text = f"🚨[未知事件]\n📋事件ID：{event.id}\n⏰时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-        # 添加地图链接（仅地震事件且包含经纬度）
+        # 添加本地预估信息
+        if isinstance(event.data, EarthquakeData) and self.local_monitor.enabled:
+            local_est = event.raw_data.get("local_estimation")
+            if local_est:
+                dist = local_est["distance"]
+                inte = local_est["intensity"]
+                
+                # 只要有计算结果就显示，即使是0
+                desc, _ = IntensityCalculator.get_intensity_description(inte)
+                place = self.local_monitor.place_name
+                message_text += f"\n\n📍 {place}预估：\n据震中 {dist:.1f}km，预估烈度 {inte:.1f}级 ({desc})"
+
+        # 构建消息链
         if include_map and isinstance(event.data, EarthquakeData):
             if event.data.latitude is not None and event.data.longitude is not None:
                 # 使用消息格式化器中的优化地图链接生成
-                from .message_formatters import BaseMessageFormatter
+                from ..utils.message_formatters import BaseMessageFormatter
 
                 map_url = BaseMessageFormatter.get_map_link(
                     event.data.latitude,
@@ -647,16 +714,13 @@ class MessagePushManager:
                     # 关键修复：绕过AstrBot的strip()问题
                     # 使用零宽空格保护换行，URL编码确保特殊字符处理
                     zero_width_space = "\u200b"
-
-                    # 换行组件：使用零宽空格保护换行
-                    chain.append(
-                        Comp.Plain(f"{zero_width_space}\n🗺️地图链接:{zero_width_space}")
-                    )
-
-                    # URL组件：对URL进行URL编码，确保空格和特殊字符正确处理
                     encoded_map_url = urllib.parse.quote(map_url, safe=":/?&=+")
-                    chain.append(Comp.Plain(f" {encoded_map_url}"))
+                    
+                    # 直接合并到消息文本中
+                    message_text += f"{zero_width_space}\n🗺️地图链接:{zero_width_space} {encoded_map_url}"
 
+        # 构建消息链
+        chain = [Comp.Plain(message_text)]
         return MessageChain(chain)
 
     def _generate_map_link(

@@ -13,7 +13,7 @@ from astrbot.api import logger
 
 from .message_logger import MessageLogger
 from .message_manager import MessagePushManager
-from .models import (
+from ..models.models import (
     DataSource,
     DisasterEvent,
     DisasterType,
@@ -907,7 +907,6 @@ class DisasterWarningService:
                         "source_id": "cea_fanstudio",
                         "magnitude": 5.5,
                         "depth": 10.0,
-                        "intensity": 6.0,
                         "place_name": "测试地名",
                         "latitude": 31.2,
                         "longitude": 103.8,
@@ -1048,6 +1047,15 @@ class DisasterWarningService:
                 f"[灾害预警] 创建测试事件: {test_event.id} (类型: {disaster_type}, 配置: {test_config['source_id']})"
             )
 
+            # 注入本地预估信息（模拟真实推送流程）
+            if disaster_type == "earthquake" and self.message_manager.local_monitor.enabled:
+                earthquake = test_event.data
+                _, distance, intensity = self.message_manager.local_monitor.check_event(earthquake)
+                test_event.raw_data["local_estimation"] = {
+                    "distance": distance,
+                    "intensity": intensity
+                }
+
             # 直接构建消息并推送（绕过复杂的过滤逻辑，仅测试消息链路）
             message = self.message_manager._build_message(test_event)
             await self.message_manager._send_message(session, message)
@@ -1066,12 +1074,7 @@ class DisasterWarningService:
         self, disaster_type: str, test_config: dict
     ) -> "DisasterEvent":
         """创建简化的测试事件"""
-        from .models import (
-            DisasterEvent,
-            EarthquakeData,
-            TsunamiData,
-            WeatherAlarmData,
-        )
+        # 使用顶部导入的类，无需在此处重新导入
 
         source_id = test_config["source_id"]
 
@@ -1163,7 +1166,7 @@ class DisasterWarningService:
 
     def _get_source_display_name(self, source_id: str) -> str:
         """获取数据源显示名称"""
-        from .data_source_config import get_data_source_config
+        from ..models.data_source_config import get_data_source_config
 
         config = get_data_source_config(source_id)
         if config:

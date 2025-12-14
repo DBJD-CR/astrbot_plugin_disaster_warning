@@ -10,7 +10,8 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
-from .disaster_service import get_disaster_service, stop_disaster_service
+from .core.disaster_service import get_disaster_service, stop_disaster_service
+from .models.models import DisasterEvent, EarthquakeData, DataSource, DisasterType
 
 
 class DisasterWarningPlugin(Star):
@@ -124,7 +125,7 @@ class DisasterWarningPlugin(Star):
             status_text = f"""📊 灾害预警服务状态
 
 🔄 运行状态：{"运行中" if status["running"] else "已停止"}
-🔗 活跃连接：{status["active_connections"]} 个
+🔗 活跃连接：{status["active_websocket_connections"]} 个
 📡 数据源：{len(status["data_sources"])} 个"""
 
             # 推送统计
@@ -592,7 +593,149 @@ class DisasterWarningPlugin(Star):
         }
         return source_names.get(service, {}).get(source, source_key)
 
+    @filter.command("灾害预警模拟")
+    async def simulate_earthquake(
+        self,
+        event: AstrMessageEvent,
+        lat: float,
+        lon: float,
+        magnitude: float,
+        depth: float = 10.0,
+        source: str = "cea_fanstudio",
+        place_name: str = "模拟测试地点"
+    ):
+        """模拟地震事件测试预警响应
+        格式：/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源] [地名]
+        数据源可选：cea_fanstudio(默认), usgs_fanstudio, jma_p2p 等
+        注意：地名如果有空格，请使用引号包裹，例如 "Test Place"
+        """
+        if not self.disaster_service or not self.disaster_service.message_manager:
+            yield event.plain_result("❌ 服务未启动")
+            return
+
+        try:
+            # 获取数据源
+            from .models.models import get_data_source_from_id, DataSource, DATA_SOURCE_MAPPING
+            
+            data_source = get_data_source_from_id(source)
+            if not data_source:
+                valid_sources = ", ".join(DATA_SOURCE_MAPPING.keys())
+                yield event.plain_result(f"❌ 无效的数据源: {source}\n可用数据源: {valid_sources}")
+                return
+
+            # 1. 构造模拟数据
+            from datetime import datetime
+            from .utils.fe_regions import translate_place_name
+            
+            # 尝试翻译地名
+            final_place_name = translate_place_name(place_name, lat, lon)
+            
+            earthquake = EarthquakeData(
+                id=f"sim_{int(datetime.now().timestamp())}",
+                event_id=f"sim_{int(datetime.now().timestamp())}",
+                source=data_source,
+                disaster_type=DisasterType.EARTHQUAKE,
+                shock_time=datetime.now(),
+                latitude=lat,
+                longitude=lon,
+                depth=depth,
+                magnitude=magnitude,
+                place_name=final_place_name,
+                source_id=source,
+                raw_data={"test": True, "source_id": source}
+            )
+            
+            # 针对USGS等特定数据源的特殊处理
+            if source == "usgs_fanstudio":
+                earthquake.update_time = datetime.now()
+            
+            # P2P数据源需要最大震度
+            if source in ["jma_p2p", "jma_wolfx", "jma_p2p_info"]:
+                # 简单估算一个震度用于测试
+                earthquake.max_scale = max(0, min(7, int(magnitude - 2)))
+                earthquake.scale = earthquake.max_scale 
+
+            disaster_event = DisasterEvent(
+                id=f"sim_evt_{int(datetime.now().timestamp())}",
+                data=earthquake,
+                source=data_source,
+                disaster_type=DisasterType.EARTHQUAKE,
+                source_id=source
+            )
+
+            manager = self.disaster_service.message_manager
+            
+            # 分开的消息构建
+            report_lines = [
+                "🧪 **灾害预警模拟报告**",
+                f"Input: M{magnitude} @ ({lat}, {lon}), Depth {depth}km\n"
+            ]
+
+            # 2. 检查全局过滤器 (Global Filters)
+            global_pass = True
+            if manager.intensity_filter:
+                if manager.intensity_filter.should_filter(earthquake):
+                    global_pass = False
+                    report_lines.append(f"❌ **全局过滤**: 拦截 (不满足最小震级/烈度要求)")
+                else:
+                    report_lines.append(f"✅ **全局过滤**: 通过")
+            
+            # 3. 检查本地监控 (Local Monitor)
+            local_pass = True
+            if manager.local_monitor and manager.local_monitor.enabled:
+                allowed, dist, inte = manager.local_monitor.check_event(earthquake)
+                
+                # 为了模拟真实流程，手动注入 local_estimation
+                disaster_event.raw_data["local_estimation"] = {
+                    "distance": dist,
+                    "intensity": inte
+                }
+
+                if allowed:
+                    report_lines.append(f"✅ **本地监控**: 触发")
+                else:
+                    local_pass = False
+                    report_lines.append(f"❌ **本地监控**: 拦截 (严格模式生效中)")
+                    
+                report_lines.append(f"   ⦁ 严格模式: {'开启' if manager.local_monitor.strict_mode else '关闭 (仅计算不拦截)'}")
+                report_lines.extend([
+                    f"   ⦁ 距本地: {dist:.1f}km",
+                    f"   ⦁ 预估本地烈度: {inte:.1f}级",
+                    f"   ⦁ 本地阈值: {manager.local_monitor.threshold}级"
+                ])
+            else:
+                report_lines.append(f"ℹ️ **本地监控**: 未启用")
+
+            # 发送报告
+            yield event.plain_result("\n".join(report_lines))
+            
+            # 稍作等待，确保第一条消息发出
+            await asyncio.sleep(1)
+
+            # 4. 模拟消息构建
+            if global_pass and local_pass:
+                try:
+                    logger.info("[灾害预警] 开始构建模拟预警消息...")
+                    msg_chain = manager._build_message(disaster_event)
+                    logger.info(f"[灾害预警] 消息构建成功，链长度: {len(msg_chain.chain)}")
+                    
+                    # 直接使用context发送消息，绕过command generator
+                    await self.context.send_message(event.unified_msg_origin, msg_chain)
+                except Exception as build_e:
+                     import traceback
+                     logger.error(f"[灾害预警] 消息构建失败: {build_e}\n{traceback.format_exc()}")
+                     yield event.plain_result(f"❌ 消息构建失败: {build_e}")
+            else:
+                yield event.plain_result("\n⛔ **结论**: 该事件不会触发预警推送。")
+
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error(f"[灾害预警] 模拟测试失败: {e}\n{error_trace}")
+            yield event.plain_result(f"❌ 模拟失败: {e}")
+
     @filter.on_astrbot_loaded()
     async def on_astrbot_loaded(self):
         """AstrBot加载完成时的钩子"""
         logger.info("[灾害预警] AstrBot已加载完成，灾害预警插件准备就绪")
+

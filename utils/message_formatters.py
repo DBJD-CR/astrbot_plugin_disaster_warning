@@ -4,9 +4,10 @@
 """
 
 from datetime import datetime
+from typing import Any
 
-from .data_source_config import get_data_source_config
-from .models import EarthquakeData, TsunamiData, WeatherAlarmData
+from ..models.data_source_config import get_data_source_config
+from ..models.models import EarthquakeData, TsunamiData, WeatherAlarmData
 
 
 class BaseMessageFormatter:
@@ -65,6 +66,20 @@ class BaseMessageFormatter:
 
         # 默认返回百度地图
         return f"https://api.map.baidu.com/marker?location={latitude},{longitude}&zoom={zoom}&title={magnitude_info}+Epicenter&content={location_info[:32]}&coord_type=wgs84&output=html"
+
+    @staticmethod
+    def format_message(data: Any) -> str:
+        """默认消息格式化"""
+        lines = [f"🚨[{data.disaster_type.value}] 灾害预警 (基础格式)"]
+        if hasattr(data, "id"):
+            lines.append(f"📋ID: {data.id}")
+        if hasattr(data, "shock_time") and data.shock_time:
+            lines.append(f"⏰时间: {data.shock_time}")
+        if hasattr(data, "place_name") and data.place_name:
+            lines.append(f"📍地点: {data.place_name}")
+        if hasattr(data, "raw_data") and data.raw_data:
+            lines.append(f"📝数据: {data.raw_data}")
+        return "\n".join(lines)
 
 
 class CEAEEWFormatter(BaseMessageFormatter):

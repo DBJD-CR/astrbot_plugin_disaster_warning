@@ -171,6 +171,46 @@
       }
     }
   },
+  "local_monitoring": {
+    "description": "本地烈度监控配置",
+    "type": "object",
+    "hint": "配置机器人所在位置，计算本地预估烈度",
+    "items": {
+      "enabled": {
+        "description": "启用本地监控",
+        "type": "bool",
+        "default": false
+      },
+      "latitude": {
+        "description": "本地纬度",
+        "type": "float",
+        "default": 39.9042
+      },
+      "longitude": {
+        "description": "本地经度",
+        "type": "float",
+        "default": 116.4074
+      },
+      "place_name": {
+        "description": "本地地名",
+        "type": "string",
+        "hint": "显示在消息中的地名",
+        "default": "本地"
+      },
+      "intensity_threshold": {
+        "description": "通知阈值(烈度)",
+        "type": "float",
+        "hint": "只有当本地预估烈度>=此值时才通知",
+        "default": 2.0
+      },
+      "strict_mode": {
+        "description": "严格过滤模式",
+        "type": "bool",
+        "hint": "开启后，如果本地烈度未达标，将忽略所有通知（包括大地震）",
+        "default": false
+      }
+    }
+  },
   "earthquake_filters": {
     "description": "地震信息过滤器配置",
     "type": "object",
@@ -281,7 +321,12 @@
       "map_provider": {
         "description": "地图服务提供商",
         "type": "string",
-        "options": ["openstreetmap", "google", "baidu", "amap"],
+        "options": [
+          "openstreetmap",
+          "google",
+          "baidu",
+          "amap"
+        ],
         "default": "baidu",
         "hint": "推荐使用百度地图(baidu)或高德地图(amap)，在中国大陆访问更稳定"
       },
@@ -364,7 +409,11 @@
         "items": {
           "type": "string"
         },
-        "default": ["heartbeat", "ping", "pong"]
+        "default": [
+          "heartbeat",
+          "ping",
+          "pong"
+        ]
       },
       "filter_p2p_areas_messages": {
         "description": "是否过滤P2P节点状态消息",

@@ -788,7 +788,7 @@ class MessageLogger:
 
         try:
             # 读取真实的区域代码文件
-            csv_path = Path(__file__).parent / "epsp-area.csv"
+            csv_path = Path(__file__).parent.parent / "resources/epsp-area.csv"
             if csv_path.exists():
                 with open(csv_path, encoding="utf-8") as f:
                     # 跳过标题行
