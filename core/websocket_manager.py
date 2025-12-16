@@ -258,11 +258,8 @@ class WebSocketManager:
             # 计算重试次数（在当前服务器上的尝试次数）
             server_retry_count = current_retry % max_retries if use_backup else current_retry
 
-            # 指数退避重试
-            base_delay = self.config.get("reconnect_interval", 30)
-            delay = base_delay * (2 ** min(server_retry_count, 3))  # 指数退避，最大8倍
-            max_delay = self.config.get("max_reconnect_delay", 300)  # 最大5分钟
-            delay = min(delay, max_delay)
+            # 固定5秒等待后重试
+            delay = 5
 
             server_type = "备用服务器" if use_backup else "主服务器"
             logger.info(
