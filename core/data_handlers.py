@@ -218,6 +218,74 @@ class CEAEEWHandler(BaseDataHandler):
             return None
 
 
+class JMAEEWFanStudioHandler(BaseDataHandler):
+    """日本气象厅地震预警处理器 - FAN Studio"""
+
+    def __init__(self, message_logger=None):
+        super().__init__("jma_fanstudio", message_logger)
+
+    def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
+        """解析FAN Studio日本气象厅地震预警数据"""
+        try:
+            # 获取实际数据 - FAN Studio使用大写D的Data字段
+            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            if not msg_data:
+                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                return None
+
+            # 记录数据获取情况用于调试
+            if "Data" in data:
+                logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
+            elif "data" in data:
+                logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
+            else:
+                logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
+
+            # 检查是否为地震预警数据 - JMA数据也有epiIntensity字段
+            if "epiIntensity" not in msg_data and "infoTypeName" not in msg_data:
+                logger.debug(f"[灾害预警] {self.source_id} 非JMA地震预警数据，跳过")
+                return None
+
+            # 检查是否为取消报
+            if msg_data.get("cancel", False):
+                logger.info(f"[灾害预警] {self.source_id} 收到取消报，跳过")
+                return None
+
+            earthquake = EarthquakeData(
+                id=msg_data.get("id", ""),
+                event_id=msg_data.get("id", ""),  # JMA使用id作为event_id
+                source=DataSource.FAN_STUDIO_JMA,
+                disaster_type=DisasterType.EARTHQUAKE_WARNING,
+                shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
+                latitude=float(msg_data.get("latitude", 0)),
+                longitude=float(msg_data.get("longitude", 0)),
+                depth=msg_data.get("depth"),
+                magnitude=msg_data.get("magnitude"),
+                intensity=msg_data.get("epiIntensity"),  # 预估最大震度
+                place_name=msg_data.get("placeName", ""),
+                updates=msg_data.get("updates", 1),
+                is_final=msg_data.get("final", False),
+                is_cancel=msg_data.get("cancel", False),
+                info_type=msg_data.get("infoTypeName", ""),  # 予報/警報
+                create_time=self._parse_datetime(msg_data.get("createTime", "")),
+                raw_data=msg_data,
+            )
+
+            logger.info(
+                f"[灾害预警] JMA地震预警解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
+            )
+
+            return DisasterEvent(
+                id=earthquake.id,
+                data=earthquake,
+                source=earthquake.source,
+                disaster_type=earthquake.disaster_type,
+            )
+        except Exception as e:
+            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {e}")
+            return None
+
+
 class CEAEEWWolfxHandler(BaseDataHandler):
     """中国地震预警网处理器 - Wolfx"""
 
@@ -977,7 +1045,7 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
             earthquake = EarthquakeData(
                 id=eq_info.get("md5", ""),
                 event_id=eq_info.get("md5", ""),
-                source=DataSource.WOLFX_JMA_EEW,
+                source=DataSource.WOLFX_JMA_EQ,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(eq_info.get("time", "")),
                 latitude=self._safe_float_convert(eq_info.get("latitude")),
@@ -1561,6 +1629,7 @@ DATA_HANDLERS = {
     "cea_wolfx": CEAEEWWolfxHandler,
     "cwa_fanstudio": CWAEEWHandler,
     "cwa_wolfx": CWAEEWWolfxHandler,
+    "jma_fanstudio": JMAEEWFanStudioHandler,
     "jma_p2p": JMAEEWP2PHandler,
     "jma_wolfx": JMAEEWWolfxHandler,
     "global_quake": GlobalQuakeHandler,

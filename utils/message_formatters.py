@@ -800,6 +800,7 @@ MESSAGE_FORMATTERS = {
     "cea_wolfx": CEAEEWFormatter,
     "cwa_fanstudio": CWAEEWFormatter,
     "cwa_wolfx": CWAEEWFormatter,
+    "jma_fanstudio": JMAEEWFormatter,
     "jma_p2p": JMAEEWFormatter,
     "jma_wolfx": JMAEEWFormatter,
     "global_quake": GlobalQuakeFormatter,

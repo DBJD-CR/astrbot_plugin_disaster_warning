@@ -259,6 +259,7 @@
 | `/灾害预警统计` | 查看推送统计信息 |
 | `/灾害预警配置 查看` | 查看当前配置摘要 |
 | `/灾害预警去重统计` | 查看事件去重统计信息 |
+| `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源] [地名]` | 模拟地震事件测试 |
 | `/灾害预警日志` | 查看原始消息日志统计 |
 | `/灾害预警日志开关` | 开关原始消息日志记录 |
 | `/灾害预警日志清除` | 清除所有原始消息日志 |
@@ -291,6 +292,11 @@
 
 # 查看统计信息
 /灾害预警统计
+
+# 模拟地震事件（用于测试过滤器和本地监控）
+/灾害预警模拟 39.9 116.4 5.5           # 北京 M5.5 默认深度10km
+/灾害预警模拟 35.6 139.7 6.0 30        # 东京 M6.0 深度30km
+/灾害预警模拟 39.9 116.4 4.0 10 usgs_fanstudio "Test Location"  # 指定数据源和地名
 ```
 
 ---
@@ -310,17 +316,24 @@ AstrBot/
          ├─ metadata.yaml                  # 插件元数据信息
          ├─ README.md                      # 插件说明文档
          ├─ requirements.txt               # 插件依赖列表
-         ├─ models.py                      # 数据模型定义（地震、海啸、气象等）
-         ├─ disaster_service.py            # 核心灾害预警服务
-         ├─ websocket_manager.py           # WebSocket连接管理器
-         ├─ data_handlers.py               # 各数据源消息处理器
-         ├─ message_manager.py             # 消息推送管理器
-         ├─ message_formatters.py          # 专用消息格式化器
-         ├─ message_logger.py              # 原始消息记录器
-         ├─ data_source_config.py          # 数据源配置管理器
-         ├─ epsp-area.csv                  # P2P地震区域代码映射表
          ├─ logo.png                       # 插件Logo，适用于AstrBot v4.5.0+
-         └─ LICENSE                        # 许可证文件
+         ├─ LICENSE                        # 许可证文件
+         ├─ core/                          # 核心模块目录
+         │   ├─ __init__.py
+         │   ├─ disaster_service.py        # 核心灾害预警服务
+         │   ├─ websocket_manager.py       # WebSocket连接管理器
+         │   ├─ data_handlers.py           # 各数据源消息处理器
+         │   ├─ message_manager.py         # 消息推送管理器
+         │   ├─ message_formatters.py      # 专用消息格式化器
+         │   └─ message_logger.py          # 原始消息记录器
+         ├─ models/                        # 数据模型目录
+         │   ├─ __init__.py
+         │   ├─ models.py                  # 数据模型定义（地震、海啸、气象等）
+         │   └─ data_source_config.py      # 数据源配置管理器
+         ├─ utils/                         # 工具模块目录
+         │   └─ fe_regions.py              # FE地震区划中文翻译
+         └─ resources/                     # 资源文件目录
+             └─ epsp-area.csv              # P2P地震区域代码映射表
 ```
 
 插件运行时会自动创建数据存储目录：
@@ -508,6 +521,19 @@ graph TD
   }
 }
 ```
+
+### FAN Studio 备用服务器配置
+
+FAN Studio 提供主备两个服务器地址，插件会自动进行故障转移：
+
+- **主服务器**: `wss://ws.fanstudio.tech/[路径]`
+- **备用服务器**: `wss://ws.fanstudio.hk/[路径]`
+
+**自动切换机制**：
+
+- 当主服务器连接失败达到最大重试次数（默认 3 次）后，自动切换到备用服务器
+- 备用服务器也失败 3 次后，停止重连
+- 使用指数退避策略（30s → 60s → 120s → 240s）减少服务器压力
 
 ### Global Quake服务器配置
 
@@ -780,6 +806,7 @@ A: 调整推送频率控制：
 - 支持多数据源同时连接。
 - 具备断线重连机制。
 - 合理的重连间隔避免频繁连接。
+- **支持 FAN Studio 主备服务器自动切换**：当主服务器不可用时，自动故障转移到备用服务器。
 
 ## 🤝 贡献与支持
 

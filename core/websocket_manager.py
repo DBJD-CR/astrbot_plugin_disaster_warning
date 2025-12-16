@@ -229,7 +229,7 @@ class WebSocketManager:
     async def _schedule_reconnect(
         self, name: str, uri: str, headers: dict | None = None
     ):
-        """计划重连 - 增强版本"""
+        """计划重连 - 增强版本，支持备用服务器"""
         if name in self.reconnect_tasks:
             self.reconnect_tasks[name].cancel()
 
@@ -239,32 +239,48 @@ class WebSocketManager:
             max_retries = self.config.get("max_reconnect_retries", 3)
 
             # 检查是否已达到最大重试次数
-            if current_retry >= max_retries:
+            if current_retry >= max_retries * 2:  # 主备服务器各尝试max_retries次
                 logger.error(
-                    f"[灾害预警] {name} 重连失败，已达到最大重试次数 {max_retries}，将停止重连"
+                    f"[灾害预警] {name} 重连失败，主备服务器均已达到最大重试次数，将停止重连"
                 )
-                # 可以在这里添加通知机制
                 return
+
+            # 获取备用服务器URL
+            backup_url = None
+            if name in self.connection_info:
+                backup_url = self.connection_info[name].get("backup_url")
+
+            # 判断使用主服务器还是备用服务器
+            # 每尝试 max_retries 次后切换服务器
+            use_backup = backup_url and (current_retry >= max_retries)
+            target_uri = backup_url if use_backup else uri
+
+            # 计算重试次数（在当前服务器上的尝试次数）
+            server_retry_count = current_retry % max_retries if use_backup else current_retry
 
             # 指数退避重试
             base_delay = self.config.get("reconnect_interval", 30)
-            delay = base_delay * (2 ** min(current_retry, 3))  # 指数退避，最大8倍
+            delay = base_delay * (2 ** min(server_retry_count, 3))  # 指数退避，最大8倍
             max_delay = self.config.get("max_reconnect_delay", 300)  # 最大5分钟
             delay = min(delay, max_delay)
 
-            logger.info(f"[灾害预警] {name} 将在 {delay} 秒后重试连接")
+            server_type = "备用服务器" if use_backup else "主服务器"
+            logger.info(
+                f"[灾害预警] {name} 将在 {delay} 秒后尝试连接{server_type}: {target_uri}"
+            )
 
             try:
                 await asyncio.sleep(delay)
                 # 标记为重试连接
-                await self.connect(name, uri, headers, is_retry=True)
+                await self.connect(name, target_uri, headers, is_retry=True)
             except Exception as e:
                 logger.error(f"[灾害预警] WebSocket管理器重连失败 {name}: {e}")
-                # 如果还有重试次数，继续安排重连
-                if self.connection_retry_counts.get(name, 0) < max_retries:
+                # 如果还有重试次数，继续安排重连（回到主服务器URI以便下次判断）
+                if self.connection_retry_counts.get(name, 0) < max_retries * 2:
                     await self._schedule_reconnect(name, uri, headers)
 
         self.reconnect_tasks[name] = asyncio.create_task(reconnect())
+
 
     async def disconnect(self, name: str):
         """断开连接 - 增强版本"""

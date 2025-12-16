@@ -28,6 +28,7 @@ class DataSource(Enum):
     FAN_STUDIO_CEA = "fan_studio_cea"  # 中国地震预警网
     FAN_STUDIO_CWA = "fan_studio_cwa"  # 台湾中央气象署
     FAN_STUDIO_USGS = "fan_studio_usgs"  # USGS
+    FAN_STUDIO_JMA = "fan_studio_jma"  # 日本气象厅地震预警
     FAN_STUDIO_WEATHER = "fan_studio_weather"  # 中国气象局气象预警
     FAN_STUDIO_TSUNAMI = "fan_studio_tsunami"  # 海啸预警
 
@@ -54,6 +55,7 @@ DATA_SOURCE_MAPPING = {
     "cea_wolfx": DataSource.WOLFX_CENC_EEW,
     "cwa_fanstudio": DataSource.FAN_STUDIO_CWA,
     "cwa_wolfx": DataSource.WOLFX_CWA_EEW,
+    "jma_fanstudio": DataSource.FAN_STUDIO_JMA,
     "jma_p2p": DataSource.P2P_EEW,
     "jma_wolfx": DataSource.WOLFX_JMA_EEW,
     "global_quake": DataSource.GLOBAL_QUAKE,

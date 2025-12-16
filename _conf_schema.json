@@ -147,25 +147,13 @@
       "global_quake": {
         "description": "Global Quake 服务器推送",
         "type": "object",
-        "hint": "通过全球测站实时测算，精度有限",
+        "hint": "通过全球测站实时测算，精度有限，目前功能不稳定",
         "items": {
           "enabled": {
             "description": "启用Global Quake数据源",
             "type": "bool",
-            "hint": "测试性功能，不保证稳定性",
-            "default": true
-          },
-          "primary_server": {
-            "description": "主服务器",
-            "type": "bool",
-            "default": true,
-            "hint": "连接主服务器"
-          },
-          "secondary_server": {
-            "description": "备用服务器",
-            "type": "bool",
-            "default": false,
-            "hint": "连接备用服务器（如果配置了不同的地址）"
+            "hint": "测试性功能，目前基本处于不可用状态，建议关闭",
+            "default": false
           }
         }
       }
@@ -365,6 +353,12 @@
         "type": "int",
         "hint": "单位：秒，不要设置超过600的数值，否则可能被服务器断开连接",
         "default": 120
+      },
+      "max_reconnect_delay": {
+        "description": "最大重连延迟",
+        "type": "int",
+        "hint": "单位：秒，指数退避的最大等待时间",
+        "default": 300
       }
     }
   },
