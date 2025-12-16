@@ -764,7 +764,7 @@ class CENCEarthquakeWolfxHandler(BaseDataHandler):
             earthquake = EarthquakeData(
                 id=eq_info.get("md5", ""),
                 event_id=eq_info.get("md5", ""),
-                source=DataSource.WOLFX_CENC_EEW,
+                source=DataSource.WOLFX_CENC_EQ,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(eq_info.get("time", "")),
                 latitude=float(eq_info.get("latitude", 0)),

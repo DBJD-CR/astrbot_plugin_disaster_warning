@@ -414,7 +414,6 @@ class EventDeduplicator:
             DataSource.P2P_EARTHQUAKE.value: "jma_p2p_info",
             DataSource.WOLFX_JMA_EEW.value: "jma_wolfx",
             DataSource.FAN_STUDIO_CENC.value: "cenc_fanstudio",
-            DataSource.WOLFX_CENC_EEW.value: "cenc_wolfx",
             DataSource.FAN_STUDIO_USGS.value: "usgs_fanstudio",
             DataSource.GLOBAL_QUAKE.value: "global_quake",
         }
@@ -680,8 +679,6 @@ class MessagePushManager:
         else:
             # 未知事件类型，使用基础格式化
             logger.warning(f"[灾害预警] 未知事件类型: {type(event.data)}")
-            message_text = f"🚨[未知事件]\n📋事件ID：{event.id}\n⏰时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-
             message_text = f"🚨[未知事件]\n📋事件ID：{event.id}\n⏰时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
         # 添加本地预估信息
