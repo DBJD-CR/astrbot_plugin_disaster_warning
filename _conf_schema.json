@@ -154,6 +154,26 @@
             "type": "bool",
             "hint": "测试性功能，目前基本处于不可用状态，建议关闭",
             "default": false
+          },
+          "primary_server": {
+            "description": "主服务器地址",
+            "type": "string",
+            "default": "server-backup.globalquake.net"
+          },
+          "primary_port": {
+            "description": "主服务器端口",
+            "type": "int",
+            "default": 38000
+          },
+          "secondary_server": {
+            "description": "备用服务器地址",
+            "type": "string",
+            "default": "server-backup.globalquake.net"
+          },
+          "secondary_port": {
+            "description": "备用服务器端口",
+            "type": "int",
+            "default": 38000
           }
         }
       }
@@ -426,33 +446,6 @@
         "type": "bool",
         "hint": "连接建立、断开等",
         "default": true
-      }
-    }
-  },
-  "global_quake_config": {
-    "description": "Global Quake服务器配置",
-    "type": "object",
-    "hint": "测试性功能，不保证稳定性",
-    "items": {
-      "primary_server": {
-        "description": "主服务器地址",
-        "type": "string",
-        "default": "server-backup.globalquake.net"
-      },
-      "primary_port": {
-        "description": "主服务器端口",
-        "type": "int",
-        "default": 38000
-      },
-      "secondary_server": {
-        "description": "备用服务器地址",
-        "type": "string",
-        "default": "server-backup.globalquake.net"
-      },
-      "secondary_port": {
-        "description": "备用服务器端口",
-        "type": "int",
-        "default": 38000
       }
     }
   }

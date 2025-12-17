@@ -587,8 +587,7 @@ class DisasterWarningPlugin(Star):
                 "china_cenc_earthquake": "Wolfx-中国地震台网地震测定",
             },
             "global_quake": {
-                "primary_server": "Global Quake主服务器",
-                "secondary_server": "Global Quake备用服务器",
+                "enabled": "Global Quake",
             },
         }
         return source_names.get(service, {}).get(source, source_key)

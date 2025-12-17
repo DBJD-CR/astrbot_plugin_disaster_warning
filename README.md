@@ -537,13 +537,18 @@ FAN Studio 提供主备两个服务器地址，插件会自动进行故障转移
 
 ### Global Quake服务器配置
 
+在 `data_sources.global_quake` 中配置服务器地址（启动 global_quake 功能后生效）：
+
 ```json
 {
-  "global_quake_config": {
-    "primary_server": "server-backup.globalquake.net",
-    "primary_port": 38000,
-    "secondary_server": "server-backup.globalquake.net",
-    "secondary_port": 38000
+  "data_sources": {
+    "global_quake": {
+      "enabled": false,
+      "primary_server": "server-backup.globalquake.net",
+      "primary_port": 38000,
+      "secondary_server": "server-backup.globalquake.net",
+      "secondary_port": 38000
+    }
   }
 }
 ```

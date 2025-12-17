@@ -435,33 +435,12 @@ class GlobalQuakeClient:
         self.config = config
         self.message_logger = message_logger
 
-        # 服务器配置（保持不变）
-        primary_server = config.get("primary_server", "server-backup.globalquake.net")
-        secondary_server = config.get(
-            "secondary_server", "server-backup.globalquake.net"
-        )
-
-        # 处理布尔值配置问题
-        if isinstance(primary_server, bool):
-            primary_server = "server-backup.globalquake.net" if primary_server else ""
-        if isinstance(secondary_server, bool):
-            secondary_server = (
-                "server-backup.globalquake.net" if secondary_server else ""
-            )
-
-        # 确保是有效的字符串地址
-        self.primary_server = (
-            str(primary_server)
-            if isinstance(primary_server, str) and primary_server.strip()
-            else "server-backup.globalquake.net"
-        )
-        self.secondary_server = (
-            str(secondary_server)
-            if isinstance(secondary_server, str) and secondary_server.strip()
-            else "server-backup.globalquake.net"
-        )
+        # 服务器配置
+        self.primary_server = config.get("primary_server", "server-backup.globalquake.net")
+        self.secondary_server = config.get("secondary_server", "server-backup.globalquake.net")
         self.primary_port = config.get("primary_port", 38000)
         self.secondary_port = config.get("secondary_port", 38000)
+
 
         self.reader: asyncio.StreamReader | None = None
         self.writer: asyncio.StreamWriter | None = None
