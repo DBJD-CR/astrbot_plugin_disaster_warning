@@ -54,12 +54,6 @@
             "default": true,
             "hint": "通过FAN Studio WebSocket接收日本气象厅地震预警信息"
           },
-          "japan_jma_earthquake": {
-            "description": "日本气象厅（JMA）：地震情报",
-            "type": "bool",
-            "default": true,
-            "hint": "通过FAN Studio WebSocket接收日本气象厅地震情报"
-          },
           "usgs_earthquake": {
             "description": "美国地质调查局（USGS）：地震测定",
             "type": "bool",
