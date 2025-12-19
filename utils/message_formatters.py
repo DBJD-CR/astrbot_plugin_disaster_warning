@@ -8,6 +8,7 @@ from typing import Any
 
 from ..models.data_source_config import get_data_source_config
 from ..models.models import EarthquakeData, TsunamiData, WeatherAlarmData
+from ..core.intensity_calculator import IntensityCalculator
 
 
 class BaseMessageFormatter:
@@ -74,7 +75,7 @@ class BaseMessageFormatter:
         if hasattr(data, "id"):
             lines.append(f"📋ID: {data.id}")
         if hasattr(data, "shock_time") and data.shock_time:
-            lines.append(f"⏰时间: {data.shock_time}")
+            lines.append(f"⏰发震时间: {data.shock_time}")
         if hasattr(data, "place_name") and data.place_name:
             lines.append(f"📍地点: {data.place_name}")
         if hasattr(data, "raw_data") and data.raw_data:
@@ -101,7 +102,7 @@ class CEAEEWFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰时间：{CEAEEWFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{CEAEEWFormatter.format_time(earthquake.shock_time)}"
             )
 
         # 震中
@@ -127,6 +128,19 @@ class CEAEEWFormatter(BaseMessageFormatter):
         if earthquake.intensity is not None:
             lines.append(f"💥预估最大烈度：{earthquake.intensity}")
 
+        # 本地烈度预估
+        if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
+            local_est = earthquake.raw_data.get("local_estimation")
+            if local_est:
+                dist = local_est.get("distance", 0.0)
+                inte = local_est.get("intensity", 0.0)
+                place = local_est.get("place_name", "本地")
+                desc = IntensityCalculator.get_intensity_description(inte)
+                
+                lines.append("")
+                lines.append(f"📍{place}预估：")
+                lines.append(f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})")
+
         return "\n".join(lines)
 
 
@@ -149,7 +163,7 @@ class CWAEEWFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰时间：{CWAEEWFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{CWAEEWFormatter.format_time(earthquake.shock_time)}"
             )
 
         # 震中
@@ -175,6 +189,19 @@ class CWAEEWFormatter(BaseMessageFormatter):
         if earthquake.scale is not None:
             lines.append(f"💥预估最大震度：{earthquake.scale}")
 
+        # 本地烈度预估
+        if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
+            local_est = earthquake.raw_data.get("local_estimation")
+            if local_est:
+                dist = local_est.get("distance", 0.0)
+                inte = local_est.get("intensity", 0.0)
+                place = local_est.get("place_name", "本地")
+                desc = IntensityCalculator.get_intensity_description(inte)
+                
+                lines.append("")
+                lines.append(f"📍{place}预估：")
+                lines.append(f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})")
+
         return "\n".join(lines)
 
 
@@ -190,8 +217,12 @@ class JMAEEWFormatter(BaseMessageFormatter):
 
         # 判断是予报还是警报
         warning_type = "予报"  # 默认
-        # 震度5弱(4.5)以上为警报
-        if earthquake.scale is not None and earthquake.scale >= 4.5:
+        
+        # 优先使用info_type (Fan Studio)
+        if earthquake.info_type:
+            warning_type = earthquake.info_type
+        # 回退到基于震度的推断 (P2P)
+        elif earthquake.scale is not None and earthquake.scale >= 4.5:
             warning_type = "警报"
 
         lines = [f"🚨[紧急地震速报] [{warning_type}] 日本气象厅"]
@@ -207,7 +238,7 @@ class JMAEEWFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰时间：{JMAEEWFormatter.format_time(earthquake.shock_time, 'UTC+9')}"
+                f"⏰发震时间：{JMAEEWFormatter.format_time(earthquake.shock_time, 'UTC+9')}"
             )
 
         # 震中
@@ -230,29 +261,47 @@ class JMAEEWFormatter(BaseMessageFormatter):
             lines.append(f"🏔️深度：{earthquake.depth} km")
 
         # 预估最大震度
+        # Fan Studio 使用 intensity (epiIntensity)，P2P 使用 scale
         if earthquake.scale is not None:
             lines.append(f"💥预估最大震度：{earthquake.scale}")
+        elif earthquake.intensity is not None:
+            # Fan Studio 数据中的 epiIntensity 已经是震度字符串 (e.g. "4", "5+")
+            lines.append(f"💥预估最大震度：{earthquake.intensity}")
 
-        # 警报区域详情 (仅针对警报)
+        # 警报区域详情 (仅针对警报且有区域数据)
         raw_data = getattr(earthquake, "raw_data", {})
         if warning_type == "警报" and isinstance(raw_data, dict):
             areas = raw_data.get("areas", [])
-            warn_areas = []
-            for area in areas:
-                # kindCode: 10=未到达, 11=已到达
-                # scaleFrom >= 45 (震度5弱)
-                if area.get("scaleFrom", 0) >= 45:
-                    name = area.get("name", "")
-                    kind = area.get("kindCode", "")
-                    status = "已到达" if kind == "11" else "未到达"
-                    warn_areas.append(f"{name}({status})")
+            if areas:
+                warn_areas = []
+                for area in areas:
+                    # kindCode: 10=未到达, 11=已到达
+                    # scaleFrom >= 45 (震度5弱)
+                    if area.get("scaleFrom", 0) >= 45:
+                        name = area.get("name", "")
+                        kind = area.get("kindCode", "")
+                        status = "已到达" if kind == "11" else "未到达"
+                        warn_areas.append(f"{name}({status})")
 
-            if warn_areas:
-                lines.append("⚠️警报区域：")
-                # 每行显示3个区域
-                chunk_size = 3
-                for i in range(0, len(warn_areas), chunk_size):
-                    lines.append("  " + "、".join(warn_areas[i : i + chunk_size]))
+                if warn_areas:
+                    lines.append("⚠️警报区域：")
+                    # 每行显示3个区域
+                    chunk_size = 3
+                    for i in range(0, len(warn_areas), chunk_size):
+                        lines.append("  " + "、".join(warn_areas[i : i + chunk_size]))
+
+        # 本地烈度预估
+        if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
+            local_est = earthquake.raw_data.get("local_estimation")
+            if local_est:
+                dist = local_est.get("distance", 0.0)
+                inte = local_est.get("intensity", 0.0)
+                place = local_est.get("place_name", "本地")
+                desc = IntensityCalculator.get_intensity_description(inte)
+                
+                lines.append("")
+                lines.append(f"📍{place}预估：")
+                lines.append(f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})")
 
         return "\n".join(lines)
 
@@ -291,7 +340,7 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰时间：{CENCEarthquakeFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{CENCEarthquakeFormatter.format_time(earthquake.shock_time)}"
             )
 
         # 震中
@@ -370,15 +419,18 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
         return "震源・震度情报"
 
     @staticmethod
-    def format_message(earthquake: EarthquakeData) -> str:
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化日本气象厅地震情报消息"""
+        if options is None:
+            options = {}
+        
         info_type = JMAEarthquakeFormatter.determine_info_type(earthquake)
         lines = [f"🚨[{info_type}] 日本气象厅"]
 
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰时间：{JMAEarthquakeFormatter.format_time(earthquake.shock_time, 'UTC+9')}"
+                f"⏰发震时间：{JMAEarthquakeFormatter.format_time(earthquake.shock_time, 'UTC+9')}"
             )
 
         # 震中
@@ -440,24 +492,44 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
                         scale_groups[scale] = []
                     scale_groups[scale].append(addr)
 
-                # 显示最大震度的前几个地点
-                max_scale_key = max(scale_groups.keys()) if scale_groups else None
-                if max_scale_key:
-                    # 转换震度显示
-                    scale_disp = str(max_scale_key / 10).replace(".0", "")
-                    if max_scale_key == 45:
-                        scale_disp = "5弱"
-                    elif max_scale_key == 50:
-                        scale_disp = "5强"
-                    elif max_scale_key == 55:
-                        scale_disp = "6弱"
-                    elif max_scale_key == 60:
-                        scale_disp = "6强"
+                # 震度显示辅助函数
+                def get_scale_disp(scale_val):
+                    disp = str(scale_val / 10).replace(".0", "")
+                    if scale_val == 45: return "5弱"
+                    elif scale_val == 50: return "5强"
+                    elif scale_val == 55: return "6弱"
+                    elif scale_val == 60: return "6强"
+                    return disp
 
-                    locs = scale_groups[max_scale_key][:5]
-                    lines.append(
-                        f"📡震度 {scale_disp} 观测点：{'、'.join(locs)}{'等' if len(scale_groups[max_scale_key]) > 5 else ''}"
-                    )
+                if options.get("detailed_jma_intensity", False):
+                    # 详细模式：显示所有震度级别（从大到小）
+                    sorted_scales = sorted(scale_groups.keys(), reverse=True)
+                    lines.append("📡各地震度详情：")
+                    
+                    for scale_key in sorted_scales:
+                        scale_disp = get_scale_disp(scale_key)
+                        locs = scale_groups[scale_key]
+                        
+                        # 如果地点太多，分行显示或截断（避免消息过长）
+                        # 详细模式下，我们尝试显示更多，但为了QQ消息限制，还是限制一下每级显示数量
+                        # 例如每级最多显示20个
+                        max_show = 20
+                        locs_to_show = locs[:max_show]
+                        
+                        loc_str = "、".join(locs_to_show)
+                        if len(locs) > max_show:
+                            loc_str += f" 等{len(locs)}处"
+                            
+                        lines.append(f"  [震度{scale_disp}] {loc_str}")
+                else:
+                    # 默认模式：只显示最大震度区域
+                    max_scale_key = max(scale_groups.keys()) if scale_groups else None
+                    if max_scale_key:
+                        scale_disp = get_scale_disp(max_scale_key)
+                        locs = scale_groups[max_scale_key][:5]
+                        lines.append(
+                            f"📡震度 {scale_disp} 观测点：{'、'.join(locs)}{'等' if len(scale_groups[max_scale_key]) > 5 else ''}"
+                        )
 
             # 备注信息 (comments)
             comments = raw_data.get("comments", {})
@@ -503,7 +575,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰时间：{USGSEarthquakeFormatter.format_time(earthquake.shock_time, 'UTC+8')}"
+                f"⏰发震时间：{USGSEarthquakeFormatter.format_time(earthquake.shock_time, 'UTC+8')}"
             )
 
         # 震中
@@ -544,7 +616,7 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰时间：{GlobalQuakeFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{GlobalQuakeFormatter.format_time(earthquake.shock_time)}"
             )
 
         # 震中
@@ -823,11 +895,21 @@ def get_formatter(source_id: str):
     return MESSAGE_FORMATTERS.get(source_id, BaseMessageFormatter)
 
 
-def format_earthquake_message(source_id: str, earthquake: EarthquakeData) -> str:
+def format_earthquake_message(source_id: str, earthquake: EarthquakeData, options: dict = None) -> str:
     """格式化地震消息"""
     formatter_class = get_formatter(source_id)
     if hasattr(formatter_class, "format_message"):
-        return formatter_class.format_message(earthquake)
+        # 检查 format_message 是否接受 options 参数
+        # 这里做一个简单的尝试调用，或者检查签名，但为了兼容性，我们可以尝试传递 options
+        # 如果 Formatter 类是我们自己定义的，我们知道 JMAEarthquakeFormatter 接受 options
+        # 其他 Formatter 可能不接受，所以需要处理
+        try:
+            if source_id in ["jma_p2p_info", "jma_wolfx_info"]:
+                return formatter_class.format_message(earthquake, options=options)
+            return formatter_class.format_message(earthquake)
+        except TypeError:
+            # 如果不支持 options 参数，回退到旧调用方式
+            return formatter_class.format_message(earthquake)
 
     # 回退到基础格式化
     return BaseMessageFormatter.format_message(earthquake)
