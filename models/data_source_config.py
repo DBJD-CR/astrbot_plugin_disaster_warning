@@ -28,6 +28,7 @@ class EEWDataSource(Enum):
     CWA_WOLFX = "cwa_wolfx"
 
     # 日本气象厅紧急地震速报
+    JMA_FANSTUDIO = "jma_fanstudio"
     JMA_P2P = "jma_p2p"
     JMA_WOLFX = "jma_wolfx"
 
@@ -128,6 +129,17 @@ DATA_SOURCE_CONFIGS: dict[str, DataSourceConfig] = {
         uses_intensity=False,
         uses_scale=True,
         priority=2,
+    ),
+    EEWDataSource.JMA_FANSTUDIO.value: DataSourceConfig(
+        source_id=EEWDataSource.JMA_FANSTUDIO.value,
+        source_type=DataSourceType.EEW_WARNING,
+        display_name="日本气象厅",
+        description="日本气象厅：紧急地震速报 - FAN Studio WebSocket",
+        supports_report_count=True,
+        supports_final_report=True,
+        uses_intensity=False,
+        uses_scale=True,
+        priority=1,
     ),
     EEWDataSource.JMA_P2P.value: DataSourceConfig(
         source_id=EEWDataSource.JMA_P2P.value,
