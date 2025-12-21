@@ -89,6 +89,25 @@ class GlobalQuakeHandler(BaseDataHandler):
             latitude = eq_data.get("latitude", 0)
             longitude = eq_data.get("longitude", 0)
 
+            # 格式化震级和深度 - 保留1位小数，与其他数据源保持一致
+            magnitude_raw = eq_data.get("magnitude")
+            if magnitude_raw is not None:
+                try:
+                    magnitude = round(float(magnitude_raw), 1)
+                except (ValueError, TypeError):
+                    magnitude = None
+            else:
+                magnitude = None
+
+            depth_raw = eq_data.get("depth")
+            if depth_raw is not None:
+                try:
+                    depth = round(float(depth_raw), 1)
+                except (ValueError, TypeError):
+                    depth = None
+            else:
+                depth = None
+
             # 翻译地名（使用FE Regions，类似USGS处理）
             original_region = eq_data.get("region", "未知地点")
             place_name = translate_place_name(
@@ -104,8 +123,8 @@ class GlobalQuakeHandler(BaseDataHandler):
                 shock_time=shock_time or datetime.now(),
                 latitude=latitude,
                 longitude=longitude,
-                depth=eq_data.get("depth"),
-                magnitude=eq_data.get("magnitude"),
+                depth=depth,
+                magnitude=magnitude,
                 intensity=intensity,
                 place_name=place_name,
                 updates=eq_data.get("revisionId", 1),
