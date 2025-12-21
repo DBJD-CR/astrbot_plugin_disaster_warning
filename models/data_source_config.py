@@ -167,10 +167,10 @@ DATA_SOURCE_CONFIGS: dict[str, DataSourceConfig] = {
         source_id=EEWDataSource.GLOBAL_QUAKE.value,
         source_type=DataSourceType.EEW_WARNING,
         display_name="Global Quake",
-        description="Global Quake 服务器推送 - 自定义TCP连接",
+        description="Global Quake 服务器推送 - WebSocket连接",
         supports_report_count=True,
         supports_final_report=False,  # 没有明确的最终报标识
-        uses_intensity=True,
+        uses_intensity=True,  # 使用烈度过滤器
         uses_scale=False,
         priority=3,
     ),

@@ -19,10 +19,11 @@ from ..models.models import (
     TsunamiData,
     WeatherAlarmData,
 )
-from .data_handlers import DATA_HANDLERS
+from .handlers import DATA_HANDLERS
 from .message_logger import MessageLogger
 from .message_manager import MessagePushManager
-from .websocket_manager import GlobalQuakeClient, HTTPDataFetcher, WebSocketManager
+from .handler_registry import WebSocketHandlerRegistry
+from .websocket_manager import HTTPDataFetcher, WebSocketManager
 
 
 class DisasterWarningService:
@@ -81,368 +82,8 @@ class DisasterWarningService:
 
     def _register_handlers(self):
         """注册消息处理器"""
-
-        # FAN Studio WebSocket处理器 - 采用v1.0.0的智能识别机制
-        async def fan_studio_handler(
-            message, connection_name=None, connection_info=None
-        ):
-            # 利用connection_info增强日志记录
-            if connection_info:
-                logger.debug(
-                    f"[灾害预警] FAN Studio处理器收到消息 - 连接: {connection_name}, URI: {connection_info.get('uri', 'unknown')}"
-                )
-                # 记录连接建立时间（如果可用）
-                established_time = connection_info.get("established_time")
-                if established_time:
-                    logger.debug(f"[灾害预警] 连接建立时间: {established_time}")
-            else:
-                logger.debug(
-                    f"[灾害预警] FAN Studio处理器收到消息 - 连接: {connection_name}"
-                )
-
-            try:
-                # 首先尝试通过连接名称直接识别数据源
-                if connection_name:
-                    direct_source_mapping = {
-                        "fan_studio_cea": "cea_fanstudio",
-                        "fan_studio_cwa": "cwa_fanstudio",
-                        "fan_studio_cenc": "cenc_fanstudio",
-                        "fan_studio_usgs": "usgs_fanstudio",
-                        "fan_studio_jma": "jma_fanstudio",
-                        "fan_studio_weather": "china_weather_fanstudio",
-                        "fan_studio_tsunami": "china_tsunami_fanstudio",
-                    }
-
-                    target_source = direct_source_mapping.get(connection_name)
-                    if target_source and target_source in self.handlers:
-                        handler = self.handlers[target_source]
-                        logger.debug(
-                            f"[灾害预警] 通过连接名称使用处理器: {target_source} (连接: {connection_name})"
-                        )
-
-                        event = handler.parse_message(message)
-                        if event:
-                            # 利用connection_info增强事件信息
-                            if (
-                                connection_info
-                                and hasattr(event, "raw_data")
-                                and isinstance(event.raw_data, dict)
-                            ):
-                                event.raw_data["connection_info"] = {
-                                    "connection_name": connection_name,
-                                    "uri": connection_info.get("uri"),
-                                    "connection_type": connection_info.get(
-                                        "connection_type"
-                                    ),
-                                    "established_time": connection_info.get(
-                                        "established_time"
-                                    ),
-                                }
-
-                            logger.debug(
-                                f"[灾害预警] FAN Studio处理器解析成功: {event.id}"
-                            )
-                            await self._handle_disaster_event(event)
-                            return
-                        else:
-                            logger.debug(
-                                "[灾害预警] FAN Studio处理器返回None，无有效事件"
-                            )
-                            return
-
-                # 如果直接映射失败，尝试智能识别（类似v1.0.0的机制）
-                logger.debug(f"[灾害预警] 开始智能识别数据源，连接: {connection_name}")
-
-                # 尝试解析JSON来识别数据源类型
-                try:
-                    data = json.loads(message)
-
-                    # 获取实际数据 - 注意FAN Studio使用大写D的Data字段
-                    msg_data = data.get("Data", {}) or data.get("data", {})
-                    if not msg_data:
-                        logger.warning(
-                            f"[灾害预警] 消息中没有Data/data字段，连接: {connection_name}"
-                        )
-                        # 尝试直接处理原始数据
-                        msg_data = data
-
-                    # 根据消息内容特征识别数据源
-                    if "epiIntensity" in msg_data:
-                        # 中国地震预警网格式
-                        handler = self.handlers.get("cea_fanstudio")
-                        if handler:
-                            logger.debug("[灾害预警] 智能识别为CEA预警数据")
-                            event = handler.parse_message(message)
-                        else:
-                            logger.warning("[灾害预警] 未找到CEA处理器")
-                            return None
-                    elif "maxIntensity" in msg_data and "createTime" in msg_data:
-                        # 台湾中央气象署格式
-                        handler = self.handlers.get("cwa_fanstudio")
-                        if handler:
-                            logger.debug("[灾害预警] 智能识别为CWA数据")
-                            event = handler.parse_message(message)
-                        else:
-                            logger.warning("[灾害预警] 未找到CWA处理器")
-                            return None
-                    elif "infoTypeName" in msg_data and (
-                        "[正式测定]" in message or "[自动测定]" in message
-                    ):
-                        # 中国地震台网格式
-                        handler = self.handlers.get("cenc_fanstudio")
-                        if handler:
-                            logger.debug("[灾害预警] 智能识别为CENC数据")
-                            event = handler.parse_message(message)
-                        else:
-                            logger.warning("[灾害预警] 未找到CENC处理器")
-                            return None
-                    elif "headline" in msg_data and "预警信号" in message:
-                        # 气象预警
-                        handler = self.handlers.get("china_weather_fanstudio")
-                        if handler:
-                            logger.debug("[灾害预警] 智能识别为气象预警数据")
-                            event = handler.parse_message(message)
-                        else:
-                            logger.warning("[灾害预警] 未找到气象预警处理器")
-                            return None
-                    elif "warningInfo" in msg_data and "title" in msg_data:
-                        # 海啸预警
-                        handler = self.handlers.get("china_tsunami_fanstudio")
-                        if handler:
-                            logger.debug("[灾害预警] 智能识别为海啸预警数据")
-                            event = handler.parse_message(message)
-                        else:
-                            logger.warning("[灾害预警] 未找到海啸预警处理器")
-                            return None
-                    elif "usgs" in message or (
-                        "placeName" in msg_data and "updateTime" in msg_data
-                    ):
-                        # USGS
-                        handler = self.handlers.get("usgs_fanstudio")
-                        if handler:
-                            logger.debug("[灾害预警] 智能识别为USGS数据")
-                            event = handler.parse_message(message)
-                        else:
-                            logger.warning("[灾害预警] 未找到USGS处理器")
-                            return None
-                    else:
-                        # 默认使用CEA处理器
-                        handler = self.handlers.get("cea_fanstudio")
-                        if handler:
-                            logger.debug(
-                                f"[灾害预警] 无法识别数据源，默认使用CEA处理器，连接: {connection_name}"
-                            )
-                            event = handler.parse_message(message)
-                        else:
-                            logger.warning("[灾害预警] 未找到默认CEA处理器")
-                            return None
-
-                except json.JSONDecodeError as e:
-                    logger.error(f"[灾害预警] JSON解析失败: {e}")
-                    return None
-                except Exception as e:
-                    logger.error(f"[灾害预警] 智能识别过程失败: {e}")
-                    return None
-
-                if event:
-                    # 利用connection_info增强事件信息
-                    if (
-                        connection_info
-                        and hasattr(event, "raw_data")
-                        and isinstance(event.raw_data, dict)
-                    ):
-                        event.raw_data["connection_info"] = {
-                            "connection_name": connection_name,
-                            "uri": connection_info.get("uri"),
-                            "connection_type": connection_info.get("connection_type"),
-                            "established_time": connection_info.get("established_time"),
-                        }
-
-                    logger.debug(f"[灾害预警] FAN Studio处理器解析成功: {event.id}")
-                    await self._handle_disaster_event(event)
-                else:
-                    logger.debug("[灾害预警] FAN Studio处理器返回None，无有效事件")
-
-            except Exception as e:
-                logger.error(
-                    f"[灾害预警] FAN Studio处理器解析消息失败 - 连接: {connection_name}, 错误: {e}"
-                )
-                if connection_info:
-                    logger.error(
-                        f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}, 类型: {connection_info.get('connection_type')}"
-                    )
-                raise
-
-        self.ws_manager.register_handler("fan_studio", fan_studio_handler)
-
-        # P2P WebSocket处理器
-        async def p2p_handler(message, connection_name=None, connection_info=None):
-            # 利用connection_info增强日志记录
-            if connection_info:
-                logger.debug(
-                    f"[灾害预警] P2P处理器收到消息 - 连接: {connection_name}, URI: {connection_info.get('uri', 'unknown')}, 长度: {len(message)}"
-                )
-            else:
-                logger.debug(
-                    f"[灾害预警] P2P处理器收到消息 - 连接: {connection_name}, 长度: {len(message)}"
-                )
-
-            # 调试：检查消息类型
-            try:
-                data = json.loads(message)
-                code = data.get("code")
-                if code == 556:
-                    logger.info(
-                        "[灾害预警] P2P处理器收到紧急地震速报(code:556)，准备解析..."
-                    )
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                pass
-
-            # 尝试EEW处理器
-            eew_handler = self.handlers.get("jma_p2p")
-            if eew_handler:
-                try:
-                    event = eew_handler.parse_message(message)
-                    if event:
-                        # 利用connection_info增强事件信息
-                        if (
-                            connection_info
-                            and hasattr(event, "raw_data")
-                            and isinstance(event.raw_data, dict)
-                        ):
-                            event.raw_data["connection_info"] = {
-                                "connection_name": connection_name,
-                                "uri": connection_info.get("uri"),
-                                "connection_type": connection_info.get(
-                                    "connection_type"
-                                ),
-                                "established_time": connection_info.get(
-                                    "established_time"
-                                ),
-                            }
-
-                        logger.debug(f"[灾害预警] P2P EEW处理器解析成功: {event.id}")
-                        await self._handle_disaster_event(event)
-                        return
-                except Exception as e:
-                    logger.error(
-                        f"[灾害预警] P2P EEW处理器解析失败 - 连接: {connection_name}, 错误: {e}"
-                    )
-                    if connection_info:
-                        logger.error(
-                            f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
-                        )
-
-            # 尝试地震情報处理器
-            info_handler = self.handlers.get("jma_p2p_info")
-            if info_handler:
-                try:
-                    event = info_handler.parse_message(message)
-                    if event:
-                        # 利用connection_info增强事件信息
-                        if (
-                            connection_info
-                            and hasattr(event, "raw_data")
-                            and isinstance(event.raw_data, dict)
-                        ):
-                            event.raw_data["connection_info"] = {
-                                "connection_name": connection_name,
-                                "uri": connection_info.get("uri"),
-                                "connection_type": connection_info.get(
-                                    "connection_type"
-                                ),
-                                "established_time": connection_info.get(
-                                    "established_time"
-                                ),
-                            }
-
-                        logger.debug(
-                            f"[灾害预警] P2P地震情報处理器解析成功: {event.id}"
-                        )
-                        await self._handle_disaster_event(event)
-                        return
-                except Exception as e:
-                    logger.error(
-                        f"[灾害预警] P2P地震情報处理器解析失败 - 连接: {connection_name}, 错误: {e}"
-                    )
-                    if connection_info:
-                        logger.error(
-                            f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
-                        )
-
-            logger.debug("[灾害预警] P2P处理器返回None，无有效事件")
-
-        self.ws_manager.register_handler("p2p", p2p_handler)
-
-        # Wolfx WebSocket处理器
-        async def wolfx_handler(message, connection_name=None, connection_info=None):
-            # 利用connection_info增强日志记录
-            if connection_info:
-                logger.debug(
-                    f"[灾害预警] Wolfx处理器收到消息 - 连接: {connection_name}, URI: {connection_info.get('uri', 'unknown')}"
-                )
-            else:
-                logger.debug(
-                    f"[灾害预警] Wolfx处理器收到消息 - 连接: {connection_name}"
-                )
-
-            # 根据连接名称选择具体的处理器
-            if connection_name:
-                source_mapping = {
-                    "wolfx_japan_jma_eew": "jma_wolfx",
-                    "wolfx_china_cenc_eew": "cea_wolfx",
-                    "wolfx_taiwan_cwa_eew": "cwa_wolfx",
-                    "wolfx_china_cenc_earthquake": "cenc_wolfx",
-                    "wolfx_japan_jma_earthquake": "jma_wolfx_info",
-                }
-
-                target_source = source_mapping.get(connection_name)
-                if target_source and target_source in self.handlers:
-                    handler = self.handlers[target_source]
-                    logger.debug(f"[灾害预警] 使用Wolfx处理器: {target_source}")
-
-                    try:
-                        event = handler.parse_message(message)
-                        if event:
-                            # 利用connection_info增强事件信息
-                            if (
-                                connection_info
-                                and hasattr(event, "raw_data")
-                                and isinstance(event.raw_data, dict)
-                            ):
-                                event.raw_data["connection_info"] = {
-                                    "connection_name": connection_name,
-                                    "uri": connection_info.get("uri"),
-                                    "connection_type": connection_info.get(
-                                        "connection_type"
-                                    ),
-                                    "established_time": connection_info.get(
-                                        "established_time"
-                                    ),
-                                }
-
-                            logger.debug(f"[灾害预警] Wolfx处理器解析成功: {event.id}")
-                            await self._handle_disaster_event(event)
-                            return
-                    except Exception as e:
-                        logger.error(
-                            f"[灾害预警] Wolfx处理器解析消息失败 - 连接: {connection_name}, 错误: {e}"
-                        )
-                        if connection_info:
-                            logger.error(
-                                f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
-                            )
-                        return
-                else:
-                    logger.warning(
-                        f"[灾害预警] 无法识别Wolfx连接名称: {connection_name}"
-                    )
-                    return
-            else:
-                logger.warning("[灾害预警] Wolfx处理器未收到连接名称")
-                return
-
-        self.ws_manager.register_handler("wolfx", wolfx_handler)
+        registry = WebSocketHandlerRegistry(self)
+        registry.register_all(self.ws_manager)
 
     def _configure_connections(self):
         """配置连接 - 适配数据源配置"""
@@ -549,6 +190,19 @@ class DisasterWarningService:
                     conn_name = f"wolfx_{source_key}"
                     self.connections[conn_name] = {"url": url, "handler": "wolfx"}
 
+        # Global Quake连接配置 - 服务器地址硬编码，用户只需配置是否启用
+        global_quake_config = data_sources.get("global_quake", {})
+        if isinstance(global_quake_config, dict) and global_quake_config.get(
+            "enabled", False
+        ):
+            # GlobalQuake Monitor 服务器地址（硬编码）
+            global_quake_url = "wss://gqm.aloys233.top/ws"
+            self.connections["global_quake"] = {
+                "url": global_quake_url,
+                "handler": "global_quake",
+            }
+            logger.info("[灾害预警] Global Quake 数据源已启用")
+
     async def start(self):
         """启动服务"""
         if self.running:
@@ -621,7 +275,7 @@ class DisasterWarningService:
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""
         for conn_name, conn_config in self.connections.items():
-            if conn_config["handler"] in ["fan_studio", "p2p", "wolfx"]:
+            if conn_config["handler"] in ["fan_studio", "p2p", "wolfx", "global_quake"]:
                 # 使用WebSocket管理器功能，传递连接信息
                 connection_info = {
                     "connection_name": conn_name,
@@ -675,68 +329,17 @@ class DisasterWarningService:
         return connection_mapping.get(connection_name, "unknown")
 
     async def _start_global_quake_connection(self):
-        """启动Global Quake连接"""
-        try:
-            global_quake_config = self.config.get("data_sources", {}).get(
-                "global_quake", {}
-            )
-            if isinstance(global_quake_config, dict) and global_quake_config.get(
-                "enabled", False
-            ):
-                # 从 data_sources.global_quake 读取服务器配置
-                primary_server = global_quake_config.get(
-                    "primary_server", "server-backup.globalquake.net"
-                )
-                secondary_server = global_quake_config.get(
-                    "secondary_server", "server-backup.globalquake.net"
-                )
-                primary_port = global_quake_config.get("primary_port", 38000)
-                secondary_port = global_quake_config.get("secondary_port", 38000)
-
-                # 确保服务器地址是有效的字符串
-                if isinstance(primary_server, str) and primary_server.strip():
-                    logger.info(
-                        f"[灾害预警] Global Quake配置: 主服务器={primary_server}:{primary_port}, 备用服务器={secondary_server}:{secondary_port}"
-                    )
-
-                    # 构建配置传递给 GlobalQuakeClient
-                    client_config = {
-                        "primary_server": primary_server,
-                        "primary_port": primary_port,
-                        "secondary_server": secondary_server,
-                        "secondary_port": secondary_port,
-                    }
-
-                    global_quake_client = GlobalQuakeClient(
-                        client_config, self.message_logger
-                    )
-
-                    # 注册消息处理器
-                    async def global_quake_handler(message):
-                        handler = self.handlers.get("global_quake")
-                        if handler:
-                            event = handler.parse_message(message)
-                            if event:
-                                await self._handle_disaster_event(event)
-
-                    global_quake_client.register_handler(global_quake_handler)
-
-                    # 连接并监听
-                    if await global_quake_client.connect():
-                        task = asyncio.create_task(global_quake_client.listen())
-                        self.connection_tasks.append(task)
-                        logger.info("[灾害预警] Global Quake连接已启动")
-                    else:
-                        logger.error("[灾害预警] Global Quake连接失败")
-                else:
-                    logger.warning(
-                        "[灾害预警] Global Quake未配置有效的服务器地址，跳过连接"
-                    )
-            else:
-                logger.info("[灾害预警] Global Quake未启用，跳过连接")
-
-        except Exception as e:
-            logger.error(f"[灾害预警] 启动Global Quake连接失败: {e}")
+        """启动Global Quake WebSocket连接 - 现已整合到 WebSocketManager，此方法保留仅用于日志"""
+        # Global Quake 现在通过 _configure_connections 和 _establish_websocket_connections 统一管理
+        # 此方法保留以保持向后兼容，但不再执行任何操作
+        global_quake_config = self.config.get("data_sources", {}).get(
+            "global_quake", {}
+        )
+        if isinstance(global_quake_config, dict) and global_quake_config.get(
+            "enabled", False
+        ):
+            if "global_quake" in self.connections:
+                logger.debug("[灾害预警] Global Quake 已通过 WebSocketManager 统一管理")
 
     async def _start_scheduled_http_fetch(self):
         """启动定时HTTP数据获取"""

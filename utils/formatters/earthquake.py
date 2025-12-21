@@ -1,86 +1,13 @@
 """
-专用消息格式化器
-为不同数据源提供专门的消息格式化
+地震消息格式化器
+包含 CEA, CWA, JMA, CENC, USGS, GlobalQuake 等地震数据源的格式化逻辑
 """
 
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timedelta, timezone
 
-from ..core.intensity_calculator import IntensityCalculator
-from ..models.data_source_config import get_data_source_config
-from ..models.models import EarthquakeData, TsunamiData, WeatherAlarmData
-
-
-class BaseMessageFormatter:
-    """基础消息格式化器"""
-
-    @staticmethod
-    def format_coordinates(latitude: float, longitude: float) -> str:
-        """格式化坐标显示"""
-        lat_dir = "N" if latitude >= 0 else "S"
-        lon_dir = "E" if longitude >= 0 else "W"
-        return f"{abs(latitude):.2f}°{lat_dir}, {abs(longitude):.2f}°{lon_dir}"
-
-    @staticmethod
-    def format_time(dt: datetime, timezone: str = "UTC+8") -> str:
-        """格式化时间显示"""
-        if not dt:
-            return "未知时间"
-        return f"{dt.strftime('%Y年%m月%d日 %H时%M分%S秒')} ({timezone})"
-
-    @staticmethod
-    def get_map_link(
-        latitude: float,
-        longitude: float,
-        provider: str = "baidu",
-        zoom: int = 5,
-        magnitude: float = None,
-        place_name: str = None,
-    ) -> str:
-        """生成地图链接"""
-        if latitude is None or longitude is None:
-            return ""
-
-        # 构建震中信息（简化版，减少URL长度）
-        magnitude_info = f"M{magnitude}" if magnitude is not None else "地震"
-        location_info = place_name if place_name else "震中位置"
-
-        if provider == "openstreetmap":
-            # OpenStreetMap 简洁格式
-            return f"https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}&zoom={zoom}"
-
-        elif provider == "google":
-            # Google Maps 简洁格式
-            return f"https://maps.google.com/maps?q={latitude},{longitude}&z={zoom}"
-
-        elif provider == "baidu":
-            # 百度地图直接使用WGS84坐标
-            # 增加 coord_type=wgs84 提高精度
-            # 确保 zoom 参数正确传递
-            baidu_map_url = f"https://api.map.baidu.com/marker?location={latitude},{longitude}&zoom={zoom}&title={magnitude_info}+Epicenter&content={location_info[:32]}&coord_type=wgs84&output=html"
-            return baidu_map_url
-
-        elif provider == "amap":
-            # 高德地图简洁格式
-            # 高德Web端URI API可能不支持zoom参数，但尝试传递z参数
-            return f"https://uri.amap.com/marker?position={longitude},{latitude}&name=震中位置&src=disaster_warning&coordinate=wgs84&callnative=0"
-
-        # 默认返回百度地图
-        return f"https://api.map.baidu.com/marker?location={latitude},{longitude}&zoom={zoom}&title={magnitude_info}+Epicenter&content={location_info[:32]}&coord_type=wgs84&output=html"
-
-    @staticmethod
-    def format_message(data: Any) -> str:
-        """默认消息格式化"""
-        lines = [f"🚨[{data.disaster_type.value}] 灾害预警 (基础格式)"]
-        if hasattr(data, "id"):
-            lines.append(f"📋ID: {data.id}")
-        if hasattr(data, "shock_time") and data.shock_time:
-            lines.append(f"⏰发震时间: {data.shock_time}")
-        if hasattr(data, "place_name") and data.place_name:
-            lines.append(f"📍地点: {data.place_name}")
-        if hasattr(data, "raw_data") and data.raw_data:
-            lines.append(f"📝数据: {data.raw_data}")
-        return "\n".join(lines)
+from .base import BaseMessageFormatter
+from ...core.intensity_calculator import IntensityCalculator
+from ...models.models import EarthquakeData
 
 
 class CEAEEWFormatter(BaseMessageFormatter):
@@ -239,10 +166,14 @@ class JMAEEWFormatter(BaseMessageFormatter):
             report_info += "(最终报)"
         lines.append(f"📋{report_info}")
 
-        # 时间
+        # 时间 - 将日本时间(UTC+9)转换为北京时间(UTC+8)显示
         if earthquake.shock_time:
+            # 如果时间没有时区信息，假定为JST(UTC+9)
+            display_time = earthquake.shock_time
+            if display_time.tzinfo is None:
+                display_time = display_time.replace(tzinfo=timezone(timedelta(hours=9)))
             lines.append(
-                f"⏰发震时间：{JMAEEWFormatter.format_time(earthquake.shock_time, 'UTC+9')}"
+                f"⏰发震时间：{JMAEEWFormatter.format_time(display_time, 'UTC+8')}"
             )
 
         # 震中
@@ -433,10 +364,14 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
         info_type = JMAEarthquakeFormatter.determine_info_type(earthquake)
         lines = [f"🚨[{info_type}] 日本气象厅"]
 
-        # 时间
+        # 时间 - 将日本时间(UTC+9)转换为北京时间(UTC+8)显示
         if earthquake.shock_time:
+            # 如果时间没有时区信息，假定为JST(UTC+9)
+            display_time = earthquake.shock_time
+            if display_time.tzinfo is None:
+                display_time = display_time.replace(tzinfo=timezone(timedelta(hours=9)))
             lines.append(
-                f"⏰发震时间：{JMAEarthquakeFormatter.format_time(earthquake.shock_time, 'UTC+9')}"
+                f"⏰发震时间：{JMAEarthquakeFormatter.format_time(display_time, 'UTC+8')}"
             )
 
         # 震中
@@ -576,7 +511,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
 
     @staticmethod
     def format_message(earthquake: EarthquakeData) -> str:
-        """格式化美国地质调查局地震情报消息"""
+        """格式化USGS地震情报消息"""
         measurement_type = USGSEarthquakeFormatter.determine_measurement_type(
             earthquake
         )
@@ -585,7 +520,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰发震时间：{USGSEarthquakeFormatter.format_time(earthquake.shock_time, 'UTC+8')}"
+                f"⏰发震时间：{USGSEarthquakeFormatter.format_time(earthquake.shock_time)}"
             )
 
         # 震中
@@ -597,6 +532,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
             coords = USGSEarthquakeFormatter.format_coordinates(
                 earthquake.latitude, earthquake.longitude
             )
+            # USGS地名已在handler中翻译成中文
             lines.append(f"📍震中：{earthquake.place_name} ({coords})")
 
         # 震级
@@ -611,17 +547,16 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
 
 
 class GlobalQuakeFormatter(BaseMessageFormatter):
-    """Global Quake格式化器"""
+    """Global Quake地震情报格式化器"""
 
     @staticmethod
     def format_message(earthquake: EarthquakeData) -> str:
-        """格式化Global Quake消息"""
-        lines = ["🚨[地震预警] Global Quake"]
+        """格式化Global Quake地震情报消息"""
+        lines = ["🚨[地震情报] Global Quake"]
 
-        # 报数信息（如果有）
+        # 报数信息
         report_num = getattr(earthquake, "updates", 1)
-        report_info = f"第 {report_num} 报"
-        lines.append(f"📋{report_info}")
+        lines.append(f"📋第 {report_num} 报")
 
         # 时间
         if earthquake.shock_time:
@@ -648,300 +583,8 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
         if earthquake.depth is not None:
             lines.append(f"🏔️深度：{earthquake.depth} km")
 
-        # 预估有感人数（如果有）
-        raw_data = getattr(earthquake, "raw_data", {})
-        if "estimated_felt" in raw_data:
-            lines.append(f"👥预估有感：{raw_data['estimated_felt']} 人")
-        if "estimated_strongly_felt" in raw_data:
-            lines.append(f"⚡预估强有感：{raw_data['estimated_strongly_felt']} 人")
-
         # 预估最大烈度
         if earthquake.intensity is not None:
             lines.append(f"💥预估最大烈度：{earthquake.intensity}")
 
-        # 触发测站数（如果有）
-        if "triggered_stations" in raw_data:
-            lines.append(f"📡触发测站：{raw_data['triggered_stations']} 个")
-
         return "\n".join(lines)
-
-
-class TsunamiFormatter(BaseMessageFormatter):
-    """海啸预警格式化器"""
-
-    @staticmethod
-    def format_message(tsunami: TsunamiData) -> str:
-        """格式化海啸预警消息"""
-        lines = ["🌊[海啸预警]"]
-
-        # 标题和级别
-        if tsunami.title:
-            lines.append(f"📋{tsunami.title}")
-        if tsunami.level:
-            lines.append(f"⚠️级别：{tsunami.level}")
-
-        # 发布单位
-        if tsunami.org_unit:
-            lines.append(f"🏢发布：{tsunami.org_unit}")
-
-        # 发布时间
-        if tsunami.issue_time:
-            config = get_data_source_config(tsunami.source.value)
-            # 判断时区：中国数据源使用UTC+8，日本数据源使用UTC+9
-            if config and (
-                "中国" in config.display_name
-                or "中国海啸预警中心" in config.display_name
-            ):
-                timezone = "UTC+8"
-            elif config and (
-                "日本" in config.display_name or "日本气象厅" in config.display_name
-            ):
-                timezone = "UTC+9"
-            else:
-                timezone = "UTC+8"  # 默认使用中国时区
-            lines.append(
-                f"⏰发布时间：{TsunamiFormatter.format_time(tsunami.issue_time, timezone)}"
-            )
-
-        # 引发地震信息
-        if tsunami.subtitle:
-            lines.append(f"🌍震源：{tsunami.subtitle}")
-
-        # 预报区域
-        if tsunami.forecasts:
-            # 显示前2个区域
-            for i, forecast in enumerate(tsunami.forecasts[:2]):
-                area_name = forecast.get("name", "")
-                if area_name:
-                    area_info = f"📍{area_name}"
-
-                    # 警报级别
-                    grade = forecast.get("grade", "")
-                    if grade and grade != tsunami.level:
-                        area_info += f" [{grade}]"
-
-                    # 预计到达时间
-                    arrival_time = forecast.get("estimatedArrivalTime", "")
-                    if arrival_time:
-                        area_info += f" 预计{arrival_time}到达"
-
-                    # 预估波高
-                    max_wave = forecast.get("maxWaveHeight", "")
-                    if max_wave:
-                        area_info += f" 波高{max_wave}cm"
-
-                    lines.append(area_info)
-
-            # 如果还有更多区域
-            if len(tsunami.forecasts) > 2:
-                lines.append(f"  ...等{len(tsunami.forecasts)}个预报区域")
-
-        # 事件编码
-        if tsunami.code:
-            lines.append(f"🔄事件编号：{tsunami.code}")
-
-        return "\n".join(lines)
-
-
-class JMATsunamiFormatter(BaseMessageFormatter):
-    """日本气象厅海啸预报专用格式化器"""
-
-    @staticmethod
-    def format_message(tsunami: TsunamiData) -> str:
-        """格式化日本气象厅海啸预报消息 - 基于P2P实际字段"""
-        lines = ["🌊[津波予報] 日本气象厅"]
-
-        # 标题和级别 - 处理日文级别
-        if tsunami.title:
-            lines.append(f"📋{tsunami.title}")
-
-        # 日文级别映射
-        level_mapping = {
-            "MajorWarning": "大津波警報",
-            "Warning": "津波警報",
-            "Watch": "津波注意報",
-            "Unknown": "不明",
-            "解除": "解除",
-        }
-
-        if tsunami.level:
-            japanese_level = level_mapping.get(tsunami.level, tsunami.level)
-            lines.append(f"⚠️級別：{japanese_level}")
-
-        # 发布单位
-        if tsunami.org_unit:
-            lines.append(f"🏢発表：{tsunami.org_unit}")
-
-        # 发布时间 - 日本时区
-        if tsunami.issue_time:
-            lines.append(
-                f"⏰発表時刻：{JMATsunamiFormatter.format_time(tsunami.issue_time, 'UTC+9')}"
-            )
-
-        # 预报区域 - 基于P2P实际字段结构
-        if tsunami.forecasts:
-            immediate_areas = []  # 直ちに来襦予想（立即预报区域）
-            normal_areas = []  # 通常予報（常规预报区域）
-
-            for forecast in tsunami.forecasts:
-                area_name = forecast.get("name", "")
-                if not area_name:
-                    continue
-
-                # 检查是否为立即来袭
-                if forecast.get("immediate", False):
-                    immediate_areas.append(area_name)
-                else:
-                    normal_areas.append(area_name)
-
-            # 显示紧急区域
-            if immediate_areas:
-                lines.append("🚨预测将立即发生海啸的区域：")
-                for area in immediate_areas[:3]:  # 显示前3个
-                    lines.append(f"  • {area}")
-                if len(immediate_areas) > 3:
-                    lines.append(f"  ...其他{len(immediate_areas) - 3}区域")
-
-            # 显示正常预报区域
-            if normal_areas:
-                lines.append("📍津波予報区域：")
-                for area in normal_areas[:5]:  # 显示前5个
-                    area_info = f"  • {area}"
-
-                    # 查找对应的forecast对象
-                    curr_forecast = next(
-                        (f for f in tsunami.forecasts if f.get("name") == area), {}
-                    )
-
-                    # 添加预计到达时间
-                    arrival_time = curr_forecast.get("estimatedArrivalTime")
-                    condition = curr_forecast.get("condition")
-
-                    time_info = []
-                    if arrival_time:
-                        time_info.append(f"{arrival_time}")
-                    if condition:
-                        time_info.append(f"{condition}")
-
-                    if time_info:
-                        area_info += f" ({' '.join(time_info)})"
-
-                    # 添加波高信息
-                    max_wave = curr_forecast.get("maxWaveHeight")
-                    if max_wave:
-                        area_info += f" 🌊{max_wave}"
-
-                    lines.append(area_info)
-
-                if len(normal_areas) > 5:
-                    lines.append(f"  ...其他{len(normal_areas) - 5}区域")
-
-        # 事件编码
-        if tsunami.code:
-            lines.append(f"🔄事件ID：{tsunami.code}")
-
-        # 如果是解除报文，添加特殊说明
-        if tsunami.level == "解除":
-            lines.append("✅津波の心配はありません（无需担心海啸）")
-
-        return "\n".join(lines)
-
-
-class WeatherFormatter(BaseMessageFormatter):
-    """气象预警格式化器"""
-
-    @staticmethod
-    def format_message(weather: WeatherAlarmData) -> str:
-        """格式化气象预警消息"""
-        lines = ["⛈️[气象预警]"]
-
-        # 标题
-        if weather.headline:
-            lines.append(f"📋{weather.headline}")
-
-        # 描述
-        if weather.description:
-            desc = weather.description
-            if len(desc) > 384:
-                desc = desc[:381] + "..."
-            lines.append(f"📝{desc}")
-
-        # 发布时间
-        if weather.issue_time:
-            lines.append(
-                f"⏰生效时间：{WeatherFormatter.format_time(weather.issue_time)}"
-            )
-
-        return "\n".join(lines)
-
-
-# 格式化器映射
-MESSAGE_FORMATTERS = {
-    # EEW预警格式化器
-    "cea_fanstudio": CEAEEWFormatter,
-    "cea_wolfx": CEAEEWFormatter,
-    "cwa_fanstudio": CWAEEWFormatter,
-    "cwa_wolfx": CWAEEWFormatter,
-    "jma_fanstudio": JMAEEWFormatter,
-    "jma_p2p": JMAEEWFormatter,
-    "jma_wolfx": JMAEEWFormatter,
-    "global_quake": GlobalQuakeFormatter,
-    # 地震情报格式化器
-    "cenc_fanstudio": CENCEarthquakeFormatter,
-    "cenc_wolfx": CENCEarthquakeFormatter,
-    "jma_p2p_info": JMAEarthquakeFormatter,
-    "jma_wolfx_info": JMAEarthquakeFormatter,
-    "usgs_fanstudio": USGSEarthquakeFormatter,
-    # 海啸预警格式化器
-    "china_tsunami_fanstudio": TsunamiFormatter,
-    "jma_tsunami_p2p": JMATsunamiFormatter,
-    # 气象预警格式化器
-    "china_weather_fanstudio": WeatherFormatter,
-}
-
-
-def get_formatter(source_id: str):
-    """获取指定数据源的格式化器"""
-    return MESSAGE_FORMATTERS.get(source_id, BaseMessageFormatter)
-
-
-def format_earthquake_message(
-    source_id: str, earthquake: EarthquakeData, options: dict = None
-) -> str:
-    """格式化地震消息"""
-    formatter_class = get_formatter(source_id)
-    if hasattr(formatter_class, "format_message"):
-        # 检查 format_message 是否接受 options 参数
-        # 这里做一个简单的尝试调用，或者检查签名，但为了兼容性，我们可以尝试传递 options
-        # 如果 Formatter 类是我们自己定义的，我们知道 JMAEarthquakeFormatter 接受 options
-        # 其他 Formatter 可能不接受，所以需要处理
-        try:
-            if source_id in ["jma_p2p_info", "jma_wolfx_info"]:
-                return formatter_class.format_message(earthquake, options=options)
-            return formatter_class.format_message(earthquake)
-        except TypeError:
-            # 如果不支持 options 参数，回退到旧调用方式
-            return formatter_class.format_message(earthquake)
-
-    # 回退到基础格式化
-    return BaseMessageFormatter.format_message(earthquake)
-
-
-def format_tsunami_message(source_id: str, tsunami: TsunamiData) -> str:
-    """格式化海啸消息"""
-    formatter_class = get_formatter(source_id)
-    if hasattr(formatter_class, "format_message"):
-        return formatter_class.format_message(tsunami)
-
-    # 回退到基础格式化
-    return BaseMessageFormatter.format_message(tsunami)
-
-
-def format_weather_message(source_id: str, weather: WeatherAlarmData) -> str:
-    """格式化气象消息"""
-    formatter_class = get_formatter(source_id)
-    if hasattr(formatter_class, "format_message"):
-        return formatter_class.format_message(weather)
-
-    # 回退到基础格式化
-    return BaseMessageFormatter.format_message(weather)

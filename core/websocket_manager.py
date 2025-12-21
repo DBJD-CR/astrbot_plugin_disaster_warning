@@ -65,7 +65,7 @@ class WebSocketManager:
                 current_retry = self.connection_retry_counts.get(name, 0) + 1
                 self.connection_retry_counts[name] = current_retry
             else:
-                logger.info(f"[灾害预警] 正在连接 {name}: {uri}")
+                logger.info(f"[灾害预警] 正在连接 {name}")
                 # 首次连接时重置重试计数
                 self.connection_retry_counts[name] = 0
 
@@ -230,6 +230,7 @@ class WebSocketManager:
             "fan_studio_": "fan_studio",
             "p2p_": "p2p",
             "wolfx_": "wolfx",
+            "global_quake": "global_quake",
         }
 
         # 尝试前缀匹配
@@ -391,6 +392,7 @@ class WebSocketManager:
             "fan_studio_": "fan_studio",
             "p2p_": "p2p",
             "wolfx_": "wolfx",
+            "global_quake": "global_quake",
         }
 
         # 尝试前缀匹配
@@ -448,121 +450,3 @@ class HTTPDataFetcher:
             logger.error(f"[灾害预警] HTTP请求异常 {url}: {e}")
 
         return None
-
-
-class GlobalQuakeClient:
-    """Global Quake TCP客户端 - 保持不变"""
-
-    def __init__(self, config: dict[str, Any], message_logger=None):
-        self.config = config
-        self.message_logger = message_logger
-
-        # 服务器配置
-        self.primary_server = config.get(
-            "primary_server", "server-backup.globalquake.net"
-        )
-        self.secondary_server = config.get(
-            "secondary_server", "server-backup.globalquake.net"
-        )
-        self.primary_port = config.get("primary_port", 38000)
-        self.secondary_port = config.get("secondary_port", 38000)
-
-        self.reader: asyncio.StreamReader | None = None
-        self.writer: asyncio.StreamWriter | None = None
-        self.running = False
-        self.message_handler: Callable | None = None
-
-    def register_handler(self, handler: Callable):
-        """注册消息处理器"""
-        self.message_handler = handler
-
-    async def connect(self):
-        """连接到Global Quake服务器"""
-        servers = [
-            (self.primary_server, self.primary_port),
-            (self.secondary_server, self.secondary_port),
-        ]
-
-        for server, port in servers:
-            try:
-                logger.info(f"[灾害预警] 正在连接Global Quake服务器 {server}:{port}")
-                self.reader, self.writer = await asyncio.open_connection(server, port)
-                logger.info(f"[灾害预警] Global Quake 服务器连接成功: {server}:{port}")
-                return True
-            except Exception as e:
-                logger.error(
-                    f"[灾害预警] Global Quake服务器连接失败 {server}:{port}: {e}"
-                )
-
-        return False
-
-    async def listen(self):
-        """监听消息"""
-        if not self.reader or not self.writer:
-            return
-
-        self.running = True
-
-        try:
-            while self.running:
-                data = await self.reader.readline()
-                if not data:
-                    break
-
-                message = data.decode("utf-8").strip()
-                if message and self.message_handler:
-                    try:
-                        logger.info(
-                            f"[灾害预警] Global Quake收到原始消息: {message[:128]}..."
-                        )
-
-                        # 记录原始消息
-                        if self.message_logger:
-                            try:
-                                self.message_logger.log_tcp_message(
-                                    self.writer.get_extra_info("peername")[0]
-                                    if self.writer
-                                    else "unknown",
-                                    self.writer.get_extra_info("peername")[1]
-                                    if self.writer
-                                    else 0,
-                                    message,
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    f"[灾害预警] Global Quake消息记录失败: {e}"
-                                )
-
-                        await self.message_handler(message)
-                    except Exception as e:
-                        logger.error(f"[灾害预警] 处理Global Quake消息时出错: {e}")
-
-        except asyncio.CancelledError:
-            logger.info("[灾害预警] Global Quake监听任务被取消")
-        except Exception as e:
-            logger.error(f"[灾害预警] Global Quake监听异常: {e}")
-        finally:
-            await self.disconnect()
-
-    async def disconnect(self):
-        """断开连接"""
-        self.running = False
-
-        if self.writer:
-            try:
-                self.writer.close()
-                await self.writer.wait_closed()
-            except Exception as e:
-                logger.error(f"[灾害预警] 断开Global Quake连接时出错: {e}")
-            finally:
-                self.writer = None
-                self.reader = None
-
-    async def send_message(self, message: str):
-        """发送消息"""
-        if self.writer:
-            try:
-                self.writer.write(message.encode("utf-8"))
-                await self.writer.drain()
-            except Exception as e:
-                logger.error(f"[灾害预警] 发送Global Quake消息失败: {e}")

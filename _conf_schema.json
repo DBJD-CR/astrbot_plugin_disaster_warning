@@ -152,28 +152,8 @@
           "enabled": {
             "description": "启用Global Quake数据源",
             "type": "bool",
-            "hint": "测试性功能，目前基本处于不可用状态",
+            "hint": "连接到GlobalQuake Monitor服务器获取全球地震实时数据",
             "default": true
-          },
-          "primary_server": {
-            "description": "主服务器地址",
-            "type": "string",
-            "default": "server-backup.globalquake.net"
-          },
-          "primary_port": {
-            "description": "主服务器端口",
-            "type": "int",
-            "default": 38000
-          },
-          "secondary_server": {
-            "description": "备用服务器地址",
-            "type": "string",
-            "default": "server-backup.globalquake.net"
-          },
-          "secondary_port": {
-            "description": "备用服务器端口",
-            "type": "int",
-            "default": 38000
           }
         }
       }
