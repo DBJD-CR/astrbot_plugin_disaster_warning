@@ -87,6 +87,7 @@ class TsunamiHandler(BaseDataHandler):
 
             tsunami = TsunamiData(
                 id=tsunami_data.get("id", "") or str(int(datetime.now().timestamp())),
+                code=tsunami_data.get("code", ""),
                 source=DataSource.FAN_STUDIO_TSUNAMI,
                 title=title,
                 level=level,
