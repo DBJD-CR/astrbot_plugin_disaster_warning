@@ -29,17 +29,15 @@ from ..utils.formatters import (
     format_tsunami_message,
     format_weather_message,
 )
-
-
-
+from .event_deduplicator import EventDeduplicator
 from .filters import (
+    GlobalQuakeFilter,
     IntensityFilter,
-    ScaleFilter,
-    USGSFilter,
     LocalIntensityFilter,
     ReportCountController,
+    ScaleFilter,
+    USGSFilter,
 )
-from .event_deduplicator import EventDeduplicator
 
 
 class MessagePushManager:
@@ -74,7 +72,15 @@ class MessagePushManager:
         )
         self.usgs_filter = USGSFilter(
             enabled=magnitude_only_filter_config.get("enabled", True),
-            min_magnitude=magnitude_only_filter_config.get("min_magnitude", 4.5)
+            min_magnitude=magnitude_only_filter_config.get("min_magnitude", 4.5),
+        )
+
+        # Global Quake过滤器配置
+        global_quake_filter_config = earthquake_filters.get("global_quake_filter", {})
+        self.global_quake_filter = GlobalQuakeFilter(
+            enabled=global_quake_filter_config.get("enabled", True),
+            min_magnitude=global_quake_filter_config.get("min_magnitude", 4.5),
+            min_intensity=global_quake_filter_config.get("min_intensity", 5.0),
         )
 
         # 初始化报数控制器
@@ -153,7 +159,12 @@ class MessagePushManager:
         source_id = self._get_source_id(event)
 
         # 数据源专用过滤器
-        if source_id in get_intensity_based_sources():
+        if source_id == "global_quake":
+            # Global Quake专用过滤器
+            if self.global_quake_filter.should_filter(earthquake):
+                logger.info(f"[灾害预警] 事件被Global Quake过滤器过滤: {source_id}")
+                return False
+        elif source_id in get_intensity_based_sources():
             # 使用烈度过滤器
             if self.intensity_filter.should_filter(earthquake):
                 logger.info(f"[灾害预警] 事件被烈度过滤器过滤: {source_id}")
@@ -168,7 +179,6 @@ class MessagePushManager:
             if self.usgs_filter.should_filter(earthquake):
                 logger.info(f"[灾害预警] 事件被USGS过滤器过滤: {source_id}")
                 return False
-
 
         # 报数控制（仅EEW数据源）
         if not self.report_controller.should_push_report(event):
