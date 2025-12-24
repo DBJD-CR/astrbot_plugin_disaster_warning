@@ -13,7 +13,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/AstrBot-v4.9.0%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.9.0">
-  <img src="https://img.shields.io/badge/Release-v1.2.0-brightgreen.svg" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v1.2.2-brightgreen.svg" alt="Release">
   <img src="https://img.shields.io/badge/QQ群-1033089808-12B7F3.svg" alt="QQ Group">
 </p>
 
@@ -77,20 +77,20 @@
 > [!NOTE]
 > 虽然本插件的开发过程中大量使用了 AI 进行辅助，但我保证所有内容都经过了我的严格审查，所有的 AI 生成声明都是形式上的。你可以放心参观本仓库和使用本插件。
 >
-> 根据我对 v1.2.0 版本的简单测试，目前插件的主要功能都能正常运转。但存在部分限制（详情请看 🚧 最新版本的已知限制 部分）。
+> 根据我对 v1.2.2 版本的简单测试，目前插件的主要功能都能正常运转。但存在部分限制。
 
 > [!TIP]
 > 本项目的相关开发数据 (持续更新中)：
 >
-> 开发时长：累计 10 天（主插件部分）
+> 开发时长：累计 17 天（主插件部分）
 >
-> 累计工时：约 60 小时（主插件部分）
+> 累计工时：约 85 小时（主插件部分）
 >
 > 使用的大模型：Kimi For Coding 、Gemini 3.0 Pro (With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：239,237,490
+> Tokens Used：350,090,935
 
 ## ✨ 功能特性
 
@@ -160,6 +160,8 @@
 最小震度: 1.0        # 低于震度1的地震不推送
 ```
 
+备注：所有过滤器均采用 **OR** 逻辑，即满足任一要求就不过滤。
+
 ### 推送频率控制示例
 
 ```text
@@ -179,7 +181,7 @@
 | 日本气象厅紧急地震速报 | P2P | EEW | ⚠️ |
 | 日本气象厅紧急地震速报 | Wolfx | EEW | ⚠️ |
 | 日本气象厅紧急地震速报 | FAN Studio | EEW | ✅ |
-| Global Quake | Global Quake | EEW | 🧪 |
+| Global Quake | Global Quake | EEW | ✅ |
 | 中国地震台网 | FAN Studio | Info | ✅ |
 | 中国地震台网 | Wolfx | Info | ✅ |
 | 日本气象厅地震情报 | P2P | Info | ✅ |
@@ -189,11 +191,11 @@
 | 中国海啸预警中心 | FAN Studio | Tsunami | ✅ |
 | 日本气象厅海啸预报 | P2P | Tsunami | 🧪 |
 
-✅ **正常**
-⚠️ **不稳定**
-❌ **完全不可用**
-🚧 **维护中**
-🧪 **测试中**
+✅ **正常**  
+⚠️ **不稳定**  
+❌ **完全不可用**  
+🚧 **维护中**  
+🧪 **测试中**  
 
 ## 📊 推送示例
 
@@ -225,6 +227,21 @@
 🗺️地图链接: ......
 ```
 
+**Global Quake 推送示例**:
+
+```text
+🚨[地震预警] Global Quake
+📋第 17 报
+⏰发震时间：2025年12月23日 17时54分53秒 (UTC+8)
+📍震中：巴布亚新几内亚新几内亚东部地区附近 (5.52°S, 147.39°E)
+📊震级：M 5.1
+🏔️深度：207.9 km
+💥预估最大烈度：2.0
+📈最大加速度：1.4 gal
+📡触发测站：195/195
+🗺️地图链接: ......
+```
+
 **日本气象厅地震情报示例 (开启详细震度)**：
 
 ```text
@@ -238,6 +255,7 @@
 📡各地震度详情：
   [震度2] 志賀町香能
   [震度1] 志賀町富来領家町
+🗺️地图链接: ......
 ```
 
 **USGS地震情报示例**：
@@ -386,18 +404,43 @@ AstrBot/
          │   ├─ __init__.py
          │   ├─ disaster_service.py        # 核心灾害预警服务
          │   ├─ websocket_manager.py       # WebSocket连接管理器
-         │   ├─ data_handlers.py           # 各数据源消息处理器
+         │   ├─ handler_registry.py        # 处理器注册表
+         │   ├─ event_deduplicator.py      # 基础事件去重器
+         │   ├─ intensity_calculator.py    # 本地烈度计算器
          │   ├─ message_manager.py         # 消息推送管理器
-         │   ├─ message_formatters.py      # 专用消息格式化器
-         │   └─ message_logger.py          # 原始消息记录器
+         │   ├─ message_logger.py          # 原始消息记录器
+         │   ├─ handlers/                  # 数据处理器目录
+         │   │   ├─ __init__.py
+         │   │   ├─ base.py                # 基础处理器类
+         │   │   ├─ china_earthquake.py    # 中国地震台网处理器
+         │   │   ├─ china_eew.py           # 中国地震预警处理器
+         │   │   ├─ global_sources.py      # 全球数据源处理器
+         │   │   ├─ japan_earthquake.py    # 日本地震情报处理器
+         │   │   ├─ japan_eew.py           # 日本紧急地震速报处理器
+         │   │   ├─ taiwan_eew.py          # 台湾地震预警处理器
+         │   │   ├─ tsunami.py             # 海啸预警处理器
+         │   │   └─ weather.py             # 气象预警处理器
+         │   └─ filters/                   # 过滤器目录
+         │       ├─ __init__.py
+         │       ├─ intensity_filter.py    # 烈度/震级/震度过滤器
+         │       ├─ local_intensity.py     # 本地烈度过滤器
+         │       └─ report_controller.py   # 报数控制器
          ├─ models/                        # 数据模型目录
          │   ├─ __init__.py
          │   ├─ models.py                  # 数据模型定义（地震、海啸、气象等）
          │   └─ data_source_config.py      # 数据源配置管理器
          ├─ utils/                         # 工具模块目录
-         │   └─ fe_regions.py              # FE地震区划中文翻译
+         │   ├─ __init__.py
+         │   ├─ fe_regions.py              # FE地震区划中文翻译
+         │   └─ formatters/                # 消息格式化器目录
+         │       ├─ __init__.py
+         │       ├─ base.py                # 基础格式化器
+         │       ├─ earthquake.py          # 地震消息格式化器
+         │       ├─ tsunami.py             # 海啸消息格式化器
+         │       └─ weather.py             # 气象消息格式化器
          └─ resources/                     # 资源文件目录
-             └─ epsp-area.csv              # P2P地震区域代码映射表
+             ├─ epsp-area.csv              # P2P地震区域代码映射表
+             └─ fe_regions_data.json       # FE全球地震区划映射表
 ```
 
 插件运行时会自动创建数据存储目录：
@@ -445,7 +488,6 @@ graph TD
         subgraph ConnectionLayer [🔌 连接与获取 - Connection Layer]
             WSM[WebSocket Manager<br/>连接管理/自动重连/心跳保活]:::connection
             HTTP[HTTP Fetcher<br/>定时轮询获取]:::connection
-            TCP[TCP Client<br/>Global Quake 专用连接]:::connection
         end
 
         %% 服务控制层
@@ -463,6 +505,7 @@ graph TD
                 CEA_H[CEA Handler]:::logic
                 JMA_H[JMA Handler]:::logic
                 USGS_H[USGS Handler]:::logic
+                GQ_H[Global Quake Handler]:::logic
                 Other_H[Weather/Tsunami Handlers]:::logic
             end
             
@@ -476,7 +519,7 @@ graph TD
             subgraph Filters [智能过滤系统]
                 direction TB
                 Dedupe[EventDeduplicator<br/>多源事件去重 - 时间/位置/震级]:::logic
-                Thres[Threshold Filters<br/>烈度/震级/震度阈值过滤]:::logic
+                Thres[Threshold Filters<br/>烈度/震级/震度阈值过滤<br/>Global Quake 专用过滤]:::logic
                 Freq[ReportController<br/>EEW报数频率控制]:::logic
             end
             
@@ -500,12 +543,11 @@ graph TD
     FS --> |WebSocket| WSM
     P2P --> |WebSocket| WSM
     Wolfx --> |WebSocket| WSM
+    GQ --> |WebSocket| WSM
     Wolfx --> |HTTP| HTTP
-    GQ --> |TCP| TCP
 
     WSM --> |原始消息流| DWS
     HTTP --> |JSON数据| DWS
-    TCP --> |原始数据| DWS
 
     DWS --> |记录日志| Logger
     Logger -.-> |写入| LogFile
@@ -597,22 +639,6 @@ FAN Studio 提供主备两个服务器地址，插件会自动进行故障转移
 
 - 当主服务器连接失败达到最大重试次数（默认 3 次）后，自动切换到备用服务器
 - 备用服务器也失败 3 次后，停止重连
-
-### Global Quake服务器配置
-
-```json
-{
-  "data_sources": {
-    "global_quake": {
-      "enabled": false,
-      "primary_server": "server-backup.globalquake.net",
-      "primary_port": 38000,
-      "secondary_server": "server-backup.globalquake.net",
-      "secondary_port": 38000
-    }
-  }
-}
-```
 
 ## 🔧 调试功能
 
@@ -856,10 +882,6 @@ A: 调整推送频率控制：
 
 - 已知部分地图服务商的缩放级别参数可能不生效。
 
-**Global Quake 服务状态**：
-
-- 目前正在适配 Global Quake 服务......
-
 ## 📈 性能优化
 
 ### 资源使用
@@ -895,7 +917,7 @@ A: 调整推送频率控制：
 - 数据格式示例。
 - 推送频率信息。
 
-## 📄 免责声明
+## 📢 免责声明
 
 本插件提供的灾害预警信息仅供参考，请勿作为紧急决策的唯一依据。在紧急情况下，请以官方发布的信息为准，并遵循当地应急管理部门的指示。
 
@@ -913,13 +935,14 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 
 ## 🙏 致谢
 
-感谢以下项目提供的 API 服务和文件：
+感谢以下项目或个人提供的 API 服务和文档：
 
 - [FAN Studio](https://api.fanstudio.tech/) - 提供多源灾害数据。
 - [P2P地震情報](https://www.p2pquake.net/) - 提供日本地震信息。
 - [EPSP](https://github.com/p2pquake/epsp-specifications) - 提供 P2P 区域代码和详细的 API 文档。
 - [Wolfx](https://wolfx.jp/) - 提供地震API服务。
 - [Global Quake](https://globalquake.net/) - 提供全球地震监测。
+- [Aloys233](https://github.com/Aloys233) - 为插件提供 Global Quake 数据转译、收发服务。
 
 ## 📚 推荐阅读
 
