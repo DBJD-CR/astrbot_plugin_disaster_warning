@@ -149,7 +149,7 @@ class DisasterWarningService:
                 }
 
             # 日本气象厅地震预警
-            if fan_studio_config.get("japan_jma_earthquake", True):
+            if fan_studio_config.get("japan_jma_eew", True):
                 self.connections["fan_studio_jma"] = {
                     "url": f"{primary_server}/jma",
                     "backup_url": f"{backup_server}/jma",
