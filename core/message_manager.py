@@ -190,12 +190,15 @@ class MessagePushManager:
         if not is_allowed:
             return False
 
-        # 保存计算结果供消息构建使用
-        event.raw_data["local_estimation"] = {
-            "distance": distance,
-            "intensity": intensity,
-            "place_name": self.local_monitor.place_name,
-        }
+        # 保存计算结果供消息构建使用（仅在启用本地监控时）
+        # 注意：需要写入 earthquake.raw_data (即 event.data.raw_data)，
+        # 而不是 event.raw_data，因为格式化器从 earthquake.raw_data 读取
+        if self.local_monitor.enabled:
+            earthquake.raw_data["local_estimation"] = {
+                "distance": distance,
+                "intensity": intensity,
+                "place_name": self.local_monitor.place_name,
+            }
 
         return True
 

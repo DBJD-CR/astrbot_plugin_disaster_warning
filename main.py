@@ -695,9 +695,11 @@ class DisasterWarningPlugin(Star):
                 allowed, dist, inte = manager.local_monitor.check_event(earthquake)
 
                 # 为了模拟真实流程，手动注入 local_estimation
-                disaster_event.raw_data["local_estimation"] = {
+                # 注意：需要写入 earthquake.raw_data，格式化器从这里读取
+                earthquake.raw_data["local_estimation"] = {
                     "distance": dist,
                     "intensity": inte,
+                    "place_name": manager.local_monitor.place_name,
                 }
 
                 if allowed:

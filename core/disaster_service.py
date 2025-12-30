@@ -687,9 +687,11 @@ class DisasterWarningService:
                 _, distance, intensity = self.message_manager.local_monitor.check_event(
                     earthquake
                 )
-                test_event.raw_data["local_estimation"] = {
+                # 注意：需要写入 earthquake.raw_data，格式化器从这里读取
+                earthquake.raw_data["local_estimation"] = {
                     "distance": distance,
                     "intensity": intensity,
+                    "place_name": self.message_manager.local_monitor.place_name,
                 }
 
             # 直接构建消息并推送（绕过复杂的过滤逻辑，仅测试消息链路）
