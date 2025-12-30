@@ -2,12 +2,20 @@
 本地烈度过滤器
 """
 
-from typing import Any
+from typing import TypedDict
 
 from astrbot.api import logger
 
 from ...models.models import EarthquakeData
 from ..intensity_calculator import IntensityCalculator
+
+
+class LocalEstimationResult(TypedDict):
+    """本地预估结果类型"""
+    is_allowed: bool
+    distance: float
+    intensity: float
+    place_name: str
 
 
 class LocalIntensityFilter:
@@ -55,12 +63,12 @@ class LocalIntensityFilter:
 
     def inject_local_estimation(
         self, earthquake: EarthquakeData
-    ) -> dict[str, Any] | None:
+    ) -> LocalEstimationResult | None:
         """
         检查事件并将本地预估信息注入到 earthquake.raw_data 中
         
         :param earthquake: 地震数据对象
-        :return: 包含 is_allowed, distance, intensity, place_name 的字典，
+        :return: 包含 is_allowed, distance, intensity, place_name 的 TypedDict，
                  如果未启用则返回 None
         """
         if not self.enabled:
@@ -68,18 +76,20 @@ class LocalIntensityFilter:
         
         is_allowed, distance, intensity = self.check_event(earthquake)
         
-        # 构建本地预估信息
-        local_estimation = {
+        # 构建本地预估结果
+        result: LocalEstimationResult = {
+            "is_allowed": is_allowed,
             "distance": distance,
             "intensity": intensity,
             "place_name": self.place_name,
         }
         
         # 将计算结果写入 earthquake.raw_data，供格式化器使用
-        earthquake.raw_data["local_estimation"] = local_estimation
-        
-        # 返回完整结果，避免调用者需要从 raw_data 重新读取
-        return {
-            "is_allowed": is_allowed,
-            **local_estimation,
+        # 注意：raw_data 中不包含 is_allowed，只存储用于显示的信息
+        earthquake.raw_data["local_estimation"] = {
+            "distance": distance,
+            "intensity": intensity,
+            "place_name": self.place_name,
         }
+        
+        return result
