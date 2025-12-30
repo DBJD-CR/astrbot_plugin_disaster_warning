@@ -186,7 +186,9 @@ class MessagePushManager:
             return False
 
         # 本地烈度过滤与注入（使用统一的辅助方法）
-        if not self.local_monitor.inject_local_estimation(earthquake):
+        result = self.local_monitor.inject_local_estimation(earthquake)
+        # result 为 None 表示未启用，否则检查 is_allowed
+        if result is not None and not result.get("is_allowed", True):
             return False
 
         return True

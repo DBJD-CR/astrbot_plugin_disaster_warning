@@ -679,7 +679,7 @@ class DisasterWarningService:
             )
 
             # 注入本地预估信息（使用统一的辅助方法）
-            if disaster_type == "earthquake":
+            if disaster_type == "earthquake" and self.message_manager.local_monitor:
                 self.message_manager.local_monitor.inject_local_estimation(test_event.data)
 
             # 直接构建消息并推送（绕过复杂的过滤逻辑，仅测试消息链路）
