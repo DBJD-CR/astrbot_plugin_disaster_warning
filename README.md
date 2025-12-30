@@ -24,6 +24,10 @@
 
   一个为 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 设计的，功能强大的多数据源灾害预警插件，它能让你的 Bot 提供实时的地震、海啸、气象预警信息推送服务。
 
+# ⚠️ 临时重要通知！！！ 📢
+
+通知：**由于上游 API 服务策略调整，如果你同时启用了超过 5 个来自 Fan Studio 数据源的连接，会导致被服务器断开连接。我们会尽快推出一个热修复版本以修复此问题**
+
 ## 📑 快速导航
 
 <div align="center">
@@ -174,21 +178,21 @@
 
 | 数据源 | 提供者 | 类型 | 状态 |
 | :--- | :--- | :--- | :--- |
-| 中国地震预警网 | FAN Studio | EEW | ✅ |
+| 中国地震预警网 | FAN Studio | EEW | 🚧 |
 | 中国地震预警网 | Wolfx | EEW | ⚠️ |
-| 台湾中央气象署 | FAN Studio | EEW | ✅ |
+| 台湾中央气象署 | FAN Studio | EEW | 🚧 |
 | 台湾中央气象署 | Wolfx | EEW | ⚠️ |
 | 日本气象厅紧急地震速报 | P2P | EEW | ⚠️ |
 | 日本气象厅紧急地震速报 | Wolfx | EEW | ⚠️ |
-| 日本气象厅紧急地震速报 | FAN Studio | EEW | ✅ |
+| 日本气象厅紧急地震速报 | FAN Studio | EEW | 🚧 |
 | Global Quake | Global Quake | EEW | ✅ |
-| 中国地震台网 | FAN Studio | Info | ✅ |
+| 中国地震台网 | FAN Studio | Info | 🚧 |
 | 中国地震台网 | Wolfx | Info | ✅ |
 | 日本气象厅地震情报 | P2P | Info | ✅ |
 | 日本气象厅地震情报 | Wolfx | Info | ✅ |
-| 美国地质调查局 | FAN Studio | Info | ✅ |
-| 中国气象局 | FAN Studio | Weather | ✅ |
-| 中国海啸预警中心 | FAN Studio | Tsunami | ✅ |
+| 美国地质调查局 | FAN Studio | Info | 🚧 |
+| 中国气象局 | FAN Studio | Weather | 🚧 |
+| 中国海啸预警中心 | FAN Studio | Tsunami | 🚧 |
 | 日本气象厅海啸预报 | P2P | Tsunami | 🧪 |
 
 ✅ **正常**  
