@@ -300,10 +300,20 @@ class WebSocketManager:
                 self.fallback_retry_counts[name] = current_fallback + 1
                 fallback_display = current_fallback + 1
                 fallback_max_display = "无限" if fallback_max_count == -1 else str(fallback_max_count)
-                fallback_interval_min = fallback_interval // 60
-                
+
+                # 将兜底重试间隔格式化为更易读的单位，避免小于 60 秒时显示为 0 分钟的情况
+                if fallback_interval < 60:
+                    fallback_interval_display = f"{fallback_interval} 秒"
+                else:
+                    minutes = fallback_interval // 60
+                    seconds = fallback_interval % 60
+                    if seconds == 0:
+                        fallback_interval_display = f"{minutes} 分钟"
+                    else:
+                        fallback_interval_display = f"{minutes} 分钟 {seconds} 秒"
+
                 logger.warning(
-                    f"[灾害预警] {name} 短时重连失败，将在 {fallback_interval_min} 分钟后进行兜底重试 "
+                    f"[灾害预警] {name} 短时重连失败，将在 {fallback_interval_display} 后进行兜底重试 "
                     f"({fallback_display}/{fallback_max_display})"
                 )
                 
