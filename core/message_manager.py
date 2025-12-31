@@ -37,6 +37,7 @@ from .filters import (
     ReportCountController,
     ScaleFilter,
     USGSFilter,
+    WeatherProvinceFilter,
 )
 
 
@@ -118,6 +119,10 @@ class MessagePushManager:
         # 初始化本地监控过滤器
         self.local_monitor = LocalIntensityFilter(config.get("local_monitoring", {}))
 
+        # 初始化气象预警省份过滤器
+        weather_province_config = config.get("data_sources", {}).get("fan_studio", {}).get("weather_province_filter", {})
+        self.weather_province_filter = WeatherProvinceFilter(weather_province_config)
+
     def _parse_target_sessions(self) -> list[str]:
         """解析目标会话 - 使用正确的配置键名"""
         target_groups = self.config.get("target_groups", [])
@@ -151,7 +156,12 @@ class MessagePushManager:
 
         # 2. 非地震事件检查
         if not isinstance(event.data, EarthquakeData):
-            # 对于海啸和气象事件，只进行时间检查，其他过滤逻辑不适用
+            # 气象预警事件需要进行省份过滤
+            if isinstance(event.data, WeatherAlarmData):
+                headline = event.data.headline or event.data.title or ""
+                if self.weather_province_filter.should_filter(headline):
+                    return False
+            # 海啸和气象事件通过了过滤，可以推送
             return True
 
         # 3. 地震事件专用过滤逻辑

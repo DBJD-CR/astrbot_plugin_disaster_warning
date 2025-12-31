@@ -71,6 +71,25 @@
             "type": "bool",
             "default": true,
             "hint": "通过FAN Studio WebSocket接收自然资源部海啸预警中心海啸预警信息"
+          },
+          "weather_province_filter": {
+            "description": "气象预警省份过滤（白名单）",
+            "type": "object",
+            "hint": "配置只推送特定省份的气象预警",
+            "items": {
+              "enabled": {
+                "description": "启用省份过滤",
+                "type": "bool",
+                "hint": "启用后只推送白名单中省份的气象预警",
+                "default": false
+              },
+              "provinces": {
+                "description": "省份白名单",
+                "type": "list",
+                "hint": "留空推送全国，填写省份名称后只推送对应省份（如：北京、上海、广东、香港、台湾等）",
+                "default": []
+              }
+            }
           }
         }
       },

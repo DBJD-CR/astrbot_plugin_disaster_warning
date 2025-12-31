@@ -6,6 +6,7 @@ from .intensity_filter import (
 )
 from .local_intensity import LocalIntensityFilter
 from .report_controller import ReportCountController
+from .weather_province import WeatherProvinceFilter
 
 __all__ = [
     "IntensityFilter",
@@ -14,4 +15,5 @@ __all__ = [
     "GlobalQuakeFilter",
     "LocalIntensityFilter",
     "ReportCountController",
+    "WeatherProvinceFilter",
 ]
