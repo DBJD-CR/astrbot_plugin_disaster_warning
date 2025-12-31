@@ -45,7 +45,7 @@ class CEAEEWFormatter(BaseMessageFormatter):
 
         # 震级
         if earthquake.magnitude is not None:
-            lines.append(f"📊震级：M {earthquake.magnitude}")
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
 
         # 深度
         if earthquake.depth is not None:
@@ -108,7 +108,7 @@ class CWAEEWFormatter(BaseMessageFormatter):
 
         # 震级
         if earthquake.magnitude is not None:
-            lines.append(f"📊震级：M {earthquake.magnitude}")
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
 
         # 深度
         if earthquake.depth is not None:
@@ -189,7 +189,7 @@ class JMAEEWFormatter(BaseMessageFormatter):
 
         # 震级
         if earthquake.magnitude is not None:
-            lines.append(f"📊震级：M {earthquake.magnitude}")
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
 
         # 深度
         if earthquake.depth is not None:
@@ -293,7 +293,7 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
 
         # 震级
         if earthquake.magnitude is not None:
-            lines.append(f"📊震级：M {earthquake.magnitude}")
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
 
         # 深度
         if earthquake.depth is not None:
@@ -389,7 +389,7 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
 
         # 震级
         if earthquake.magnitude is not None and earthquake.magnitude != -1.0:
-            lines.append(f"📊震级：M {earthquake.magnitude}")
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
         elif info_type == "震度速报":
             lines.append("📊震级：调查中")
 
@@ -537,7 +537,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
 
         # 震级
         if earthquake.magnitude is not None:
-            lines.append(f"📊震级：M {earthquake.magnitude}")
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
 
         # 深度
         if earthquake.depth is not None:
@@ -577,7 +577,7 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
 
         # 震级
         if earthquake.magnitude is not None:
-            lines.append(f"📊震级：M {earthquake.magnitude}")
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
 
         # 深度
         if earthquake.depth is not None:

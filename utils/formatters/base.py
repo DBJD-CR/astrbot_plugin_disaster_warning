@@ -50,7 +50,7 @@ class BaseMessageFormatter:
             return ""
 
         # 构建震中信息（简化版，减少URL长度）
-        magnitude_info = f"M{magnitude}" if magnitude is not None else "地震"
+        magnitude_info = f"M{magnitude:.1f}" if magnitude is not None else "地震"
         location_info = place_name if place_name else "震中位置"
 
         if provider == "openstreetmap":
