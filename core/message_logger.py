@@ -1048,7 +1048,7 @@ class MessageLogger:
                 "message_type": message_type,
                 "raw_data": raw_data,
                 "connection_info": connection_info or {},
-                "plugin_version": "1.1.0",  # 新版本号
+                "plugin_version": self._get_plugin_version(),
             }
 
             # 尝试可读性格式化
@@ -1065,7 +1065,7 @@ class MessageLogger:
 
             # 检查是否存在100%完全重复的内容（排除时间戳后）
             if self._is_exact_duplicate_in_log(log_content):
-                logger.info(
+                logger.debug(
                     f"[灾害预警] 跳过写入内容完全重复的日志 - 来源: {source}, 类型: {message_type}"
                 )
                 return
@@ -1273,6 +1273,21 @@ class MessageLogger:
 
         except Exception as e:
             logger.error(f"[灾害预警] 清除日志失败: {e}")
+
+    def _get_plugin_version(self) -> str:
+        """获取插件版本号"""
+        try:
+            # 尝试从 metadata.yaml 读取
+            metadata_path = Path(__file__).parent.parent / "metadata.yaml"
+            if metadata_path.exists():
+                with open(metadata_path, encoding="utf-8") as f:
+                    # 简单解析 YAML，避免引入 yaml 依赖
+                    for line in f:
+                        if line.strip().startswith("version:"):
+                            return line.split(":", 1)[1].strip()
+        except Exception:
+            pass
+        return "unknown"
 
 
 # 向后兼容的函数
