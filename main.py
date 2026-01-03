@@ -3,10 +3,8 @@ import sys
 import traceback
 from datetime import datetime
 
-# Windows平台WebSocket兼容性修复
-# 解决websockets 12.0+ 在Windows上的ProactorEventLoop兼容性问题
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+# [已移除] Windows平台WebSocket兼容性修复
+# 采用 aiohttp 替代 websockets 库，原生支持 Windows EventLoop，无需修改全局策略
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
