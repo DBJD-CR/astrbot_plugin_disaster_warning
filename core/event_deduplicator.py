@@ -3,7 +3,7 @@
 允许多数据源推送同一事件，但防止同一数据源重复推送
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from astrbot.api import logger
 
@@ -266,16 +266,27 @@ class EventDeduplicator:
 
     def cleanup_old_events(self):
         """清理过期事件"""
-        cutoff_time = datetime.now() - self.time_window * 2  # 保留2倍时间窗口
+        # 准备两种类型的截止时间，以处理 naive 和 aware 的时间戳
+        cutoff_naive = datetime.now() - self.time_window * 2
+        cutoff_aware = datetime.now(timezone.utc) - self.time_window * 2
 
         old_fingerprints = []
         for fingerprint, source_events in self.recent_events.items():
             # 检查所有数据源的事件是否都过期
             all_expired = True
             for event_info in source_events.values():
-                if event_info["timestamp"] >= cutoff_time:
-                    all_expired = False
-                    break
+                timestamp = event_info["timestamp"]
+
+                # 根据时间戳类型选择对应的截止时间进行比较
+                if timestamp.tzinfo is None:
+                    if timestamp >= cutoff_naive:
+                        all_expired = False
+                        break
+                else:
+                    # offset-aware 时间可以直接与其他 offset-aware 时间比较
+                    if timestamp >= cutoff_aware:
+                        all_expired = False
+                        break
 
             if all_expired:
                 old_fingerprints.append(fingerprint)
