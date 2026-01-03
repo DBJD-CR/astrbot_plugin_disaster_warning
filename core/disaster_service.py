@@ -329,18 +329,14 @@ class DisasterWarningService:
                             "https://api.wolfx.jp/cenc_eqlist.json"
                         )
                         if cenc_data:
-                            # 记录原始HTTP响应数据
+                            # 记录原始HTTP响应数据（仅摘要，避免日志膨胀）
                             if self.message_logger:
                                 try:
-                                    self.message_logger.log_raw_message(
+                                    self.message_logger.log_http_earthquake_list(
                                         source="http_wolfx_cenc",
-                                        message_type="http_response",
-                                        raw_data=json.dumps(cenc_data),
-                                        connection_info={
-                                            "url": "https://api.wolfx.jp/cenc_eqlist.json",
-                                            "method": "GET",
-                                            "data_source": "wolfx_cenc_earthquake",
-                                        },
+                                        url="https://api.wolfx.jp/cenc_eqlist.json",
+                                        earthquake_list=cenc_data,
+                                        max_items=5,
                                     )
                                 except Exception as log_e:
                                     logger.warning(
@@ -359,18 +355,14 @@ class DisasterWarningService:
                             "https://api.wolfx.jp/jma_eqlist.json"
                         )
                         if jma_data:
-                            # 记录原始HTTP响应数据
+                            # 记录原始HTTP响应数据（仅摘要，避免日志膨胀）
                             if self.message_logger:
                                 try:
-                                    self.message_logger.log_raw_message(
+                                    self.message_logger.log_http_earthquake_list(
                                         source="http_wolfx_jma",
-                                        message_type="http_response",
-                                        raw_data=json.dumps(jma_data),
-                                        connection_info={
-                                            "url": "https://api.wolfx.jp/jma_eqlist.json",
-                                            "method": "GET",
-                                            "data_source": "wolfx_jma_earthquake",
-                                        },
+                                        url="https://api.wolfx.jp/jma_eqlist.json",
+                                        earthquake_list=jma_data,
+                                        max_items=5,
                                     )
                                 except Exception as log_e:
                                     logger.warning(

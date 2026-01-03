@@ -1140,6 +1140,109 @@ class MessageLogger:
             },
         )
 
+    def log_http_earthquake_list(
+        self,
+        source: str,
+        url: str,
+        earthquake_list: dict[str, Any],
+        max_items: int = 5,
+    ):
+        """
+        记录 HTTP 地震列表响应的摘要（不记录完整列表，避免日志膨胀）
+
+        Args:
+            source: 数据源标识，如 "http_wolfx_cenc" 或 "http_wolfx_jma"
+            url: 请求的 URL
+            earthquake_list: 完整的地震列表响应数据
+            max_items: 只记录前多少条事件，默认 5 条
+        """
+        if not self.enabled:
+            return
+
+        try:
+            # 构建摘要数据
+            summary_data = {
+                "summary": True,
+                "message": f"地震列表摘要 (仅显示前 {max_items} 条)",
+            }
+
+            # 提取事件数量统计
+            total_count = 0
+            sample_events = []
+
+            # Wolfx 列表格式: {"No1": {...}, "No2": {...}, ...}
+            # 按照 No 键的数字排序
+            if isinstance(earthquake_list, dict):
+                # 过滤出 No 开头的键
+                no_keys = [
+                    k for k in earthquake_list.keys() if k.startswith("No")
+                ]
+                total_count = len(no_keys)
+
+                # 按数字排序（No1, No2, ...）
+                sorted_keys = sorted(
+                    no_keys, key=lambda x: int(x[2:]) if x[2:].isdigit() else 999
+                )
+
+                # 只取前 max_items 条
+                for key in sorted_keys[:max_items]:
+                    event = earthquake_list.get(key, {})
+                    if isinstance(event, dict):
+                        # 只提取关键字段用于摘要
+                        compact_event = {
+                            "key": key,
+                            "magnitude": event.get("Magnitude")
+                            or event.get("magnitude"),
+                            "place": event.get("Hypocenter")
+                            or event.get("placeName")
+                            or event.get("location"),
+                            "time": event.get("OriginTime")
+                            or event.get("shockTime")
+                            or event.get("time"),
+                            "depth": event.get("Depth") or event.get("depth"),
+                        }
+                        sample_events.append(compact_event)
+
+            summary_data["total_events"] = total_count
+            summary_data["sample_events"] = sample_events
+
+            if total_count > max_items:
+                summary_data[
+                    "note"
+                ] = f"还有 {total_count - max_items} 条事件未显示"
+
+            # 记录摘要
+            self.log_raw_message(
+                source=source,
+                message_type="http_earthquake_list_summary",
+                raw_data=summary_data,
+                connection_info={
+                    "url": url,
+                    "method": "GET",
+                    "connection_type": "http",
+                    "summary_mode": True,
+                },
+            )
+
+        except Exception as e:
+            logger.warning(f"[灾害预警] 地震列表摘要记录失败: {e}")
+            # 失败时回退到简单的统计记录
+            try:
+                fallback_data = {
+                    "error": "摘要生成失败",
+                    "total_keys": len(earthquake_list)
+                    if isinstance(earthquake_list, dict)
+                    else 0,
+                }
+                self.log_raw_message(
+                    source=source,
+                    message_type="http_earthquake_list_summary",
+                    raw_data=fallback_data,
+                    connection_info={"url": url, "connection_type": "http"},
+                )
+            except Exception:
+                pass
+
     def _check_log_rotation(self):
         """检查日志文件大小并进行轮转"""
         try:
