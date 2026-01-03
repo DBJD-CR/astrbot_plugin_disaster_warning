@@ -85,16 +85,11 @@ class MessagePushManager:
         )
 
         # 初始化报数控制器
+        push_config = config.get("push_frequency_control", {})
         self.report_controller = ReportCountController(
-            push_every_n_reports=config.get("push_frequency_control", {}).get(
-                "push_every_n_reports", 3
-            ),
-            first_report_always_push=config.get("push_frequency_control", {}).get(
-                "first_report_always_push", True
-            ),
-            final_report_always_push=config.get("push_frequency_control", {}).get(
-                "final_report_always_push", True
-            ),
+            push_every_n_reports=push_config.get("push_every_n_reports", 1),
+            final_report_always_push=push_config.get("final_report_always_push", True),
+            ignore_non_final_reports=push_config.get("ignore_non_final_reports", False),
         )
 
         # 初始化去重器

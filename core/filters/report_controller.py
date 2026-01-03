@@ -15,13 +15,13 @@ class ReportCountController:
 
     def __init__(
         self,
-        push_every_n_reports: int = 3,
-        first_report_always_push: bool = True,
+        push_every_n_reports: int = 1,
         final_report_always_push: bool = True,
+        ignore_non_final_reports: bool = False,
     ):
         self.push_every_n_reports = push_every_n_reports
-        self.first_report_always_push = first_report_always_push
         self.final_report_always_push = final_report_always_push
+        self.ignore_non_final_reports = ignore_non_final_reports
         # 记录每个事件的报数推送情况
         self.event_report_counts: dict[str, int] = defaultdict(int)
 
@@ -46,10 +46,17 @@ class ReportCountController:
             logger.debug(f"[灾害预警] 事件 {event_id} 是最终报，允许推送")
             return True
 
-        # 第1报总是推送
-        if current_report == 1 and self.first_report_always_push:
+        # 第1报总是推送 (即使开启了忽略非最终报)
+        if current_report == 1:
             logger.debug(f"[灾害预警] 事件 {event_id} 是第1报，允许推送")
             return True
+
+        # 如果开启了"忽略非最终报"，且当前不是最终报或第1报，直接过滤
+        if self.ignore_non_final_reports and not is_final:
+            logger.debug(
+                f"[灾害预警] 事件 {event_id} 第 {current_report} 报，因开启'忽略非最终报'被过滤"
+            )
+            return False
 
         # 检查报数控制
         if current_report % self.push_every_n_reports == 0:
