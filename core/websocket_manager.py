@@ -127,14 +127,21 @@ class WebSocketManager:
                         elif msg.type == WSMsgType.ERROR:
                             # 抛出异常以触发重连逻辑
                             raise msg.data
-                        
+
                         elif msg.type == WSMsgType.CLOSED:
-                             logger.info(f"[灾害预警] WebSocket连接已关闭: {name}, code={websocket.close_code}")
-                             break
+                            logger.info(
+                                f"[灾害预警] WebSocket连接已关闭: {name}, code={websocket.close_code}"
+                            )
+                            break
 
                     # 检查连接关闭代码，如果是非正常关闭则抛出异常以触发重连
-                    if websocket.close_code is not None and websocket.close_code not in (1000, 1001):
-                        raise Exception(f"WebSocket closed unexpectedly with code {websocket.close_code}")
+                    if (
+                        websocket.close_code is not None
+                        and websocket.close_code not in (1000, 1001)
+                    ):
+                        raise Exception(
+                            f"WebSocket连接意外关闭，代码 {websocket.close_code}"
+                        )
 
                 except Exception as e:
                     # 这里的异常通常是处理循环中的非预期间断
@@ -206,7 +213,7 @@ class WebSocketManager:
         # 认证错误不需要重试
         if "401" in error_msg or "403" in error_msg:
             return False
-            
+
         # 其他大部分网络错误都值得重试
         return True
 
@@ -442,7 +449,7 @@ class WebSocketManager:
         # 断开所有连接
         for name in list(self.connections.keys()):
             await self.disconnect(name)
-            
+
         # 关闭 Session
         if self.session:
             await self.session.close()
