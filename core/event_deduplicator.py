@@ -3,7 +3,7 @@
 允许多数据源推送同一事件，但防止同一数据源重复推送
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from astrbot.api import logger
 
@@ -41,7 +41,7 @@ class EventDeduplicator:
         current_time = (
             earthquake.shock_time
             if earthquake.shock_time is not None
-            else datetime.now()
+            else datetime.now(timezone.utc)
         )
 
         logger.debug(
@@ -156,12 +156,12 @@ class EventDeduplicator:
             * self.magnitude_tolerance
         )
 
-        # 关键修复：处理时间可能为None的情况
-        if earthquake.shock_time is not None:
-            time_minute = earthquake.shock_time.replace(second=0, microsecond=0)
-        else:
-            # 如果时间解析失败，使用当前时间但标记为特殊值
-            time_minute = datetime.now().replace(second=0, microsecond=0)
+        # 处理时间：统一转换为UTC aware datetime并截断到分钟
+        shock_time = earthquake.shock_time
+        # 如果是naive datetime，添加UTC时区
+        if shock_time.tzinfo is None:
+            shock_time = shock_time.replace(tzinfo=timezone.utc)
+        time_minute = shock_time.replace(second=0, microsecond=0)
 
         return f"{lat_grid:.3f},{lon_grid:.3f},{mag_grid:.1f},{time_minute.strftime('%Y%m%d%H%M')}"
 
@@ -266,7 +266,7 @@ class EventDeduplicator:
 
     def cleanup_old_events(self):
         """清理过期事件"""
-        cutoff_time = datetime.now() - self.time_window * 2  # 保留2倍时间窗口
+        cutoff_time = datetime.now(timezone.utc) - self.time_window * 2  # 保留2倍时间窗口
 
         old_fingerprints = []
         for fingerprint, source_events in self.recent_events.items():
