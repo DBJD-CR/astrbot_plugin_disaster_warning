@@ -251,9 +251,10 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
         """判断测定类型（自动/正式）"""
         # 优先使用info_type字段
         if earthquake.info_type:
-            if "正式测定" in earthquake.info_type:
+            info_type_lower = str(earthquake.info_type).lower()
+            if "正式测定" in info_type_lower or "reviewed" in info_type_lower:
                 return "正式测定"
-            elif "自动测定" in earthquake.info_type:
+            elif "自动测定" in info_type_lower or "automatic" in info_type_lower:
                 return "自动测定"
 
         # 基于时间判断
@@ -548,6 +549,80 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
 
 class GlobalQuakeFormatter(BaseMessageFormatter):
     """Global Quake地震情报格式化器"""
+
+    @staticmethod
+    def get_render_context(earthquake: EarthquakeData) -> dict:
+        """获取 Global Quake 卡片渲染上下文"""
+        # 震级颜色
+        mag = earthquake.magnitude or 0
+        if mag < 5:
+            mag_class = "bg-low"
+        elif mag < 7:
+            mag_class = "bg-med"
+        else:
+            mag_class = "bg-high"
+
+        # 格式化时间 (显示为 UTC)
+        shock_time = earthquake.shock_time
+        if shock_time:
+            if shock_time.tzinfo is None:
+                shock_time = shock_time.replace(tzinfo=timezone.utc)
+            else:
+                shock_time = shock_time.astimezone(timezone.utc)
+            time_str = shock_time.strftime("%Y-%m-%d %H:%M:%S UTC")
+        else:
+            time_str = "Unknown Time"
+
+        # 测站信息
+        stations_used = 0
+        stations_total = 0
+        if earthquake.stations:
+            stations_used = earthquake.stations.get("used", 0)
+            stations_total = earthquake.stations.get("total", 0)
+
+        # 质量百分比
+        quality_pct = "N/A"
+        location_error = "N/A"
+
+        if earthquake.raw_data:
+            data_inner = earthquake.raw_data.get("data", {})
+
+            # 解析质量
+            quality = data_inner.get("quality", {})
+            if isinstance(quality, dict):
+                pct = quality.get("pct")
+                if pct is not None:
+                    quality_pct = f"{pct}%"
+
+                # 解析误差
+                err_origin = quality.get("errOrigin")
+                if err_origin is not None:
+                    location_error = f"{err_origin:.1f} km"
+
+            # 兼容另一种可能的结构（视API版本而定）
+            elif isinstance(data_inner.get("locationError"), (int, float)):
+                location_error = f"{data_inner.get('locationError'):.1f} km"
+
+        return {
+            "magnitude": f"{mag:.1f}",
+            "mag_class": mag_class,
+            "intensity": earthquake.intensity if earthquake.intensity else "",
+            "region": earthquake.place_name,
+            "is_update": (getattr(earthquake, "updates", 1) > 1),
+            "revision": getattr(earthquake, "updates", 1),
+            "time_str": time_str,
+            "depth": earthquake.depth,
+            "latitude": f"{earthquake.latitude:.4f}",
+            "longitude": f"{earthquake.longitude:.4f}",
+            "pga": f"{earthquake.max_pga:.1f}"
+            if earthquake.max_pga is not None
+            else "N/A",
+            "location_error": location_error,
+            "stations_used": stations_used,
+            "stations_total": stations_total,
+            "quality_pct": quality_pct,
+            "event_id": earthquake.event_id,
+        }
 
     @staticmethod
     def format_message(earthquake: EarthquakeData) -> str:
