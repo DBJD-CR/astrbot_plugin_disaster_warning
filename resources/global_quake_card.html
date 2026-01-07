@@ -7,7 +7,7 @@
     <style>
         /* --- 专业暗色主题 --- */
         :root {
-            --bg-body: #0b1120;       /* 深蓝黑背景 */
+            --bg-body: transparent;   /* 背景透明，防止截图黑边 */
             --bg-card: #1e293b;       /* 卡片背景 */
             --text-primary: #f8fafc;  /* 主文字 */
             --text-secondary: #94a3b8;/* 次要文字 */
@@ -21,18 +21,26 @@
             --color-intensity: #8b5cf6; /* 烈度紫色 */
         }
 
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: fit-content;      /* 自适应内容宽度 */
+            height: fit-content;     /* 自适应内容高度 */
+            background-color: var(--bg-body);
+        }
+
         body {
             font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: transparent; /* 透明背景以便 AstrBot 截图 */
-            color: var(--text-primary);
-            margin: 0;
-            padding: 10px;
-            width: 500px; /* 固定宽度适合手机查看 */
+            padding: 0;              /* 移除 body padding，由卡片 margin 控制 */
+            box-sizing: border-box;
         }
 
         /* --- 地震卡片设计 --- */
         .quake-card {
+            width: 520px;            /* 卡片固定宽度 */
+            margin: 10px;            /* 添加外边距 */
             background: var(--bg-card);
+            color: var(--text-primary);
             border-radius: 6px;
             border: 1px solid var(--border);
             display: grid;
