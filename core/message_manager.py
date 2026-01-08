@@ -360,7 +360,7 @@ class MessagePushManager:
 
                 
                 # 获取模板名称配置
-                template_name = message_format_config.get("global_quake_template", "aurora")
+                template_name = message_format_config.get("global_quake_template", "Aurora")
 
                 # 加载模板
                 current_file_dir = os.path.dirname(os.path.abspath(__file__))
