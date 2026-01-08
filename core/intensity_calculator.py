@@ -90,7 +90,7 @@ class IntensityCalculator:
         elif intensity < 4.0:
             return "🔵 室内有感"
         elif intensity < 5.0:
-            return "🟡 震感明显"
+            return "🟢 震感明显"
         elif intensity < 6.0:
             return "🟡 震感强烈"
         elif intensity < 7.0:
