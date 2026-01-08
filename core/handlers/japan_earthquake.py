@@ -58,13 +58,17 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             # 获取基础数据 - 使用英文键名（实际数据格式）
             earthquake_info = data.get("earthquake", {})
             hypocenter = earthquake_info.get("hypocenter", {})
-            # issue_info = data.get("issue", {})  # 未使用，注释掉以避免未使用变量警告
 
             # 关键字段检查
             magnitude_raw = hypocenter.get("magnitude")
             place_name = hypocenter.get("name")
             latitude = hypocenter.get("latitude")
             longitude = hypocenter.get("longitude")
+
+            # 解析JMA情报类型 (issue type)
+            # 根据 json-api-v2.yaml，JMAQuake 的 issue.type 字段
+            # 可能值: ScalePrompt, Destination, ScaleAndDestination, DetailScale, Foreign
+            issue_type = data.get("issue", {}).get("type", "")
 
             # 震级解析
             magnitude = self._safe_float_convert(magnitude_raw)
@@ -114,6 +118,7 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
                 max_scale=max_scale_raw,
                 domestic_tsunami=earthquake_info.get("domesticTsunami"),
                 foreign_tsunami=earthquake_info.get("foreignTsunami"),
+                info_type=issue_type,  # 填充info_type字段
                 raw_data=data,
             )
 
@@ -195,6 +200,10 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
             magnitude_raw = eq_info.get("magnitude")
             magnitude = self._safe_float_convert(magnitude_raw)
 
+            # 获取发报报头 (Title) 作为 info_type
+            # 示例: "震源・震度情報", "各地の震度に関する情報" 等
+            info_type = data.get("Title", "")
+
             earthquake = EarthquakeData(
                 id=eq_info.get("md5", ""),
                 event_id=eq_info.get("md5", ""),
@@ -207,6 +216,7 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
                 magnitude=magnitude,
                 scale=self._parse_jma_scale(eq_info.get("shindo", "")),
                 place_name=eq_info.get("location", ""),
+                info_type=info_type,  # 填充 info_type 字段
                 raw_data=data,
             )
 
