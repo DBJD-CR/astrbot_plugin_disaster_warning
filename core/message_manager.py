@@ -432,8 +432,11 @@ class MessagePushManager:
                     # 定位卡片元素
                     card = page.locator(selector)
                     
-                    # 准备临时文件路径
-                    temp_dir = os.path.join(self.data_dir, "temp")
+                    # 准备临时文件路径 (使用 AstrBot 数据目录的 temp)
+                    # self.data_dir = plugins/astrbot_plugin_disaster_warning
+                    # 上两级 = data/temp
+                    astrbot_data_dir = os.path.dirname(os.path.dirname(self.data_dir))
+                    temp_dir = os.path.join(astrbot_data_dir, "temp")
                     if not os.path.exists(temp_dir):
                         os.makedirs(temp_dir, exist_ok=True)
                     
