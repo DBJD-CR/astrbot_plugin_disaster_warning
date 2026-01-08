@@ -1,184 +1,452 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Quake Card</title>
+    <title>Global Quake Aurora Card</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- D3.js & TopoJSON -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+
     <style>
-        /* --- 专业暗色主题 --- */
+        /* --- Aurora Theme Tokens --- */
         :root {
-            --bg-body: transparent;   /* 背景透明，防止截图黑边 */
-            --bg-card: #1e293b;       /* 卡片背景 */
-            --text-primary: #f8fafc;  /* 主文字 */
-            --text-secondary: #94a3b8;/* 次要文字 */
-            --border: #334155;        /* 边框 */
-            
-            /* 信号色 */
-            --color-mag-low: #10b981;
-            --color-mag-med: #f59e0b;
-            --color-mag-high: #ef4444;
-            --color-update: #3b82f6;  /* 更新标记色 */
-            --color-intensity: #8b5cf6; /* 烈度紫色 */
+            --aurora-low: #34d399;
+            /* Mint */
+            --aurora-med: #fbbf24;
+            /* Amber */
+            --aurora-high: #f43f5e;
+            /* Rose */
+
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --text-light: #94a3b8;
         }
 
-        html, body {
+        html,
+        body {
             margin: 0;
             padding: 0;
-            width: fit-content;      /* 自适应内容宽度 */
-            height: fit-content;     /* 自适应内容高度 */
-            background-color: var(--bg-body);
-        }
-
-        body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            padding: 0;              /* 移除 body padding，由卡片 margin 控制 */
-            box-sizing: border-box;
-        }
-
-        /* --- 地震卡片设计 --- */
-        .quake-card {
-            width: 520px;            /* 卡片固定宽度 */
-            margin: 10px;            /* 添加外边距 */
-            background: var(--bg-card);
-            color: var(--text-primary);
-            border-radius: 6px;
-            border: 1px solid var(--border);
-            display: grid;
-            grid-template-columns: 90px 1fr; /* 左侧概览 | 右侧详情 */
+            width: fit-content;
+            height: fit-content;
+            background-color: transparent !important;
             overflow: hidden;
-            position: relative;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
-        /* 左侧：震级与烈度 */
-        .card-visual {
-            background: rgba(0,0,0,0.2);
+        #card-wrapper {
+            display: inline-block;
+            padding: 40px;
+            position: relative;
+        }
+
+        /* --- Aurora Glow --- */
+        .aurora-glow {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            filter: blur(60px);
+            opacity: 0.6;
+            z-index: 0;
+            background: var(--aurora-low);
+        }
+
+        .glow-low {
+            background: var(--aurora-low);
+        }
+
+        .glow-med {
+            background: var(--aurora-med);
+        }
+
+        .glow-high {
+            background: var(--aurora-high);
+        }
+
+        /* --- Glass Card --- */
+        .glass-card {
+            width: 540px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 32px;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
+            font-family: 'Outfit', sans-serif;
+            color: var(--text-main);
+            position: relative;
+            z-index: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Components --- */
+        .header-section {
+            padding: 32px 32px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .region-name {
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1.25;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .time-label {
+            display: inline-flex;
+            font-size: 13px;
+            color: var(--text-sub);
+            font-weight: 500;
+            background: rgba(0, 0, 0, 0.03);
+            padding: 6px 12px;
+            border-radius: 12px;
+        }
+
+        .status-pill {
+            padding: 6px 16px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .pill-new {
+            background: #ecfdf5;
+            color: #059669;
+            border: 1px solid #a7f3d0;
+        }
+
+        .pill-update {
+            background: #eff6ff;
+            color: #2563eb;
+            border: 1px solid #bfdbfe;
+        }
+
+        .hero-grid {
+            padding: 0 32px 24px;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .mag-capsule {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 15px 10px;
-            border-right: 1px solid var(--border);
-            gap: 8px;
+            width: 130px;
+            height: 140px;
+            border-radius: 24px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
         }
 
-        .mag-circle {
-            width: 54px; height: 54px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.4rem; font-weight: 800; color: #fff;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        .bg-low {
+            background: linear-gradient(135deg, #34d399, #10b981);
         }
 
-        .intensity-badge {
-            background: var(--color-intensity);
-            font-size: 0.75rem; padding: 2px 8px;
-            border-radius: 4px; font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        .bg-med {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
         }
 
-        /* 右侧：详细数据 */
-        .card-details { padding: 15px 20px; }
-
-        .card-header-row {
-            display: flex; justify-content: space-between; align-items: flex-start;
-            margin-bottom: 10px;
+        .bg-high {
+            background: linear-gradient(135deg, #f87171, #ef4444);
         }
 
-        .region-text { font-size: 1.1rem; font-weight: 600; color: #fff; line-height: 1.2; }
-        
-        /* 标签：NEW / UPDATE */
-        .action-tag {
-            font-size: 0.7rem; font-weight: bold; padding: 2px 6px;
-            border-radius: 3px; text-transform: uppercase;
-            margin-left: 8px; vertical-align: middle;
-            display: inline-block;
+        .mag-number {
+            font-size: 46px;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 4px;
+            letter-spacing: -1px;
         }
-        .tag-update { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6; }
-        .tag-new { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
 
-        .time-text { font-size: 0.85rem; color: var(--text-secondary); font-family: monospace; white-space: nowrap; margin-left: 10px;}
+        .mag-label-small {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            opacity: 0.9;
+        }
 
-        /* 数据网格 */
-        .metrics-grid {
+        .intensity-mini {
+            margin-top: 12px;
+            background: rgba(255, 255, 255, 0.25);
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .key-data-list {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px 15px;
-            margin-top: 10px;
+            gap: 20px;
         }
 
-        .metric-item { display: flex; flex-direction: column; font-size: 0.8rem; }
-        .metric-label { color: var(--text-secondary); margin-bottom: 2px; font-size: 0.75rem;}
-        .metric-value { color: var(--text-primary); font-weight: 500; font-family: monospace; font-size: 0.9rem; }
-        .metric-sub { font-size: 0.75rem; color: #64748b; margin-left: 4px; } /* 误差值颜色 */
-
-        .card-footer {
-            margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05);
-            display: flex; justify-content: space-between; font-size: 0.75rem; color: #475569;
+        .data-block {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
 
-        /* 颜色类 */
-        .bg-low { background-color: var(--color-mag-low); }
-        .bg-med { background-color: var(--color-mag-med); }
-        .bg-high { background-color: var(--color-mag-high); }
+        .data-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-light);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .data-content {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .unit {
+            font-size: 14px;
+            color: var(--text-sub);
+            font-weight: 500;
+        }
+
+        /* --- Globe Container --- */
+        #globe-container {
+            height: 180px;
+            width: calc(100% - 64px);
+            margin: 0 32px 24px;
+            /* 上 左右 下 */
+            border-radius: 20px;
+            z-index: 10;
+            overflow: hidden;
+            position: relative;
+            background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        /* SVG Styles */
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .land {
+            fill: #ffffff;
+            stroke: #cbd5e1;
+            stroke-width: 1px;
+        }
+
+        /* 震中环动画 */
+        .quake-ring {
+            fill: none;
+            stroke: var(--aurora-high);
+            stroke-width: 2px;
+            opacity: 0.8;
+            transform-box: fill-box;
+            transform-origin: center;
+        }
+
+        .footer-grid {
+            background: rgba(248, 250, 252, 0.6);
+            border-top: 1px solid rgba(0, 0, 0, 0.03);
+            padding: 16px 32px 10px 32px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .footer-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .f-label {
+            font-size: 10px;
+            color: var(--text-light);
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .f-val {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-sub);
+        }
+
+        .bottom-bar {
+            background: rgba(248, 250, 252, 0.9);
+            padding: 8px 32px 14px;
+            border-top: 1px solid rgba(0, 0, 0, 0.02);
+            display: flex;
+            justify-content: flex-end;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
+
 <body>
-    <div class="quake-card">
-        <div class="card-visual">
-            <div class="mag-circle {{ mag_class }}">{{ magnitude }}</div>
-            {% if intensity %}
-            <div class="intensity-badge">MMI {{ intensity }}</div>
-            {% endif %}
-        </div>
-        <div class="card-details">
-            <div class="card-header-row">
-                <div style="flex: 1;">
-                    <span class="region-text">{{ region }}</span>
-                    {% if is_update %}
-                    <span class="action-tag tag-update">UPDATE (Rev.{{ revision }})</span>
-                    {% else %}
-                    <span class="action-tag tag-new">NEW EVENT</span>
-                    {% endif %}
+    <div id="card-wrapper">
+        {% set glow_class = 'glow-high' if mag_class == 'bg-high' else ('glow-med' if mag_class == 'bg-med' else
+        'glow-low') %}
+        <div class="aurora-glow {{ glow_class }}"></div>
+
+        <div class="glass-card">
+            <div class="header-section">
+                <div>
+                    <div class="region-name">{{ region }}</div>
+                    <div class="time-label">{{ time_str }}</div>
                 </div>
-            </div>
-            <div class="time-text" style="margin-bottom: 10px;">
-                {{ time_str }}
+                <div>
+                    {% if is_update %}<div class="status-pill pill-update">Update {{ revision }}</div>
+                    {% else %}<div class="status-pill pill-new">New Event</div>{% endif %}
+                </div>
             </div>
 
-            <div class="metrics-grid">
-                <div class="metric-item">
-                    <span class="metric-label">深度 (Depth)</span>
-                    <span class="metric-value">{{ depth }} km</span>
+            <div class="hero-grid">
+                <div class="mag-capsule {{ mag_class }}">
+                    <span class="mag-number">{{ magnitude }}</span>
+                    <span class="mag-label-small">Magnitude</span>
+                    {% if intensity %}<div class="intensity-mini">MMI {{ intensity }}</div>{% endif %}
                 </div>
-                <div class="metric-item">
-                    <span class="metric-label">震中位置 (Epicenter)</span>
-                    <span class="metric-value">
-                        {{ latitude }}, {{ longitude }}
-                    </span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">最大加速度 (PGA)</span>
-                    <span class="metric-value">{{ pga }}</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">定位误差 (Loc Err)</span>
-                    <span class="metric-value">{{ location_error }}</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">台站 (Used/Total)</span>
-                    <span class="metric-value">{{ stations_used }} / {{ stations_total }}</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">数据拟合 (Quality)</span>
-                    <span class="metric-value">{{ quality_pct }}</span>
+                <div class="key-data-list">
+                    <div class="data-block">
+                        <span class="data-title">Depth</span>
+                        <span class="data-content">{{ depth }} <span class="unit">km</span></span>
+                    </div>
+                    <div class="data-block">
+                        <span class="data-title">Fit Quality</span>
+                        <span class="data-content">{{ quality_pct }}</span>
+                    </div>
+                    <div class="data-block" style="grid-column: span 2;">
+                        <span class="data-title">Epicenter</span>
+                        <span class="data-content" style="font-size:16px">{{ latitude }}, {{ longitude }}</span>
+                    </div>
                 </div>
             </div>
-            
-            <div class="card-footer">
-                <span>ID: {{ event_id }}</span>
-                <span>Source: Global Quake</span>
+
+            <!-- Vector Globe Container -->
+            <div id="globe-container"></div>
+
+            <div class="footer-grid">
+                <div class="footer-item"><span class="f-label">Stations</span><span class="f-val">{{ stations_used }} /
+                        {{ stations_total }}</span></div>
+                <div class="footer-item"><span class="f-label">PGA</span><span class="f-val">{{ pga }}</span></div>
+                <div class="footer-item"><span class="f-label">Error</span><span class="f-val">{{ location_error
+                        }}</span></div>
             </div>
+
+            <div class="bottom-bar">Source: Global Quake • ID: {{ event_id }}</div>
         </div>
     </div>
+
+    <!-- D3 Globe Script -->
+    <script>
+        const width = 480;
+        const height = 180;
+
+        const lat = Number("{{ latitude }}");
+        const lng = Number("{{ longitude }}");
+
+        const svg = d3.select("#globe-container")
+            .append("svg")
+            .attr("viewBox", `0 0 ${width} ${height}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+
+        // 1. 定义投影：【绝对稳健修正版】
+        // 此设置确保震中始终位于画布正中央 (240, 90)
+        // 拒绝一切位移偏移，防止红点跑偏
+        const projection = d3.geoOrthographic()
+            .scale(300)
+            .translate([width / 2, height / 2]) // 居中
+            .rotate([-lng, -lat]) // 正对
+            .clipAngle(90);
+
+        const path = d3.geoPath().projection(projection);
+
+        function markReady() {
+            document.body.classList.add('d3-ready');
+            console.log("D3 Render Complete");
+        }
+
+        function drawEpicenter() {
+            const center = projection([lng, lat]);
+            if (center) {
+                // 震中点 (白色描边增强对比度)
+                svg.append("circle")
+                    .attr("cx", center[0])
+                    .attr("cy", center[1])
+                    .attr("r", 6)
+                    .attr("fill", "#f43f5e")
+                    .attr("stroke", "#ffffff")
+                    .attr("stroke-width", 3);
+
+                // 波纹
+                const ring = svg.append("circle")
+                    .attr("cx", center[0])
+                    .attr("cy", center[1])
+                    .attr("r", 6)
+                    .attr("fill", "none")
+                    .attr("stroke", "#f43f5e")
+                    .attr("stroke-width", 2)
+                    .attr("opacity", 0.8);
+
+                // 动画兼容写法
+                const animR = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+                animR.setAttribute("attributeName", "r");
+                animR.setAttribute("from", "6");
+                animR.setAttribute("to", "40");
+                animR.setAttribute("dur", "1.5s");
+                animR.setAttribute("repeatCount", "indefinite");
+                ring.node().appendChild(animR);
+
+                const animO = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+                animO.setAttribute("attributeName", "opacity");
+                animO.setAttribute("from", "0.8");
+                animO.setAttribute("to", "0");
+                animO.setAttribute("dur", "1.5s");
+                animO.setAttribute("repeatCount", "indefinite");
+                ring.node().appendChild(animO);
+            }
+        }
+
+        // 2. 加载世界地图数据
+        d3.json("https://unpkg.com/world-atlas@2.0.2/land-110m.json").then(function (world) {
+            svg.append("path")
+                .datum(topojson.feature(world, world.objects.land))
+                .attr("class", "land")
+                .attr("d", path);
+
+            drawEpicenter();
+            markReady();
+        }).catch(err => {
+            console.error("Map load failed", err);
+            // 失败时也画点
+            drawEpicenter();
+            markReady();
+        });
+    </script>
 </body>
+
 </html>

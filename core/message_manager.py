@@ -7,6 +7,9 @@ import os
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import tempfile
+from jinja2 import Template
+from playwright.async_api import async_playwright
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
@@ -354,39 +357,82 @@ class MessagePushManager:
                 context = GlobalQuakeFormatter.get_render_context(event.data)
 
                 # 加载模板
-                # 直接通过当前文件位置计算 resources 目录位置
-                # core/message_manager.py -> ../resources/global_quake_card.html
                 current_file_dir = os.path.dirname(os.path.abspath(__file__))
                 resources_dir = os.path.join(
                     os.path.dirname(current_file_dir), "resources"
                 )
-
                 template_path = os.path.join(resources_dir, "global_quake_card.html")
-                if os.path.exists(template_path):
-                    with open(template_path, encoding="utf-8") as f:
-                        template_content = f.read()
 
-                    # 渲染为图片
-                    renderer = HtmlRenderer()
-                    await renderer.initialize()
-
-                    # 使用 AstrBot 的 render_custom_template 接口
-                    # 注意：这通常需要 AstrBot 配置了网络渲染后端
-                    image_path = await renderer.render_custom_template(
-                        tmpl_str=template_content,
-                        tmpl_data=context,
-                        return_url=False,
-                        options={
-                            # 设置合适的视口宽度，高度给足防止截断
-                            "viewport": {"width": 540, "height": 800},
-                            "deviceScaleFactor": 2,
-                            # 关键：selector 参数告诉浏览器只截取 .quake-card 元素
-                            "selector": ".quake-card",
-                            "omitBackground": True,
-                        },
+                if not os.path.exists(template_path):
+                    logger.error(f"[灾害预警] 找不到模板文件: {template_path}")
+                    # 回退到同步构建
+                    return self._build_message_sync(
+                        event,
+                        source_id,
+                        message_format_config.get("include_map", True),
+                        message_format_config.get("map_provider", "baidu"),
+                        message_format_config.get("map_zoom_level", 5),
+                        message_format_config.get("detailed_jma_intensity", False),
                     )
 
-                    if image_path:
+                with open(template_path, encoding="utf-8") as f:
+                    template_content = f.read()
+                
+                # Jinja2 渲染
+                template = Template(template_content)
+                html_content = template.render(**context)
+
+                # 使用 Playwright 渲染
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(
+                        args=['--no-sandbox', '--disable-setuid-sandbox']
+                    )
+                    
+                    # 创建新页面，视口设置大一点均可，因为我们只截取元素
+                    # 关键修复：设置 device_scale_factor=3 提高渲染DPI，解决图片模糊问题
+                    page = await browser.new_page(
+                        viewport={"width": 800, "height": 800},
+                        device_scale_factor=3
+                    )
+                    
+                    await page.set_content(html_content)
+
+                    # 等待元素加载
+                    await page.wait_for_load_state("networkidle")
+                    
+                    # 关键修复：等待 D3 渲染完成标记
+                    try:
+                        await page.wait_for_selector(".d3-ready", state="attached", timeout=5000)
+                    except Exception:
+                        # 如果超时（例如JS报错），也不要崩溃，尽力而为截图
+                        pass
+
+                    # 统一使用 ID 选择器，这在所有模板中都将通用
+                    selector = "#card-wrapper"
+                    try:
+                        await page.wait_for_selector(selector, state="visible", timeout=5000)
+                    except Exception:
+                        # 兜底：尝试找常见的类名
+                        selector = ".quake-card"
+                        await page.wait_for_selector(selector, state="visible", timeout=2000)
+                    
+                    # 定位卡片元素
+                    card = page.locator(selector)
+                    
+                    # 准备临时文件路径
+                    temp_dir = os.path.join(self.data_dir, "temp")
+                    if not os.path.exists(temp_dir):
+                        os.makedirs(temp_dir, exist_ok=True)
+                    
+                    image_filename = f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                    image_path = os.path.join(temp_dir, image_filename)
+                    
+                    # 截图：只截取元素，背景透明
+                    await card.screenshot(path=image_path, omit_background=True)
+                    
+                    await browser.close()
+
+                    if os.path.exists(image_path):
                         logger.info(
                             f"[灾害预警] Global Quake 卡片渲染成功: {image_path}"
                         )
@@ -394,10 +440,8 @@ class MessagePushManager:
                         return MessageChain(chain)
                     else:
                         logger.warning(
-                            "[灾害预警] Global Quake 卡片渲染返回空路径，回退到文本模式"
+                            "[灾害预警] Global Quake 卡片渲染未生成文件"
                         )
-                else:
-                    logger.error(f"[灾害预警] 找不到模板文件: {template_path}")
 
             except Exception as e:
                 logger.error(

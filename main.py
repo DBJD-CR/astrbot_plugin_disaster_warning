@@ -670,7 +670,8 @@ class DisasterWarningPlugin(Star):
             if global_pass and local_pass:
                 try:
                     logger.info("[灾害预警] 开始构建模拟预警消息...")
-                    msg_chain = manager._build_message(disaster_event)
+                    # 使用异步版本以支持卡片渲染
+                    msg_chain = await manager._build_message_async(disaster_event)
                     logger.info(
                         f"[灾害预警] 消息构建成功，链长度: {len(msg_chain.chain)}"
                     )

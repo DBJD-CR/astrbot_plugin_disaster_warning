@@ -76,6 +76,9 @@ class ReportCountController:
             return False
 
         # 检查报数控制
+        if push_every_n <= 0:
+            push_every_n = 1  # 防止除以零，默认每报都推
+
         if current_report % push_every_n == 0:
             logger.debug(
                 f"[灾害预警] 事件 {event_id} 第 {current_report} 报，符合报数控制规则 (n={push_every_n})"
