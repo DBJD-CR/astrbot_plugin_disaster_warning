@@ -673,7 +673,7 @@ class MessageLogger:
             "Hypocenter": "震源地名",  # JMA格式
             # 📍 震度/烈度信息
             "maxScale": "最大震度(原始)",
-            "MaxIntensity": "最大震度",  # JMA/Wolfx格式
+            "MaxIntensity": "最大烈度/震度",  # JMA/Wolfx格式
             "maxIntensity": "最大烈度",  # Wolfx格式
             "epiIntensity": "预估烈度",  # FAN Studio格式
             "intensity": "烈度",
