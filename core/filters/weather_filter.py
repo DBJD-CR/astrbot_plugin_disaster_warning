@@ -97,7 +97,7 @@ class WeatherFilter:
         if not self.enabled:
             return False
 
-        # 1. 关键词过滤（优先检查，如果匹配到关键词则直接通过）
+        # 1. 关键词过滤
         if self.keywords and headline:
             headline_lower = headline.lower()
             for keyword in self.keywords:

@@ -1,5 +1,5 @@
 """
-地震关键词过滤器
+关键词过滤器
 支持按关键词白名单过滤地震信息（支持地名、地区等任意关键词），适用于所有地震数据源
 """
 
@@ -10,8 +10,8 @@ from astrbot.api import logger
 from ...models.models import EarthquakeData
 
 
-class EarthquakeKeywordFilter:
-    """地震关键词白名单过滤器"""
+class KeywordFilter:
+    """关键词白名单过滤器"""
 
     def __init__(self, config: dict[str, Any]):
         self.enabled = config.get("enabled", False)
@@ -19,11 +19,11 @@ class EarthquakeKeywordFilter:
 
         if self.enabled and self.keywords:
             logger.info(
-                f"[灾害预警] 地震关键词过滤器已启用，关键词白名单: {', '.join(self.keywords)}"
+                f"[灾害预警] 关键词过滤器已启用，关键词白名单: {', '.join(self.keywords)}"
             )
         elif self.enabled:
             logger.info(
-                "[灾害预警] 地震关键词过滤器已启用，但关键词列表为空，将推送所有地震"
+                "[灾害预警] 关键词过滤器已启用，但关键词列表为空，将推送所有地震"
             )
 
     def should_filter(self, earthquake: EarthquakeData) -> bool:

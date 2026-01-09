@@ -36,9 +36,9 @@ from ..utils.formatters import (
 )
 from .event_deduplicator import EventDeduplicator
 from .filters import (
-    EarthquakeKeywordFilter,
     GlobalQuakeFilter,
     IntensityFilter,
+    KeywordFilter,
     LocalIntensityFilter,
     ReportCountController,
     ScaleFilter,
@@ -126,11 +126,11 @@ class MessagePushManager:
         weather_filter_config = weather_config.get("weather_filter", {})
         self.weather_filter = WeatherFilter(weather_filter_config)
 
-        # 初始化地震关键词过滤器
-        earthquake_keyword_config = (
+        # 初始化关键词过滤器
+        keyword_config = (
             config.get("earthquake_filters", {}).get("keyword_filter", {})
         )
-        self.earthquake_keyword_filter = EarthquakeKeywordFilter(earthquake_keyword_config)
+        self.keyword_filter = KeywordFilter(keyword_config)
 
     def _parse_target_sessions(self) -> list[str]:
         """解析目标会话 - 使用正确的配置键名"""
@@ -177,9 +177,9 @@ class MessagePushManager:
         earthquake = event.data
         source_id = self._get_source_id(event)
 
-        # 地震关键词过滤（优先应用，适用于所有地震数据源）
-        if self.earthquake_keyword_filter.should_filter(earthquake):
-            logger.debug(f"[灾害预警] 事件被地震关键词过滤器过滤: {source_id}")
+        # 关键词过滤（优先应用，适用于所有地震数据源）
+        if self.keyword_filter.should_filter(earthquake):
+            logger.debug(f"[灾害预警] 事件被关键词过滤器过滤: {source_id}")
             return False
 
         # 数据源专用过滤器
