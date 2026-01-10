@@ -131,7 +131,7 @@ class GlobalQuakeHandler(BaseDataHandler):
                 event_id=eq_data.get("id", ""),
                 source=DataSource.GLOBAL_QUAKE,
                 disaster_type=DisasterType.EARTHQUAKE,
-                shock_time=shock_time or datetime.now(),
+                shock_time=shock_time or datetime.now(timezone.utc),
                 latitude=latitude,
                 longitude=longitude,
                 depth=depth,
@@ -144,7 +144,7 @@ class GlobalQuakeHandler(BaseDataHandler):
                 stations=station_count,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] Global Quake地震解析成功: {earthquake.place_name} "
                 f"(M {earthquake.magnitude:.1f}), 烈度: {intensity_str}, "
                 f"时间: {earthquake.shock_time}"
@@ -301,7 +301,7 @@ class USGSEarthquakeHandler(BaseDataHandler):
                 raw_data=msg_data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震数据解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 

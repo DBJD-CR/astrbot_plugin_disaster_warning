@@ -41,7 +41,7 @@ class EventDeduplicator:
         current_time = (
             earthquake.shock_time
             if earthquake.shock_time is not None
-            else datetime.now()
+            else datetime.now(timezone.utc)
         )
 
         logger.debug(
@@ -63,7 +63,7 @@ class EventDeduplicator:
 
                 if time_diff <= self.time_window.total_seconds() / 60:
                     if self._should_allow_update(earthquake, existing_event):
-                        logger.info(
+                        logger.debug(
                             f"[灾害预警] 允许同一数据源更新: {event.source.value}"
                         )
                         # 更新记录 - 添加当前报数到已处理集合
@@ -75,7 +75,7 @@ class EventDeduplicator:
                         ] or getattr(earthquake, "is_final", False)
                         return True
                     else:
-                        logger.info(
+                        logger.debug(
                             f"[灾害预警] 同一数据源重复事件，过滤: {event.source.value}"
                         )
                         return False
@@ -127,7 +127,7 @@ class EventDeduplicator:
             }
         }
 
-        logger.info(f"[灾害预警] 事件通过基础去重检查: {event.source.value}")
+        logger.debug(f"[灾害预警] 事件通过基础去重检查: {event.source.value}")
         return True
 
     def generate_event_fingerprint(self, earthquake: EarthquakeData) -> str:
@@ -156,12 +156,12 @@ class EventDeduplicator:
             * self.magnitude_tolerance
         )
 
-        # 关键修复：处理时间可能为None的情况
-        if earthquake.shock_time is not None:
-            time_minute = earthquake.shock_time.replace(second=0, microsecond=0)
-        else:
-            # 如果时间解析失败，使用当前时间但标记为特殊值
-            time_minute = datetime.now().replace(second=0, microsecond=0)
+        # 处理时间：统一转换为UTC aware datetime并截断到分钟
+        shock_time = earthquake.shock_time
+        # 如果是naive datetime，添加UTC时区
+        if shock_time.tzinfo is None:
+            shock_time = shock_time.replace(tzinfo=timezone.utc)
+        time_minute = shock_time.replace(second=0, microsecond=0)
 
         return f"{lat_grid:.3f},{lon_grid:.3f},{mag_grid:.1f},{time_minute.strftime('%Y%m%d%H%M')}"
 
@@ -181,7 +181,7 @@ class EventDeduplicator:
 
         # 检查当前报数是否已处理过
         if current_report not in processed_reports:
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 新报数: 第{current_report}报 (已处理: {sorted(processed_reports)})"
             )
             return True
@@ -266,9 +266,7 @@ class EventDeduplicator:
 
     def cleanup_old_events(self):
         """清理过期事件"""
-        # 准备两种类型的截止时间，以处理 naive 和 aware 的时间戳
-        cutoff_naive = datetime.now() - self.time_window * 2
-        cutoff_aware = datetime.now(timezone.utc) - self.time_window * 2
+        cutoff_time = datetime.now(timezone.utc) - self.time_window * 2  # 保留2倍时间窗口
 
         old_fingerprints = []
         for fingerprint, source_events in self.recent_events.items():
@@ -279,12 +277,14 @@ class EventDeduplicator:
 
                 # 根据时间戳类型选择对应的截止时间进行比较
                 if timestamp.tzinfo is None:
+                    # naive datetime，转换为aware后比较
+                    cutoff_naive = cutoff_time.replace(tzinfo=None)
                     if timestamp >= cutoff_naive:
                         all_expired = False
                         break
                 else:
                     # offset-aware 时间可以直接与其他 offset-aware 时间比较
-                    if timestamp >= cutoff_aware:
+                    if timestamp >= cutoff_time:
                         all_expired = False
                         break
 

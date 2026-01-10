@@ -62,7 +62,7 @@ class CEAEEWHandler(BaseDataHandler):
                 raw_data=msg_data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震预警解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 
@@ -108,7 +108,7 @@ class CEAEEWWolfxHandler(BaseDataHandler):
                 raw_data=data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震预警解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 

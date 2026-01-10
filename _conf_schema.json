@@ -211,6 +211,25 @@
     "type": "object",
     "hint": "根据不同数据源类型使用不同的过滤器",
     "items": {
+      "keyword_filter": {
+        "description": "地震关键词过滤（白名单）",
+        "type": "object",
+        "hint": "只推送地名中包含关键词的地震，适用于所有地震数据源",
+        "items": {
+          "enabled": {
+            "description": "启用关键词过滤",
+            "type": "bool",
+            "hint": "启用后只推送地名中包含关键词白名单中任意关键词的地震",
+            "default": false
+          },
+          "keywords": {
+            "description": "关键词白名单",
+            "type": "list",
+            "hint": "留空推送所有地震，填写后只推送地名中包含任意关键词的地震。支持任意文本，如：省份、城市、国家、地区等",
+            "default": []
+          }
+        }
+      },
       "intensity_filter": {
         "description": "基于震级和烈度的地震过滤器",
         "type": "object",
@@ -453,18 +472,24 @@
       "weather_filter": {
         "description": "气象预警过滤器",
         "type": "object",
-        "hint": "配置省份过滤和级别过滤",
+        "hint": "配置省份过滤、级别过滤和关键词过滤",
         "items": {
           "enabled": {
             "description": "启用气象过滤",
             "type": "bool",
-            "hint": "启用后将应用省份和级别过滤",
+            "hint": "启用后将应用省份、级别和关键词过滤",
             "default": false
           },
           "provinces": {
             "description": "省份白名单",
             "type": "list",
             "hint": "留空推送全国，填写省份名称后只推送对应省份（如：北京、上海、广东、香港、台湾等）",
+            "default": []
+          },
+          "keywords": {
+            "description": "关键词白名单",
+            "type": "list",
+            "hint": "留空推送全国，填写关键词后只推送标题中包含任意关键词的预警。支持省份、城市、区县、预警类型（如：暴雨、台风）等任意文本匹配。优先级高于省份过滤",
             "default": []
           },
           "min_color_level": {

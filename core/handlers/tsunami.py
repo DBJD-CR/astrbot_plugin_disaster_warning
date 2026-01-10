@@ -103,7 +103,7 @@ class TsunamiHandler(BaseDataHandler):
                 raw_data=tsunami_data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 海啸预警解析成功: {tsunami.title} ({tsunami.level}), "
                 f"发布时间: {tsunami.issue_time}"
             )
@@ -195,7 +195,7 @@ class JMATsunamiP2PHandler(BaseDataHandler):
                 raw_data=data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] JMA海啸预报解析成功: {tsunami.title}, 时间: {tsunami.issue_time}"
             )
 

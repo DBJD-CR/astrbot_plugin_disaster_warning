@@ -1,6 +1,6 @@
 """
 气象预警过滤器
-支持按省份白名单和颜色级别过滤气象预警
+支持按省份白名单、颜色级别和关键词过滤气象预警
 """
 
 from typing import Any
@@ -63,11 +63,15 @@ class WeatherFilter:
         self.provinces = config.get("provinces", [])
         self.min_color_level = config.get("min_color_level", "白色")
         self.min_level_value = COLOR_LEVELS.get(self.min_color_level, 0)
+        # 关键词过滤配置
+        self.keywords = config.get("keywords", [])
 
         if self.enabled:
             filter_info = []
             if self.provinces:
                 filter_info.append(f"省份白名单: {', '.join(self.provinces)}")
+            if self.keywords:
+                filter_info.append(f"关键词白名单: {', '.join(self.keywords)}")
             filter_info.append(f"最低级别: {self.min_color_level}")
             logger.info(f"[灾害预警] 气象预警过滤器已启用，{', '.join(filter_info)}")
 
@@ -93,7 +97,20 @@ class WeatherFilter:
         if not self.enabled:
             return False
 
-        # 1. 级别过滤
+        # 1. 关键词过滤
+        if self.keywords and headline:
+            headline_lower = headline.lower()
+            for keyword in self.keywords:
+                if keyword.lower() in headline_lower:
+                    # 匹配到关键词，不过滤（推送）
+                    return False
+            # 有关键词配置但未匹配到，过滤（不推送）
+            logger.debug(
+                f"[灾害预警] 气象预警被关键词过滤器过滤: 标题中未包含任何关键词（标题: {headline[:50]}...）"
+            )
+            return True
+
+        # 2. 级别过滤
         current_color = self.extract_color_level(headline)
         current_level_value = COLOR_LEVELS.get(current_color, 0)
 
@@ -103,7 +120,7 @@ class WeatherFilter:
             )
             return True
 
-        # 2. 省份过滤
+        # 3. 省份过滤
         if self.provinces:
             province = self.extract_province(headline)
             if province is None:

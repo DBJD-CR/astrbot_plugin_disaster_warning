@@ -70,7 +70,7 @@ class JMAEEWFanStudioHandler(BaseDataHandler):
                 raw_data=msg_data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] JMA地震预警解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 
@@ -206,7 +206,7 @@ class JMAEEWP2PHandler(BaseDataHandler):
                 raw_data=data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震预警解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 
@@ -268,7 +268,7 @@ class JMAEEWWolfxHandler(BaseDataHandler):
                 raw_data=data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震预警解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 

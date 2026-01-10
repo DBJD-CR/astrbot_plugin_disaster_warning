@@ -151,7 +151,7 @@ class WebSocketHandlerRegistry:
 
                     handler = self.service.handlers.get(handler_id)
                     if handler:
-                        logger.info(f"[灾害预警] 处理 {source} 数据 ({config_key})")
+                        logger.debug(f"[灾害预警] 处理 {source} 数据 ({config_key})")
                         # 注意：这里我们需要传递原始 payload，因为 Handler 内部会再次提取 Data
                         # 如果 payload 已经是提取过的 Data (initial_all 的情况)，Handler 需要能处理
                         # 现有的 Handler 通常支持 {"Data": ...} 或直接的 Data 字典

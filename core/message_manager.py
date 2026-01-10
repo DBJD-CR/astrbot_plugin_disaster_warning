@@ -38,6 +38,7 @@ from .event_deduplicator import EventDeduplicator
 from .filters import (
     GlobalQuakeFilter,
     IntensityFilter,
+    KeywordFilter,
     LocalIntensityFilter,
     ReportCountController,
     ScaleFilter,
@@ -120,10 +121,16 @@ class MessagePushManager:
         # 初始化本地监控过滤器
         self.local_monitor = LocalIntensityFilter(config.get("local_monitoring", {}))
 
-        # 初始化气象预警过滤器
+        # 初始化气象预警过滤器（支持省份、级别和关键词过滤）
         weather_config = config.get("weather_config", {})
         weather_filter_config = weather_config.get("weather_filter", {})
         self.weather_filter = WeatherFilter(weather_filter_config)
+
+        # 初始化关键词过滤器
+        keyword_config = (
+            config.get("earthquake_filters", {}).get("keyword_filter", {})
+        )
+        self.keyword_filter = KeywordFilter(keyword_config)
 
     def _parse_target_sessions(self) -> list[str]:
         """解析目标会话 - 使用正确的配置键名"""
@@ -153,12 +160,12 @@ class MessagePushManager:
             ).total_seconds() / 3600  # 小时
 
             if time_diff > 1:
-                logger.info(f"[灾害预警] 事件时间过早（{time_diff:.1f}小时前），过滤")
+                logger.debug(f"[灾害预警] 事件时间过早（{time_diff:.1f}小时前），过滤")
                 return False
 
         # 2. 非地震事件检查
         if not isinstance(event.data, EarthquakeData):
-            # 气象预警事件需要进行过滤
+            # 气象预警事件需要进行过滤（支持省份、级别和关键词过滤）
             if isinstance(event.data, WeatherAlarmData):
                 headline = event.data.headline or event.data.title or ""
                 if self.weather_filter.should_filter(headline):
@@ -169,6 +176,11 @@ class MessagePushManager:
         # 3. 地震事件专用过滤逻辑
         earthquake = event.data
         source_id = self._get_source_id(event)
+
+        # 关键词过滤（优先应用，适用于所有地震数据源）
+        if self.keyword_filter.should_filter(earthquake):
+            logger.debug(f"[灾害预警] 事件被关键词过滤器过滤: {source_id}")
+            return False
 
         # 数据源专用过滤器
         if source_id == "global_quake":

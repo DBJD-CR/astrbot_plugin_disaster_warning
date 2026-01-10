@@ -50,7 +50,7 @@ class WeatherAlarmHandler(BaseDataHandler):
             # 去重检查
             weather_id = msg_data.get("id")
             if weather_id and weather_id in self._processed_weather_ids:
-                logger.info(
+                logger.debug(
                     f"[灾害预警] {self.source_id} 检测到重复的气象预警ID: {weather_id}，忽略"
                 )
                 return None
@@ -122,7 +122,7 @@ class WeatherAlarmHandler(BaseDataHandler):
             if weather.id:
                 self._processed_weather_ids.append(weather.id)
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 气象预警解析成功: {weather.headline}, 生效时间: {weather.issue_time}"
             )
 

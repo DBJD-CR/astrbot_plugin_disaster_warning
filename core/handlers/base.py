@@ -146,8 +146,23 @@ class BaseDataHandler:
         # 首先尝试ISO 8601格式（带T分隔符和Z时区）
         if "T" in time_str:
             try:
-                # 处理 '2025-12-20T16:36:55.629Z' 格式
-                clean_str = time_str.replace("Z", "+00:00")
+                # 去掉毫秒部分（毫秒对地震事件不重要）
+                if "." in time_str:
+                    # 找到小数点位置，去掉毫秒部分
+                    dot_index = time_str.index(".")
+                    # 找到Z或时区标识的位置
+                    tz_index = len(time_str)
+                    for tz_marker in ["Z", "+", "-"]:
+                        if tz_marker in time_str[dot_index:]:
+                            tz_index = time_str.index(tz_marker, dot_index)
+                            break
+                    # 去掉毫秒部分
+                    clean_str = time_str[:dot_index] + time_str[tz_index:]
+                else:
+                    clean_str = time_str
+                
+                # 处理Z时区标识
+                clean_str = clean_str.replace("Z", "+00:00")
                 return datetime.fromisoformat(clean_str)
             except ValueError:
                 pass

@@ -68,7 +68,7 @@ class CENCEarthquakeHandler(BaseDataHandler):
                 raw_data=msg_data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震数据解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 
@@ -127,7 +127,7 @@ class CENCEarthquakeWolfxHandler(BaseDataHandler):
                 raw_data=data,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震数据解析成功: {earthquake.place_name} (M {earthquake.magnitude}), 时间: {earthquake.shock_time}"
             )
 
