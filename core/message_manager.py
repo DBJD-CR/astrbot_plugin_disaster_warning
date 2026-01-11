@@ -3,18 +3,20 @@
 实现优化的报数控制、拆分过滤器和改进的去重逻辑
 """
 
+import glob
 import os
+import time
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any
-import tempfile
+
 from jinja2 import Template
 from playwright.async_api import async_playwright
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
-from astrbot.core.utils.t2i.renderer import HtmlRenderer
+from astrbot.api.star import StarTools
 
 from ..models.data_source_config import (
     get_intensity_based_sources,
@@ -52,8 +54,17 @@ class MessagePushManager:
     def __init__(self, config: dict[str, Any], context):
         self.config = config
         self.context = context
-        # 初始化数据目录 (插件根目录)
-        self.data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # 初始化插件根目录 (用于访问 resources)
+        self.plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # 初始化数据存储目录 (使用 StarTools 获取，用于存放 temp)
+        self.storage_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
+        self.temp_dir = os.path.join(self.storage_dir, "temp")
+        if not os.path.exists(self.temp_dir):
+            os.makedirs(self.temp_dir, exist_ok=True)
+
+        # 兼容旧代码，保留 data_dir 指向插件根目录，但建议逐步迁移
+        self.data_dir = self.plugin_root
 
         # 初始化过滤器 - 使用新的配置路径
         earthquake_filters = config.get("earthquake_filters", {})
@@ -355,19 +366,21 @@ class MessagePushManager:
                 # 渲染 Global Quake 卡片
                 context = GlobalQuakeFormatter.get_render_context(event.data)
 
-                
                 # 获取模板名称配置
-                template_name = message_format_config.get("global_quake_template", "Aurora")
+                template_name = message_format_config.get(
+                    "global_quake_template", "Aurora"
+                )
 
-                # 加载模板 (使用 self.data_dir 即插件根目录)
-                resources_dir = os.path.join(self.data_dir, "resources")
-                
+                # 加载模板 (使用 self.plugin_root 即插件根目录)
+                resources_dir = os.path.join(self.plugin_root, "resources")
+
                 # 构建模板路径: resources/card_templates/{template_name}/global_quake.html
-                template_path = os.path.join(resources_dir, "card_templates", template_name, "global_quake.html")
-                
+                template_path = os.path.join(
+                    resources_dir, "card_templates", template_name, "global_quake.html"
+                )
+
                 # 兼容旧逻辑：如果配置了 'default' 但 card_templates 下没有，或者为了防止路径错误，可以增加一些容错
                 # 但根据重构计划，我们优先相信 card_templates 下的结构
-
 
                 if not os.path.exists(template_path):
                     logger.error(f"[灾害预警] 找不到模板文件: {template_path}")
@@ -383,7 +396,7 @@ class MessagePushManager:
 
                 with open(template_path, encoding="utf-8") as f:
                     template_content = f.read()
-                
+
                 # Jinja2 渲染
                 template = Template(template_content)
                 html_content = template.render(**context)
@@ -391,24 +404,25 @@ class MessagePushManager:
                 # 使用 Playwright 渲染
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(
-                        args=['--no-sandbox', '--disable-setuid-sandbox']
+                        args=["--no-sandbox", "--disable-setuid-sandbox"]
                     )
-                    
+
                     # 创建新页面，视口设置大一点均可，因为我们只截取元素
                     # 关键修复：设置 device_scale_factor=3 提高渲染DPI，解决图片模糊问题
                     page = await browser.new_page(
-                        viewport={"width": 800, "height": 800},
-                        device_scale_factor=3
+                        viewport={"width": 800, "height": 800}, device_scale_factor=3
                     )
-                    
+
                     await page.set_content(html_content)
 
                     # 等待元素加载
                     await page.wait_for_load_state("networkidle")
-                    
+
                     # 关键修复：等待 D3 渲染完成标记
                     try:
-                        await page.wait_for_selector(".d3-ready", state="attached", timeout=5000)
+                        await page.wait_for_selector(
+                            ".d3-ready", state="attached", timeout=5000
+                        )
                     except Exception:
                         # 如果超时（例如JS报错），也不要崩溃，尽力而为截图
                         pass
@@ -416,29 +430,28 @@ class MessagePushManager:
                     # 统一使用 ID 选择器，这在所有模板中都将通用
                     selector = "#card-wrapper"
                     try:
-                        await page.wait_for_selector(selector, state="visible", timeout=5000)
+                        await page.wait_for_selector(
+                            selector, state="visible", timeout=5000
+                        )
                     except Exception:
                         # 兜底：尝试找常见的类名
                         selector = ".quake-card"
-                        await page.wait_for_selector(selector, state="visible", timeout=2000)
-                    
+                        await page.wait_for_selector(
+                            selector, state="visible", timeout=2000
+                        )
+
                     # 定位卡片元素
                     card = page.locator(selector)
-                    
-                    # 准备临时文件路径 (使用 AstrBot 数据目录的 temp)
-                    # self.data_dir = plugins/astrbot_plugin_disaster_warning
-                    # 上两级 = data/temp
-                    astrbot_data_dir = os.path.dirname(os.path.dirname(self.data_dir))
-                    temp_dir = os.path.join(astrbot_data_dir, "temp")
-                    if not os.path.exists(temp_dir):
-                        os.makedirs(temp_dir, exist_ok=True)
-                    
-                    image_filename = f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
-                    image_path = os.path.join(temp_dir, image_filename)
-                    
+
+                    # 准备临时文件路径 (使用插件数据目录下的 temp)
+                    image_filename = (
+                        f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                    )
+                    image_path = os.path.join(self.temp_dir, image_filename)
+
                     # 截图：只截取元素，背景透明
                     await card.screenshot(path=image_path, omit_background=True)
-                    
+
                     await browser.close()
 
                     if os.path.exists(image_path):
@@ -448,9 +461,7 @@ class MessagePushManager:
                         chain = [Comp.Image.fromFileSystem(image_path)]
                         return MessageChain(chain)
                     else:
-                        logger.warning(
-                            "[灾害预警] Global Quake 卡片渲染未生成文件"
-                        )
+                        logger.warning("[灾害预警] Global Quake 卡片渲染未生成文件")
 
             except Exception as e:
                 logger.error(
@@ -523,3 +534,23 @@ class MessagePushManager:
         """清理旧记录"""
         # 清理去重器
         self.deduplicator.cleanup_old_events()
+
+        # 清理临时图片文件
+        try:
+            # 清理超过 3 小时的图片
+            expire_time = time.time() - 10800
+
+            # 查找所有 PNG 文件
+            pattern = os.path.join(self.temp_dir, "gq_card_*.png")
+            for file_path in glob.glob(pattern):
+                try:
+                    if os.path.getmtime(file_path) < expire_time:
+                        os.remove(file_path)
+                        logger.debug(
+                            f"[灾害预警] 已清理过期临时图片: {os.path.basename(file_path)}"
+                        )
+                except Exception as e:
+                    logger.warning(f"[灾害预警] 清理文件失败 {file_path}: {e}")
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 清理临时文件夹失败: {e}")
