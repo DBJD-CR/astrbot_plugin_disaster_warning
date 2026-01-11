@@ -8,7 +8,7 @@
     "description": "插件管理员列表",
     "type": "list",
     "hint": "输入用户ID（QQ号等）。这些用户拥有管理插件的高级权限（如查看日志、修改配置等）。AstrBot的全站管理员默认拥有权限，无需在此重复添加。",
-    "default": []
+    "default": null
   },
   "target_groups": {
     "description": "需要推送消息的群号列表",

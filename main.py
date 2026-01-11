@@ -35,8 +35,8 @@ class DisasterWarningPlugin(Star):
         try:
             logger.info("[灾害预警] 正在初始化灾害预警插件...")
 
-            # 首次加载时，尝试同步 AstrBot 全局管理员到插件配置
-            if not self.config.get("admin_users"):
+            # 首次加载时，尝试同步 AstrBot 全局管理员到插件配置 (仅在未配置时)
+            if "admin_users" not in self.config or self.config.get("admin_users") is None:
                 global_admins = self.context.get_config().get("admins_id", [])
                 if global_admins:
                     self.config["admin_users"] = list(global_admins)
