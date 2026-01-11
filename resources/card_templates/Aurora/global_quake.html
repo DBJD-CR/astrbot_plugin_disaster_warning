@@ -187,12 +187,13 @@
         }
 
         .intensity-mini {
-            margin-top: 12px;
-            background: rgba(255, 255, 255, 0.25);
-            padding: 4px 10px;
+            margin-top: 10px;
+            background: rgba(255, 255, 255, 0.35);
+            padding: 4px 12px;
             border-radius: 8px;
-            font-size: 11px;
-            font-weight: 700;
+            font-size: 13px;
+            font-weight: 800;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
 
         .key-data-list {
@@ -296,7 +297,7 @@
             padding: 8px 32px 14px;
             border-top: 1px solid rgba(0, 0, 0, 0.02);
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
             font-size: 10px;
             font-weight: 600;
             color: var(--text-light);
@@ -327,20 +328,20 @@
             <div class="hero-grid">
                 <div class="mag-capsule {{ mag_class }}">
                     <span class="mag-number">{{ magnitude }}</span>
-                    <span class="mag-label-small">Magnitude</span>
+                    <span class="mag-label-small">震级 (Mag)</span>
                     {% if intensity %}<div class="intensity-mini">MMI {{ intensity }}</div>{% endif %}
                 </div>
                 <div class="key-data-list">
                     <div class="data-block">
-                        <span class="data-title">Depth</span>
+                        <span class="data-title">深度 (Depth)</span>
                         <span class="data-content">{{ depth }} <span class="unit">km</span></span>
                     </div>
                     <div class="data-block">
-                        <span class="data-title">Fit Quality</span>
+                        <span class="data-title">数据拟合 (Quality)</span>
                         <span class="data-content">{{ quality_pct }}</span>
                     </div>
                     <div class="data-block" style="grid-column: span 2;">
-                        <span class="data-title">Epicenter</span>
+                        <span class="data-title">震中位置 (Epicenter)</span>
                         <span class="data-content" style="font-size:16px">{{ epicenter_str }}</span>
                     </div>
                 </div>
@@ -350,14 +351,24 @@
             <div id="globe-container"></div>
 
             <div class="footer-grid">
-                <div class="footer-item"><span class="f-label">Stations</span><span class="f-val">{{ stations_used }} /
-                        {{ stations_total }}</span></div>
-                <div class="footer-item"><span class="f-label">PGA</span><span class="f-val">{{ pga }}</span></div>
-                <div class="footer-item"><span class="f-label">Error</span><span class="f-val">{{ location_error
-                        }}</span></div>
+                <div class="footer-item">
+                    <span class="f-label">台站 (Used/Total)</span>
+                    <span class="f-val">{{ stations_used }} / {{ stations_total }}</span>
+                </div>
+                <div class="footer-item">
+                    <span class="f-label">最大加速度 (PGA)</span>
+                    <span class="f-val">{{ pga }}</span>
+                </div>
+                <div class="footer-item">
+                    <span class="f-label">定位误差 (Loc Err)</span>
+                    <span class="f-val">{{ location_error }}</span>
+                </div>
             </div>
 
-            <div class="bottom-bar">Source: Global Quake • ID: {{ event_id }}</div>
+            <div class="bottom-bar">
+                <span>ID: {{ event_id }}</span>
+                <span>Source: Global Quake</span>
+            </div>
         </div>
     </div>
 
@@ -398,6 +409,24 @@
                 // 叉形震源标记 (X)
                 const crossGroup = svg.append("g")
                     .attr("transform", `translate(${center[0]}, ${center[1]})`);
+
+                const outlineWidth = 8;
+                const strokeColor = "#FFF1AA";
+
+                // 绘制描边 (淡黄色)
+                crossGroup.append("line")
+                    .attr("x1", -size).attr("y1", -size)
+                    .attr("x2", size).attr("y2", size)
+                    .attr("stroke", strokeColor)
+                    .attr("stroke-width", outlineWidth)
+                    .attr("stroke-linecap", "round");
+
+                crossGroup.append("line")
+                    .attr("x1", size).attr("y1", -size)
+                    .attr("x2", -size).attr("y2", size)
+                    .attr("stroke", strokeColor)
+                    .attr("stroke-width", outlineWidth)
+                    .attr("stroke-linecap", "round");
 
                 // 第一条线 (\)
                 crossGroup.append("line")
