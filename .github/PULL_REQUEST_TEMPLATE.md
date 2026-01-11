@@ -10,7 +10,7 @@
 
 - [ ] 这**不是**一个破坏性变更 / This is NOT a breaking change.
 <!-- 如果你的更改不是一个破坏性更改，请在检查框内打“x” -->
-<!-- If your changes are NOT a breaking change, please check the checkbox above (put an 'x' inside the brackets) -->
+<!-- If your change is NOT a breaking change, please check the checkbox above (put an 'x' inside the brackets) -->
 
 ## 📸 运行截图或测试结果 / Screenshots or Test Results
 
