@@ -2,7 +2,7 @@
 name: '🎉 功能建议'
 title: "[Feature] "
 description: 提交建议帮助我们改进。
-labels: [ "enhancement" ]
+labels: [ "type/feat" ]
 body:
   - type: markdown
     attributes:
