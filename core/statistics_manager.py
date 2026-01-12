@@ -98,6 +98,14 @@ class StatisticsManager:
                 "source": source_id,
                 "description": self._get_event_description(event),
             }
+            
+            # 为地震事件添加坐标和震级信息（用于3D地球可视化）
+            if isinstance(event.data, EarthquakeData):
+                push_record["latitude"] = event.data.latitude
+                push_record["longitude"] = event.data.longitude
+                push_record["magnitude"] = event.data.magnitude
+                push_record["time"] = event.data.shock_time.isoformat() if event.data.shock_time else None
+            
             self.stats["recent_pushes"].insert(0, push_record)
 
             # 保持最近记录数量限制

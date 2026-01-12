@@ -573,6 +573,34 @@
       }
     }
   },
+  "web_admin": {
+    "description": "Web管理端配置",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "启用Web管理端",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后可通过浏览器访问管理界面"
+      },
+      "host": {
+        "description": "监听地址",
+        "type": "string",
+        "default": "0.0.0.0",
+        "hint": "0.0.0.0表示允许所有IP访问，127.0.0.1表示仅限本机访问"
+      },
+      "port": {
+        "description": "服务端口",
+        "type": "int",
+        "default": 8089,
+        "slider": {
+          "min": 1024,
+          "max": 65535,
+          "step": 1
+        }
+      }
+    }
+  },
   "debug_config": {
     "description": "调试配置",
     "type": "object",

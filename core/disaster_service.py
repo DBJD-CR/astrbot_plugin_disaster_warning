@@ -504,6 +504,7 @@ class DisasterWarningService:
             if self.message_logger
             else False,
             "uptime": self._get_uptime(),  # 添加运行时间
+            "start_time": self.start_time.isoformat() if hasattr(self, "start_time") else None,
         }
 
     def _get_uptime(self) -> str:

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>灾害预警管理端</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div id="app" class="app">
+        <!-- MD3 Top App Bar -->
+        <header class="top-app-bar">
+            <h1>灾害预警管理端</h1>
+            <div class="status-indicator">
+                <span class="status-dot online"></span>
+                <span>实时监控中</span>
+                <button class="btn btn-text" @click="toggleTheme" title="切换主题">
+                    🌓
+                </button>
+                <button class="btn btn-text" @click="openSettings" title="设置">
+                    ⚙️
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <div class="dashboard-grid">
+                <!-- Left Column: Status, Stats, Actions, Recent Events -->
+                <div class="left-col">
+                    <!-- Status Cards -->
+                    <section class="cards-grid">
+                        <!-- Service Status Card -->
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-icon">🔄</span>
+                                <h3>服务状态</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-item">
+                                    <span>运行状态</span>
+                                    <span :class="['status-badge', status.running ? 'running' : 'stopped']">
+                                        {{ status.running ? '运行中' : '已停止' }}
+                                    </span>
+                                </div>
+                                <div class="status-item">
+                                    <span>运行时长</span>
+                                    <span>{{ status.uptime }}</span>
+                                </div>
+                                <div class="status-item">
+                                    <span>活跃连接</span>
+                                    <span>{{ status.activeConnections }} / {{ status.totalConnections }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stats Card -->
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-icon">📊</span>
+                                <h3>事件统计</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="stat-number">{{ stats.totalEvents }}</div>
+                                <div class="stat-label">总事件数</div>
+                                <div class="stat-breakdown">
+                                    <div class="stat-item">
+                                        <span class="stat-icon">🌍</span>
+                                        <span>{{ stats.earthquakeCount }}</span> 地震
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-icon">🌊</span>
+                                        <span>{{ stats.tsunamiCount }}</span> 海啸
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-icon">☁️</span>
+                                        <span>{{ stats.weatherCount }}</span> 气象
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Actions Card -->
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-icon">⚡</span>
+                                <h3>快捷操作</h3>
+                            </div>
+                            <div class="card-body" style="flex-direction: row; flex-wrap: wrap;">
+                                <button class="btn btn-primary" @click="testPush('earthquake')">
+                                    🧪 测试地震
+                                </button>
+                                <button class="btn btn-secondary" @click="refreshAll">
+                                    🔄 刷新
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Data Sources -->
+                    <section>
+                        <h2 class="section-title">📡 数据源连接状态</h2>
+                        <div class="connections-grid">
+                            <div v-if="sortedConnections.length === 0" class="loading">暂无连接</div>
+                            <div v-for="[name, info] in sortedConnections" :key="name"
+                                :class="['connection-item', info.connected ? 'connected' : 'disconnected']">
+                                <span class="conn-name">{{ name }}</span>
+                                <div class="conn-status">
+                                    <span>{{ info.connected ? '✅ 在线' : '❌ 离线' }}</span>
+                                    <span v-if="info.retry_count > 0">(重试: {{ info.retry_count }})</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Magnitude Distribution -->
+                    <section>
+                        <h2 class="section-title">📈 震级分布</h2>
+                        <div class="card">
+                            <div class="chart-container">
+                                <div v-if="Object.keys(magnitudeDistribution).length === 0" class="loading">加载中...</div>
+                                <div v-else class="mag-bars">
+                                    <div v-for="label in magnitudeOrder" :key="label" class="mag-bar-wrapper">
+                                        <div class="mag-value">{{ magnitudeDistribution[label] || 0 }}</div>
+                                        <div class="mag-bar"
+                                            :style="{ height: ((magnitudeDistribution[label] || 0) === 0 ? 2 : ((magnitudeDistribution[label] || 0) / maxMagnitudeValue) * 70) + '%' }">
+                                        </div>
+                                        <div class="mag-label" v-html="label.replace(' - ', '-<br>')"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Right Column -->
+                    <div class="right-col">
+                    </div>
+                </div>
+
+                <!-- Recent Events (Full Width) -->
+                <section>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h2 class="section-title" style="margin-bottom: 0;">📋 最近事件</h2>
+                        <!-- Optional: Filter or View All button could go here -->
+                    </div>
+
+                    <div class="events-list events-grid-layout">
+                        <!-- Changed to Grid for better full-width utilization -->
+                        <div v-if="sortedRecentEvents.length === 0" class="loading">暂无事件记录</div>
+                        <template v-for="evt in sortedRecentEvents" :key="evt.time + evt.description">
+                            <!-- Earthquake Event -->
+                            <div v-if="evt.type === 'earthquake' || evt.type === 'earthquake_warning'"
+                                class="event-card">
+                                <div :class="['mag-badge', getMagColorClass(evt.magnitude || 0)]">
+                                    M{{ (evt.magnitude || 0).toFixed(1) }}
+                                </div>
+                                <div class="event-main">
+                                    <div class="event-loc">{{ evt.description || '未知位置' }}</div>
+                                    <div class="event-meta">
+                                        <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
+                                        <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Other Events -->
+                            <div v-else class="event-card">
+                                <div class="mag-badge" style="background-color: var(--md-sys-color-secondary);">
+                                    {{ evt.type === 'tsunami' ? '🌊' : (evt.type === 'weather_alarm' ? '☁️' : '❓')
+                                    }}
+                                </div>
+                                <div class="event-main">
+                                    <div class="event-loc">{{ evt.description || '未知位置' }}</div>
+                                    <div class="event-meta">
+                                        <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
+                                        <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>灾害预警插件 Web 管理端 | 最后更新: <span>{{ lastUpdate }}</span></p>
+        </footer>
+
+        <!-- Settings Modal (MD3 Dialog) -->
+        <div v-show="showSettings" class="modal" style="display: block;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⚙️ 插件配置</h2>
+                    <span class="close-modal" @click="closeSettings">&times;</span>
+                </div>
+                <div class="modal-body" id="settings-form">
+                    <div v-if="!schema || !fullConfig" class="loading">加载配置中...</div>
+                    <config-renderer v-else :schema="schema" :config="fullConfig"></config-renderer>
+                </div>
+                <div class="modal-footer"
+                    style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button class="btn btn-text" @click="closeSettings">取消</button>
+                    <button class="btn btn-primary" @click="saveSettings" :disabled="settingsSaving">
+                        {{ settingsSaving ? '保存中...' : '保存配置' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Config Renderer Component -->
+    <script src="js/config_renderer.js"></script>
+    <!-- Vue App -->
+    <script src="js/app.vue.js"></script>
+</body>
+
+</html>

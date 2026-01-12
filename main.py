@@ -11,6 +11,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
 from .core.disaster_service import get_disaster_service, stop_disaster_service
+from .core.web_server import WebAdminServer
 from .models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
@@ -29,6 +30,7 @@ class DisasterWarningPlugin(Star):
         self.config = config
         self.disaster_service = None
         self._service_task = None
+        self.web_server = None
 
     async def initialize(self):
         """初始化插件"""
@@ -47,6 +49,11 @@ class DisasterWarningPlugin(Star):
 
             # 启动服务
             self._service_task = asyncio.create_task(self.disaster_service.start())
+
+            # 启动 Web 管理端
+            if self.config.get("web_admin", {}).get("enabled", False):
+                self.web_server = WebAdminServer(self.disaster_service, self.config)
+                await self.web_server.start()
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
@@ -67,6 +74,10 @@ class DisasterWarningPlugin(Star):
 
             # 停止灾害预警服务
             await stop_disaster_service()
+
+            # 停止 Web 管理端
+            if self.web_server:
+                await self.web_server.stop()
 
             logger.info("[灾害预警] 灾害预警插件已停止")
 
