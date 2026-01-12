@@ -4,9 +4,9 @@
 
 from datetime import timedelta, timezone
 
+from .base import BaseMessageFormatter
 from ...models.data_source_config import get_data_source_config
 from ...models.models import TsunamiData
-from .base import BaseMessageFormatter
 
 
 class TsunamiFormatter(BaseMessageFormatter):

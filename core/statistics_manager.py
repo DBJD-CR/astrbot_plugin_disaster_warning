@@ -6,6 +6,7 @@ from typing import Any
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
+from .event_deduplicator import EventDeduplicator
 from ..models.models import (
     DisasterEvent,
     DisasterType,
@@ -14,7 +15,6 @@ from ..models.models import (
     WeatherAlarmData,
 )
 from ..utils.formatters.weather import COLOR_LEVEL_EMOJI, SORTED_WEATHER_TYPES
-from .event_deduplicator import EventDeduplicator
 
 
 class StatisticsManager:

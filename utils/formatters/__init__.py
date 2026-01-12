@@ -3,7 +3,6 @@
 提供灾害消息的统一格式化接口
 """
 
-from ...models.models import EarthquakeData, TsunamiData, WeatherAlarmData
 from .base import BaseMessageFormatter
 from .earthquake import (
     CEAEEWFormatter,
@@ -16,6 +15,7 @@ from .earthquake import (
 )
 from .tsunami import JMATsunamiFormatter, TsunamiFormatter
 from .weather import WeatherFormatter
+from ...models.models import EarthquakeData, TsunamiData, WeatherAlarmData
 
 # 格式化器映射
 MESSAGE_FORMATTERS = {

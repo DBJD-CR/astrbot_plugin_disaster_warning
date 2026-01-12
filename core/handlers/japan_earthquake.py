@@ -8,13 +8,13 @@ from typing import Any
 
 from astrbot.api import logger
 
+from .base import BaseDataHandler, _safe_float_convert
 from ...models.models import (
     DataSource,
     DisasterEvent,
     DisasterType,
     EarthquakeData,
 )
-from .base import BaseDataHandler, _safe_float_convert
 
 
 class JMAEarthquakeP2PHandler(BaseDataHandler):

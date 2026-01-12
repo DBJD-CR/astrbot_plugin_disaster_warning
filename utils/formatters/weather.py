@@ -2,8 +2,8 @@
 气象预警消息格式化器
 """
 
-from ...models.models import WeatherAlarmData
 from .base import BaseMessageFormatter
+from ...models.models import WeatherAlarmData
 
 # 预警类型到Emoji的映射
 WEATHER_EMOJI_MAP = {

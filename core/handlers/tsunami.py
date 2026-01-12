@@ -9,12 +9,12 @@ from typing import Any
 
 from astrbot.api import logger
 
+from .base import BaseDataHandler
 from ...models.models import (
     DataSource,
     DisasterEvent,
     TsunamiData,
 )
-from .base import BaseDataHandler
 
 
 class TsunamiHandler(BaseDataHandler):

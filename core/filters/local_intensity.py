@@ -6,8 +6,8 @@ from typing import TypedDict
 
 from astrbot.api import logger
 
-from ...models.models import EarthquakeData
 from ..intensity_calculator import IntensityCalculator
+from ...models.models import EarthquakeData
 
 
 class LocalEstimationResult(TypedDict):

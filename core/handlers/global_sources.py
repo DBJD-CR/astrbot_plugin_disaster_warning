@@ -9,6 +9,7 @@ from typing import Any
 
 from astrbot.api import logger
 
+from .base import BaseDataHandler
 from ...models.models import (
     DataSource,
     DisasterEvent,
@@ -16,7 +17,6 @@ from ...models.models import (
     EarthquakeData,
 )
 from ...utils.fe_regions import translate_place_name
-from .base import BaseDataHandler
 
 
 class GlobalQuakeHandler(BaseDataHandler):

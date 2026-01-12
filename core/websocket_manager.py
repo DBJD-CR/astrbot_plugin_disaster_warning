@@ -11,7 +11,6 @@ from typing import Any
 
 import aiohttp
 from aiohttp import ClientWebSocketResponse, WSMsgType
-
 from astrbot.api import logger
 
 

@@ -6,9 +6,9 @@
 import re
 from datetime import datetime, timedelta, timezone
 
+from .base import BaseMessageFormatter
 from ...core.intensity_calculator import IntensityCalculator
 from ...models.models import EarthquakeData
-from .base import BaseMessageFormatter
 
 
 def _get_intensity_emoji(value, is_eew=True, is_shindo=False) -> str:

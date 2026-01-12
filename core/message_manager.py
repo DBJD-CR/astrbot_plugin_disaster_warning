@@ -7,15 +7,24 @@ import os
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any
-import tempfile
-from jinja2 import Template
-from playwright.async_api import async_playwright
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.core.utils.t2i.renderer import HtmlRenderer
+from jinja2 import Template
+from playwright.async_api import async_playwright
 
+from .event_deduplicator import EventDeduplicator
+from .filters import (
+    GlobalQuakeFilter,
+    IntensityFilter,
+    LocalIntensityFilter,
+    ReportCountController,
+    ScaleFilter,
+    USGSFilter,
+    WeatherFilter,
+)
 from ..models.data_source_config import (
     get_intensity_based_sources,
     get_scale_based_sources,
@@ -33,16 +42,6 @@ from ..utils.formatters import (
     format_earthquake_message,
     format_tsunami_message,
     format_weather_message,
-)
-from .event_deduplicator import EventDeduplicator
-from .filters import (
-    GlobalQuakeFilter,
-    IntensityFilter,
-    LocalIntensityFilter,
-    ReportCountController,
-    ScaleFilter,
-    USGSFilter,
-    WeatherFilter,
 )
 
 
