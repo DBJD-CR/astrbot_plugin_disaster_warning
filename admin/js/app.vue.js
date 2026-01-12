@@ -6,7 +6,6 @@ const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch, nextT
 
 // API 基础路径
 const API_BASE = '/api';
-const WS_BASE = `ws://${window.location.host}/ws/events`;
 
 // 工具函数
 const formatTime = (isoString) => {
@@ -70,11 +69,9 @@ const app = createApp({
         const magnitudeDistribution = ref({});
         const lastUpdate = ref('--');
 
-        // WebSocket
-        const wsConnected = ref(false);
-        let ws = null;
-        let reconnectTimer = null;
+        // Polling
         let pollingTimer = null;
+        let statusTimer = null;
         let uptimeTimer = null;
 
         // Settings Modal
@@ -181,48 +178,6 @@ const app = createApp({
             lastUpdate.value = new Date().toLocaleString('zh-CN');
         };
 
-        // ========== WebSocket ==========
-        const connectWebSocket = () => {
-            if (ws) ws.close();
-            ws = new WebSocket(WS_BASE);
-
-            ws.onopen = () => {
-                wsConnected.value = true;
-            };
-
-            ws.onclose = () => {
-                wsConnected.value = false;
-                reconnectTimer = setTimeout(connectWebSocket, 5000);
-            };
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                handleRealtimeEvent(data);
-            };
-        };
-
-        const handleRealtimeEvent = (data) => {
-            if (data.type === 'heartbeat') return;
-            if (data.type === 'status_update') {
-                const s = data.data;
-                if (s) {
-                    status.running = s.running;
-                    if (s.start_time) {
-                        status.startTime = new Date(s.start_time);
-                        startUptimeTimer();
-                    } else if (s.uptime) {
-                        status.uptime = s.uptime;
-                    }
-                    if (s.active_connections !== undefined) {
-                        status.activeConnections = s.active_connections;
-                        status.totalConnections = s.total_connections;
-                    }
-                }
-                return;
-            }
-            refreshAll();
-            fetchEarthquakes();
-        };
 
         // ========== Theme ==========
         const initTheme = () => {
@@ -357,17 +312,24 @@ const app = createApp({
         onMounted(async () => {
             initTheme();
             await loadSchemaAndConfig();
-            connectWebSocket();
-            pollingTimer = setInterval(refreshAll, 30000);
+
+            // Initial load
             await refreshAll();
             await fetchEarthquakes();
+
+            // Fast polling for status (every 2s)
+            statusTimer = setInterval(fetchStatus, 2000);
+
+            // Regular polling for data (every 30s)
+            pollingTimer = setInterval(async () => {
+                await refreshAll();
+                await fetchEarthquakes();
+            }, 30000);
         });
 
         onUnmounted(() => {
-            if (ws) ws.close();
-            if (reconnectTimer) clearTimeout(reconnectTimer);
-
             if (pollingTimer) clearInterval(pollingTimer);
+            if (statusTimer) clearInterval(statusTimer);
             if (uptimeTimer) clearInterval(uptimeTimer);
         });
 
@@ -385,7 +347,6 @@ const app = createApp({
             magnitudeOrder,
             maxMagnitudeValue,
             lastUpdate,
-            wsConnected,
             showSettings,
             schema,
             fullConfig,

@@ -690,6 +690,19 @@ input:checked+.slider:before {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.connection-item.connected {
+    background-color: rgba(76, 175, 80, 0.1);
+    border-color: #4CAF50;
+}
+
+.connection-item.disconnected {
+    background-color: var(--md-sys-color-surface-container-highest);
+    border-color: var(--md-sys-color-outline-variant);
+    opacity: 0.75;
 }
 
 .conn-name {
@@ -701,6 +714,18 @@ input:checked+.slider:before {
     color: var(--md-sys-color-on-surface-variant);
     display: flex;
     justify-content: space-between;
+}
+
+.connection-item.connected .conn-status {
+    color: #1b5e20;
+}
+
+body.dark-theme .connection-item.connected .conn-status {
+    color: #66bb6a;
+}
+
+.connection-item.disconnected .conn-status {
+    color: var(--md-sys-color-error);
 }
 
 /* Charts */

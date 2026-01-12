@@ -18,8 +18,8 @@
         <header class="top-app-bar">
             <h1>灾害预警管理端</h1>
             <div class="status-indicator">
-                <span :class="['status-dot', wsConnected ? 'online' : 'offline']"></span>
-                <span>{{ wsConnected ? '实时连接正常' : '连接断开，重连中...' }}</span>
+                <span class="status-dot online"></span>
+                <span>实时监控中</span>
                 <button class="btn btn-text" @click="toggleTheme" title="切换主题">
                     🌓
                 </button>

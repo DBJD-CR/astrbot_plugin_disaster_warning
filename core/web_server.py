@@ -12,10 +12,10 @@ from typing import Any
 from astrbot.api import logger
 
 try:
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi import FastAPI
     from fastapi.responses import HTMLResponse, JSONResponse
     from fastapi.staticfiles import StaticFiles
+    from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
     FASTAPI_AVAILABLE = True
 except ImportError:
@@ -31,8 +31,8 @@ class WebAdminServer:
         self.config = config
         self.app = None
         self.server = None
+        self.server = None
         self._server_task = None
-        self._ws_clients: list[WebSocket] = []
         
         if not FASTAPI_AVAILABLE:
             return
@@ -84,7 +84,8 @@ class WebAdminServer:
                     "connection_details": status.get("connection_details", {}),
                     "data_sources": status.get("data_sources", []),
                     "message_logger_enabled": status.get("message_logger_enabled", False),
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
+                    "start_time": status.get("start_time")
                 }
             except Exception as e:
                 logger.error(f"[Web Admin] 获取状态失败: {e}")
@@ -302,98 +303,37 @@ class WebAdminServer:
                 logger.error(f"[Web Admin] 保存配置失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
-        @self.app.websocket("/ws/events")
-        async def websocket_events(websocket: WebSocket):
-            """WebSocket 实时事件流"""
-            await websocket.accept()
-            self._ws_clients.append(websocket)
-            logger.info(f"[Web Admin] WebSocket 客户端连接，当前连接数: {len(self._ws_clients)}")
-            
-            try:
-                while True:
-                    # 获取实时状态
-                    if self.disaster_service:
-                        status = self.disaster_service.get_service_status()
-                        status_data = {
-                            "type": "status_update",
-                            "timestamp": datetime.now().isoformat(),
-                            "data": {
-                                "running": status.get("running", False),
-                                "uptime": status.get("uptime", "未知"),
-                                "active_connections": status.get("active_websocket_connections", 0),
-                                "total_connections": status.get("total_connections", 0)
-                            }
-                        }
-                        await websocket.send_json(status_data)
-                    else:
-                        # 服务未就绪时的简单心跳
-                        await websocket.send_json({"type": "heartbeat", "timestamp": datetime.now().isoformat()})
-                    
-                    # 每 2 秒刷新一次状态，保证秒级即视感
-                    await asyncio.sleep(2)
-            except WebSocketDisconnect:
-                self._ws_clients.remove(websocket)
-                logger.info(f"[Web Admin] WebSocket 客户端断开，当前连接数: {len(self._ws_clients)}")
-            except Exception as e:
-                if websocket in self._ws_clients:
-                    self._ws_clients.remove(websocket)
-                logger.debug(f"[Web Admin] WebSocket 错误: {e}")
 
     def _get_expected_data_sources(self) -> dict[str, str]:
-        """根据配置获取所有预期的数据源
+        """获取所有支持的数据源列表 (无论是否启用)
         
         Returns:
             dict: 内部连接名称 -> 显示名称 的映射
         """
         expected = {}
-        data_sources = self.config.get("data_sources", {})
         
         # FAN Studio
-        fan_studio_config = data_sources.get("fan_studio", {})
-        if isinstance(fan_studio_config, dict) and fan_studio_config.get("enabled", True):
-            expected["fan_studio_all"] = "FAN Studio"
+        expected["fan_studio_all"] = "FAN Studio"
         
         # P2P
-        p2p_config = data_sources.get("p2p_earthquake", {})
-        if isinstance(p2p_config, dict) and p2p_config.get("enabled", True):
-            expected["p2p_main"] = "P2P地震情報"
+        expected["p2p_main"] = "P2P地震情報"
         
         # Wolfx
-        wolfx_config = data_sources.get("wolfx", {})
-        if isinstance(wolfx_config, dict) and wolfx_config.get("enabled", True):
-            wolfx_sources = [
-                ("japan_jma_eew", "Wolfx JMA EEW"),
-                ("china_cenc_eew", "Wolfx CENC EEW"),
-                ("taiwan_cwa_eew", "Wolfx CWA EEW"),
-                ("japan_jma_earthquake", "Wolfx JMA Info"),
-                ("china_cenc_earthquake", "Wolfx CENC Info"),
-            ]
-            for source_key, display_name in wolfx_sources:
-                if wolfx_config.get(source_key, True):
-                    expected[f"wolfx_{source_key}"] = display_name
+        wolfx_sources = [
+            ("japan_jma_eew", "Wolfx JMA EEW"),
+            ("china_cenc_eew", "Wolfx CENC EEW"),
+            ("taiwan_cwa_eew", "Wolfx CWA EEW"),
+            ("japan_jma_earthquake", "Wolfx JMA Info"),
+            ("china_cenc_earthquake", "Wolfx CENC Info"),
+        ]
+        for source_key, display_name in wolfx_sources:
+            expected[f"wolfx_{source_key}"] = display_name
         
         # Global Quake
-        global_quake_config = data_sources.get("global_quake", {})
-        if isinstance(global_quake_config, dict) and global_quake_config.get("enabled", False):
-            expected["global_quake"] = "Global Quake"
+        expected["global_quake"] = "Global Quake"
         
         return expected
 
-    async def broadcast_event(self, event_data: dict):
-        """广播事件到所有 WebSocket 客户端"""
-        if not self._ws_clients:
-            return
-        
-        disconnected = []
-        for ws in self._ws_clients:
-            try:
-                await ws.send_json(event_data)
-            except Exception:
-                disconnected.append(ws)
-        
-        for ws in disconnected:
-            if ws in self._ws_clients:
-                self._ws_clients.remove(ws)
 
     async def start(self):
         """启动 Web 服务器"""
