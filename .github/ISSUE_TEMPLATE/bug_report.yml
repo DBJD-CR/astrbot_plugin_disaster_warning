@@ -1,7 +1,7 @@
 name: '🐛 报告 Bug'
 title: '[Bug] '
 description: 提交报告帮助我们改进。
-labels: [ 'bug' ]
+labels: [ 'type/fix' ]
 body:
   - type: markdown
     attributes:

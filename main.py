@@ -37,6 +37,16 @@ class DisasterWarningPlugin(Star):
         try:
             logger.info("[灾害预警] 正在初始化灾害预警插件...")
 
+            # 首次加载时，尝试同步 AstrBot 全局管理员到插件配置 (仅在未配置时)
+            if "admin_users" not in self.config or self.config.get("admin_users") is None:
+                global_admins = self.context.get_config().get("admins_id", [])
+                if global_admins:
+                    self.config["admin_users"] = list(global_admins)
+                    self.config.save_config()
+                    logger.info(
+                        f"[灾害预警] 已自动同步全局管理员到插件配置: {global_admins}"
+                    )
+
             # 检查插件是否启用
             if not self.config.get("enabled", True):
                 logger.info("[灾害预警] 插件已禁用，跳过初始化")
@@ -194,10 +204,16 @@ class DisasterWarningPlugin(Star):
                 filter_stats = self.disaster_service.message_logger.filter_stats
                 if filter_stats and filter_stats["total_filtered"] > 0:
                     stats_summary += "\n\n🛡️ 日志过滤拦截统计:\n"
-                    stats_summary += f"重复数据拦截: {filter_stats.get('duplicate_events_filtered', 0)}\n"
-                    stats_summary += f"心跳包/连接状态拦截: {filter_stats.get('heartbeat_filtered', 0) + filter_stats.get('p2p_areas_filtered', 0) + filter_stats.get('connection_status_filtered', 0)}\n"
+                    stats_summary += f"• 重复数据拦截: {filter_stats.get('duplicate_events_filtered', 0)}\n"
                     stats_summary += (
-                        f"总计拦截: {filter_stats.get('total_filtered', 0)}"
+                        f"• 心跳包过滤: {filter_stats.get('heartbeat_filtered', 0)}\n"
+                    )
+                    stats_summary += (
+                        f"• P2P节点状态: {filter_stats.get('p2p_areas_filtered', 0)}\n"
+                    )
+                    stats_summary += f"• 连接状态过滤: {filter_stats.get('connection_status_filtered', 0)}\n"
+                    stats_summary += (
+                        f"📊 总计拦截: {filter_stats.get('total_filtered', 0)}"
                     )
 
             yield event.plain_result(stats_summary)
@@ -358,6 +374,10 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警日志")
     async def disaster_logs(self, event: AstrMessageEvent):
         """查看原始消息日志信息"""
+        if not self.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
         if not self.disaster_service or not self.disaster_service.message_logger:
             yield event.plain_result("❌ 日志功能不可用")
             return
@@ -400,6 +420,10 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警日志开关")
     async def toggle_message_logging(self, event: AstrMessageEvent):
         """开关原始消息日志记录"""
+        if not self.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
         if not self.disaster_service or not self.disaster_service.message_logger:
             yield event.plain_result("❌ 日志功能不可用")
             return
@@ -429,6 +453,10 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警日志清除")
     async def clear_message_logs(self, event: AstrMessageEvent):
         """清除所有原始消息日志"""
+        if not self.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
         if not self.disaster_service or not self.disaster_service.message_logger:
             yield event.plain_result("❌ 日志功能不可用")
             return
@@ -446,6 +474,10 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警统计清除")
     async def clear_statistics(self, event: AstrMessageEvent):
         """清除统计数据"""
+        if not self.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
         if not self.disaster_service or not self.disaster_service.statistics_manager:
             yield event.plain_result("❌ 统计功能不可用")
             return
@@ -463,6 +495,10 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警配置")
     async def disaster_config(self, event: AstrMessageEvent, action: str = None):
         """查看当前配置信息"""
+        if not self.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
         if action != "查看":
             yield event.plain_result("❓ 请使用格式：/灾害预警配置 查看")
             return
@@ -516,6 +552,20 @@ class DisasterWarningPlugin(Star):
             logger.error(f"[灾害预警] 获取配置详情失败: {e}")
             yield event.plain_result(f"❌ 获取配置详情失败: {str(e)}")
 
+    def is_plugin_admin(self, event: AstrMessageEvent) -> bool:
+        """检查用户是否为插件管理员或Bot管理员"""
+        # 1. 检查是否为 AstrBot 全局管理员
+        if event.is_admin():
+            return True
+
+        # 2. 检查 sender_id 是否在插件配置的 admin_users 中
+        sender_id = event.get_sender_id()
+        plugin_admins = self.config.get("admin_users", [])
+        if sender_id in plugin_admins:
+            return True
+
+        return False
+
     def _format_source_name(self, source_key: str) -> str:
         """格式化数据源名称 - 细粒度配置结构"""
         # 配置格式：service.source (如：fan_studio.china_earthquake_warning)
@@ -563,9 +613,12 @@ class DisasterWarningPlugin(Star):
 
         常用数据源ID：
         • cea_fanstudio (中国地震预警网 - 默认)
-        • jma_p2p (日本气象厅P2P)
-        • usgs_fanstudio (USGS)
+        • cenc_fanstudio (中国地震台网 - 正式)
+        • jma_p2p (日本气象厅P2P - 预警)
+        • jma_p2p_info (日本气象厅P2P - 情报)
         • cwa_fanstudio (台湾中央气象署)
+        • usgs_fanstudio (USGS)
+        • global_quake (Global Quake)
         """
         if not self.disaster_service or not self.disaster_service.message_manager:
             yield event.plain_result("❌ 服务未启动")
@@ -707,5 +760,3 @@ class DisasterWarningPlugin(Star):
     async def on_astrbot_loaded(self):
         """AstrBot加载完成时的钩子"""
         logger.info("[灾害预警] AstrBot已加载完成，灾害预警插件准备就绪")
-
- 

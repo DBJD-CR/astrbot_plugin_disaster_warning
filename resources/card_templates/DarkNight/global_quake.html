@@ -342,6 +342,24 @@
                 const crossGroup = svg.append("g")
                     .attr("transform", `translate(${center[0]}, ${center[1]})`);
 
+                const outlineWidth = 6;
+                const strokeColor = "#FFF1AA";
+
+                // 绘制描边 (淡黄色)
+                crossGroup.append("line")
+                    .attr("x1", -size).attr("y1", -size)
+                    .attr("x2", size).attr("y2", size)
+                    .attr("stroke", strokeColor)
+                    .attr("stroke-width", outlineWidth)
+                    .attr("stroke-linecap", "round");
+
+                crossGroup.append("line")
+                    .attr("x1", size).attr("y1", -size)
+                    .attr("x2", -size).attr("y2", size)
+                    .attr("stroke", strokeColor)
+                    .attr("stroke-width", outlineWidth)
+                    .attr("stroke-linecap", "round");
+
                 // 第一条线 (\)
                 crossGroup.append("line")
                     .attr("x1", -size).attr("y1", -size)
