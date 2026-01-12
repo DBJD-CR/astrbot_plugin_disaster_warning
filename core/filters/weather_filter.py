@@ -3,6 +3,7 @@
 支持按省份白名单和颜色级别过滤气象预警
 """
 
+import re
 from typing import Any
 
 from astrbot.api import logger
@@ -80,9 +81,32 @@ class WeatherFilter:
 
     def extract_color_level(self, headline: str) -> str:
         """从预警标题中提取颜色级别"""
+        # 预处理：去除无效上下文中的颜色引用
+        # 1. 去除括号内的内容 (通常是 "原...已失效" 等)
+        # 兼容全角和半角括号
+        cleaned = re.sub(r"[（\(].*?[）\)]", "", headline)
+
+        # 2. 去除 "解除...预警" (通常是 "解除...预警，发布..." 或单纯解除)
+        # 这里的非贪婪匹配 .*? 会匹配到最近的 "预警"
+        cleaned = re.sub(r"解除[^，。,]*?预警", "", cleaned)
+
+        # 3. 去除 "将...预警" (通常是 "将...预警降级为...")
+        cleaned = re.sub(r"将[^，。,]*?预警", "", cleaned)
+
+        # 4. 去除 "原...预警" (如果没有被括号包裹)
+        cleaned = re.sub(r"原[^，。,]*?预警", "", cleaned)
+
+        if cleaned != headline:
+            logger.debug(f"[灾害预警] 标题清洗: '{headline}' -> '{cleaned}'")
+
+        # 匹配颜色 - 优先匹配剩下的文本
         for color in ["红色", "橙色", "黄色", "蓝色", "白色"]:
-            if color in headline:
+            if color in cleaned:
                 return color
+
+        # 如果清洗后没有颜色了（比如只有“解除暴雨红色预警”），
+        # 则说明这可能是一条解除通知，或者不包含有效的新增预警级别。
+        # 这种情况下返回“白色”作为最低级别，通常会被过滤器拦截（除非用户设置阈值为白色）。
         return "白色"
 
     def should_filter(self, headline: str) -> bool:

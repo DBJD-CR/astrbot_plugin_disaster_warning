@@ -34,11 +34,13 @@ class StatisticsManager:
             "by_source": defaultdict(int),
             "earthquake_stats": {
                 "by_magnitude": defaultdict(int),  # 按震级区间统计
+                "by_region": defaultdict(int),  # 按地区统计 (仅CENC正式)
                 "max_magnitude": None,  # 记录最大震级事件：{value, event_id, place_name, time}
             },
             "weather_stats": {
                 "by_level": defaultdict(int),  # 按预警级别统计：白、蓝、黄、橙、红
                 "by_type": defaultdict(int),  # 按预警类型统计：暴雨、大风等
+                "by_region": defaultdict(int),  # 按地区统计
             },
             "recent_pushes": [],  # 最近推送记录详情，用于展示
             "recent_event_ids": [],  # 最近处理的事件ID列表，用于重启后去重
@@ -142,6 +144,7 @@ class StatisticsManager:
             # 最大震级记录 (仅记录正式测定或特定可信源)
             # 过滤条件：必须是正式测定(info_type="正式测定") 或 可信度高的数据源(如CENC/USGS/JMA地震情报)
             is_reliable = False
+            is_cenc_official = False
 
             # 1. 基础筛选：必须是地震情报类型 (排除EEW预警)
             if data.disaster_type == DisasterType.EARTHQUAKE:
@@ -153,6 +156,7 @@ class StatisticsManager:
                     # CENC: 必须明确包含"正式"
                     if "正式" in data.info_type:
                         is_reliable = True
+                        is_cenc_official = True
 
                     # USGS: 必须包含"reviewed"
                     elif "reviewed" in info_lower:
@@ -187,6 +191,11 @@ class StatisticsManager:
                         "source": data.source.value,  # 记录来源以便调试
                     }
 
+            # CENC 正式测定地区统计
+            if is_cenc_official:
+                region = self._extract_region(data.place_name)
+                self.stats["earthquake_stats"]["by_region"][region] += 1
+
     def _record_weather_stats(self, data: WeatherAlarmData):
         """记录气象预警详细统计"""
         headline = data.headline or ""
@@ -207,6 +216,67 @@ class StatisticsManager:
                 w_type = name
                 break
         self.stats["weather_stats"]["by_type"][w_type] += 1
+
+        # 3. 地区统计 (尝试从 headline 提取)
+        # 简单提取：取前两个字作为省份/地区，或者匹配已知省份
+        region = self._extract_region(headline)
+        self.stats["weather_stats"]["by_region"][region] += 1
+
+    def _extract_region(self, text: str) -> str:
+        """从文本中提取地区（省份）信息"""
+        if not text:
+            return "未知"
+
+        provinces = [
+            "北京",
+            "天津",
+            "河北",
+            "山西",
+            "内蒙古",
+            "辽宁",
+            "吉林",
+            "黑龙江",
+            "上海",
+            "江苏",
+            "浙江",
+            "安徽",
+            "福建",
+            "江西",
+            "山东",
+            "河南",
+            "湖北",
+            "湖南",
+            "广东",
+            "广西",
+            "海南",
+            "重庆",
+            "四川",
+            "贵州",
+            "云南",
+            "西藏",
+            "陕西",
+            "甘肃",
+            "青海",
+            "宁夏",
+            "新疆",
+            "台湾",
+            "香港",
+            "澳门",
+        ]
+
+        # 优先匹配省份
+        for p in provinces:
+            if text.startswith(p):
+                return p
+
+        # 内蒙古/黑龙江特殊处理 (3个字)
+        if text.startswith("内蒙古") or text.startswith("黑龙江"):
+            # 上面的循环已经覆盖了（startswith），但为了保险起见检查一下
+            pass
+
+        # 如果不是省份开头，可能是具体的市或海域，尝试取前两个字
+        # 比如 "南海海域", "东海海域"
+        return text[:2]
 
     def _get_event_description(self, event: DisasterEvent) -> str:
         """生成简短的事件描述"""
@@ -255,11 +325,13 @@ class StatisticsManager:
                 "by_source": defaultdict(int),
                 "earthquake_stats": {
                     "by_magnitude": defaultdict(int),
+                    "by_region": defaultdict(int),
                     "max_magnitude": None,
                 },
                 "weather_stats": {
                     "by_level": defaultdict(int),
                     "by_type": defaultdict(int),
+                    "by_region": defaultdict(int),
                 },
                 "recent_pushes": [],
                 "recent_event_ids": [],
@@ -356,6 +428,18 @@ class StatisticsManager:
         if not has_eq:
             text.append("(暂无数据)")
 
+        # 地震地区分布 Top10
+        eq_regions = s["earthquake_stats"].get("by_region", {})
+        if eq_regions:
+            sorted_eq_regions = sorted(
+                eq_regions.items(), key=lambda x: x[1], reverse=True
+            )
+            if sorted_eq_regions:
+                text.append("")
+                text.append("📍 地震高发地区 (国内Top 10):")
+                for r, c in sorted_eq_regions[:10]:
+                    text.append(f"{r}: {c}")
+
         max_mag = s["earthquake_stats"].get("max_magnitude")
         if max_mag:
             source_val = max_mag.get("source")
@@ -383,6 +467,17 @@ class StatisticsManager:
             text.append("类型Top10:")
             for t, c in sorted_types[:10]:
                 text.append(f"{t}: {c}")
+
+        # 统计地区分布 Top10
+        weather_regions = s["weather_stats"].get("by_region", {})
+        if weather_regions:
+            sorted_w_regions = sorted(
+                weather_regions.items(), key=lambda x: x[1], reverse=True
+            )
+            if sorted_w_regions:
+                text.append("\n地区Top10:")
+                for r, c in sorted_w_regions[:10]:
+                    text.append(f"{r}: {c}")
 
         # 统计级别分布
         text.append("\n级别分布:")
