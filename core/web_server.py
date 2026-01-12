@@ -31,7 +31,6 @@ class WebAdminServer:
         self.config = config
         self.app = None
         self.server = None
-        self.server = None
         self._server_task = None
         
         if not FASTAPI_AVAILABLE:
@@ -224,12 +223,6 @@ class WebAdminServer:
                 }
             except Exception as e:
                 logger.error(f"[Web Admin] 获取地震数据失败: {e}")
-                return JSONResponse({"error": str(e)}, status_code=500)
-
-                result = await self.disaster_service.test_push(target_session, disaster_type)
-                return {"success": "✅" in result if result else False, "message": result}
-            except Exception as e:
-                logger.error(f"[Web Admin] 测试推送失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/test-push")
