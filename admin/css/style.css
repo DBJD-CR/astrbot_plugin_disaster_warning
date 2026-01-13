@@ -1094,3 +1094,263 @@ input[type=range]::-webkit-slider-runnable-track {
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     gap: 16px;
 }
+
+/* Event Grouping Styles */
+.event-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.event-group.has-updates .event-card-main {
+    border-left: 3px solid var(--md-sys-color-primary);
+}
+
+.event-card.clickable {
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.event-card.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--md-sys-elevation-2);
+}
+
+.event-card-main {
+    position: relative;
+}
+
+/* Update Badge */
+.update-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 4px 10px;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border-radius: var(--md-sys-shape-corner-full);
+    font: var(--md-sys-typescale-label-small);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.update-count {
+    min-width: 16px;
+    text-align: center;
+}
+
+.update-icon {
+    font-size: 10px;
+    transition: transform 0.3s;
+}
+
+.event-group.expanded .update-icon {
+    transform: rotate(180deg);
+}
+
+/* Event History (Expanded) */
+.event-history {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    padding-left: 16px;
+    border-left: 2px solid var(--md-sys-color-outline-variant);
+    margin-left: 20px;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.event-card-history {
+    background-color: var(--md-sys-color-surface-container-low);
+    opacity: 0.9;
+    transform: scale(0.98);
+    padding: 10px 14px;
+}
+
+.event-card-history:hover {
+    opacity: 1;
+    background-color: var(--md-sys-color-surface-container);
+}
+
+/* Smaller mag badge for history items */
+.mag-badge-sm {
+    width: 32px;
+    height: 32px;
+    font-size: 11px;
+}
+
+/* Animation for history items */
+.event-history .event-card-history {
+    animation: fadeSlideIn 0.3s ease-out backwards;
+}
+
+.event-history .event-card-history:nth-child(1) {
+    animation-delay: 0.05s;
+}
+
+.event-history .event-card-history:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.event-history .event-card-history:nth-child(3) {
+    animation-delay: 0.15s;
+}
+
+.event-history .event-card-history:nth-child(4) {
+    animation-delay: 0.2s;
+}
+
+.event-history .event-card-history:nth-child(5) {
+    animation-delay: 0.25s;
+}
+
+/* ========== Simulation Modal Styles ========== */
+.simulation-modal {
+    max-width: 520px;
+}
+
+.simulation-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.simulation-form .form-group {
+    margin-bottom: 0;
+}
+
+.simulation-form .form-group>label {
+    display: block;
+    margin-bottom: 8px;
+    font: var(--md-sys-typescale-label-large);
+    color: var(--md-sys-color-on-surface);
+}
+
+/* Disaster Type Buttons */
+.disaster-type-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-type {
+    background-color: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    padding: 12px 20px;
+    font: var(--md-sys-typescale-label-large);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex: 1;
+    min-width: 100px;
+    text-align: center;
+}
+
+.btn-type:hover {
+    background-color: var(--md-sys-color-surface-container-high);
+    border-color: var(--md-sys-color-outline);
+}
+
+.btn-type-active {
+    background-color: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border-color: var(--md-sys-color-primary);
+    font-weight: 600;
+}
+
+.btn-type-active:hover {
+    background-color: var(--md-sys-color-primary-container);
+}
+
+/* Simulation Tip */
+.simulation-tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 16px;
+    background-color: var(--md-sys-color-surface-container-low);
+    border-radius: var(--md-sys-shape-corner-medium);
+    font: var(--md-sys-typescale-body-small);
+    color: var(--md-sys-color-on-surface-variant);
+    border-left: 3px solid var(--md-sys-color-primary);
+}
+
+.simulation-tip .tip-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+}
+
+/* Select Control Styling */
+.simulation-form select.form-control {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2374777F' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+    cursor: pointer;
+}
+
+body.dark-theme .simulation-form select.form-control {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238E9099' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+}
+
+/* Custom Params Section */
+.custom-params-section {
+    margin-top: 8px;
+}
+
+.section-divider {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+    color: var(--md-sys-color-on-surface-variant);
+    font: var(--md-sys-typescale-label-medium);
+}
+
+.section-divider::before,
+.section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background-color: var(--md-sys-color-outline-variant);
+}
+
+.section-divider span {
+    padding: 0 12px;
+}
+
+.params-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.params-grid .form-group {
+    margin-bottom: 0;
+}
+
+/* Simulation Modal - Larger for custom params */
+.simulation-modal {
+    max-width: 580px;
+}
+
+/* Number inputs */
+.simulation-form input[type="number"],
+.simulation-form input[type="text"] {
+    width: 100%;
+}

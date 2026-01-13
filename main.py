@@ -63,6 +63,8 @@ class DisasterWarningPlugin(Star):
             # 启动 Web 管理端
             if self.config.get("web_admin", {}).get("enabled", False):
                 self.web_server = WebAdminServer(self.disaster_service, self.config)
+                # 注入引用以支持事件驱动的实时推送
+                self.disaster_service.web_admin_server = self.web_server
                 await self.web_server.start()
 
         except Exception as e:

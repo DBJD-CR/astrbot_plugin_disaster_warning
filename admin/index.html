@@ -18,8 +18,8 @@
         <header class="top-app-bar">
             <h1>灾害预警管理端</h1>
             <div class="status-indicator">
-                <span class="status-dot online"></span>
-                <span>实时监控中</span>
+                <span :class="['status-dot', wsConnected ? 'online' : 'offline']"></span>
+                <span>{{ wsConnected ? '实时监控中' : '连接断开' }}</span>
                 <button class="btn btn-text" @click="toggleTheme" title="切换主题">
                     🌓
                 </button>
@@ -93,8 +93,8 @@
                                 <h3>快捷操作</h3>
                             </div>
                             <div class="card-body" style="flex-direction: row; flex-wrap: wrap;">
-                                <button class="btn btn-primary" @click="testPush('earthquake')">
-                                    🧪 测试地震
+                                <button class="btn btn-primary" @click="openSimulation">
+                                    🧪 模拟预警
                                 </button>
                                 <button class="btn btn-secondary" @click="refreshAll">
                                     🔄 刷新
@@ -153,33 +153,84 @@
 
                     <div class="events-list events-grid-layout">
                         <!-- Changed to Grid for better full-width utilization -->
-                        <div v-if="sortedRecentEvents.length === 0" class="loading">暂无事件记录</div>
-                        <template v-for="evt in sortedRecentEvents" :key="evt.time + evt.description">
-                            <!-- Earthquake Event -->
-                            <div v-if="evt.type === 'earthquake' || evt.type === 'earthquake_warning'"
-                                class="event-card">
-                                <div :class="['mag-badge', getMagColorClass(evt.magnitude || 0)]">
-                                    M{{ (evt.magnitude || 0).toFixed(1) }}
-                                </div>
-                                <div class="event-main">
-                                    <div class="event-loc">{{ evt.description || '未知位置' }}</div>
-                                    <div class="event-meta">
-                                        <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
-                                        <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                        <div v-if="groupedEvents.length === 0" class="loading">暂无事件记录</div>
+                        <template v-for="group in groupedEvents" :key="group.id">
+                            <!-- Event Group Container -->
+                            <div class="event-group"
+                                :class="{ 'expanded': isEventGroupExpanded(group.id), 'has-updates': group.updateCount > 1 }">
+                                <!-- Main Event Card (Latest) -->
+                                <div class="event-card event-card-main"
+                                    @click="group.updateCount > 1 && toggleEventGroup(group.id)"
+                                    :class="{ 'clickable': group.updateCount > 1 }">
+                                    <!-- Earthquake Event -->
+                                    <template
+                                        v-if="group.latestEvent.type === 'earthquake' || group.latestEvent.type === 'earthquake_warning'">
+                                        <div :class="['mag-badge', getMagColorClass(group.latestEvent.magnitude || 0)]">
+                                            M{{ (group.latestEvent.magnitude || 0).toFixed(1) }}
+                                        </div>
+                                        <div class="event-main">
+                                            <div class="event-loc">{{ group.latestEvent.description || '未知位置' }}</div>
+                                            <div class="event-meta">
+                                                <span class="time-tag">{{ formatTimeFriendly(group.latestEvent.time)
+                                                    }}</span>
+                                                <span class="source-tag">{{ group.latestEvent.source || '未知来源' }}</span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <!-- Other Events -->
+                                    <template v-else>
+                                        <div class="mag-badge" style="background-color: var(--md-sys-color-secondary);">
+                                            {{ group.latestEvent.type === 'tsunami' ? '🌊' : (group.latestEvent.type ===
+                                            'weather_alarm' ? '☁️' : '❓') }}
+                                        </div>
+                                        <div class="event-main">
+                                            <div class="event-loc">{{ group.latestEvent.description || '未知位置' }}</div>
+                                            <div class="event-meta">
+                                                <span class="time-tag">{{ formatTimeFriendly(group.latestEvent.time)
+                                                    }}</span>
+                                                <span class="source-tag">{{ group.latestEvent.source || '未知来源' }}</span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <!-- Update Count Badge -->
+                                    <div v-if="group.updateCount > 1" class="update-badge">
+                                        <span class="update-count">{{ group.updateCount }}</span>
+                                        <span class="update-icon">{{ isEventGroupExpanded(group.id) ? '▲' : '▼'
+                                            }}</span>
                                     </div>
                                 </div>
-                            </div>
-                            <!-- Other Events -->
-                            <div v-else class="event-card">
-                                <div class="mag-badge" style="background-color: var(--md-sys-color-secondary);">
-                                    {{ evt.type === 'tsunami' ? '🌊' : (evt.type === 'weather_alarm' ? '☁️' : '❓')
-                                    }}
-                                </div>
-                                <div class="event-main">
-                                    <div class="event-loc">{{ evt.description || '未知位置' }}</div>
-                                    <div class="event-meta">
-                                        <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
-                                        <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                <!-- Expanded History -->
+                                <div v-if="isEventGroupExpanded(group.id) && group.updateCount > 1"
+                                    class="event-history">
+                                    <div v-for="(evt, idx) in group.events.slice(1)" :key="idx"
+                                        class="event-card event-card-history">
+                                        <template v-if="evt.type === 'earthquake' || evt.type === 'earthquake_warning'">
+                                            <div
+                                                :class="['mag-badge mag-badge-sm', getMagColorClass(evt.magnitude || 0)]">
+                                                M{{ (evt.magnitude || 0).toFixed(1) }}
+                                            </div>
+                                            <div class="event-main">
+                                                <div class="event-loc">{{ evt.description || '未知位置' }}</div>
+                                                <div class="event-meta">
+                                                    <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
+                                                    <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template v-else>
+                                            <div class="mag-badge mag-badge-sm"
+                                                style="background-color: var(--md-sys-color-secondary);">
+                                                {{ evt.type === 'tsunami' ? '🌊' : (evt.type === 'weather_alarm' ? '☁️'
+                                                : '❓') }}
+                                            </div>
+                                            <div class="event-main">
+                                                <div class="event-loc">{{ evt.description || '未知位置' }}</div>
+                                                <div class="event-meta">
+                                                    <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
+                                                    <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                                </div>
+                                            </div>
+                                        </template>
                                     </div>
                                 </div>
                             </div>
@@ -190,8 +241,113 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>灾害预警插件 Web 管理端 | 最后更新: <span>{{ lastUpdate }}</span></p>
+            <p>灾害预警插件 Web 管理端</p>
         </footer>
+
+        <!-- Simulation Modal -->
+        <div v-show="showSimulation" class="modal" style="display: block;">
+            <div class="modal-content simulation-modal">
+                <div class="modal-header">
+                    <h2>🧪 模拟预警测试</h2>
+                    <span class="close-modal" @click="closeSimulation">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div v-if="!simulationOptions" class="loading">加载中...</div>
+                    <div v-else class="simulation-form">
+                        <!-- 目标群 -->
+                        <div class="form-group">
+                            <label>目标群组</label>
+                            <select v-model="simulationForm.targetGroup" class="form-control">
+                                <option value="">默认（第一个配置的群）</option>
+                                <option v-for="group in simulationOptions.target_groups" :key="group" :value="group">
+                                    {{ group }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- 灾害类型 -->
+                        <div class="form-group">
+                            <label>灾害类型</label>
+                            <div class="disaster-type-buttons">
+                                <button v-for="(info, type) in simulationOptions.disaster_types" :key="type"
+                                    :class="['btn', 'btn-type', simulationForm.disasterType === type ? 'btn-type-active' : '']"
+                                    @click="selectDisasterType(type, info)">
+                                    {{ info.icon }} {{ info.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 测试格式 -->
+                        <div class="form-group" v-if="currentDisasterFormats.length > 0">
+                            <label>测试格式</label>
+                            <select v-model="simulationForm.testType" class="form-control">
+                                <option v-for="fmt in currentDisasterFormats" :key="fmt.value" :value="fmt.value">
+                                    {{ fmt.label }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- 自定义参数区域 (仅地震) -->
+                        <div v-if="simulationForm.disasterType === 'earthquake'" class="custom-params-section">
+                            <div class="section-divider">
+                                <span>自定义参数</span>
+                            </div>
+
+                            <div class="params-grid">
+                                <!-- 震级 -->
+                                <div class="form-group">
+                                    <label>震级 (M)</label>
+                                    <input type="number" v-model="simulationForm.customParams.magnitude"
+                                        class="form-control" step="0.1" min="0" max="10" placeholder="5.5">
+                                </div>
+
+                                <!-- 深度 -->
+                                <div class="form-group">
+                                    <label>深度 (km)</label>
+                                    <input type="number" v-model="simulationForm.customParams.depth"
+                                        class="form-control" step="1" min="0" max="700" placeholder="10">
+                                </div>
+
+                                <!-- 纬度 -->
+                                <div class="form-group">
+                                    <label>纬度</label>
+                                    <input type="number" v-model="simulationForm.customParams.latitude"
+                                        class="form-control" step="0.01" min="-90" max="90" placeholder="31.2">
+                                </div>
+
+                                <!-- 经度 -->
+                                <div class="form-group">
+                                    <label>经度</label>
+                                    <input type="number" v-model="simulationForm.customParams.longitude"
+                                        class="form-control" step="0.01" min="-180" max="180" placeholder="103.8">
+                                </div>
+                            </div>
+
+                            <!-- 地名 (单独一行) -->
+                            <div class="form-group">
+                                <label>震中地名</label>
+                                <input type="text" v-model="simulationForm.customParams.place_name" class="form-control"
+                                    placeholder="如：四川省成都市">
+                            </div>
+                        </div>
+
+                        <!-- 提示信息 -->
+                        <div class="simulation-tip">
+                            <span class="tip-icon">ℹ️</span>
+                            <span>留空的参数将使用默认测试值。这将发送一条测试消息到选定的群组，请确保机器人已连接。</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer"
+                    style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button class="btn btn-text" @click="closeSimulation">取消</button>
+                    <button class="btn btn-primary" @click="sendSimulation"
+                        :disabled="simulationSending || !simulationOptions">
+                        {{ simulationSending ? '发送中...' : '📤 发送测试' }}
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <!-- Settings Modal (MD3 Dialog) -->
         <div v-show="showSettings" class="modal" style="display: block;">
