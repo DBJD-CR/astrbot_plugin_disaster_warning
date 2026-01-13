@@ -146,21 +146,30 @@
                 <!-- Recent Events (Full Width) -->
                 <section>
                     <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
                         <h2 class="section-title" style="margin-bottom: 0;">📋 最近事件</h2>
-                        <!-- Optional: Filter or View All button could go here -->
+                        <div class="filter-group">
+                            <button class="btn btn-sm btn-filter" :class="{ active: filterType === 'all' }"
+                                @click="setFilter('all')">全部</button>
+                            <button class="btn btn-sm btn-filter" :class="{ active: filterType === 'earthquake' }"
+                                @click="setFilter('earthquake')">地震</button>
+                            <button class="btn btn-sm btn-filter" :class="{ active: filterType === 'tsunami' }"
+                                @click="setFilter('tsunami')">海啸</button>
+                            <button class="btn btn-sm btn-filter" :class="{ active: filterType === 'weather' }"
+                                @click="setFilter('weather')">气象</button>
+                        </div>
                     </div>
 
                     <div class="events-list events-grid-layout">
                         <!-- Changed to Grid for better full-width utilization -->
-                        <div v-if="groupedEvents.length === 0" class="loading">暂无事件记录</div>
+                        <div v-if="groupedEvents.length === 0" class="loading" style="grid-column: 1 / -1;">暂无事件记录</div>
                         <template v-for="group in groupedEvents" :key="group.id">
                             <!-- Event Group Container -->
                             <div class="event-group"
                                 :class="{ 'expanded': isEventGroupExpanded(group.id), 'has-updates': group.updateCount > 1 }">
                                 <!-- Main Event Card (Latest) -->
                                 <div class="event-card event-card-main"
-                                    @click="group.updateCount > 1 && toggleEventGroup(group.id)"
+                                    @click="group.updateCount > 1 && toggleEventGroup(group.id, $event)"
                                     :class="{ 'clickable': group.updateCount > 1 }">
                                     <!-- Earthquake Event -->
                                     <template
@@ -177,11 +186,39 @@
                                             </div>
                                         </div>
                                     </template>
+                                    <!-- Tsunami Event -->
+                                    <template v-else-if="group.latestEvent.type === 'tsunami'">
+                                        <div class="mag-badge tsunami-badge-style">
+                                            🌊
+                                        </div>
+                                        <div class="event-main">
+                                            <div class="event-loc">{{ group.latestEvent.description || '未知位置' }}</div>
+                                            <div class="event-meta">
+                                                <span class="time-tag">{{ formatTimeFriendly(group.latestEvent.time)
+                                                    }}</span>
+                                                <span class="source-tag">{{ group.latestEvent.source || '未知来源' }}</span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <!-- Weather Event -->
+                                    <template v-else-if="group.latestEvent.type === 'weather_alarm'">
+                                        <div
+                                            :class="['mag-badge', getWeatherColorClass(group.latestEvent.description)]">
+                                            ☁️
+                                        </div>
+                                        <div class="event-main">
+                                            <div class="event-loc">{{ group.latestEvent.description || '未知位置' }}</div>
+                                            <div class="event-meta">
+                                                <span class="time-tag">{{ formatTimeFriendly(group.latestEvent.time)
+                                                    }}</span>
+                                                <span class="source-tag">{{ group.latestEvent.source || '未知来源' }}</span>
+                                            </div>
+                                        </div>
+                                    </template>
                                     <!-- Other Events -->
                                     <template v-else>
                                         <div class="mag-badge" style="background-color: var(--md-sys-color-secondary);">
-                                            {{ group.latestEvent.type === 'tsunami' ? '🌊' : (group.latestEvent.type ===
-                                            'weather_alarm' ? '☁️' : '❓') }}
+                                            ❓
                                         </div>
                                         <div class="event-main">
                                             <div class="event-loc">{{ group.latestEvent.description || '未知位置' }}</div>
@@ -199,38 +236,43 @@
                                             }}</span>
                                     </div>
                                 </div>
-                                <!-- Expanded History -->
-                                <div v-if="isEventGroupExpanded(group.id) && group.updateCount > 1"
-                                    class="event-history">
-                                    <div v-for="(evt, idx) in group.events.slice(1)" :key="idx"
-                                        class="event-card event-card-history">
-                                        <template v-if="evt.type === 'earthquake' || evt.type === 'earthquake_warning'">
-                                            <div
-                                                :class="['mag-badge mag-badge-sm', getMagColorClass(evt.magnitude || 0)]">
-                                                M{{ (evt.magnitude || 0).toFixed(1) }}
-                                            </div>
-                                            <div class="event-main">
-                                                <div class="event-loc">{{ evt.description || '未知位置' }}</div>
-                                                <div class="event-meta">
-                                                    <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
-                                                    <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                <!-- Expanded History Wrapper -->
+                                <div class="event-history-wrapper"
+                                    :class="{ 'is-open': isEventGroupExpanded(group.id) }" v-if="group.updateCount > 1"
+                                    :style="{ '--origin-x': getEventOrigin(group.id) }">
+                                    <div class="event-history-inner">
+                                        <div v-for="(evt, idx) in group.events.slice(1)" :key="idx"
+                                            class="event-card event-card-history">
+                                            <template
+                                                v-if="evt.type === 'earthquake' || evt.type === 'earthquake_warning'">
+                                                <div
+                                                    :class="['mag-badge mag-badge-sm', getMagColorClass(evt.magnitude || 0)]">
+                                                    M{{ (evt.magnitude || 0).toFixed(1) }}
                                                 </div>
-                                            </div>
-                                        </template>
-                                        <template v-else>
-                                            <div class="mag-badge mag-badge-sm"
-                                                style="background-color: var(--md-sys-color-secondary);">
-                                                {{ evt.type === 'tsunami' ? '🌊' : (evt.type === 'weather_alarm' ? '☁️'
-                                                : '❓') }}
-                                            </div>
-                                            <div class="event-main">
-                                                <div class="event-loc">{{ evt.description || '未知位置' }}</div>
-                                                <div class="event-meta">
-                                                    <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
-                                                    <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                                <div class="event-main">
+                                                    <div class="event-loc">{{ evt.description || '未知位置' }}</div>
+                                                    <div class="event-meta">
+                                                        <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
+                                                        <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </template>
+                                            </template>
+                                            <template v-else>
+                                                <div class="mag-badge mag-badge-sm"
+                                                    style="background-color: var(--md-sys-color-secondary);">
+                                                    {{ evt.type === 'tsunami' ? '🌊' : (evt.type === 'weather_alarm' ?
+                                                    '☁️'
+                                                    : '❓') }}
+                                                </div>
+                                                <div class="event-main">
+                                                    <div class="event-loc">{{ evt.description || '未知位置' }}</div>
+                                                    <div class="event-meta">
+                                                        <span class="time-tag">{{ formatTimeFriendly(evt.time) }}</span>
+                                                        <span class="source-tag">{{ evt.source || '未知来源' }}</span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

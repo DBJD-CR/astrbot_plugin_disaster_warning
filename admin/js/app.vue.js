@@ -44,6 +44,14 @@ const getMagnitudeColor = (mag) => {
     return '#3b82f6';
 };
 
+const getWeatherColorClass = (description) => {
+    if (!description) return 'weather-blue';
+    if (description.includes('红色')) return 'weather-red';
+    if (description.includes('橙色')) return 'weather-orange';
+    if (description.includes('黄色')) return 'weather-yellow';
+    return 'weather-blue'; // Default to blue/info
+};
+
 // Vue App
 const app = createApp({
     setup() {
@@ -103,6 +111,9 @@ const app = createApp({
         // Theme
         const isDarkTheme = ref(false);
 
+        // Filter state
+        const filterType = ref('all'); // 'all', 'earthquake', 'tsunami', 'weather'
+
         // Event grouping - track which event groups are expanded
         const expandedEvents = ref(new Set());
 
@@ -115,12 +126,33 @@ const app = createApp({
             return [...recentEvents.value].reverse();
         });
 
+        // Filtered events based on selected type
+        const filteredRecentEvents = computed(() => {
+            if (filterType.value === 'all') {
+                return recentEvents.value;
+            }
+            return recentEvents.value.filter(evt => {
+                const type = evt.type || '';
+                if (filterType.value === 'earthquake') {
+                    return type === 'earthquake' || type === 'earthquake_warning';
+                }
+                if (filterType.value === 'tsunami') {
+                    return type === 'tsunami';
+                }
+                if (filterType.value === 'weather') {
+                    return type === 'weather_alarm';
+                }
+                return true;
+            });
+        });
+
         // Grouped events by ID - latest event as representative, with history
         const groupedEvents = computed(() => {
             const groups = {};
+            const eventsToGroup = filteredRecentEvents.value;
 
             // Group events by ID
-            for (const evt of recentEvents.value) {
+            for (const evt of eventsToGroup) {
                 // Fix: 使用 event_id 作为主要分组依据 (后端字段名为 event_id)
                 const eventId = evt.event_id || evt.id || `${evt.time}-${evt.description}`;
                 if (!groups[eventId]) {
@@ -467,12 +499,22 @@ const app = createApp({
             }
         };
 
+        // Event group animation origins
+        const eventOrigins = ref({});
+
         // ========== Event Group Toggle ==========
-        const toggleEventGroup = (groupId) => {
+        const toggleEventGroup = (groupId, event) => {
             if (expandedEvents.value.has(groupId)) {
                 expandedEvents.value.delete(groupId);
             } else {
                 expandedEvents.value.add(groupId);
+                if (event) {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const x = event.clientX - rect.left;
+                    const width = rect.width;
+                    const percentage = (x / width) * 100;
+                    eventOrigins.value[groupId] = `${percentage.toFixed(2)}%`;
+                }
             }
             // Force reactivity
             expandedEvents.value = new Set(expandedEvents.value);
@@ -480,6 +522,14 @@ const app = createApp({
 
         const isEventGroupExpanded = (groupId) => {
             return expandedEvents.value.has(groupId);
+        };
+
+        const getEventOrigin = (groupId) => {
+            return eventOrigins.value[groupId] || '50%';
+        };
+
+        const setFilter = (type) => {
+            filterType.value = type;
         };
 
         const startUptimeTimer = () => {
@@ -569,6 +619,7 @@ const app = createApp({
             testPush,
             toggleEventGroup,
             isEventGroupExpanded,
+            getEventOrigin,
 
             // Simulation Methods
             openSimulation,
@@ -577,9 +628,11 @@ const app = createApp({
             selectDisasterType,
 
             // Helpers
-            formatTime,
             formatTimeFriendly,
             getMagColorClass,
+            getWeatherColorClass,
+            setFilter,
+            filterType,
         };
     }
 });
