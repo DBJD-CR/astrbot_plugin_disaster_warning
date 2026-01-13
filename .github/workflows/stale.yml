@@ -1,6 +1,4 @@
 # 本工作流用于标记并关闭长期不活跃的 Issue。
-# 目前仅针对带 `bug` 标签的 Issue 生效，不会处理 PR。
-#
 # 文档: https://github.com/actions/stale
 name: Mark stale bug issues
 
@@ -28,8 +26,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           operations-per-run: 200
 
-          # 只处理带 bug 标签的 Issue
-          any-of-labels: 'bug'
+          any-of-labels: 'type/fix,bug'
 
           # 不处理 PR
           days-before-pr-stale: -1
