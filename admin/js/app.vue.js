@@ -313,9 +313,80 @@ const app = createApp({
             }
         };
 
-        const refreshAll = () => {
-            // 通过 WebSocket 请求刷新
-            sendWsMessage({ type: 'refresh' });
+        const refreshAll = async () => {
+            // 优先使用 WebSocket 请求刷新
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                sendWsMessage({ type: 'refresh' });
+                return;
+            }
+
+            // WebSocket 未连接时，回退到 HTTP API 刷新
+            console.log('[RefreshAll] WebSocket 未连接，使用 HTTP API 刷新');
+            try {
+                const [statusRes, statsRes, connsRes, earthquakesRes] = await Promise.all([
+                    fetch(`${API_BASE}/status`),
+                    fetch(`${API_BASE}/statistics`),
+                    fetch(`${API_BASE}/connections`),
+                    fetch(`${API_BASE}/earthquakes`)
+                ]);
+
+                const [statusData, statsData, connsData, earthquakesData] = await Promise.all([
+                    statusRes.json(),
+                    statsRes.json(),
+                    connsRes.json(),
+                    earthquakesRes.json()
+                ]);
+
+                // 更新状态
+                if (statusData) {
+                    status.running = statusData.running;
+                    status.activeConnections = statusData.active_connections;
+                    status.totalConnections = statusData.total_connections;
+                    if (statusData.start_time) {
+                        status.startTime = new Date(statusData.start_time);
+                        startUptimeTimer();
+                    } else {
+                        status.uptime = statusData.uptime;
+                    }
+                }
+
+                // 更新统计
+                if (statsData) {
+                    stats.totalEvents = statsData.total_events || 0;
+                    stats.earthquakeCount = (statsData.by_type && statsData.by_type.earthquake) || 0;
+                    stats.tsunamiCount = (statsData.by_type && statsData.by_type.tsunami) || 0;
+                    stats.weatherCount = (statsData.by_type && statsData.by_type.weather_alarm) || 0;
+                    recentEvents.value = statsData.recent_pushes || [];
+                    if (statsData.earthquake_stats && statsData.earthquake_stats.by_magnitude) {
+                        magnitudeDistribution.value = statsData.earthquake_stats.by_magnitude;
+                    }
+                }
+
+                // 更新连接状态
+                if (connsData && connsData.connections) {
+                    connections.value = connsData.connections;
+                }
+
+                // 更新地震数据
+                if (earthquakesData && earthquakesData.length > 0) {
+                    earthquakes.value = earthquakesData.map(eq => ({
+                        id: eq.id,
+                        lat: eq.latitude,
+                        lng: eq.longitude,
+                        magnitude: eq.magnitude || 0,
+                        place: eq.place || '未知位置',
+                        time: eq.time,
+                        source: eq.source || ''
+                    })).filter(eq => eq.lat != null && eq.lng != null);
+                }
+
+                // 更新时间戳
+                lastUpdate.value = new Date().toLocaleString('zh-CN');
+                console.log('[RefreshAll] HTTP 刷新完成');
+            } catch (e) {
+                console.error('[RefreshAll] HTTP 刷新失败:', e);
+                alert('刷新失败: ' + e.message);
+            }
         };
 
 

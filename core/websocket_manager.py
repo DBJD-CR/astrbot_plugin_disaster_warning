@@ -499,6 +499,12 @@ class WebSocketManager:
         for task in self.reconnect_tasks.values():
             task.cancel()
 
+        # 取消所有心跳任务（防御性编程，确保没有遗漏）
+        for name, task in list(self.heartbeat_tasks.items()):
+            if task and not task.done():
+                task.cancel()
+                logger.debug(f"[灾害预警] 取消心跳任务: {name}")
+
         # 断开所有连接
         for name in list(self.connections.keys()):
             await self.disconnect(name)

@@ -230,11 +230,17 @@ class WebAdminServer:
         @self.app.post("/api/test-push")
         async def test_push(
             target_group: str = None,
-            disaster_type: str = "earthquake",
-            test_type: str = None,
-            custom_params: dict = None
+            disaster_type: str = "earthquake"
         ):
-            """测试推送 - 增强版，支持更多参数"""
+            """
+            简单测试推送 - 使用预设的测试数据
+            
+            参数:
+            - target_group: 目标群号 (可选，默认使用第一个配置的群)
+            - disaster_type: 灾害类型 (earthquake/tsunami/weather)
+            
+            注意: 此端点使用预设的测试数据。如需自定义参数，请使用 /api/simulate 端点。
+            """
             try:
                 if not self.disaster_service:
                     return JSONResponse({"error": "服务未初始化"}, status_code=503)
@@ -253,11 +259,11 @@ class WebAdminServer:
                     else:
                         return JSONResponse({"error": "未配置目标群组"}, status_code=400)
                 
-                # 调用 test_push，传递灾害类型和测试格式
+                # 调用 test_push，使用默认测试格式
                 result = await self.disaster_service.test_push(
                     target_session, 
-                    disaster_type, 
-                    test_type
+                    disaster_type,
+                    test_type=None  # 使用默认格式
                 )
                 return {"success": "✅" in result if result else False, "message": result}
             except Exception as e:
