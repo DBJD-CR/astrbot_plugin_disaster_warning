@@ -107,7 +107,11 @@ class StatisticsManager:
                 push_record["longitude"] = event.data.longitude
                 push_record["magnitude"] = event.data.magnitude
                 push_record["time"] = event.data.shock_time.isoformat() if event.data.shock_time else None
-            
+            elif isinstance(event.data, WeatherAlarmData):
+                push_record["time"] = event.data.issue_time.isoformat() if event.data.issue_time else None
+            elif isinstance(event.data, TsunamiData):
+                push_record["time"] = event.data.issue_time.isoformat() if event.data.issue_time else None
+
             self.stats["recent_pushes"].insert(0, push_record)
 
             # 保持最近记录数量限制

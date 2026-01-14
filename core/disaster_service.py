@@ -18,6 +18,7 @@ from ..models.models import (
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
+    get_data_source_from_id,
 )
 from .handler_registry import WebSocketHandlerRegistry
 from .handlers import DATA_HANDLERS
@@ -58,6 +59,9 @@ class DisasterWarningService:
 
         # 定时任务
         self.scheduled_tasks = []
+        
+        # Web 管理端服务器引用（用于事件驱动的 WebSocket 推送）
+        self.web_admin_server = None
 
     def _initialize_handlers(self):
         """初始化数据处理器"""
@@ -443,6 +447,20 @@ class DisasterWarningService:
                 logger.debug(f"[灾害预警] ✅ 事件推送成功: {event.id}")
             else:
                 logger.debug(f"[灾害预警] 事件推送被过滤: {event.id}")
+            
+            # 实时通知 Web 管理端（如果已配置）
+            if self.web_admin_server:
+                try:
+                    # 构建事件摘要
+                    event_summary = {
+                        "id": event.id,
+                        "type": event.disaster_type.value if hasattr(event.disaster_type, 'value') else str(event.disaster_type),
+                        "source": event.source.value if hasattr(event.source, 'value') else str(event.source),
+                        "time": datetime.now().isoformat()
+                    }
+                    await self.web_admin_server.notify_event(event_summary)
+                except Exception as ws_e:
+                    logger.debug(f"[灾害预警] WebSocket 通知失败: {ws_e}")
 
         except Exception as e:
             logger.error(f"[灾害预警] 处理灾害事件失败: {e}")
@@ -722,6 +740,285 @@ class DisasterWarningService:
             logger.error(f"[灾害预警] 测试推送失败: {e}")
             return f"❌ 测试推送失败: {str(e)}"
 
+    async def simulate_custom_event(
+        self,
+        session: str,
+        disaster_type: str = "earthquake",
+        test_type: str = "china",
+        custom_params: dict = None
+    ):
+        """
+        自定义模拟灾害事件推送
+        
+        参数:
+        - session: 目标会话
+        - disaster_type: 灾害类型 (earthquake/tsunami/weather)
+        - test_type: 测试格式 (china/japan/usgs)
+        - custom_params: 自定义参数字典，可包含:
+            - magnitude: 震级 (float)
+            - latitude: 纬度 (float)
+            - longitude: 经度 (float)
+            - depth: 深度 (float, km)
+            - place_name: 地名 (str)
+            - intensity: 烈度 (float, 中国标准)
+            - scale: 震度 (float, 日本标准)
+            - source_id: 数据源ID (str)
+        """
+        try:
+            custom_params = custom_params or {}
+            
+            # 基础配置模板 - 按数据源 ID 组织
+            base_configs = {
+                "earthquake": {
+                    # FAN Studio 数据源
+                    "cea_fanstudio": {
+                        "source_id": "cea_fanstudio",
+                        "magnitude": 5.5,
+                        "depth": 10.0,
+                        "intensity": 6.0,
+                        "place_name": "四川省成都市",
+                        "latitude": 30.67,
+                        "longitude": 104.07,
+                        "updates": 1,
+                        "is_final": False,
+                    },
+                    "cenc_fanstudio": {
+                        "source_id": "cenc_fanstudio",
+                        "magnitude": 4.2,
+                        "depth": 12.0,
+                        "place_name": "云南省昆明市",
+                        "latitude": 25.04,
+                        "longitude": 102.71,
+                        "info_type": "automatic",
+                    },
+                    "cwa_fanstudio": {
+                        "source_id": "cwa_fanstudio",
+                        "magnitude": 5.8,
+                        "depth": 15.0,
+                        "scale": 4.0,
+                        "place_name": "台湾花莲县",
+                        "latitude": 23.99,
+                        "longitude": 121.62,
+                        "updates": 1,
+                        "is_final": False,
+                    },
+                    "jma_fanstudio": {
+                        "source_id": "jma_fanstudio",
+                        "magnitude": 6.0,
+                        "depth": 30.0,
+                        "scale": 5.0,
+                        "place_name": "東京都千代田区",
+                        "latitude": 35.69,
+                        "longitude": 139.69,
+                        "updates": 2,
+                        "is_final": False,
+                    },
+                    "usgs_fanstudio": {
+                        "source_id": "usgs_fanstudio",
+                        "magnitude": 4.8,
+                        "depth": 15.5,
+                        "place_name": "California, USA",
+                        "latitude": 34.05,
+                        "longitude": -118.24,
+                        "info_type": "automatic",
+                    },
+                    # Wolfx 数据源
+                    "jma_wolfx": {
+                        "source_id": "jma_wolfx",
+                        "magnitude": 6.2,
+                        "depth": 35.0,
+                        "scale": 5.0,
+                        "place_name": "福島県沖",
+                        "latitude": 37.5,
+                        "longitude": 141.8,
+                        "updates": 2,
+                        "is_final": False,
+                        "raw_data": {
+                            "areas": [
+                                {"name": "福島県", "scaleFrom": 50, "kindCode": "10"},
+                                {"name": "宮城県", "scaleFrom": 45, "kindCode": "11"},
+                            ]
+                        },
+                    },
+                    "cea_wolfx": {
+                        "source_id": "cea_wolfx",
+                        "magnitude": 5.0,
+                        "depth": 10.0,
+                        "intensity": 5.0,
+                        "place_name": "甘肃省兰州市",
+                        "latitude": 36.06,
+                        "longitude": 103.83,
+                        "updates": 1,
+                        "is_final": False,
+                    },
+                    "cwa_wolfx": {
+                        "source_id": "cwa_wolfx",
+                        "magnitude": 5.5,
+                        "depth": 20.0,
+                        "scale": 4.0,
+                        "place_name": "台湾宜兰县",
+                        "latitude": 24.76,
+                        "longitude": 121.75,
+                        "updates": 1,
+                        "is_final": False,
+                    },
+                    "cenc_wolfx": {
+                        "source_id": "cenc_wolfx",
+                        "magnitude": 3.8,
+                        "depth": 8.0,
+                        "place_name": "新疆阿克苏地区",
+                        "latitude": 41.17,
+                        "longitude": 80.26,
+                        "info_type": "automatic",
+                    },
+                    "jma_wolfx_info": {
+                        "source_id": "jma_wolfx_info",
+                        "magnitude": 4.5,
+                        "depth": 40.0,
+                        "scale": 3.0,
+                        "place_name": "茨城県沖",
+                        "latitude": 36.0,
+                        "longitude": 141.0,
+                        "info_type": "automatic",
+                    },
+                    # P2P 数据源
+                    "jma_p2p": {
+                        "source_id": "jma_p2p",
+                        "magnitude": 5.5,
+                        "depth": 25.0,
+                        "scale": 4.0,
+                        "place_name": "石川県能登地方",
+                        "latitude": 37.22,
+                        "longitude": 136.72,
+                        "updates": 1,
+                        "is_final": False,
+                    },
+                    "jma_p2p_info": {
+                        "source_id": "jma_p2p_info",
+                        "magnitude": 4.2,
+                        "depth": 30.0,
+                        "max_scale": 3.0,
+                        "place_name": "千葉県北西部",
+                        "latitude": 35.6,
+                        "longitude": 140.1,
+                        "info_type": "confirmed",
+                    },
+                    # Global Quake
+                    "global_quake": {
+                        "source_id": "global_quake",
+                        "magnitude": 5.0,
+                        "depth": 10.0,
+                        "place_name": "Pacific Ocean",
+                        "latitude": 0.0,
+                        "longitude": -150.0,
+                        "revision": 1,
+                    },
+                },
+                "tsunami": {
+                    "china_tsunami_fanstudio": {
+                        "source_id": "china_tsunami_fanstudio",
+                        "title": "海啸黄色警报",
+                        "level": "Warning",
+                        "org_unit": "自然资源部海啸预警中心",
+                        "forecasts": [
+                            {
+                                "name": "浙江沿海",
+                                "grade": "Warning",
+                                "immediate": True,
+                                "estimatedArrivalTime": "14:30",
+                                "maxWaveHeight": "50cm",
+                            }
+                        ],
+                        "subtitle": "日本南海海域发生地震引发海啸预警",
+                    },
+                    "jma_tsunami_p2p": {
+                        "source_id": "jma_tsunami_p2p",
+                        "title": "津波注意報",
+                        "level": "Watch",
+                        "org_unit": "日本气象厅",
+                        "forecasts": [
+                            {
+                                "name": "三陸沿岸",
+                                "grade": "Watch",
+                                "immediate": False,
+                                "firstHeight": {"arrivalTime": "2024-01-01T13:15:00"},
+                                "maxHeight": {"description": "１ｍ", "value": 1},
+                            }
+                        ],
+                        "subtitle": "三陸沖を震源とする地震により津波注意報発表",
+                    },
+                },
+                "weather": {
+                    "china_weather_fanstudio": {
+                        "source_id": "china_weather_fanstudio",
+                        "headline": "大风黄色预警信号",
+                        "title": "大风黄色预警信号",
+                        "description": "气象台发布大风黄色预警信号：预计今天夜间到明天白天，沿岸海域将有西南风6～7级，阵风8～9级。",
+                        "type": "wind",
+                        "effective_time": datetime.now(),
+                        "longitude": 116.0,
+                        "latitude": 39.0,
+                    }
+                }
+            }
+
+            
+            # 获取基础配置
+            type_configs = base_configs.get(disaster_type, base_configs["earthquake"])
+            test_config = type_configs.get(test_type, list(type_configs.values())[0]).copy()
+            
+            # 合并自定义参数 (自定义参数优先)
+            for key, value in custom_params.items():
+                if value is not None and value != "":
+                    # 类型转换
+                    if key in ["magnitude", "depth", "intensity", "scale", "latitude", "longitude"]:
+                        try:
+                            test_config[key] = float(value)
+                        except (ValueError, TypeError):
+                            pass
+                    else:
+                        test_config[key] = value
+            
+            # 创建测试事件
+            test_event = self._create_simple_test_event(disaster_type, test_config)
+            
+            logger.info(
+                f"[灾害预警] 创建自定义模拟事件: {test_event.id} (类型: {disaster_type}, 格式: {test_type})"
+            )
+            logger.debug(f"[灾害预警] 自定义参数: {custom_params}")
+            
+            # 注入本地预估信息
+            if disaster_type == "earthquake" and self.message_manager.local_monitor:
+                self.message_manager.local_monitor.inject_local_estimation(
+                    test_event.data
+                )
+            
+            # 构建消息并推送
+            message = self.message_manager._build_message(test_event)
+            await self.message_manager._send_message(session, message)
+            
+            logger.info(f"[灾害预警] 自定义模拟推送成功: {test_event.id}")
+            
+            # 返回详细的成功信息
+            source_name = self._get_source_display_name(test_config["source_id"])
+            
+            if disaster_type == "earthquake":
+                return (
+                    f"✅ 模拟推送成功\n"
+                    f"📡 数据源: {source_name}\n"
+                    f"📍 位置: {test_config.get('place_name', '未知')}\n"
+                    f"📊 震级: M{test_config.get('magnitude', 0):.1f}\n"
+                    f"🎯 消息链路畅通"
+                )
+            else:
+                return f"✅ 模拟推送成功\n📡 数据源: {source_name}\n🎯 消息链路畅通"
+            
+        except Exception as e:
+            logger.error(f"[灾害预警] 自定义模拟推送失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return f"❌ 模拟推送失败: {str(e)}"
+
     def _create_simple_test_event(
         self, disaster_type: str, test_config: dict
     ) -> "DisasterEvent":
@@ -731,15 +1028,11 @@ class DisasterWarningService:
         source_id = test_config["source_id"]
 
         # 获取数据源枚举值
-        source_enum_mapping = {
-            "cea_fanstudio": DataSource.FAN_STUDIO_CEA,
-            "jma_wolfx": DataSource.WOLFX_JMA_EEW,
-            "usgs_fanstudio": DataSource.FAN_STUDIO_USGS,
-            "china_tsunami_fanstudio": DataSource.FAN_STUDIO_TSUNAMI,
-            "jma_tsunami_p2p": DataSource.P2P_TSUNAMI,
-            "china_weather_fanstudio": DataSource.FAN_STUDIO_WEATHER,
-        }
-        source_enum = source_enum_mapping.get(source_id, DataSource.FAN_STUDIO_CEA)
+
+        source_enum = get_data_source_from_id(source_id)
+        if not source_enum:
+            logger.warning(f"[灾害预警] 未知的测试数据源ID: {source_id}, 使用默认为 FAN_STUDIO_CEA")
+            source_enum = DataSource.FAN_STUDIO_CEA
 
         if disaster_type == "earthquake":
             # 创建地震测试数据

@@ -29,6 +29,8 @@ class WebSocketManager:
         self.connection_info: dict[str, dict] = {}  # 新增：存储连接信息
         self.running = False
         self.session: aiohttp.ClientSession | None = None
+        self.heartbeat_tasks: dict[str, asyncio.Task] = {}  # 心跳任务
+        self.last_heartbeat_time: dict[str, float] = {}  #最后心跳时间
 
     def register_handler(self, connection_name: str, handler: Callable):
         """注册消息处理器"""
@@ -92,12 +94,17 @@ class WebSocketManager:
                 # 连接成功，重置所有重试计数
                 self.connection_retry_counts[name] = 0
                 self.fallback_retry_counts[name] = 0
+                self.last_heartbeat_time[name] = asyncio.get_event_loop().time()
+
+                # 启动心跳任务
+                self.heartbeat_tasks[name] = asyncio.create_task(self._heartbeat_loop(name, websocket))
 
                 try:
                     # 处理消息 - aiohttp 风格
                     async for msg in websocket:
                         if msg.type == WSMsgType.TEXT:
                             message = msg.data
+                            self.last_heartbeat_time[name] = asyncio.get_event_loop().time()  # 更新心跳时间
                             try:
                                 # 记录原始消息
                                 if self.message_logger:
@@ -133,6 +140,12 @@ class WebSocketManager:
                                 f"[灾害预警] WebSocket连接已关闭: {name}, code={websocket.close_code}"
                             )
                             break
+                        
+                        elif msg.type == WSMsgType.PING:
+                            self.last_heartbeat_time[name] = asyncio.get_event_loop().time()
+                        
+                        elif msg.type == WSMsgType.PONG:
+                            self.last_heartbeat_time[name] = asyncio.get_event_loop().time()
 
                     # 检查连接关闭代码，如果是非正常关闭则抛出异常以触发重连
                     if (
@@ -189,8 +202,12 @@ class WebSocketManager:
         """统一处理连接错误"""
         # 清理连接信息
         self.connections.pop(name, None)
-        # 保存旧的连接信息以便重连时使用（包含 backup_url 等配置）
-        connection_info = self.connection_info.pop(name, {})
+        if name in self.heartbeat_tasks:
+            self.heartbeat_tasks[name].cancel()
+            self.heartbeat_tasks.pop(name, None)
+            
+        # 获取连接信息（不移除，保持在列表中显示为离线状态）
+        connection_info = self.connection_info.get(name, {})
 
         # 启动重连任务
         if self.running:
@@ -369,6 +386,34 @@ class WebSocketManager:
 
         self.reconnect_tasks[name] = asyncio.create_task(reconnect())
 
+    async def _heartbeat_loop(self, name: str, websocket: ClientWebSocketResponse):
+        """应用层心跳循环"""
+        interval = self.config.get("heartbeat_interval", 30)
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                if websocket.closed:
+                    break
+                
+                # 检查上次收到消息的时间
+                last_time = self.last_heartbeat_time.get(name, 0)
+                current_time = asyncio.get_event_loop().time()
+                
+                # 如果超过 2 倍心跳间隔没有收到任何消息（包括Pong），主动发送 Ping
+                if current_time - last_time > interval * 2:
+                    try:
+                        logger.debug(f"[灾害预警] 发送应用层 Ping: {name}")
+                        await websocket.ping()
+                    except Exception as e:
+                        logger.warning(f"[灾害预警] Ping 失败 {name}: {e}")
+                        # Ping 失败通常意味着连接已断，抛出异常触发外层重连
+                        await websocket.close(code=1006, message=b"Heartbeat timeout")
+                        break
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"[灾害预警] 心跳循环异常 {name}: {e}")
+
     async def disconnect(self, name: str):
         """断开连接"""
         if name in self.connections:
@@ -380,6 +425,9 @@ class WebSocketManager:
             finally:
                 self.connections.pop(name, None)
                 self.connection_info.pop(name, None)
+                if name in self.heartbeat_tasks:
+                    self.heartbeat_tasks[name].cancel()
+                    self.heartbeat_tasks.pop(name, None)
 
         if name in self.reconnect_tasks:
             self.reconnect_tasks[name].cancel()
@@ -414,6 +462,11 @@ class WebSocketManager:
                 }
             )
 
+            
+        # 添加最后心跳时间
+        if name in self.last_heartbeat_time:
+            status["last_active"] = self.last_heartbeat_time[name]
+
         return status
 
     def get_all_connections_status(self) -> dict[str, dict[str, Any]]:
@@ -446,6 +499,12 @@ class WebSocketManager:
         for task in self.reconnect_tasks.values():
             task.cancel()
 
+        # 取消所有心跳任务（防御性编程，确保没有遗漏）
+        for name, task in list(self.heartbeat_tasks.items()):
+            if task and not task.done():
+                task.cancel()
+                logger.debug(f"[灾害预警] 取消心跳任务: {name}")
+
         # 断开所有连接
         for name in list(self.connections.keys()):
             await self.disconnect(name)
@@ -460,6 +519,8 @@ class WebSocketManager:
         self.connection_info.clear()
         self.connection_retry_counts.clear()
         self.fallback_retry_counts.clear()
+        self.heartbeat_tasks.clear()
+        self.last_heartbeat_time.clear()
 
         logger.info("[灾害预警] WebSocket管理器已停止")
 
