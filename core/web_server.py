@@ -484,8 +484,9 @@ class WebAdminServer:
         }
         
         # 发送给所有连接的客户端
+        # 使用快照避免并发修改导致跳过某些连接
         disconnected = []
-        for ws in self._ws_connections:
+        for ws in list(self._ws_connections):
             try:
                 await ws.send_json(message)
             except Exception:
