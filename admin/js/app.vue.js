@@ -190,7 +190,7 @@ const app = createApp({
         const currentDisasterFormats = computed(() => {
             if (!simulationOptions.value || !simulationOptions.value.disaster_types) return [];
             const typeInfo = simulationOptions.value.disaster_types[simulationForm.disasterType];
-            return typeInfo ? typeInfo.formats : [];
+            return typeInfo && typeInfo.formats ? typeInfo.formats : [];
         });
 
         // ========== WebSocket 连接 ==========
