@@ -105,8 +105,10 @@ const app = createApp({
                 intensity: '',
                 scale: ''
             }
-        });
+        })
+            ;
         const simulationSending = ref(false);
+        const simulationGeolocating = ref(false);
 
         // Theme
         const isDarkTheme = ref(false);
@@ -570,6 +572,29 @@ const app = createApp({
             }
         };
 
+        const autoLocateSimulation = async () => {
+            if (simulationGeolocating.value) return;
+            simulationGeolocating.value = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/geolocate`);
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    simulationForm.customParams.latitude = result.data.latitude;
+                    simulationForm.customParams.longitude = result.data.longitude;
+                    alert(`✅ 定位成功！\n位置: ${result.data.province} ${result.data.city}\n经度: ${result.data.longitude}\n纬度: ${result.data.latitude}`);
+                } else {
+                    alert(`❌ 定位失败: ${result.error || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error('Auto-locate error:', error);
+                alert(`❌ 定位失败: ${error.message}`);
+            } finally {
+                simulationGeolocating.value = false;
+            }
+        };
+
         // Event group animation origins
         const eventOrigins = ref({});
 
@@ -679,6 +704,7 @@ const app = createApp({
             simulationOptions,
             simulationForm,
             simulationSending,
+            simulationGeolocating,
             currentDisasterFormats,
 
             // Methods
@@ -697,6 +723,7 @@ const app = createApp({
             closeSimulation,
             sendSimulation,
             selectDisasterType,
+            autoLocateSimulation,
 
             // Helpers
             formatTimeFriendly,

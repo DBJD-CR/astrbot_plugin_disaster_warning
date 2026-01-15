@@ -20,7 +20,8 @@ const ConfigRenderer = {
     },
     data() {
         return {
-            expandedSections: new Set()
+            expandedSections: new Set(),
+            geolocating: false  // Track if we're fetching geolocation
         };
     },
     methods: {
@@ -47,6 +48,32 @@ const ConfigRenderer = {
         updateList(key, event) {
             const val = event.target.value;
             this.config[key] = val.split(',').map(s => s.trim()).filter(s => s);
+        },
+        async autoLocate() {
+            if (this.geolocating) return;
+            this.geolocating = true;
+
+            try {
+                const response = await fetch('/api/geolocate');
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    this.config.latitude = result.data.latitude;
+                    this.config.longitude = result.data.longitude;
+                    alert(`✅ 定位成功！\n位置: ${result.data.province} ${result.data.city}\n经度: ${result.data.longitude}\n纬度: ${result.data.latitude}`);
+                } else {
+                    alert(`❌ 定位失败: ${result.error || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error('Auto-locate error:', error);
+                alert(`❌ 定位失败: ${error.message}`);
+            } finally {
+                this.geolocating = false;
+            }
+        },
+        isLocalMonitoringSection() {
+            // Check if this is the local_monitoring section
+            return this.prefix === 'local_monitoring' || this.prefix === '';
         }
     },
     template: `
@@ -132,12 +159,24 @@ const ConfigRenderer = {
                             <span class="range-val">{{ config[key] }}</span>
                         </div>
 
-                        <!-- Number -->
-                        <input v-else-if="item.type === 'int' || item.type === 'float'" 
-                               type="number" 
-                               class="form-control" 
-                               v-model.number="config[key]"
-                               :step="item.type === 'float' ? '0.1' : '1'">
+                        <!-- Number with Auto-locate button for lat/lng -->
+                        <div v-else-if="item.type === 'int' || item.type === 'float'" style="display: flex; gap: 8px; align-items: center;">
+                            <input 
+                                   type="number" 
+                                   class="form-control" 
+                                   v-model.number="config[key]"
+                                   :step="item.type === 'float' ? '0.1' : '1'"
+                                   style="flex: 1;">
+                            <!-- Auto-locate button for latitude/longitude in local_monitoring -->
+                            <button v-if="prefix === 'local_monitoring' && (key === 'latitude' || key === 'longitude')" 
+                                    @click="autoLocate" 
+                                    :disabled="geolocating"
+                                    class="btn btn-sm btn-secondary"
+                                    style="white-space: nowrap; padding: 6px 12px; font-size: 0.85em; min-width: 90px;"
+                                    type="button">
+                                {{ geolocating ? '定位中...' : '🌍 自动定位' }}
+                            </button>
+                        </div>
 
                         <!-- List -->
                         <input v-else-if="item.type === 'list'"

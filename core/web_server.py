@@ -11,6 +11,8 @@ from typing import Any
 
 from astrbot.api import logger
 
+from ..utils.geolocation import fetch_location_from_ip
+
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect
     from fastapi.responses import HTMLResponse, JSONResponse
@@ -377,6 +379,44 @@ class WebAdminServer:
                 import traceback
                 logger.error(traceback.format_exc())
                 return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/geolocate")
+        async def get_geolocation():
+            """
+            获取当前客户端IP的地理位置信息
+            
+            返回格式:
+            {
+                "success": true,
+                "data": {
+                    "latitude": 39.9042,
+                    "longitude": 116.4074,
+                    "city": "Beijing",
+                    "province": "Beijing"
+                }
+            }
+            """
+            try:
+                # 调用地理定位API (不传IP，让API自动识别请求者IP)
+                location_data = await fetch_location_from_ip()
+                
+                return {
+                    "success": True,
+                    "data": {
+                        "latitude": location_data.get("latitude"),
+                        "longitude": location_data.get("longitude"),
+                        "city": location_data.get("city_zh", ""),
+                        "province": location_data.get("province_name_zh", ""),
+                        "country": location_data.get("country_name_zh", ""),
+                        "ip": location_data.get("ip", "")
+                    }
+                }
+            except Exception as e:
+                logger.error(f"[Web Admin] IP地理定位失败: {e}")
+                return JSONResponse({
+                    "success": False,
+                    "error": f"获取地理位置失败: {str(e)}"
+                }, status_code=500)
 
         @self.app.get("/api/config-schema")
         async def get_config_schema():
