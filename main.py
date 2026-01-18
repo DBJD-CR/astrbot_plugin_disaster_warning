@@ -94,9 +94,12 @@ class DisasterWarningPlugin(Star):
             # 停止灾害预警服务
             await stop_disaster_service()
 
-            # 关闭遥测会话
+            # 关闭遥测会话（best-effort，不影响主要关闭流程）
             if self.telemetry:
-                await self.telemetry.close()
+                try:
+                    await self.telemetry.close()
+                except Exception as te:
+                    logger.debug(f"[灾害预警] 遥测会话关闭时出错（已忽略）: {te}")
 
             logger.info("[灾害预警] 灾害预警插件已停止")
 

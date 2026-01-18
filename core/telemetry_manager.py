@@ -271,13 +271,75 @@ class TelemetryManager:
         }
 
         if message:
-            data["message"] = message[:500]
+            data["message"] = self._sanitize_message(message)[:500]
 
         if stack:
-            # 限制堆栈长度，避免过大的请求
-            data["stack"] = stack[:4000]
+            # 脱敏并限制堆栈长度
+            data["stack"] = self._sanitize_stack(stack)[:4000]
 
         return await self.track("exception", data)
+
+    def _sanitize_stack(self, stack: str) -> str:
+        """
+        脱敏堆栈信息，移除敏感路径
+        
+        - 移除用户主目录路径
+        - 保留相对于插件的路径
+        - 隐藏用户名
+        """
+        import re
+        
+        # 替换 Windows 风格的用户路径
+        # C:\Users\username\... -> <USER_HOME>\...
+        stack = re.sub(
+            r'[A-Za-z]:\\Users\\[^\\]+\\',
+            r'<USER_HOME>\\',
+            stack
+        )
+        
+        # 替换 Unix 风格的用户路径
+        # /home/username/... -> <USER_HOME>/...
+        # /Users/username/... -> <USER_HOME>/...
+        stack = re.sub(
+            r'/(?:home|Users)/[^/]+/',
+            r'<USER_HOME>/',
+            stack
+        )
+        
+        # 简化插件路径，只保留相对路径
+        # .../astrbot_plugin_disaster_warning/... -> <PLUGIN>/...
+        stack = re.sub(
+            r'.*astrbot_plugin_disaster_warning[/\\]',
+            r'<PLUGIN>/',
+            stack
+        )
+        
+        # 移除可能的 site-packages 完整路径
+        stack = re.sub(
+            r'.*site-packages[/\\]',
+            r'<SITE_PACKAGES>/',
+            stack
+        )
+        
+        return stack
+
+    def _sanitize_message(self, message: str) -> str:
+        """脱敏错误消息，移除可能的敏感信息"""
+        import re
+        
+        # 移除路径中的用户名
+        message = re.sub(
+            r'/(?:home|Users)/[^/\s]+/',
+            r'<USER_HOME>/',
+            message
+        )
+        message = re.sub(
+            r'[A-Za-z]:\\Users\\[^\\\s]+\\',
+            r'<USER_HOME>\\',
+            message
+        )
+        
+        return message
 
     async def close(self):
         """关闭遥测会话"""
