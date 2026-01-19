@@ -11,7 +11,7 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ..utils.geolocation import fetch_location_from_ip
+from ..utils.geolocation import fetch_location_from_ip, close_geoip_session
 
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -745,6 +745,12 @@ class WebAdminServer:
             except Exception:
                 pass
         self._ws_connections.clear()
+        
+        # 关闭共享的 GeoIP ClientSession
+        try:
+            await close_geoip_session()
+        except Exception as e:
+            logger.debug(f"[Web Admin] 关闭 GeoIP session 时出错: {e}")
         
         if self.server:
             self.server.should_exit = True
