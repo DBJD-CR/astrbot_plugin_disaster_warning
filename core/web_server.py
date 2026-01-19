@@ -14,7 +14,7 @@ from astrbot.api import logger
 from ..utils.geolocation import fetch_location_from_ip
 
 try:
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
     from fastapi.responses import HTMLResponse, JSONResponse
     from fastapi.staticfiles import StaticFiles
     from fastapi.middleware.cors import CORSMiddleware
@@ -381,7 +381,7 @@ class WebAdminServer:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/geolocate")
-        async def get_geolocation():
+        async def get_geolocation(request: Request):
             """
             获取当前客户端IP的地理位置信息
             
@@ -397,8 +397,11 @@ class WebAdminServer:
             }
             """
             try:
-                # 调用地理定位API (不传IP，让API自动识别请求者IP)
-                location_data = await fetch_location_from_ip()
+                # 从请求中获取客户端IP
+                client_ip = request.client.host if request.client else None
+                
+                # 调用地理定位API，传入客户端IP
+                location_data = await fetch_location_from_ip(ip=client_ip)
                 
                 return {
                     "success": True,

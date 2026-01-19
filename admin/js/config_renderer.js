@@ -54,13 +54,15 @@ const ConfigRenderer = {
             this.geolocating = true;
 
             try {
-                const response = await fetch('/api/geolocate');
+                // Use API_BASE if available, otherwise fall back to '/api'
+                const apiBase = window.API_BASE || '/api';
+                const response = await fetch(`${apiBase}/geolocate`);
                 const result = await response.json();
 
                 if (result.success && result.data) {
                     this.config.latitude = result.data.latitude;
                     this.config.longitude = result.data.longitude;
-                    alert(`✅ 定位成功！\n位置: ${result.data.province} ${result.data.city}\n经度: ${result.data.longitude}\n纬度: ${result.data.latitude}`);
+                    alert(`✅ 定位成功!\n位置: ${result.data.province} ${result.data.city}\n经度: ${result.data.longitude}\n纬度: ${result.data.latitude}`);
                 } else {
                     alert(`❌ 定位失败: ${result.error || '未知错误'}`);
                 }
@@ -70,10 +72,6 @@ const ConfigRenderer = {
             } finally {
                 this.geolocating = false;
             }
-        },
-        isLocalMonitoringSection() {
-            // Check if this is the local_monitoring section
-            return this.prefix === 'local_monitoring' || this.prefix === '';
         }
     },
     template: `
@@ -167,8 +165,8 @@ const ConfigRenderer = {
                                    v-model.number="config[key]"
                                    :step="item.type === 'float' ? '0.1' : '1'"
                                    style="flex: 1;">
-                            <!-- Auto-locate button for latitude/longitude in local_monitoring -->
-                            <button v-if="prefix === 'local_monitoring' && (key === 'latitude' || key === 'longitude')" 
+                            <!-- Auto-locate button for latitude/longitude in local_monitoring (shown once on latitude field) -->
+                            <button v-if="prefix === 'local_monitoring' && key === 'latitude'" 
                                     @click="autoLocate" 
                                     :disabled="geolocating"
                                     class="btn btn-sm btn-secondary"
