@@ -116,6 +116,7 @@ class DisasterWarningPlugin(Star):
 • /灾害预警状态 - 查看服务运行状态
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息
+• /灾害预警推送开关 - 开启或关闭当前会话的推送
 • /灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源] - 模拟地震事件
 • /灾害预警配置 查看 - 查看当前配置摘要
 • /灾害预警日志 - 查看原始消息日志统计摘要
@@ -354,6 +355,56 @@ class DisasterWarningPlugin(Star):
         except Exception as e:
             logger.error(f"[灾害预警] 清除统计失败: {e}")
             yield event.plain_result(f"❌ 清除统计失败: {str(e)}")
+
+    @filter.command("灾害预警推送开关")
+    async def toggle_push(self, event: AstrMessageEvent):
+        """开关当前会话的推送"""
+        try:
+            # 获取当前会话的群号/频道ID
+            session_id = event.unified_msg_origin
+            
+            # 只处理群组消息，不处理私聊
+            if not session_id or session_id.startswith("person_"):
+                yield event.plain_result("⚠️ 此命令仅支持在群组/频道中使用")
+                return
+            
+            # 提取实际的群号（移除平台前缀）
+            # unified_msg_origin 格式: "platform_group_123456" 或 "platform_channel_123456"
+            parts = session_id.split("_")
+            if len(parts) >= 3:
+                group_id = "_".join(parts[2:])  # 处理可能包含下划线的ID
+            else:
+                yield event.plain_result("❌ 无法获取会话ID")
+                return
+            
+            # 获取当前推送列表
+            target_groups = self.config.get("target_groups", [])
+            if target_groups is None:
+                target_groups = []
+            
+            # 检查当前群号是否在列表中
+            if group_id in target_groups:
+                # 如果存在，则移除
+                target_groups.remove(group_id)
+                self.config["target_groups"] = target_groups
+                self.config.save_config()
+                yield event.plain_result(
+                    f"✅ 推送已关闭\n\n当前会话（{group_id}）已从推送列表中移除。"
+                )
+                logger.info(f"[灾害预警] 会话 {group_id} 已关闭推送")
+            else:
+                # 如果不存在，则添加
+                target_groups.append(group_id)
+                self.config["target_groups"] = target_groups
+                self.config.save_config()
+                yield event.plain_result(
+                    f"✅ 推送已开启\n\n当前会话（{group_id}）已添加到推送列表。"
+                )
+                logger.info(f"[灾害预警] 会话 {group_id} 已开启推送")
+        
+        except Exception as e:
+            logger.error(f"[灾害预警] 切换推送状态失败: {e}")
+            yield event.plain_result(f"❌ 切换推送状态失败: {str(e)}")
 
     @filter.command("灾害预警配置")
     async def disaster_config(self, event: AstrMessageEvent, action: str = None):
