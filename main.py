@@ -116,7 +116,7 @@ class DisasterWarningPlugin(Star):
 • /灾害预警状态 - 查看服务运行状态
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息
-• /灾害预警测试 [群号] [灾害类型] [格式] - 测试推送功能
+• /灾害预警推送开关 - 开启或关闭当前会话的推送
 • /灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源] - 模拟地震事件
 • /灾害预警配置 查看 - 查看当前配置摘要
 • /灾害预警日志 - 查看原始消息日志统计摘要
@@ -233,155 +233,7 @@ class DisasterWarningPlugin(Star):
             logger.error(f"[灾害预警] 获取统计信息失败: {e}")
             yield event.plain_result(f"❌ 获取统计信息失败: {str(e)}")
 
-    @filter.command("灾害预警测试")
-    async def disaster_test(
-        self,
-        event: AstrMessageEvent,
-        target_group: str = None,
-        disaster_type: str = None,
-        test_type: str = None,
-    ):
-        """测试灾害预警推送功能 - 支持多种灾害类型和测试格式"""
-        if not self.disaster_service:
-            yield event.plain_result("❌ 灾害预警服务未启动")
-            return
 
-        try:
-            # 解析参数 - 支持多种参数组合
-            target_session = None
-            disaster_test_type = "earthquake"  # 默认测试地震
-            format_test_type = None  # 默认使用推荐格式
-
-            # 中文参数映射
-            type_mapping = {
-                "地震": "earthquake",
-                "海啸": "tsunami",
-                "气象": "weather",
-                "earthquake": "earthquake",
-                "tsunami": "tsunami",
-                "weather": "weather",
-            }
-
-            format_mapping = {
-                "中国": "china",
-                "日本": "japan",
-                "美国": "usgs",
-                "china": "china",
-                "japan": "japan",
-                "usgs": "usgs",
-            }
-
-            # 获取平台名称配置
-            platform_name = self.config.get("platform_name", "aiocqhttp")
-
-            # 辅助函数：判断字符串是否为灾害类型
-            def is_disaster_type(s):
-                return s in type_mapping
-
-            # 辅助函数：判断字符串是否为测试格式
-            def is_format_type(s):
-                return s in format_mapping
-
-            # 参数解析逻辑 - 支持最多3个参数
-            if target_group and disaster_type and test_type:
-                # 三个参数：群号 + 灾害类型 + 测试格式
-                target_session = f"{platform_name}:GroupMessage:{target_group}"
-                disaster_test_type = type_mapping.get(disaster_type, disaster_type)
-                format_test_type = format_mapping.get(test_type, test_type)
-
-            elif target_group and disaster_type:
-                # 两个参数：需要判断第二个是灾害类型还是测试格式
-                if is_disaster_type(disaster_type):
-                    # 情况1: 群号 + 灾害类型 (例如: 123456 earthquake)
-                    target_session = f"{platform_name}:GroupMessage:{target_group}"
-                    disaster_test_type = type_mapping.get(disaster_type)
-                    # test_type 保持 None，使用默认格式
-                elif is_format_type(disaster_type):
-                    # 第二个是格式，需要判断第一个是群号还是灾害类型
-                    if is_disaster_type(target_group):
-                        # 情况2: 灾害类型 + 格式 (例如: earthquake japan) -> 使用当前群
-                        target_session = event.unified_msg_origin
-                        disaster_test_type = type_mapping.get(target_group)
-                        format_test_type = format_mapping.get(disaster_type)
-                    else:
-                        # 情况3: 群号 + 格式 (例如: 123456 japan) -> 默认地震
-                        target_session = f"{platform_name}:GroupMessage:{target_group}"
-                        disaster_test_type = "earthquake"
-                        format_test_type = format_mapping.get(disaster_type)
-                else:
-                    # 其他情况，尝试智能匹配
-                    if is_disaster_type(target_group) and is_format_type(disaster_type):
-                        target_session = event.unified_msg_origin
-                        disaster_test_type = type_mapping.get(target_group)
-                        format_test_type = format_mapping.get(disaster_type)
-                    else:
-                        # 默认处理
-                        target_session = f"{platform_name}:GroupMessage:{target_group}"
-                        disaster_test_type = type_mapping.get(
-                            disaster_type, disaster_type
-                        )
-
-            elif target_group:
-                # 只提供一个参数：需要判断是群号还是灾害类型/测试格式
-                if is_disaster_type(target_group):
-                    # 是灾害类型，使用当前群
-                    target_session = event.unified_msg_origin
-                    disaster_test_type = type_mapping.get(target_group)
-                elif is_format_type(target_group):
-                    # 是测试格式，使用当前群，默认地震
-                    target_session = event.unified_msg_origin
-                    disaster_test_type = "earthquake"
-                    format_test_type = format_mapping.get(target_group)
-                else:
-                    # 是群号，默认测试地震
-                    target_session = f"{platform_name}:GroupMessage:{target_group}"
-                    disaster_test_type = "earthquake"
-            else:
-                # 没有额外参数：使用当前群，默认测试地震
-                target_session = event.unified_msg_origin
-                disaster_test_type = "earthquake"
-
-            # 验证灾害类型
-            valid_types = ["earthquake", "tsunami", "weather"]
-            if disaster_test_type not in valid_types:
-                yield event.plain_result(
-                    f"❌ 未知的灾害类型 '{disaster_test_type}'\n\n支持的类型：地震(earthquake), 海啸(tsunami), 气象(weather)"
-                )
-                return
-
-            # 验证测试格式
-            valid_formats = {
-                "earthquake": ["china", "japan", "usgs"],
-                "tsunami": ["china", "japan"],
-                "weather": ["china"],  # 气象只有中国格式
-            }
-
-            if format_test_type:
-                allowed_formats = valid_formats.get(disaster_test_type, [])
-                if format_test_type not in allowed_formats:
-                    yield event.plain_result(
-                        f"❌ 灾害类型 '{disaster_test_type}' 不支持测试格式 '{format_test_type}'\n\n"
-                        f"支持的格式：{', '.join(allowed_formats)}"
-                    )
-                    return
-
-            # 执行测试
-            logger.info(
-                f"[灾害预警] 开始{disaster_test_type}测试推送到 {target_session} (格式: {format_test_type or '默认'})"
-            )
-            test_result = await self.disaster_service.test_push(
-                target_session, disaster_test_type, format_test_type
-            )
-
-            if test_result and "✅" in test_result:
-                # 测试成功，直接返回测试结果
-                yield event.plain_result(test_result)
-            else:
-                yield event.plain_result(test_result or "❌ 测试推送失败，请检查日志")
-
-        except Exception as e:
-            logger.error(f"[灾害预警] 测试推送失败: {e}")
-            yield event.plain_result(f"❌ 测试推送失败: {str(e)}")
 
     @filter.command("灾害预警日志")
     async def disaster_logs(self, event: AstrMessageEvent):
@@ -503,6 +355,56 @@ class DisasterWarningPlugin(Star):
         except Exception as e:
             logger.error(f"[灾害预警] 清除统计失败: {e}")
             yield event.plain_result(f"❌ 清除统计失败: {str(e)}")
+
+    @filter.command("灾害预警推送开关")
+    async def toggle_push(self, event: AstrMessageEvent):
+        """开关当前会话的推送"""
+        try:
+            # 获取当前会话的群号/频道ID
+            session_id = event.unified_msg_origin
+            
+            # 只处理群组消息，不处理私聊
+            if not session_id or session_id.startswith("person_"):
+                yield event.plain_result("⚠️ 此命令仅支持在群组/频道中使用")
+                return
+            
+            # 提取实际的群号（移除平台前缀）
+            # unified_msg_origin 格式: "platform_group_123456" 或 "platform_channel_123456"
+            parts = session_id.split("_")
+            if len(parts) >= 3:
+                group_id = "_".join(parts[2:])  # 处理可能包含下划线的ID
+            else:
+                yield event.plain_result("❌ 无法获取会话ID")
+                return
+            
+            # 获取当前推送列表
+            target_groups = self.config.get("target_groups", [])
+            if target_groups is None:
+                target_groups = []
+            
+            # 检查当前群号是否在列表中
+            if group_id in target_groups:
+                # 如果存在，则移除
+                target_groups.remove(group_id)
+                self.config["target_groups"] = target_groups
+                self.config.save_config()
+                yield event.plain_result(
+                    f"✅ 推送已关闭\n\n当前会话（{group_id}）已从推送列表中移除。"
+                )
+                logger.info(f"[灾害预警] 会话 {group_id} 已关闭推送")
+            else:
+                # 如果不存在，则添加
+                target_groups.append(group_id)
+                self.config["target_groups"] = target_groups
+                self.config.save_config()
+                yield event.plain_result(
+                    f"✅ 推送已开启\n\n当前会话（{group_id}）已添加到推送列表。"
+                )
+                logger.info(f"[灾害预警] 会话 {group_id} 已开启推送")
+        
+        except Exception as e:
+            logger.error(f"[灾害预警] 切换推送状态失败: {e}")
+            yield event.plain_result(f"❌ 切换推送状态失败: {str(e)}")
 
     @filter.command("灾害预警配置")
     async def disaster_config(self, event: AstrMessageEvent, action: str = None):
