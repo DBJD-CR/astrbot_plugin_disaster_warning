@@ -64,10 +64,10 @@ class TelemetryManager:
 
         if self._enabled:
             logger.info(
-                f"[遥测] 已启用匿名遥测 (Instance ID: {self._instance_id})"
+                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})"
             )
         else:
-            logger.debug("[遥测] 遥测功能未启用")
+            logger.debug("[灾害预警] 遥测功能未启用")
 
     def _get_or_create_instance_id(self) -> str:
         """获取或创建实例 ID，存储在插件数据目录中"""
@@ -90,13 +90,13 @@ class TelemetryManager:
             # 保存到文件
             data_dir.mkdir(parents=True, exist_ok=True)
             id_file.write_text(instance_id)
-            logger.debug(f"[遥测] 已生成新的实例 ID: {instance_id}")
+            logger.debug(f"[灾害预警] 已生成新的实例 ID: {instance_id}")
 
             return instance_id
 
         except Exception as e:
             # 如果无法读写文件，生成临时 ID
-            logger.warning(f"[遥测] 无法持久化实例 ID: {e}")
+            logger.warning(f"[灾害预警] 无法持久化实例 ID: {e}")
             return str(uuid.uuid4())
 
     @property
@@ -158,22 +158,22 @@ class TelemetryManager:
                 self._ENDPOINT, json=payload, headers=headers
             ) as response:
                 if response.status == 200:
-                    logger.debug(f"[遥测] 事件 '{event}' 发送成功")
+                    logger.debug(f"[灾害预警] 事件 '{event}' 发送成功")
                     return True
                 elif response.status == 401:
-                    logger.warning("[遥测] App Key 无效或项目已禁用")
+                    logger.warning("[灾害预警] App Key 无效或项目已禁用")
                 elif response.status == 429:
-                    logger.warning("[遥测] 请求频率超限")
+                    logger.warning("[灾害预警] 请求频率超限")
                 else:
-                    logger.debug(f"[遥测] 事件发送失败: HTTP {response.status}")
+                    logger.debug(f"[灾害预警] 事件发送失败: HTTP {response.status}")
 
         except asyncio.TimeoutError:
-            logger.debug("[遥测] 请求超时")
+            logger.debug("[灾害预警] 请求超时")
         except aiohttp.ClientError as e:
-            logger.debug(f"[遥测] 网络错误: {e}")
+            logger.debug(f"[灾害预警] 网络错误: {e}")
         except Exception as e:
             # 静默处理所有错误，不影响插件正常运行
-            logger.debug(f"[遥测] 未知错误: {e}")
+            logger.debug(f"[灾害预警] 未知错误: {e}")
 
         return False
 
@@ -246,7 +246,7 @@ class TelemetryManager:
             return await self.track("config_stats", snapshot)
 
         except Exception as e:
-            logger.debug(f"[遥测] 配置快照提取失败: {e}")
+            logger.debug(f"[灾害预警] 配置快照提取失败: {e}")
             return False
 
 
@@ -347,4 +347,4 @@ class TelemetryManager:
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
-            logger.debug("[遥测] 会话已关闭")
+            logger.debug("[灾害预警] 会话已关闭")
