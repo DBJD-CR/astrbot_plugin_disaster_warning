@@ -677,5 +677,18 @@
         }
       }
     }
+  },
+  "telemetry_config": {
+    "description": "匿名遥测配置",
+    "type": "object",
+    "hint": "用于收集插件使用情况和错误信息（可选，默认关闭）",
+    "items": {
+      "enabled": {
+        "description": "启用匿名遥测",
+        "type": "bool",
+        "hint": "启用后将发送匿名的使用统计和错误报告，帮助改进插件。不收集任何个人信息。",
+        "default": true
+      }
+    }
   }
 }

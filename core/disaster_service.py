@@ -7,9 +7,12 @@ import asyncio
 import json
 import traceback
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from astrbot.api import logger
+
+if TYPE_CHECKING:
+    from .telemetry_manager import TelemetryManager
 
 from ..models.models import (
     DataSource,
@@ -48,6 +51,9 @@ class DisasterWarningService:
         self.http_fetcher: HTTPDataFetcher | None = None
         self.message_manager = MessagePushManager(config, context)
 
+        # 遥测管理器引用 (由 main.py 注入)
+        self._telemetry: Optional["TelemetryManager"] = None
+
         # 数据处理器
         self.handlers = {}
         self._initialize_handlers()
@@ -63,6 +69,10 @@ class DisasterWarningService:
         """初始化数据处理器"""
         for source_id, handler_class in DATA_HANDLERS.items():
             self.handlers[source_id] = handler_class(self.message_logger)
+
+    def set_telemetry(self, telemetry: Optional["TelemetryManager"]):
+        """设置遥测管理器引用"""
+        self._telemetry = telemetry
 
     async def initialize(self):
         """初始化服务"""
@@ -450,6 +460,16 @@ class DisasterWarningService:
                 f"[灾害预警] 失败的事件ID: {event.id if hasattr(event, 'id') else 'unknown'}"
             )
             logger.error(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
+            # 遥测: 记录错误（包含堆栈，便于诊断，同时由 _sanitize_stack 处理隐私）
+            if self._telemetry and self._telemetry.enabled:
+                asyncio.create_task(
+                    self._telemetry.track_error(
+                        error_type=type(e).__name__,
+                        module="disaster_service._handle_disaster_event",
+                        message=str(e)[:100],
+                        stack=traceback.format_exc(),
+                    )
+                )
 
     def _log_event(self, event: DisasterEvent):
         """记录事件日志"""
