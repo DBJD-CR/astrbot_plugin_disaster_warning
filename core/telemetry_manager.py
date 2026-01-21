@@ -27,7 +27,7 @@ class TelemetryManager:
     """遥测管理器 - 异步发送匿名遥测数据"""
 
     _ENDPOINT = "https://telemetry.aloys233.top/api/ingest"
-    _ENCODED_KEY = "dGtfOV91RFNfNy1LRkdfc1pSQ2JtRGJLWDZfb1lBd1Z5MHI="
+    _ENCODED_KEY = "dGtfelNnRGgzdnAxWGM3Q25xTzBjR1hDVF85c2NBVERCLXk="
     _APP_KEY = base64.b64decode(_ENCODED_KEY).decode()
 
     def __init__(
