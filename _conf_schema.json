@@ -687,7 +687,7 @@
         "description": "启用匿名遥测",
         "type": "bool",
         "hint": "启用后将发送匿名的使用统计和错误报告，帮助改进插件。不收集任何个人信息。",
-        "default": false
+        "default": true
       }
     }
   }
