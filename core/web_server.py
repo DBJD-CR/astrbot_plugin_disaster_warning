@@ -91,7 +91,7 @@ class WebAdminServer:
                     "start_time": status.get("start_time")
                 }
             except Exception as e:
-                logger.error(f"[Web Admin] 获取状态失败: {e}")
+                logger.error(f"[灾害预警] 获取状态失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/statistics")
@@ -121,7 +121,7 @@ class WebAdminServer:
                     "timestamp": datetime.now().isoformat()
                 }
             except Exception as e:
-                logger.error(f"[Web Admin] 获取统计失败: {e}")
+                logger.error(f"[灾害预警] 获取统计失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/connections")
@@ -156,7 +156,7 @@ class WebAdminServer:
                     "timestamp": datetime.now().isoformat()
                 }
             except Exception as e:
-                logger.error(f"[Web Admin] 获取连接状态失败: {e}")
+                logger.error(f"[灾害预警] 获取连接状态失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/config")
@@ -178,7 +178,7 @@ class WebAdminServer:
                 }
                 return config_summary
             except Exception as e:
-                logger.error(f"[Web Admin] 获取配置失败: {e}")
+                logger.error(f"[灾害预警] 获取配置失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/logs")
@@ -191,7 +191,7 @@ class WebAdminServer:
                 summary = self.disaster_service.message_logger.get_log_summary()
                 return summary
             except Exception as e:
-                logger.error(f"[Web Admin] 获取日志失败: {e}")
+                logger.error(f"[灾害预警] 获取日志失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/earthquakes")
@@ -226,7 +226,7 @@ class WebAdminServer:
                     "timestamp": datetime.now().isoformat()
                 }
             except Exception as e:
-                logger.error(f"[Web Admin] 获取地震数据失败: {e}")
+                logger.error(f"[灾害预警] 获取地震数据失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/test-push")
@@ -269,7 +269,7 @@ class WebAdminServer:
                 )
                 return {"success": "✅" in result if result else False, "message": result}
             except Exception as e:
-                logger.error(f"[Web Admin] 测试推送失败: {e}")
+                logger.error(f"[灾害预警] 测试推送失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/simulation-params")
@@ -329,7 +329,7 @@ class WebAdminServer:
                     "timestamp": datetime.now().isoformat()
                 }
             except Exception as e:
-                logger.error(f"[Web Admin] 获取模拟参数失败: {e}")
+                logger.error(f"[灾害预警] 获取模拟参数失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/simulate")
@@ -375,7 +375,7 @@ class WebAdminServer:
                 
                 return {"success": "✅" in result if result else False, "message": result}
             except Exception as e:
-                logger.error(f"[Web Admin] 自定义模拟推送失败: {e}")
+                logger.error(f"[灾害预警] 自定义模拟推送失败: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
                 return JSONResponse({"error": str(e)}, status_code=500)
@@ -415,7 +415,7 @@ class WebAdminServer:
                     }
                 }
             except Exception as e:
-                logger.error(f"[Web Admin] IP地理定位失败: {e}")
+                logger.error(f"[灾害预警] IP地理定位失败: {e}")
                 return JSONResponse({
                     "success": False,
                     "error": f"获取地理位置失败: {str(e)}"
@@ -431,7 +431,7 @@ class WebAdminServer:
                         return json.load(f)
                 return {"error": f"Schema file not found at: {schema_path}"}
             except Exception as e:
-                logger.error(f"[Web Admin] 获取配置Schema失败: {e}, path: {schema_path}")
+                logger.error(f"[灾害预警] 获取配置Schema失败: {e}, path: {schema_path}")
                 import traceback
                 return JSONResponse({"error": f"{str(e)}, path: {schema_path}, trace: {traceback.format_exc()}"}, status_code=500)
 
@@ -442,7 +442,7 @@ class WebAdminServer:
                 # 直接返回 Config 对象 (AstrBotConfig 实现了 dict 接口)
                 return dict(self.config)
             except Exception as e:
-                logger.error(f"[Web Admin] 获取完整配置失败: {e}")
+                logger.error(f"[灾害预警] 获取完整配置失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/full-config")
@@ -467,7 +467,7 @@ class WebAdminServer:
                 
                 return {"success": True, "message": "配置已保存"}
             except Exception as e:
-                logger.error(f"[Web Admin] 保存配置失败: {e}")
+                logger.error(f"[灾害预警] 保存配置失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         # ========== WebSocket 端点 ==========
@@ -476,7 +476,7 @@ class WebAdminServer:
             """WebSocket 端点 - 实时数据推送"""
             await websocket.accept()
             self._ws_connections.append(websocket)
-            logger.info(f"[Web Admin] WebSocket 客户端已连接，当前连接数: {len(self._ws_connections)}")
+            logger.info(f"[灾害预警] WebSocket 客户端已连接，当前连接数: {len(self._ws_connections)}")
             
             try:
                 # 发送初始数据
@@ -498,11 +498,11 @@ class WebAdminServer:
             except WebSocketDisconnect:
                 pass
             except Exception as e:
-                logger.debug(f"[Web Admin] WebSocket 连接异常: {e}")
+                logger.debug(f"[灾害预警] WebSocket 连接异常: {e}")
             finally:
                 if websocket in self._ws_connections:
                     self._ws_connections.remove(websocket)
-                logger.info(f"[Web Admin] WebSocket 客户端已断开，当前连接数: {len(self._ws_connections)}")
+                logger.info(f"[灾害预警] WebSocket 客户端已断开，当前连接数: {len(self._ws_connections)}")
 
     async def _send_full_update(self, websocket: WebSocket):
         """向单个 WebSocket 客户端发送完整数据更新"""
@@ -513,7 +513,7 @@ class WebAdminServer:
                 "data": data
             })
         except Exception as e:
-            logger.debug(f"[Web Admin] 发送数据失败: {e}")
+            logger.debug(f"[灾害预警] 发送数据失败: {e}")
 
     async def _broadcast_data(self):
         """向所有连接的客户端广播数据更新"""
@@ -558,7 +558,7 @@ class WebAdminServer:
                     "start_time": status.get("start_time")
                 }
         except Exception as e:
-            logger.debug(f"[Web Admin] 获取状态数据失败: {e}")
+            logger.debug(f"[灾害预警] 获取状态数据失败: {e}")
         
         # 统计数据
         try:
@@ -575,7 +575,7 @@ class WebAdminServer:
                     "recent_pushes": stats.get("recent_pushes", [])[-20:]
                 }
         except Exception as e:
-            logger.debug(f"[Web Admin] 获取统计数据失败: {e}")
+            logger.debug(f"[灾害预警] 获取统计数据失败: {e}")
         
         # 连接状态
         try:
@@ -596,7 +596,7 @@ class WebAdminServer:
                         }
                 result["connections"] = merged_connections
         except Exception as e:
-            logger.debug(f"[Web Admin] 获取连接状态失败: {e}")
+            logger.debug(f"[灾害预警] 获取连接状态失败: {e}")
         
         # 地震数据
         try:
@@ -619,7 +619,7 @@ class WebAdminServer:
                             earthquakes.append(eq_data)
                 result["earthquakes"] = earthquakes
         except Exception as e:
-            logger.debug(f"[Web Admin] 获取地震数据失败: {e}")
+            logger.debug(f"[灾害预警] 获取地震数据失败: {e}")
         
         return result
 
@@ -632,7 +632,7 @@ class WebAdminServer:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"[Web Admin] 广播循环异常: {e}")
+                logger.debug(f"[灾害预警] 广播循环异常: {e}")
 
     async def notify_event(self, event_data: dict = None):
         """
@@ -668,7 +668,7 @@ class WebAdminServer:
                 self._ws_connections.remove(ws)
         
         if event_data:
-            logger.debug(f"[Web Admin] 已推送新事件到 {len(self._ws_connections)} 个客户端")
+            logger.debug(f"[灾害预警] 已推送新事件到 {len(self._ws_connections)} 个客户端")
 
     def _get_expected_data_sources(self) -> dict[str, str]:
         """获取所有支持的数据源列表 (无论是否启用)
@@ -750,7 +750,7 @@ class WebAdminServer:
         try:
             await close_geoip_session()
         except Exception as e:
-            logger.debug(f"[Web Admin] 关闭 GeoIP session 时出错: {e}")
+            logger.debug(f"[灾害预警] 关闭 GeoIP session 时出错: {e}")
         
         if self.server:
             self.server.should_exit = True
