@@ -54,7 +54,7 @@ async def fetch_location_from_ip(ip: str = None, session: aiohttp.ClientSession 
         async with session.get(api_url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as response:
             if response.status != 200:
                 error_msg = f"GeoIP API 返回错误状态码: {response.status}"
-                logger.error(f"[地理定位] {error_msg}")
+                logger.error(f"[灾害预警] {error_msg}")
                 raise Exception(error_msg)
             
             data = await response.json()
@@ -72,11 +72,11 @@ async def fetch_location_from_ip(ip: str = None, session: aiohttp.ClientSession 
             # 验证经纬度是否有效
             if result["latitude"] is None or result["longitude"] is None:
                 error_msg = "API 返回的数据中缺少经纬度信息"
-                logger.warning(f"[地理定位] {error_msg}")
+                logger.warning(f"[灾害预警] {error_msg}")
                 raise Exception(error_msg)
             
             logger.info(
-                f"[地理定位] 成功获取位置: {result['province_name_zh']} {result['city_zh']} "
+                f"[灾害预警] 成功获取位置: {result['province_name_zh']} {result['city_zh']} "
                 f"({result['latitude']}, {result['longitude']})"
             )
             
@@ -84,8 +84,8 @@ async def fetch_location_from_ip(ip: str = None, session: aiohttp.ClientSession 
             
     except aiohttp.ClientError as e:
         error_msg = f"网络请求失败: {str(e)}"
-        logger.error(f"[地理定位] {error_msg}")
+        logger.error(f"[灾害预警] {error_msg}")
         raise Exception(error_msg)
     except Exception as e:
-        logger.error(f"[地理定位] 获取位置信息失败: {str(e)}")
+        logger.error(f"[灾害预警] 获取位置信息失败: {str(e)}")
         raise
