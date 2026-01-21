@@ -245,31 +245,11 @@
             border-radius: 20px;
         }
 
-        /* 震中标记样式 - 叉形 */
+        /* 震中标记样式 - emoji */
         .epicenter-marker {
-            width: 24px;
-            height: 24px;
-            position: relative;
-        }
-
-        .epicenter-marker::before,
-        .epicenter-marker::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 24px;
-            height: 4px;
-            background: #f43f5e;
-            box-shadow: 0 0 0 2px #FFF1AA;
-        }
-
-        .epicenter-marker::before {
-            transform: translate(-50%, -50%) rotate(45deg);
-        }
-
-        .epicenter-marker::after {
-            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 24px;
+            line-height: 1;
+            text-shadow: 0 0 3px #FFF1AA, 0 0 6px rgba(255, 241, 170, 0.5);
         }
 
         .footer-grid {
@@ -389,7 +369,7 @@
         const map = L.map('map-container', {
             center: [lat, lng],
             zoom: 8,
-            zoomControl: true,
+            zoomControl: false,
             attributionControl: false
         });
 
@@ -399,9 +379,10 @@
             minZoom: 1
         }).addTo(map);
 
-        // 创建震中标记（叉形）
+        // 创建震中标记（emoji）
         const epicenterIcon = L.divIcon({
             className: 'epicenter-marker',
+            html: '❌',
             iconSize: [24, 24],
             iconAnchor: [12, 12]
         });
