@@ -460,13 +460,14 @@ class DisasterWarningService:
                 f"[灾害预警] 失败的事件ID: {event.id if hasattr(event, 'id') else 'unknown'}"
             )
             logger.error(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
-            # 遥测: 记录错误
+            # 遥测: 记录错误（包含堆栈，便于诊断，同时由 _sanitize_stack 处理隐私）
             if self._telemetry and self._telemetry.enabled:
                 asyncio.create_task(
                     self._telemetry.track_error(
                         error_type=type(e).__name__,
                         module="disaster_service._handle_disaster_event",
                         message=str(e)[:100],
+                        stack=traceback.format_exc(),
                     )
                 )
 
