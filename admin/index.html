@@ -365,6 +365,14 @@
                                 </div>
                             </div>
 
+                            <!-- Auto-locate button (single row after coordinates) -->
+                            <div class="form-group" style="text-align: center;">
+                                <button @click="autoLocateSimulation" :disabled="simulationGeolocating"
+                                    class="btn btn-secondary" type="button" style="width: 100%; padding: 10px;">
+                                    {{ simulationGeolocating ? '定位中...' : '🌍 使用当前位置' }}
+                                </button>
+                            </div>
+
                             <!-- 地名 (单独一行) -->
                             <div class="form-group">
                                 <label>震中地名</label>
