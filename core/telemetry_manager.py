@@ -158,19 +158,19 @@ class TelemetryManager:
                 self._ENDPOINT, json=payload, headers=headers
             ) as response:
                 if response.status == 200:
-                    logger.debug(f"[灾害预警] 事件 '{event}' 发送成功")
+                    logger.debug(f"[灾害预警] 遥测事件 '{event}' 发送成功")
                     return True
                 elif response.status == 401:
                     logger.warning("[灾害预警] App Key 无效或项目已禁用")
                 elif response.status == 429:
-                    logger.warning("[灾害预警] 请求频率超限")
+                    logger.warning("[灾害预警] 遥测请求频率超限")
                 else:
-                    logger.debug(f"[灾害预警] 事件发送失败: HTTP {response.status}")
+                    logger.debug(f"[灾害预警] 遥测事件发送失败: HTTP {response.status}")
 
         except asyncio.TimeoutError:
-            logger.debug("[灾害预警] 请求超时")
+            logger.debug("[灾害预警] 遥测请求超时")
         except aiohttp.ClientError as e:
-            logger.debug(f"[灾害预警] 网络错误: {e}")
+            logger.debug(f"[灾害预警] 遥测网络错误: {e}")
         except Exception as e:
             # 静默处理所有错误，不影响插件正常运行
             logger.debug(f"[灾害预警] 未知错误: {e}")
@@ -347,4 +347,4 @@ class TelemetryManager:
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
-            logger.debug("[灾害预警] 会话已关闭")
+            logger.debug("[灾害预警] 遥测会话已关闭")
