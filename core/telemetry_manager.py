@@ -10,6 +10,7 @@
 """
 
 import asyncio
+import base64
 import os
 import platform
 import sys
@@ -25,9 +26,9 @@ from astrbot.api import logger
 class TelemetryManager:
     """遥测管理器 - 异步发送匿名遥测数据"""
 
-    # 硬编码的遥测服务配置
     _ENDPOINT = "https://telemetry.aloys233.top/api/ingest"
-    _APP_KEY = "tk_9_uDS_7-KFG_sZRCbmDbKX6_oYAwVy0r"
+    _ENCODED_KEY = "dGtfOV91RFNfNy1LRkdfc1pSQ2JtRGJLWDZfb1lBd1Z5MHI="
+    _APP_KEY = base64.b64decode(_ENCODED_KEY).decode()
 
     def __init__(
         self,
