@@ -5,9 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Global Quake Card</title>
-    <!-- D3.js & TopoJSON -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://unpkg.com/topojson-client@3"></script>
+    <!-- Leaflet.js for Map Tiles -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         /* --- 专业暗色主题 --- */
         :root {
@@ -211,8 +211,8 @@
             background-color: var(--color-mag-high);
         }
 
-        /* --- Globe Container --- */
-        #globe-container {
+        /* --- Map Container --- */
+        #map-container {
             height: 150px;
             width: 100%;
             margin: 15px 0;
@@ -223,24 +223,36 @@
             border: 1px solid var(--border);
         }
 
-        svg {
-            width: 100%;
-            height: 100%;
+        /* Leaflet 样式覆盖 */
+        .leaflet-container {
+            border-radius: 8px;
         }
 
-        .land {
-            fill: #334155;
-            stroke: #475569;
-            stroke-width: 1px;
+        /* 震中标记样式 - 叉形 */
+        .epicenter-marker {
+            width: 20px;
+            height: 20px;
+            position: relative;
         }
 
-        .quake-ring {
-            fill: none;
-            stroke: var(--color-mag-high);
-            stroke-width: 2px;
-            opacity: 0.8;
-            transform-box: fill-box;
-            transform-origin: center;
+        .epicenter-marker::before,
+        .epicenter-marker::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 3px;
+            background: #ef4444;
+            box-shadow: 0 0 0 2px #FFF1AA;
+        }
+
+        .epicenter-marker::before {
+            transform: translate(-50%, -50%) rotate(45deg);
+        }
+
+        .epicenter-marker::after {
+            transform: translate(-50%, -50%) rotate(-45deg);
         }
     </style>
 </head>
@@ -297,8 +309,8 @@
                 </div>
             </div>
 
-            <!-- Map Container -->
-            <div id="globe-container"></div>
+            <!-- PetalMap Container -->
+            <div id="map-container"></div>
 
             <div class="card-footer">
                 <span>ID: {{ event_id }}</span>
@@ -307,90 +319,39 @@
         </div>
     </div>
 
-    <!-- D3 Globe Script -->
+    <!-- Leaflet Map Script -->
     <script>
-        const width = 480;
-        const height = 150; // Match CSS height
-
         const lat = Number("{{ latitude }}");
         const lng = Number("{{ longitude }}");
 
-        const svg = d3.select("#globe-container")
-            .append("svg")
-            .attr("viewBox", `0 0 ${width} ${height}`)
-            .attr("preserveAspectRatio", "xMidYMid meet");
-
-        const projection = d3.geoOrthographic()
-            .scale(300)
-            .translate([width / 2, height / 2])
-            .rotate([-lng, -lat])
-            .clipAngle(90);
-
-        const path = d3.geoPath().projection(projection);
-
-        function markReady() {
-            document.body.classList.add('d3-ready');
-            console.log("D3 Render Complete");
-        }
-
-        function drawEpicenter() {
-            const center = projection([lng, lat]);
-            if (center) {
-                const size = 8; // 叉的大小
-
-                // 叉形震源标记 (X)
-                const crossGroup = svg.append("g")
-                    .attr("transform", `translate(${center[0]}, ${center[1]})`);
-
-                const outlineWidth = 6;
-                const strokeColor = "#FFF1AA";
-
-                // 绘制描边 (淡黄色)
-                crossGroup.append("line")
-                    .attr("x1", -size).attr("y1", -size)
-                    .attr("x2", size).attr("y2", size)
-                    .attr("stroke", strokeColor)
-                    .attr("stroke-width", outlineWidth)
-                    .attr("stroke-linecap", "round");
-
-                crossGroup.append("line")
-                    .attr("x1", size).attr("y1", -size)
-                    .attr("x2", -size).attr("y2", size)
-                    .attr("stroke", strokeColor)
-                    .attr("stroke-width", outlineWidth)
-                    .attr("stroke-linecap", "round");
-
-                // 第一条线 (\)
-                crossGroup.append("line")
-                    .attr("x1", -size).attr("y1", -size)
-                    .attr("x2", size).attr("y2", size)
-                    .attr("stroke", "#ef4444")
-                    .attr("stroke-width", 3)
-                    .attr("stroke-linecap", "round");
-
-                // 第二条线 (/)
-                crossGroup.append("line")
-                    .attr("x1", size).attr("y1", -size)
-                    .attr("x2", -size).attr("y2", size)
-                    .attr("stroke", "#ef4444")
-                    .attr("stroke-width", 3)
-                    .attr("stroke-linecap", "round");
-            }
-        }
-
-        d3.json("https://unpkg.com/world-atlas@2.0.2/land-110m.json").then(function (world) {
-            svg.append("path")
-                .datum(topojson.feature(world, world.objects.land))
-                .attr("class", "land")
-                .attr("d", path);
-
-            drawEpicenter();
-            markReady();
-        }).catch(err => {
-            console.error("Map load failed", err);
-            drawEpicenter();
-            markReady();
+        // 初始化地图,中心为震中位置
+        const map = L.map('map-container', {
+            center: [lat, lng],
+            zoom: 8,
+            zoomControl: true,
+            attributionControl: false
         });
+
+        // 添加 PetalMap 瓦片层
+        L.tileLayer('https://tilemap.fanstudio.tech/petallight/{z}/{y}/{x}', {
+            maxZoom: 18,
+            minZoom: 1
+        }).addTo(map);
+
+        // 创建震中标记（叉形）
+        const epicenterIcon = L.divIcon({
+            className: 'epicenter-marker',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+
+        // 在震中位置添加标记
+        L.marker([lat, lng], { icon: epicenterIcon })
+            .addTo(map);
+
+        // 标记渲染完成
+        document.body.classList.add('map-ready');
+        console.log("Map Render Complete");
     </script>
 </body>
 
