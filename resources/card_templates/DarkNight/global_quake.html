@@ -5,12 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Global Quake Card</title>
-    <!-- Leaflet.js for Map Tiles -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet.js for Map Tiles (本地加载) -->
+    <link rel="stylesheet" href="{{ leaflet_css_url }}" />
+    <script src="{{ leaflet_js_url }}"></script>
     <style>
         /* --- 专业暗色主题 --- */
         :root {
+            /* 字体栈 - 使用系统字体 */
+            --font-stack: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
             --bg-body: transparent;
             /* 背景透明，防止截图黑边 */
             --bg-card: #1e293b;
@@ -318,12 +320,25 @@
             minZoom: 1
         }).addTo(map);
 
-        // 创建震中标记（emoji）
+        // 创建震中标记（SVG）
+        // 转换用户提供的 D3 逻辑为 SVG 字符串
+        const svgContent = `
+            <svg width="30" height="30" viewBox="-15 -15 30 30" style="overflow: visible;">
+                <!-- 轮廓 (淡黄色) -->
+                <line x1="-8" y1="-8" x2="8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
+                <line x1="8" y1="-8" x2="-8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
+                <!-- 红色叉 (\) -->
+                <line x1="-8" y1="-8" x2="8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
+                <!-- 红色叉 (/) -->
+                <line x1="8" y1="-8" x2="-8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
+            </svg>
+        `;
+
         const epicenterIcon = L.divIcon({
             className: 'epicenter-marker',
-            html: '❌',
-            iconSize: [20, 20],
-            iconAnchor: [10, 10]
+            html: svgContent,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
         });
 
         // 在震中位置添加标记
