@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from jinja2 import Template
-from playwright.async_api import async_playwright
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
@@ -36,6 +35,7 @@ from ..utils.formatters import (
     format_tsunami_message,
     format_weather_message,
 )
+from .browser_manager import BrowserManager
 from .event_deduplicator import EventDeduplicator
 from .filters import (
     GlobalQuakeFilter,
@@ -135,6 +135,10 @@ class MessagePushManager:
         weather_config = config.get("weather_config", {})
         weather_filter_config = weather_config.get("weather_filter", {})
         self.weather_filter = WeatherFilter(weather_filter_config)
+
+        # 初始化浏览器管理器（延迟初始化）
+        self.browser_manager = BrowserManager(pool_size=2)
+        # 注意：浏览器将在首次渲染时自动初始化
 
     def _parse_target_sessions(self) -> list[str]:
         """解析目标会话 - 使用正确的配置键名"""
@@ -397,71 +401,36 @@ class MessagePushManager:
                 with open(template_path, encoding="utf-8") as f:
                     template_content = f.read()
 
+                # 计算 Leaflet.js 的绝对路径
+                leaflet_path = os.path.abspath(
+                    os.path.join(resources_dir, "card_templates", "leaflet.js")
+                )
+                leaflet_css_path = os.path.abspath(
+                    os.path.join(resources_dir, "card_templates", "leaflet.css")
+                )
+                context["leaflet_js_url"] = f"file://{leaflet_path}"
+                context["leaflet_css_url"] = f"file://{leaflet_css_path}"
+
                 # Jinja2 渲染
                 template = Template(template_content)
                 html_content = template.render(**context)
 
-                # 使用 Playwright 渲染
-                async with async_playwright() as p:
-                    browser = await p.chromium.launch(
-                        args=["--no-sandbox", "--disable-setuid-sandbox"]
-                    )
+                # 准备临时文件路径 (使用插件数据目录下的 temp)
+                image_filename = (
+                    f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                )
+                image_path = os.path.join(self.temp_dir, image_filename)
 
-                    # 创建新页面，视口设置大一点均可，因为我们只截取元素
-                    # 关键修复：设置 device_scale_factor=3 提高渲染DPI，解决图片模糊问题
-                    page = await browser.new_page(
-                        viewport={"width": 800, "height": 800}, device_scale_factor=3
-                    )
+                # 使用 BrowserManager 渲染卡片
+                result_path = await self.browser_manager.render_card(
+                    html_content, image_path, selector="#card-wrapper"
+                )
 
-                    await page.set_content(html_content)
-
-                    # 等待元素加载
-                    await page.wait_for_load_state("networkidle")
-
-                    # 关键修复：等待 D3 渲染完成标记
-                    try:
-                        await page.wait_for_selector(
-                            ".d3-ready", state="attached", timeout=5000
-                        )
-                    except Exception:
-                        # 如果超时（例如JS报错），也不要崩溃，尽力而为截图
-                        pass
-
-                    # 统一使用 ID 选择器，这在所有模板中都将通用
-                    selector = "#card-wrapper"
-                    try:
-                        await page.wait_for_selector(
-                            selector, state="visible", timeout=5000
-                        )
-                    except Exception:
-                        # 兜底：尝试找常见的类名
-                        selector = ".quake-card"
-                        await page.wait_for_selector(
-                            selector, state="visible", timeout=2000
-                        )
-
-                    # 定位卡片元素
-                    card = page.locator(selector)
-
-                    # 准备临时文件路径 (使用插件数据目录下的 temp)
-                    image_filename = (
-                        f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
-                    )
-                    image_path = os.path.join(self.temp_dir, image_filename)
-
-                    # 截图：只截取元素，背景透明
-                    await card.screenshot(path=image_path, omit_background=True)
-
-                    await browser.close()
-
-                    if os.path.exists(image_path):
-                        logger.info(
-                            f"[灾害预警] Global Quake 卡片渲染成功: {image_path}"
-                        )
-                        chain = [Comp.Image.fromFileSystem(image_path)]
-                        return MessageChain(chain)
-                    else:
-                        logger.warning("[灾害预警] Global Quake 卡片渲染未生成文件")
+                if result_path and os.path.exists(result_path):
+                    chain = [Comp.Image.fromFileSystem(result_path)]
+                    return MessageChain(chain)
+                else:
+                    logger.warning("[灾害预警] Global Quake 卡片渲染失败")
 
             except Exception as e:
                 logger.error(
@@ -529,6 +498,15 @@ class MessagePushManager:
     async def _send_message(self, session: str, message: MessageChain):
         """发送消息到指定会话"""
         await self.context.send_message(session, message)
+
+    async def cleanup_browser(self):
+        """清理浏览器资源"""
+        if self.browser_manager:
+            try:
+                await self.browser_manager.close()
+                logger.info("[灾害预警] 浏览器管理器已关闭")
+            except Exception as e:
+                logger.error(f"[灾害预警] 关闭浏览器管理器失败: {e}")
 
     def cleanup_old_records(self):
         """清理旧记录"""

@@ -94,6 +94,14 @@ class DisasterWarningPlugin(Star):
             # 停止灾害预警服务
             await stop_disaster_service()
 
+            # 关闭浏览器管理器（释放 Playwright 资源）
+            if self.disaster_service and self.disaster_service.message_manager:
+                if hasattr(self.disaster_service.message_manager, 'browser_manager'):
+                    try:
+                        await self.disaster_service.message_manager.cleanup_browser()
+                    except Exception as be:
+                        logger.debug(f"[灾害预警] 浏览器清理时出错（已忽略）: {be}")
+
             # 关闭遥测会话（best-effort，不影响主要关闭流程）
             if self.telemetry:
                 try:

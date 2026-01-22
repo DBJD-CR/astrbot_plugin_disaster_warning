@@ -11,6 +11,21 @@ from ...models.models import EarthquakeData
 from .base import BaseMessageFormatter
 
 
+def _format_depth(depth: float) -> str:
+    """
+    格式化深度显示
+    
+    Args:
+        depth: 震源深度(km)
+    
+    Returns:
+        格式化后的深度字符串
+    """
+    if depth == 0.0:
+        return "极浅"
+    return f"{depth} km"
+
+
 def _get_intensity_emoji(value, is_eew=True, is_shindo=False) -> str:
     """
     获取烈度/震度对应的emoji
@@ -173,7 +188,7 @@ class CEAEEWFormatter(BaseMessageFormatter):
 
         # 深度
         if earthquake.depth is not None:
-            lines.append(f"🏔️深度：{earthquake.depth} km")
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
 
         # 预估最大烈度
         if earthquake.intensity is not None:
@@ -239,7 +254,7 @@ class CWAEEWFormatter(BaseMessageFormatter):
 
         # 深度
         if earthquake.depth is not None:
-            lines.append(f"🏔️深度：{earthquake.depth} km")
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
 
         # 预估最大震度
         if earthquake.scale is not None:
@@ -321,7 +336,7 @@ class JMAEEWFormatter(BaseMessageFormatter):
 
         # 深度
         if earthquake.depth is not None:
-            lines.append(f"🏔️深度：{earthquake.depth} km")
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
 
         # 预估最大震度
         # Fan Studio 使用 intensity (epiIntensity)，P2P 使用 scale
@@ -430,7 +445,7 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
 
         # 深度
         if earthquake.depth is not None:
-            lines.append(f"🏔️深度：{earthquake.depth} km")
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
 
         # 最大烈度
         if earthquake.intensity is not None:
@@ -531,7 +546,7 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
 
         # 深度
         if earthquake.depth is not None and earthquake.depth != -1.0:
-            lines.append(f"🏔️深度：{earthquake.depth} km")
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
         elif info_type == "震度速报":
             lines.append("🏔️深度：调查中")
 
@@ -684,7 +699,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
 
         # 深度
         if earthquake.depth is not None:
-            lines.append(f"🏔️深度：{earthquake.depth} km")
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
 
         return "\n".join(lines)
 
@@ -749,7 +764,7 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
             "is_update": (getattr(earthquake, "updates", 1) > 1),
             "revision": getattr(earthquake, "updates", 1),
             "time_str": time_str,
-            "depth": earthquake.depth,
+            "depth": _format_depth(earthquake.depth) if earthquake.depth is not None else "N/A",
             "latitude": f"{earthquake.latitude:.4f}",
             "longitude": f"{earthquake.longitude:.4f}",
             "epicenter_str": GlobalQuakeFormatter.format_coordinates(
@@ -797,7 +812,7 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
 
         # 深度
         if earthquake.depth is not None:
-            lines.append(f"🏔️深度：{earthquake.depth} km")
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
 
         # 预估最大烈度
         if earthquake.intensity is not None:
