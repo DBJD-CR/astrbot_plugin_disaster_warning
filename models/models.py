@@ -4,11 +4,49 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
 from astrbot.api import logger
+
+# 中国所有省级行政区的名称列表
+CHINA_PROVINCES = [
+    "北京",
+    "天津",
+    "上海",
+    "重庆",
+    "河北",
+    "山西",
+    "辽宁",
+    "吉林",
+    "黑龙江",
+    "江苏",
+    "浙江",
+    "安徽",
+    "福建",
+    "江西",
+    "山东",
+    "河南",
+    "湖北",
+    "湖南",
+    "广东",
+    "海南",
+    "四川",
+    "贵州",
+    "云南",
+    "陕西",
+    "甘肃",
+    "青海",
+    "台湾",
+    "内蒙古",
+    "广西",
+    "西藏",
+    "宁夏",
+    "新疆",
+    "香港",
+    "澳门",
+]
 
 
 class DisasterType(Enum):
@@ -214,7 +252,7 @@ class DisasterEvent:
     data: Any  # EarthquakeData, TsunamiData, WeatherAlarmData
     source: DataSource
     disaster_type: DisasterType
-    receive_time: datetime = field(default_factory=datetime.now)
+    receive_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # 新增字段
     source_id: str = ""  # 数据源ID
@@ -250,7 +288,7 @@ def create_earthquake_data(
         event_id=event_data.get("event_id", event_data.get("id", "")),
         source=data_source,
         disaster_type=disaster_type,
-        shock_time=kwargs.get("shock_time", datetime.now()),
+        shock_time=kwargs.get("shock_time", datetime.now(timezone.utc)),
         latitude=kwargs.get("latitude", 0.0),
         longitude=kwargs.get("longitude", 0.0),
         place_name=kwargs.get("place_name", ""),
