@@ -203,6 +203,9 @@ class JMAEEWP2PHandler(BaseDataHandler):
                 is_cancel=is_cancelled,
                 is_training=is_test,
                 serial=issue_info.get("serial", ""),
+                updates=issue_info.get("serial", 1)
+                if isinstance(issue_info.get("serial"), int)
+                else 1,
                 raw_data=data,
             )
 
@@ -262,6 +265,7 @@ class JMAEEWWolfxHandler(BaseDataHandler):
                 magnitude=data.get("Magunitude") or data.get("Magnitude"),
                 place_name=data.get("Hypocenter", ""),
                 scale=self._parse_jma_scale(data.get("MaxIntensity", "")),
+                updates=data.get("Serial", 1),
                 is_final=data.get("isFinal", False),
                 is_cancel=data.get("isCancel", False),
                 is_training=data.get("isTraining", False),
