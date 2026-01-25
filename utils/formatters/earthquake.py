@@ -4,20 +4,21 @@
 """
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from ...core.intensity_calculator import IntensityCalculator
 from ...models.models import EarthquakeData
+from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
 
 
 def _format_depth(depth: float) -> str:
     """
     格式化深度显示
-    
+
     Args:
         depth: 震源深度(km)
-    
+
     Returns:
         格式化后的深度字符串
     """
@@ -153,8 +154,11 @@ class CEAEEWFormatter(BaseMessageFormatter):
     """中国地震预警网格式化器"""
 
     @staticmethod
-    def format_message(earthquake: EarthquakeData) -> str:
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化中国地震预警网消息"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
         lines = ["🚨[地震预警] 中国地震预警网"]
 
         # 报数信息
@@ -168,7 +172,7 @@ class CEAEEWFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰发震时间：{CEAEEWFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{CEAEEWFormatter.format_time(earthquake.shock_time, timezone)}"
             )
 
         # 震中
@@ -219,8 +223,11 @@ class CWAEEWFormatter(BaseMessageFormatter):
     """台湾中央气象署地震预警格式化器"""
 
     @staticmethod
-    def format_message(earthquake: EarthquakeData) -> str:
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化台湾中央气象署地震预警消息"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
         lines = ["🚨[地震预警] 台湾中央气象署"]
 
         # 报数信息
@@ -234,7 +241,7 @@ class CWAEEWFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰发震时间：{CWAEEWFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{CWAEEWFormatter.format_time(earthquake.shock_time, timezone)}"
             )
 
         # 震中
@@ -283,8 +290,11 @@ class JMAEEWFormatter(BaseMessageFormatter):
     """日本气象厅紧急地震速报格式化器"""
 
     @staticmethod
-    def format_message(earthquake: EarthquakeData) -> str:
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化日本气象厅紧急地震速报消息"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
         # 检查是否取消
         if earthquake.is_cancel:
             return f"🚨[紧急地震速报] [取消] 日本气象厅\n📋第 {earthquake.updates} 报 (取消报)\n📝之前的紧急地震速报已取消"
@@ -309,14 +319,19 @@ class JMAEEWFormatter(BaseMessageFormatter):
             report_info += "(最终报)"
         lines.append(f"📋{report_info}")
 
-        # 时间 - 将日本时间(UTC+9)转换为北京时间(UTC+8)显示
+        # 时间
         if earthquake.shock_time:
-            # 如果时间没有时区信息，假定为JST(UTC+9)
+            # 日本气象厅原始时间通常是 UTC+9
+            # 如果是 naive datetime，我们在这里显式视为 JST
             display_time = earthquake.shock_time
             if display_time.tzinfo is None:
-                display_time = display_time.replace(tzinfo=timezone(timedelta(hours=9)))
+                # 假设 input 为 JST (UTC+9)
+                display_time = TimeConverter.parse_datetime(display_time).replace(
+                    tzinfo=TimeConverter.TIMEZONES["JST"]
+                )
+
             lines.append(
-                f"⏰发震时间：{JMAEEWFormatter.format_time(display_time, 'UTC+8')}"
+                f"⏰发震时间：{JMAEEWFormatter.format_time(display_time, timezone)}"
             )
 
         # 震中
@@ -415,8 +430,11 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
         return "自动测定"
 
     @staticmethod
-    def format_message(earthquake: EarthquakeData) -> str:
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化中国地震台网地震测定消息"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
         measurement_type = CENCEarthquakeFormatter.determine_measurement_type(
             earthquake
         )
@@ -425,7 +443,7 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰发震时间：{CENCEarthquakeFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{CENCEarthquakeFormatter.format_time(earthquake.shock_time, timezone)}"
             )
 
         # 震中
@@ -509,20 +527,23 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
     @staticmethod
     def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化日本气象厅地震情报消息"""
-        if options is None:
-            options = {}
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
 
         info_type = JMAEarthquakeFormatter.determine_info_type(earthquake)
         lines = [f"🚨[{info_type}] 日本气象厅"]
 
-        # 时间 - 将日本时间(UTC+9)转换为北京时间(UTC+8)显示
+        # 时间
         if earthquake.shock_time:
             # 如果时间没有时区信息，假定为JST(UTC+9)
             display_time = earthquake.shock_time
             if display_time.tzinfo is None:
-                display_time = display_time.replace(tzinfo=timezone(timedelta(hours=9)))
+                display_time = TimeConverter.parse_datetime(display_time).replace(
+                    tzinfo=TimeConverter.TIMEZONES["JST"]
+                )
+
             lines.append(
-                f"⏰发震时间：{JMAEarthquakeFormatter.format_time(display_time, 'UTC+8')}"
+                f"⏰发震时间：{JMAEarthquakeFormatter.format_time(display_time, timezone)}"
             )
 
         # 震中
@@ -668,8 +689,11 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
         return "自动测定"
 
     @staticmethod
-    def format_message(earthquake: EarthquakeData) -> str:
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化USGS地震情报消息"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
         measurement_type = USGSEarthquakeFormatter.determine_measurement_type(
             earthquake
         )
@@ -678,7 +702,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰发震时间：{USGSEarthquakeFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{USGSEarthquakeFormatter.format_time(earthquake.shock_time, timezone)}"
             )
 
         # 震中
@@ -708,8 +732,11 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
     """Global Quake地震情报格式化器"""
 
     @staticmethod
-    def get_render_context(earthquake: EarthquakeData) -> dict:
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
         """获取 Global Quake 卡片渲染上下文"""
+        options = options or {}
+        timezone_str = options.get("timezone", "UTC+8")
+
         # 震级颜色
         mag = earthquake.magnitude or 0
         if mag < 5:
@@ -719,10 +746,10 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
         else:
             mag_class = "bg-high"
 
-        # 格式化时间 (显示为 UTC+8)
+        # 格式化时间
         shock_time = earthquake.shock_time
         if shock_time:
-            time_str = GlobalQuakeFormatter.format_time(shock_time, "UTC+8")
+            time_str = GlobalQuakeFormatter.format_time(shock_time, timezone_str)
         else:
             time_str = "Unknown Time"
 
@@ -764,7 +791,9 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
             "is_update": (getattr(earthquake, "updates", 1) > 1),
             "revision": getattr(earthquake, "updates", 1),
             "time_str": time_str,
-            "depth": _format_depth(earthquake.depth) if earthquake.depth is not None else "N/A",
+            "depth": _format_depth(earthquake.depth)
+            if earthquake.depth is not None
+            else "N/A",
             "latitude": f"{earthquake.latitude:.4f}",
             "longitude": f"{earthquake.longitude:.4f}",
             "epicenter_str": GlobalQuakeFormatter.format_coordinates(
@@ -781,8 +810,11 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
         }
 
     @staticmethod
-    def format_message(earthquake: EarthquakeData) -> str:
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化Global Quake地震情报消息"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
         lines = ["🚨[地震预警] Global Quake"]
 
         # 报数信息
@@ -792,7 +824,7 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
         # 时间
         if earthquake.shock_time:
             lines.append(
-                f"⏰发震时间：{GlobalQuakeFormatter.format_time(earthquake.shock_time)}"
+                f"⏰发震时间：{GlobalQuakeFormatter.format_time(earthquake.shock_time, timezone)}"
             )
 
         # 震中

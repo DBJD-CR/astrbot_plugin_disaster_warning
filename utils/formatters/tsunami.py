@@ -2,10 +2,10 @@
 海啸预警消息格式化器
 """
 
-from datetime import timedelta, timezone
 
 from ...models.data_source_config import get_data_source_config
 from ...models.models import TsunamiData
+from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
 
 
@@ -13,8 +13,12 @@ class TsunamiFormatter(BaseMessageFormatter):
     """海啸预警格式化器"""
 
     @staticmethod
-    def format_message(tsunami: TsunamiData) -> str:
+    def format_message(tsunami: TsunamiData, options: dict = None) -> str:
         """格式化海啸预警消息"""
+        options = options or {}
+        # 优先使用传入的时区配置
+        target_timezone = options.get("timezone")
+
         lines = ["🌊[海啸预警]"]
 
         # 标题和级别
@@ -29,21 +33,24 @@ class TsunamiFormatter(BaseMessageFormatter):
 
         # 发布时间
         if tsunami.issue_time:
-            config = get_data_source_config(tsunami.source.value)
-            # 判断时区：中国数据源使用UTC+8，日本数据源使用UTC+9
-            if config and (
-                "中国" in config.display_name
-                or "中国海啸预警中心" in config.display_name
-            ):
-                timezone_str = "UTC+8"
-            elif config and (
-                "日本" in config.display_name or "日本气象厅" in config.display_name
-            ):
-                timezone_str = "UTC+9"
-            else:
-                timezone_str = "UTC+8"  # 默认使用中国时区
+            # 如果没有指定 target_timezone，则尝试根据数据源智能推断
+            if not target_timezone:
+                config = get_data_source_config(tsunami.source.value)
+                # 判断时区：中国数据源使用UTC+8，日本数据源使用UTC+9
+                if config and (
+                    "中国" in config.display_name
+                    or "中国海啸预警中心" in config.display_name
+                ):
+                    target_timezone = "UTC+8"
+                elif config and (
+                    "日本" in config.display_name or "日本气象厅" in config.display_name
+                ):
+                    target_timezone = "UTC+9"
+                else:
+                    target_timezone = "UTC+8"  # 默认使用中国时区
+
             lines.append(
-                f"⏰发布时间：{TsunamiFormatter.format_time(tsunami.issue_time, timezone_str)}"
+                f"⏰发布时间：{TsunamiFormatter.format_time(tsunami.issue_time, target_timezone)}"
             )
 
         # 引发地震信息
@@ -90,8 +97,11 @@ class JMATsunamiFormatter(BaseMessageFormatter):
     """日本气象厅海啸预报专用格式化器"""
 
     @staticmethod
-    def format_message(tsunami: TsunamiData) -> str:
+    def format_message(tsunami: TsunamiData, options: dict = None) -> str:
         """格式化日本气象厅海啸预报消息 - 基于P2P实际字段"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
         lines = ["🌊[津波予報] 日本气象厅"]
 
         # 标题和级别 - 处理日文级别
@@ -115,14 +125,16 @@ class JMATsunamiFormatter(BaseMessageFormatter):
         if tsunami.org_unit:
             lines.append(f"🏢発表：{tsunami.org_unit}")
 
-        # 发布时间 - 将日本时间(UTC+9)转换为北京时间(UTC+8)显示
+        # 发布时间
         if tsunami.issue_time:
             # 如果时间没有时区信息，假定为JST(UTC+9)
             display_time = tsunami.issue_time
             if display_time.tzinfo is None:
-                display_time = display_time.replace(tzinfo=timezone(timedelta(hours=9)))
+                display_time = TimeConverter.parse_datetime(display_time).replace(
+                    tzinfo=TimeConverter.TIMEZONES["JST"]
+                )
             lines.append(
-                f"⏰発表時刻：{JMATsunamiFormatter.format_time(display_time, 'UTC+8')}"
+                f"⏰発表時刻：{JMATsunamiFormatter.format_time(display_time, timezone)}"
             )
 
         # 预报区域 - 基于P2P实际字段结构

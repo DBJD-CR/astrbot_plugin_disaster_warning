@@ -131,7 +131,7 @@ class GlobalQuakeHandler(BaseDataHandler):
                 event_id=eq_data.get("id", ""),
                 source=DataSource.GLOBAL_QUAKE,
                 disaster_type=DisasterType.EARTHQUAKE,
-                shock_time=shock_time or datetime.now(),
+                shock_time=shock_time or datetime.now(timezone.utc),
                 latitude=latitude,
                 longitude=longitude,
                 depth=depth,
