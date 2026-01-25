@@ -250,9 +250,9 @@ class TelemetryManager:
 
     async def track_feature(self, feature_name: str, extra: dict = None) -> bool:
         """上报功能使用事件"""
-        data = {"feature": feature_name}
-        if extra:
-            data.update(extra)
+        data = extra.copy() if extra else {}
+        # 强制设置 feature，防止被 extra 覆盖
+        data["feature"] = feature_name
         return await self.track("feature", data)
 
     async def track_error(
@@ -267,19 +267,22 @@ class TelemetryManager:
             exception: 捕获的异常对象
             module: 发生错误的模块名
         """
+        # 先脱敏再截断，防止截断导致脱敏正则匹配失败
+        raw_message = str(exception)
+        sanitized_message = self._sanitize_message(raw_message)
+        
         data = {
             "type": type(exception).__name__,
-            "message": str(exception)[:500],
+            "message": sanitized_message[:500],
             "module": module,
             "severity": "error",
         }
         
         # 获取堆栈并脱敏
-        stack = traceback.format_exc()
+        stack = "".join(
+            traceback.format_exception(type(exception), exception, exception.__traceback__)
+        )
         data["stack"] = self._sanitize_stack(stack)[:4000]
-        
-        # 再次对 message 进行脱敏 (以防万一)
-        data["message"] = self._sanitize_message(data["message"])
 
         return await self.track("error", data)
 
