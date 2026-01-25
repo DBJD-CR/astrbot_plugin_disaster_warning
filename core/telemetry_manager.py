@@ -11,12 +11,10 @@
 
 import asyncio
 import base64
-import os
 import platform
 import sys
 import uuid
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
@@ -53,7 +51,7 @@ class TelemetryManager:
         self._instance_id = self._get_or_create_instance_id()
 
         # aiohttp session (延迟初始化)
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
         # 环境信息 (只收集一次)
         self._env_info = {
@@ -63,21 +61,19 @@ class TelemetryManager:
         }
 
         if self._enabled:
-            logger.info(
-                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})"
-            )
+            logger.info(f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})")
         else:
             logger.debug("[灾害预警] 遥测功能未启用")
 
     def _get_or_create_instance_id(self) -> str:
         """获取或创建实例 ID，存储在插件数据目录中"""
         from astrbot.api.star import StarTools
-        
+
         try:
             # 使用 StarTools 获取插件数据目录（与 message_logger 一致）
             data_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
             id_file = data_dir / ".telemetry_id"
-            
+
             # 尝试读取已存在的 ID
             if id_file.exists():
                 instance_id = id_file.read_text().strip()
@@ -114,7 +110,7 @@ class TelemetryManager:
     async def track(
         self,
         event: str,
-        data: Optional[dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
         env: str = "production",
     ) -> bool:
         """
@@ -132,14 +128,14 @@ class TelemetryManager:
             return False
 
         from datetime import datetime, timezone
-        
+
         # 构造符合 API v2 的批量格式
         event_item = {
             "event": event,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "data": data or {},
         }
-        
+
         payload = {
             "instance_id": self._instance_id,
             "version": self._plugin_version,
@@ -249,13 +245,12 @@ class TelemetryManager:
             logger.debug(f"[灾害预警] 配置快照提取失败: {e}")
             return False
 
-
     async def track_error(
         self,
         error_type: str,
         module: str,
-        message: Optional[str] = None,
-        stack: Optional[str] = None,
+        message: str | None = None,
+        stack: str | None = None,
     ) -> bool:
         """
         发送错误事件
@@ -283,63 +278,39 @@ class TelemetryManager:
     def _sanitize_stack(self, stack: str) -> str:
         """
         脱敏堆栈信息，移除敏感路径
-        
+
         - 移除用户主目录路径
         - 保留相对于插件的路径
         - 隐藏用户名
         """
         import re
-        
+
         # 替换 Windows 风格的用户路径
         # C:\Users\username\... -> <USER_HOME>\...
-        stack = re.sub(
-            r'[A-Za-z]:\\Users\\[^\\]+\\',
-            r'<USER_HOME>\\',
-            stack
-        )
-        
+        stack = re.sub(r"[A-Za-z]:\\Users\\[^\\]+\\", r"<USER_HOME>\\", stack)
+
         # 替换 Unix 风格的用户路径
         # /home/username/... -> <USER_HOME>/...
         # /Users/username/... -> <USER_HOME>/...
-        stack = re.sub(
-            r'/(?:home|Users)/[^/]+/',
-            r'<USER_HOME>/',
-            stack
-        )
-        
+        stack = re.sub(r"/(?:home|Users)/[^/]+/", r"<USER_HOME>/", stack)
+
         # 简化插件路径，只保留相对路径
         # .../astrbot_plugin_disaster_warning/... -> <PLUGIN>/...
-        stack = re.sub(
-            r'.*astrbot_plugin_disaster_warning[/\\]',
-            r'<PLUGIN>/',
-            stack
-        )
-        
+        stack = re.sub(r".*astrbot_plugin_disaster_warning[/\\]", r"<PLUGIN>/", stack)
+
         # 移除可能的 site-packages 完整路径
-        stack = re.sub(
-            r'.*site-packages[/\\]',
-            r'<SITE_PACKAGES>/',
-            stack
-        )
-        
+        stack = re.sub(r".*site-packages[/\\]", r"<SITE_PACKAGES>/", stack)
+
         return stack
 
     def _sanitize_message(self, message: str) -> str:
         """脱敏错误消息，移除可能的敏感信息"""
         import re
-        
+
         # 移除路径中的用户名
-        message = re.sub(
-            r'/(?:home|Users)/[^/\s]+/',
-            r'<USER_HOME>/',
-            message
-        )
-        message = re.sub(
-            r'[A-Za-z]:\\Users\\[^\\\s]+\\',
-            r'<USER_HOME>\\',
-            message
-        )
-        
+        message = re.sub(r"/(?:home|Users)/[^/\s]+/", r"<USER_HOME>/", message)
+        message = re.sub(r"[A-Za-z]:\\Users\\[^\\\s]+\\", r"<USER_HOME>\\", message)
+
         return message
 
     async def close(self):

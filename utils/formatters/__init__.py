@@ -54,9 +54,7 @@ def format_earthquake_message(
     formatter_class = get_formatter(source_id)
     if hasattr(formatter_class, "format_message"):
         try:
-            if source_id in ["jma_p2p_info", "jma_wolfx_info"]:
-                return formatter_class.format_message(earthquake, options=options)
-            return formatter_class.format_message(earthquake)
+            return formatter_class.format_message(earthquake, options=options)
         except TypeError:
             # 如果不支持 options 参数，回退到旧调用方式
             return formatter_class.format_message(earthquake)
@@ -65,11 +63,16 @@ def format_earthquake_message(
     return BaseMessageFormatter.format_message(earthquake)
 
 
-def format_tsunami_message(source_id: str, tsunami: TsunamiData) -> str:
+def format_tsunami_message(
+    source_id: str, tsunami: TsunamiData, options: dict = None
+) -> str:
     """格式化海啸消息"""
     formatter_class = get_formatter(source_id)
     if hasattr(formatter_class, "format_message"):
-        return formatter_class.format_message(tsunami)
+        try:
+            return formatter_class.format_message(tsunami, options=options)
+        except TypeError:
+            return formatter_class.format_message(tsunami)
 
     # 回退到基础格式化
     return BaseMessageFormatter.format_message(tsunami)

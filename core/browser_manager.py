@@ -7,10 +7,10 @@
 import asyncio
 import os
 import time
-from typing import Optional
+
+from playwright.async_api import Browser, Page, async_playwright
 
 from astrbot.api import logger
-from playwright.async_api import Browser, Page, async_playwright
 
 
 class BrowserManager:
@@ -24,7 +24,7 @@ class BrowserManager:
             pool_size: 页面池大小，默认 2 个页面
         """
         self.pool_size = pool_size
-        self._browser: Optional[Browser] = None
+        self._browser: Browser | None = None
         self._playwright = None
         self._page_pool: asyncio.Queue = asyncio.Queue(maxsize=pool_size)
         self._semaphore = asyncio.Semaphore(pool_size)  # 并发控制
@@ -75,7 +75,7 @@ class BrowserManager:
         output_path: str,
         selector: str = "#card-wrapper",
         wait_until: str = "domcontentloaded",
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         渲染 HTML 卡片为图片
 
@@ -96,7 +96,7 @@ class BrowserManager:
             logger.error("[灾害预警] 浏览器已关闭，无法渲染")
             return None
 
-        page: Optional[Page] = None
+        page: Page | None = None
         start_time = time.time()
 
         try:
@@ -108,18 +108,16 @@ class BrowserManager:
                 try:
                     # 将 HTML 保存为临时文件，以支持相对路径加载本地资源
                     import tempfile
+
                     temp_html = None
                     try:
                         # 创建临时 HTML 文件
                         with tempfile.NamedTemporaryFile(
-                            mode='w', 
-                            suffix='.html', 
-                            delete=False, 
-                            encoding='utf-8'
+                            mode="w", suffix=".html", delete=False, encoding="utf-8"
                         ) as f:
                             f.write(html_content)
                             temp_html = f.name
-                        
+
                         # 使用 file:// 协议加载，支持相对路径
                         file_url = f"file://{temp_html}"
                         await page.goto(file_url, wait_until="networkidle")
