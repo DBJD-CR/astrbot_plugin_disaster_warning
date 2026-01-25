@@ -12,7 +12,7 @@
 import asyncio
 import base64
 import platform
-import sys
+
 import uuid
 import traceback
 from datetime import datetime, timezone
@@ -55,12 +55,7 @@ class TelemetryManager:
         # aiohttp session (延迟初始化)
         self._session: aiohttp.ClientSession | None = None
 
-        # 环境信息 (只收集一次)
-        self._env_info = {
-            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-            "os": platform.system().lower(),
-            "arch": platform.machine(),
-        }
+
         self._env = "production"
 
         if self._enabled:
@@ -127,11 +122,11 @@ class TelemetryManager:
 
         # 构造符合新 API 的 payload
         payload = {
-            "events": [{
-                "event_name": event_name,
-                "instance_id": self._instance_id,
-                "version": self._plugin_version,
-                "env": self._env,
+            "instance_id": self._instance_id,
+            "version": self._plugin_version,
+            "env": self._env,
+            "batch": [{
+                "event": event_name,
                 "data": data or {},
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }]
@@ -176,7 +171,6 @@ class TelemetryManager:
                 "os_version": platform.release(),
                 "python_version": platform.python_version(),
                 "arch": platform.machine(),
-                "plugin_version": self._plugin_version,
             },
         )
 
