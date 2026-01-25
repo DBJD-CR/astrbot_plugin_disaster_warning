@@ -6,12 +6,14 @@
 import hashlib
 import json
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.star import StarTools
+
+from ..utils.version import get_plugin_version
 
 
 class MessageLogger:
@@ -50,15 +52,15 @@ class MessageLogger:
         self.filter_connection_status = config.get("debug_config", {}).get(
             "filter_connection_status", True
         )
-        self.http_earthquake_list_max_items = config.get("debug_config", {}).get(
-            "http_earthquake_list_max_items", 5
+        self.wolfx_list_log_max_items = config.get("debug_config", {}).get(
+            "wolfx_list_log_max_items", 5
         )
         self.startup_silence_duration = config.get("debug_config", {}).get(
             "startup_silence_duration", 0
         )
 
         # 记录启动时间
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
 
         # 用于去重的缓存
         self.recent_event_hashes: set[str] = set()
@@ -87,7 +89,7 @@ class MessageLogger:
         self._load_stats()
 
         # 初始化时读取插件版本，避免每次写日志都进行文件IO
-        self.plugin_version = self._get_plugin_version()
+        self.plugin_version = get_plugin_version()
 
         logger.info("[灾害预警] 消息记录器初始化完成")
         if self.filter_heartbeat:
@@ -542,9 +544,12 @@ class MessageLogger:
         """格式化可读性强的日志内容"""
         try:
             # 基础信息格式化
-            timestamp = datetime.fromisoformat(log_entry["timestamp"]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            dt = datetime.fromisoformat(log_entry["timestamp"])
+            # 如果是 UTC 时间（带时区），转换为本地时间显示，方便阅读
+            if dt.tzinfo is not None:
+                dt = dt.astimezone()
+
+            timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
             source = log_entry["source"]
             message_type = log_entry["message_type"]
 
@@ -899,159 +904,13 @@ class MessageLogger:
                     f"[灾害预警] 成功加载 {len(area_mapping)} 个P2P区域代码映射"
                 )
             else:
-                logger.warning("[灾害预警] 未找到epsp-area.csv文件，使用备用映射")
-                area_mapping = self._get_fallback_area_mapping()
+                logger.warning("[灾害预警] 未找到epsp-area.csv文件，请检查资源完整性")
 
         except Exception as e:
             logger.error(f"[灾害预警] 加载P2P区域代码映射失败: {e}")
             logger.error("[灾害预警] 请检查epsp-area.csv文件是否存在且格式正确")
-            area_mapping = self._get_fallback_area_mapping()
 
         return area_mapping
-
-    def _get_fallback_area_mapping(self) -> dict[int, str]:
-        """备用区域代码映射（基于CSV文件的主要区域）"""
-        return {
-            # 主要区域代码（从CSV中提取的最常用代码）
-            10: "北海道 石狩",
-            15: "北海道 渡島",
-            20: "北海道 檜山",
-            25: "北海道 後志",
-            30: "北海道 空知",
-            35: "北海道 上川",
-            40: "北海道 留萌",
-            45: "北海道 宗谷",
-            50: "北海道 網走",
-            55: "北海道 胆振",
-            60: "北海道 日高",
-            65: "北海道 十勝",
-            70: "北海道 釧路",
-            75: "北海道 根室",
-            100: "青森津軽",
-            105: "青森三八上北",
-            106: "青森下北",
-            110: "岩手沿岸北部",
-            111: "岩手沿岸南部",
-            115: "岩手内陸",
-            120: "宮城北部",
-            125: "宮城南部",
-            130: "秋田沿岸",
-            135: "秋田内陸",
-            140: "山形庄内",
-            141: "山形最上",
-            142: "山形村山",
-            143: "山形置賜",
-            150: "福島中通り",
-            151: "福島浜通り",
-            152: "福島会津",
-            200: "茨城北部",
-            205: "茨城南部",
-            210: "栃木北部",
-            215: "栃木南部",
-            220: "群馬北部",
-            225: "群馬南部",
-            230: "埼玉北部",
-            231: "埼玉南部",
-            232: "埼玉秩父",
-            240: "千葉北東部",
-            241: "千葉北西部",
-            242: "千葉南部",
-            250: "東京",
-            255: "伊豆諸島北部",
-            260: "伊豆諸島南部",
-            265: "小笠原",
-            270: "神奈川東部",
-            275: "神奈川西部",
-            300: "新潟上越",
-            301: "新潟中越",
-            302: "新潟下越",
-            305: "新潟佐渡",
-            310: "富山東部",
-            315: "富山西部",
-            320: "石川能登",
-            325: "石川加賀",
-            330: "福井嶺北",
-            335: "福井嶺南",
-            340: "山梨東部",
-            345: "山梨中・西部",
-            350: "長野北部",
-            351: "長野中部",
-            355: "長野南部",
-            400: "岐阜飛騨",
-            405: "岐阜美濃",
-            410: "静岡伊豆",
-            411: "静岡東部",
-            415: "静岡中部",
-            416: "静岡西部",
-            420: "愛知東部",
-            425: "愛知西部",
-            430: "三重北中部",
-            435: "三重南部",
-            440: "滋賀北部",
-            445: "滋賀南部",
-            450: "京都北部",
-            455: "京都南部",
-            460: "大阪北部",
-            465: "大阪南部",
-            470: "兵庫北部",
-            475: "兵庫南部",
-            480: "奈良",
-            490: "和歌山北部",
-            495: "和歌山南部",
-            500: "鳥取東部",
-            505: "鳥取中・西部",
-            510: "島根東部",
-            515: "島根西部",
-            514: "島根隠岐",
-            520: "岡山北部",
-            525: "岡山南部",
-            530: "広島北部",
-            535: "広島南部",
-            540: "山口北部",
-            545: "山口中・東部",
-            541: "山口西部",
-            550: "徳島北部",
-            555: "徳島南部",
-            560: "香川",
-            570: "愛媛東予",
-            575: "愛媛中予",
-            576: "愛媛南予",
-            580: "高知東部",
-            581: "高知中部",
-            582: "高知西部",
-            600: "福岡福岡",
-            601: "福岡北九州",
-            602: "福岡筑豊",
-            605: "福岡筑後",
-            610: "佐賀北部",
-            615: "佐賀南部",
-            620: "長崎北部",
-            625: "長崎南部",
-            630: "長崎壱岐・対馬",
-            635: "長崎五島",
-            640: "熊本阿蘇",
-            641: "熊本熊本",
-            645: "熊本球磨",
-            646: "熊本天草・芦北",
-            650: "大分北部",
-            651: "大分中部",
-            655: "大分西部",
-            656: "大分南部",
-            660: "宮崎北部平野部",
-            661: "宮崎北部山沿い",
-            665: "宮崎南部平野部",
-            666: "宮崎南部山沿い",
-            670: "鹿児島薩摩",
-            675: "鹿児島大隅",
-            680: "種子島・屋久島",
-            685: "鹿児島奄美",
-            700: "沖縄本島北部",
-            701: "沖縄本島中南部",
-            702: "沖縄久米島",
-            705: "沖縄八重山",
-            706: "沖縄宮古島",
-            710: "沖縄大東島",
-        }
 
     def _extract_content_without_timestamp(self, log_content: str) -> str:
         """提取日志内容中排除时间戳的部分，用于重复检测"""
@@ -1099,7 +958,7 @@ class MessageLogger:
         """记录原始消息"""
         # 检查启动静默期
         if self.startup_silence_duration > 0:
-            elapsed = (datetime.now() - self.start_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
             if elapsed < self.startup_silence_duration:
                 # 静默期内不记录日志，也不更新统计
                 return
@@ -1115,7 +974,7 @@ class MessageLogger:
             if filter_reason:
                 # 根据过滤原因决定日志级别
                 # 心跳包、类型过滤、P2P节点状态、重复事件列表等高频消息使用DEBUG级别
-                # 连接状态等使用INFO级别
+                # 连接状态等使用INFO级别/最近连接状态也变高频了，故也改为DEBUG级别
                 is_high_frequency = any(
                     keyword in filter_reason
                     for keyword in ["消息类型过滤", "P2P节点状态", "心跳", "重复事件"]
@@ -1126,7 +985,7 @@ class MessageLogger:
                         f"[灾害预警] 过滤消息 - 来源: {source}, 类型: {message_type}, 原因: {filter_reason}"
                     )
                 else:
-                    logger.info(
+                    logger.debug(
                         f"[灾害预警] 过滤日志消息 - 来源: {source}, 类型: {message_type}, 原因: {filter_reason}"
                     )
 
@@ -1135,7 +994,7 @@ class MessageLogger:
                 return
 
             # 获取当前时间
-            current_time = datetime.now()
+            current_time = datetime.now(timezone.utc)
 
             # 准备日志条目数据
             log_entry = {
@@ -1213,20 +1072,21 @@ class MessageLogger:
             },
         )
 
-    def log_http_earthquake_list(
+    def log_earthquake_list_summary(
         self,
         source: str,
-        url: str,
         earthquake_list: dict[str, Any],
+        url: str | None = None,
         max_items: int | None = None,
     ):
         """
-        记录 HTTP 地震列表响应的摘要（不记录完整列表，避免日志膨胀）
+        记录地震列表数据的摘要（不记录完整列表，避免日志膨胀）
+        适用于 HTTP 和 WebSocket 的列表数据
 
         Args:
-            source: 数据源标识，如 "http_wolfx_cenc" 或 "http_wolfx_jma"
-            url: 请求的 URL
-            earthquake_list: 完整的地震列表响应数据
+            source: 数据源标识
+            earthquake_list: 完整的地震列表数据
+            url: 请求的 URL (HTTP) 或 None (WebSocket)
             max_items: 只记录前多少条事件，默认为配置值
         """
         if not self.enabled:
@@ -1234,7 +1094,7 @@ class MessageLogger:
 
         # 使用配置值作为默认值
         if max_items is None:
-            max_items = self.http_earthquake_list_max_items
+            max_items = self.wolfx_list_log_max_items
 
         try:
             # 构建摘要数据
@@ -1276,16 +1136,29 @@ class MessageLogger:
                 summary_data["note"] = f"还有 {total_count - max_items} 条事件未显示"
 
             # 记录摘要
+            connection_info = {
+                "summary_mode": True,
+            }
+            if url:
+                connection_info.update(
+                    {
+                        "url": url,
+                        "method": "GET",
+                        "connection_type": "http",
+                    }
+                )
+            else:
+                connection_info.update(
+                    {
+                        "connection_type": "websocket",
+                    }
+                )
+
             self.log_raw_message(
                 source=source,
-                message_type="http_earthquake_list_summary",
+                message_type="earthquake_list_summary",
                 raw_data=summary_data,
-                connection_info={
-                    "url": url,
-                    "method": "GET",
-                    "connection_type": "http",
-                    "summary_mode": True,
-                },
+                connection_info=connection_info,
             )
 
         except Exception as e:
@@ -1300,9 +1173,9 @@ class MessageLogger:
                 }
                 self.log_raw_message(
                     source=source,
-                    message_type="http_earthquake_list_summary",
+                    message_type="earthquake_list_summary",
                     raw_data=fallback_data,
-                    connection_info={"url": url, "connection_type": "http"},
+                    connection_info={"url": url} if url else {},
                 )
             except Exception:
                 pass
@@ -1451,7 +1324,7 @@ class MessageLogger:
         try:
             data = {
                 "filter_stats": self.filter_stats,
-                "updated_at": datetime.now().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
             with open(self.stats_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -1472,21 +1345,6 @@ class MessageLogger:
         """按需保存统计（减少IO频率，例如每10次过滤保存一次）"""
         if self.filter_stats["total_filtered"] % 10 == 0:
             self.save_stats()
-
-    def _get_plugin_version(self) -> str:
-        """获取插件版本号"""
-        try:
-            # 尝试从 metadata.yaml 读取
-            metadata_path = Path(__file__).parent.parent / "metadata.yaml"
-            if metadata_path.exists():
-                with open(metadata_path, encoding="utf-8") as f:
-                    # 简单解析 YAML，避免引入 yaml 依赖
-                    for line in f:
-                        if line.strip().startswith("version:"):
-                            return line.split(":", 1)[1].strip()
-        except Exception:
-            pass
-        return "unknown"
 
 
 # 向后兼容的函数
