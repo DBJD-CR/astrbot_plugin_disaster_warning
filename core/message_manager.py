@@ -626,7 +626,7 @@ class MessagePushManager:
         try:
             # 加载模板
             template_path = os.path.join(
-                self.plugin_root, "resources", "card_templates", "earthquake_list.html"
+                self.plugin_root, "resources", "card_templates", "Base", "earthquake_list.html"
             )
 
             if not os.path.exists(template_path):
@@ -678,7 +678,7 @@ class MessagePushManager:
             # 加载模板
             resources_dir = os.path.join(self.plugin_root, "resources")
             template_path = os.path.join(
-                resources_dir, "card_templates", "simple_map.html"
+                resources_dir, "card_templates", "Base", "base_map.html"
             )
 
             if not os.path.exists(template_path):
