@@ -10,17 +10,17 @@
     "hint": "输入用户ID（QQ号等）。这些用户拥有管理插件的高级权限（如查看日志、修改配置等）。AstrBot的全站管理员默认拥有权限，无需在此重复添加。",
     "default": null
   },
-  "target_groups": {
-    "description": "需要推送消息的群号列表",
+  "target_sessions": {
+    "description": "推送会话列表",
     "type": "list",
-    "hint": "输入群号，留空则不推送消息",
+    "hint": "请输入完整的 UMO，可通过 /sid 指令快捷获取。格式: {platform_name}:{message_type}:{session_id}。{platform_name} 就是你在 WebUI 中的 机器人 一栏自定义的机器人名称。{message_type} 可选参数为“GroupMessage”和“FriendMessage”。例如 aiocqhttp:GroupMessage:123456 或 aiocqhttp:Friend:Message:123456",
     "default": []
   },
-  "platform_name": {
-    "description": "消息平台名称",
+  "display_timezone": {
+    "description": "默认显示时区",
     "type": "string",
-    "default": "default",
-    "hint": "输入你接入的消息平台下的机器人名称，如：default、aiocqhttp、telegram、discord等。在 WebUI 中的 机器人 一栏可以查看你自定义的机器人名称，填写它。"
+    "hint": "所有灾害预警消息中时间显示的默认时区。格式示例：UTC+8, UTC-5, Asia/Shanghai",
+    "default": "UTC+8"
   },
   "data_sources": {
     "description": "数据源配置",
@@ -122,25 +122,25 @@
             "description": "日本気象庁：緊急地震速報",
             "type": "bool",
             "default": true,
-            "hint": "通过Wolfx API接收日本气象厅紧急地震速报（备注：该服务可能经常返回HTTP 503错误，如果长期处于无法使用的状况，建议关闭）"
+            "hint": "通过Wolfx API接收日本气象厅紧急地震速报"
           },
           "china_cenc_eew": {
             "description": "中国地震台网（CENC）：地震预警",
             "type": "bool",
-            "default": true,
+            "default": false,
             "hint": "通过Wolfx API接收中国地震台网地震预警"
           },
           "taiwan_cwa_eew": {
             "description": "台湾中央气象署：地震预警",
             "type": "bool",
             "default": true,
-            "hint": "通过Wolfx API接收台湾中央气象署地震预警（备注：该服务可能经常返回HTTP 503错误，如果长期处于无法使用的状况，建议关闭）"
+            "hint": "通过Wolfx API接收台湾中央气象署地震预警"
           },
           "japan_jma_earthquake": {
             "description": "日本気象庁（JMA）：地震情報",
             "type": "bool",
-            "default": true,
-            "hint": "通过Wolfx API接收日本气象厅地震情报列表（备注：该服务可能经常返回HTTP 503错误，如果长期处于无法使用的状况，建议关闭）"
+            "default": false,
+            "hint": "通过Wolfx API接收日本气象厅地震情报列表"
           },
           "china_cenc_earthquake": {
             "description": "中国地震台网（CENC）：地震测定",
@@ -212,12 +212,65 @@
       }
     }
   },
-  "earthquake_filters": {
-    "description": "地震信息过滤器配置",
+  "strategies": {
+    "description": "高级策略配置",
     "type": "object",
-    "hint": "根据不同数据源类型使用不同的过滤器",
     "items": {
-      "intensity_filter": {
+      "cenc_fusion": {
+        "description": "CENC 地震情报融合策略",
+        "type": "object",
+        "hint": "Fan (主) + Wolfx (副) 融合模式。优先使用 Fan 的数据，并尝试等待 Wolfx 的烈度信息进行补充。",
+        "items": {
+          "enabled": {
+            "description": "启用融合策略",
+            "type": "bool",
+            "default": true
+          },
+          "timeout": {
+            "description": "等待超时时间",
+            "type": "int",
+            "hint": "单位：秒。等待 Wolfx 数据补充的最大时间。",
+            "default": 10,
+            "slider": {
+              "min": 1,
+              "max": 60,
+              "step": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "earthquake_filters": {
+  "description": "地震信息过滤器配置",
+  "type": "object",
+  "hint": "根据不同数据源类型使用不同的过滤器",
+  "items": {
+    "keyword_filter": {
+      "description": "关键词过滤器",
+      "type": "object",
+      "hint": "适用于所有地震信息，支持黑名单和白名单",
+      "items": {
+        "enabled": {
+          "description": "启用关键词过滤器",
+          "type": "bool",
+          "default": false
+        },
+        "blacklist": {
+          "description": "黑名单关键词",
+          "type": "list",
+          "hint": "包含这些关键词的地震信息将被过滤",
+          "default": []
+        },
+        "whitelist": {
+          "description": "白名单关键词",
+          "type": "list",
+          "hint": "如果设置了白名单，只有包含这些关键词的地震信息才会被推送。留空则不启用白名单模式。如果启用，请尽量多填写一些关键词，否则很有可能在关键时刻错过重要的通知",
+          "default": []
+        }
+      }
+    },
+    "intensity_filter": {
         "description": "基于震级和烈度的地震过滤器",
         "type": "object",
         "hint": "使用OR逻辑：满足 震级要求 或 满足烈度要求 即可推送",
@@ -390,7 +443,7 @@
       "ignore_non_final_reports": {
         "description": "是否忽略非最终报",
         "type": "bool",
-        "hint": "只推送最终报（以及第1报）",
+        "hint": "只推送最终报（以及第1报），仅适用于 JMA 相关数据源",
         "default": false
       }
     }
@@ -400,31 +453,33 @@
     "type": "object",
     "items": {
       "include_map": {
-        "description": "是否包含地图链接",
+        "description": "是否包含地图图片",
         "type": "bool",
-        "hint": "适用于地震信息，会在消息末尾添加地图链接",
+        "hint": "适用于地震信息，会在消息末尾附加地图瓦片渲染出的图片",
         "default": false
       },
-      "map_provider": {
-        "description": "地图服务提供商",
+      "map_source": {
+        "description": "地图瓦片源",
         "type": "string",
         "options": [
-          "openstreetmap",
-          "google",
-          "baidu",
-          "amap"
+          "petallight",
+          "petaldark",
+          "arcwi",
+          "arcwob",
+          "arcwh",
+          "geovis"
         ],
-        "default": "baidu",
-        "hint": "推荐使用百度地图(baidu)或高德地图(amap)，在中国大陆访问更稳定"
+        "default": "petallight",
+        "hint": "选择地图渲染使用的瓦片源。推荐使用 PetalMap 矢量图 亮 (petallight)"
       },
       "map_zoom_level": {
         "description": "地图缩放级别",
         "type": "int",
-        "hint": "1-20，数值越大越详细 (部分地图服务提供商可能不支持该配置)",
+        "hint": "0-18，数值越大越详细",
         "default": 5,
         "slider": {
-          "min": 1,
-          "max": 20,
+          "min": 0,
+          "max": 18,
           "step": 1
         }
       },
@@ -498,6 +553,12 @@
           "max": 1024,
           "step": 2
         }
+      },
+      "enable_weather_icon": {
+        "description": "显示预警图标",
+        "type": "bool",
+        "hint": "启用后将根据预警类型自动在消息末尾附加中国气象局官方图标。",
+        "default": true
       }
     }
   },
@@ -654,10 +715,10 @@
         "hint": "连接建立、断开等",
         "default": true
       },
-      "http_earthquake_list_max_items": {
-        "description": "Wolfx HTTP地震列表日志最大记录数",
+      "wolfx_list_log_max_items": {
+        "description": "Wolfx 地震列表日志最大记录数",
         "type": "int",
-        "hint": "记录地震列表API响应时，只记录前N条数据，避免日志冗余。最大值50",
+        "hint": "记录 Wolfx 地震列表数据（WebSocket）时，只记录前N条数据，避免日志冗余。最大值50",
         "default": 5,
         "slider": {
           "min": 1,
