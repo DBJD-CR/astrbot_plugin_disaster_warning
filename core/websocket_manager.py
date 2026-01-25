@@ -66,7 +66,7 @@ class WebSocketManager:
                 current_retry = self.connection_retry_counts.get(name, 0) + 1
                 self.connection_retry_counts[name] = current_retry
             else:
-                logger.info(f"[灾害预警] 正在连接 {name}")
+                logger.debug(f"[灾害预警] 正在连接 {name}")
                 # 首次连接时重置重试计数
                 self.connection_retry_counts[name] = 0
 
@@ -506,7 +506,11 @@ class HTTPDataFetcher:
         return self
 
     async def __aexit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        if self.session:
+        await self.close()  # 调用显式的 close
+
+    async def close(self):
+        """显式关闭 Session"""
+        if self.session and not self.session.closed:
             await self.session.close()
 
     async def fetch_json(self, url: str, headers: dict | None = None) -> dict | None:
