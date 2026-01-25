@@ -5,19 +5,19 @@
 
 import asyncio
 import json
+import os
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
 from astrbot.api import logger
+from astrbot.api.star import StarTools
 
 if TYPE_CHECKING:
     from .telemetry_manager import TelemetryManager
 
 from ..models.models import (
-    DataSource,
     DisasterEvent,
-    DisasterType,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
@@ -52,7 +52,7 @@ class DisasterWarningService:
         self.message_manager = MessagePushManager(config, context)
 
         # 遥测管理器引用 (由 main.py 注入)
-        self._telemetry: Optional["TelemetryManager"] = None
+        self._telemetry: TelemetryManager | None = None
 
         # 数据处理器
         self.handlers = {}
@@ -64,6 +64,13 @@ class DisasterWarningService:
 
         # 定时任务
         self.scheduled_tasks = []
+
+        # 地震列表缓存（用于查询指令）
+        self.earthquake_lists = {"cenc": {}, "jma": {}}
+
+        # 数据持久化路径
+        self.storage_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
+        self.cache_file = os.path.join(self.storage_dir, "earthquake_lists_cache.json")
 
     def _initialize_handlers(self):
         """初始化数据处理器"""
@@ -159,18 +166,25 @@ class DisasterWarningService:
         # Wolfx连接配置
         wolfx_config = data_sources.get("wolfx", {})
         if isinstance(wolfx_config, dict) and wolfx_config.get("enabled", True):
-            wolfx_sources = [
-                ("japan_jma_eew", "wss://ws-api.wolfx.jp/jma_eew"),
-                ("china_cenc_eew", "wss://ws-api.wolfx.jp/cenc_eew"),
-                ("taiwan_cwa_eew", "wss://ws-api.wolfx.jp/cwa_eew"),
-                ("japan_jma_earthquake", "wss://ws-api.wolfx.jp/jma_eqlist"),
-                ("china_cenc_earthquake", "wss://ws-api.wolfx.jp/cenc_eqlist"),
+            wolfx_sub_sources = [
+                "japan_jma_eew",
+                "china_cenc_eew",
+                "taiwan_cwa_eew",
+                "japan_jma_earthquake",
+                "china_cenc_earthquake",
             ]
 
-            for source_key, url in wolfx_sources:
-                if wolfx_config.get(source_key, True):
-                    conn_name = f"wolfx_{source_key}"
-                    self.connections[conn_name] = {"url": url, "handler": "wolfx"}
+            any_wolfx_source_enabled = any(
+                wolfx_config.get(source, True) for source in wolfx_sub_sources
+            )
+
+            if any_wolfx_source_enabled:
+                # 使用 /all_eew 路径建立单一连接
+                self.connections["wolfx_all"] = {
+                    "url": "wss://ws-api.wolfx.jp/all_eew",
+                    "handler": "wolfx",
+                }
+                logger.info("[灾害预警] 已配置 Wolfx 全量数据连接 (/all_eew)")
 
         # Global Quake连接配置 - 服务器地址硬编码，用户只需配置是否启用
         global_quake_config = data_sources.get("global_quake", {})
@@ -192,8 +206,11 @@ class DisasterWarningService:
 
         try:
             self.running = True
-            self.start_time = datetime.now()  # 记录启动时间
+            self.start_time = datetime.now(timezone.utc)  # 记录启动时间
             logger.info("[灾害预警] 正在启动灾害预警服务...")
+
+            # 加载缓存数据
+            self._load_earthquake_lists_cache()
 
             # 启动WebSocket管理器
             await self.ws_manager.start()
@@ -233,6 +250,9 @@ class DisasterWarningService:
             return
 
         try:
+            # 保存缓存数据
+            self._save_earthquake_lists_cache()
+
             self.running = False
             logger.info("[灾害预警] 正在停止灾害预警服务...")
 
@@ -248,7 +268,7 @@ class DisasterWarningService:
 
             # 关闭HTTP获取器
             if self.http_fetcher:
-                await self.http_fetcher.__aexit__(None, None, None)
+                await self.http_fetcher.close()  # 修改点：调用显式的 close()
 
             logger.info("[灾害预警] 灾害预警服务已停止")
 
@@ -296,11 +316,7 @@ class DisasterWarningService:
             # P2P
             "p2p_main": "jma_p2p",
             # Wolfx
-            "wolfx_japan_jma_eew": "jma_wolfx",
-            "wolfx_china_cenc_eew": "cea_wolfx",
-            "wolfx_taiwan_cwa_eew": "cwa_wolfx",
-            "wolfx_china_cenc_earthquake": "cenc_wolfx",
-            "wolfx_japan_jma_earthquake": "jma_wolfx_info",
+            "wolfx_all": "wolfx_mixed",  # 混合数据源
             # Global Quake
             "global_quake": "global_quake",
         }
@@ -318,6 +334,16 @@ class DisasterWarningService:
             return False
 
         return fan_studio_config.get(source_key, True)
+
+    def is_wolfx_source_enabled(self, source_key: str) -> bool:
+        """检查特定的 Wolfx 数据源是否启用"""
+        data_sources = self.config.get("data_sources", {})
+        wolfx_config = data_sources.get("wolfx", {})
+
+        if not isinstance(wolfx_config, dict) or not wolfx_config.get("enabled", True):
+            return False
+
+        return wolfx_config.get(source_key, True)
 
     async def _start_global_quake_connection(self):
         """启动Global Quake WebSocket连接 - 现已整合到 WebSocketManager，此方法保留仅用于日志"""
@@ -346,52 +372,36 @@ class DisasterWarningService:
                             "https://api.wolfx.jp/cenc_eqlist.json"
                         )
                         if cenc_data:
-                            # 记录原始HTTP响应数据（仅摘要，避免日志膨胀）
-                            if self.message_logger:
-                                try:
-                                    self.message_logger.log_http_earthquake_list(
-                                        source="http_wolfx_cenc",
-                                        url="https://api.wolfx.jp/cenc_eqlist.json",
-                                        earthquake_list=cenc_data,
-                                        max_items=5,
-                                    )
-                                except Exception as log_e:
-                                    logger.warning(
-                                        f"[灾害预警] HTTP响应记录失败: {log_e}"
-                                    )
+                            # HTTP 获取的数据不再写入日志，避免冗余
 
-                            # 使用新处理器
-                            handler = self.handlers.get("cenc_wolfx")
-                            if handler:
-                                event = handler.parse_message(json.dumps(cenc_data))
-                                if event:
-                                    await self._handle_disaster_event(event)
+                            # 更新缓存
+                            self.update_earthquake_list("cenc", cenc_data)
+
+                            # 仅在启用该数据源时才解析并尝试推送
+                            if self.is_wolfx_source_enabled("china_cenc_earthquake"):
+                                handler = self.handlers.get("cenc_wolfx")
+                                if handler:
+                                    event = handler.parse_message(json.dumps(cenc_data))
+                                    if event:
+                                        await self._handle_disaster_event(event)
 
                         # 获取日本气象厅地震列表
                         jma_data = await fetcher.fetch_json(
                             "https://api.wolfx.jp/jma_eqlist.json"
                         )
                         if jma_data:
-                            # 记录原始HTTP响应数据（仅摘要，避免日志膨胀）
-                            if self.message_logger:
-                                try:
-                                    self.message_logger.log_http_earthquake_list(
-                                        source="http_wolfx_jma",
-                                        url="https://api.wolfx.jp/jma_eqlist.json",
-                                        earthquake_list=jma_data,
-                                        max_items=5,
-                                    )
-                                except Exception as log_e:
-                                    logger.warning(
-                                        f"[灾害预警] HTTP响应记录失败: {log_e}"
-                                    )
+                            # HTTP 获取的数据不再写入日志，避免冗余
 
-                            # 使用新处理器
-                            handler = self.handlers.get("jma_wolfx_info")
-                            if handler:
-                                event = handler.parse_message(json.dumps(jma_data))
-                                if event:
-                                    await self._handle_disaster_event(event)
+                            # 更新缓存
+                            self.update_earthquake_list("jma", jma_data)
+
+                            # 仅在启用该数据源时才解析并尝试推送
+                            if self.is_wolfx_source_enabled("japan_jma_earthquake"):
+                                handler = self.handlers.get("jma_wolfx_info")
+                                if handler:
+                                    event = handler.parse_message(json.dumps(jma_data))
+                                    if event:
+                                        await self._handle_disaster_event(event)
 
                 except Exception as e:
                     logger.error(f"[灾害预警] 定时HTTP数据获取失败: {e}")
@@ -413,6 +423,164 @@ class DisasterWarningService:
         task = asyncio.create_task(cleanup())
         self.scheduled_tasks.append(task)
 
+    def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
+        """更新内存中的地震列表"""
+        if list_type in self.earthquake_lists:
+            self.earthquake_lists[list_type] = data
+            logger.debug(f"[灾害预警] 已更新 {list_type} 地震列表缓存")
+
+    def _load_earthquake_lists_cache(self):
+        """从文件加载地震列表缓存"""
+        try:
+            if os.path.exists(self.cache_file):
+                with open(self.cache_file, encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and "cenc" in data and "jma" in data:
+                        self.earthquake_lists = data
+                        logger.info("[灾害预警] 已恢复 Wolfx 地震列表本地缓存")
+            else:
+                logger.debug("[灾害预警] 本地缓存文件不存在，将使用空的 Wolfx 地震列表")
+        except Exception as e:
+            logger.warning(f"[灾害预警] 加载 Wolfx 地震列表缓存失败: {e}")
+
+    def _save_earthquake_lists_cache(self):
+        """保存地震列表缓存到文件"""
+        try:
+            if not os.path.exists(self.storage_dir):
+                os.makedirs(self.storage_dir, exist_ok=True)
+
+            with open(self.cache_file, "w", encoding="utf-8") as f:
+                json.dump(self.earthquake_lists, f, ensure_ascii=False)
+            logger.info("[灾害预警] Wolfx 地震列表缓存已保存")
+        except Exception as e:
+            logger.error(f"[灾害预警] 保存 Wolfx 地震列表缓存失败: {e}")
+
+    def get_formatted_list_data(self, source_type: str, count: int) -> list[dict]:
+        """获取格式化后的地震列表数据（用于卡片渲染）"""
+        data = self.earthquake_lists.get(source_type, {})
+        if not data:
+            return []
+
+        # 排序 keys: No1, No2...
+        sorted_keys = sorted(
+            [k for k in data.keys() if k.startswith("No")],
+            key=lambda x: int(x[2:]) if x[2:].isdigit() else 999,
+        )
+
+        result = []
+        for key in sorted_keys[:count]:
+            item = data[key]
+            formatted_item = self._format_list_item(source_type, item)
+            if formatted_item:
+                result.append(formatted_item)
+
+        return result
+
+    def _format_list_item(self, source_type: str, item: dict) -> dict | None:
+        """格式化单个列表项"""
+        try:
+            location = item.get("location", "未知地点")
+            time_str = item.get("time", "")
+            magnitude = item.get("magnitude", "0.0")
+            depth = item.get("depth", "0")
+
+            # 统一深度格式
+            if isinstance(depth, (int, float)):
+                depth = f"{depth}km"
+            elif isinstance(depth, str) and not depth.endswith("km"):
+                depth = f"{depth}km"
+
+            intensity_display = "-"
+            intensity_class = "int-unknown"
+
+            if source_type == "cenc":
+                # CENC 使用 intensity (烈度) 或 magnitude (震级) 估算
+                # Wolfx CENC 列表通常包含 intensity 字段，如果没有则用震级估算
+                intensity = item.get("intensity")
+                if intensity is None or intensity == "":
+                    # 简单的震级到烈度映射估算 (仅用于显示颜色)
+                    try:
+                        mag_val = float(magnitude)
+                        if mag_val < 3:
+                            intensity = "1"
+                        elif mag_val < 5:
+                            intensity = "3"
+                        elif mag_val < 6:
+                            intensity = "5"
+                        elif mag_val < 7:
+                            intensity = "7"
+                        elif mag_val < 8:
+                            intensity = "9"
+                        else:
+                            intensity = "11"
+                    except Exception:
+                        intensity = "0"
+
+                intensity_display = str(intensity)
+
+                # 映射颜色类
+                try:
+                    int_val = float(intensity)
+                    if int_val < 3:
+                        intensity_class = "int-1"
+                    elif int_val < 5:
+                        intensity_class = "int-2"
+                    elif int_val < 6:
+                        intensity_class = "int-3"
+                    elif int_val < 7:
+                        intensity_class = "int-4"
+                    elif int_val < 8:
+                        intensity_class = "int-5-weak"
+                    elif int_val < 9:
+                        intensity_class = "int-5-strong"
+                    elif int_val < 10:
+                        intensity_class = "int-6-weak"
+                    elif int_val < 11:
+                        intensity_class = "int-6-strong"
+                    else:
+                        intensity_class = "int-7"
+                except Exception:
+                    pass
+
+            elif source_type == "jma":
+                # JMA 使用 shindo (震度)
+                shindo = str(item.get("shindo", ""))
+                intensity_display = shindo
+
+                # 映射颜色类
+                if shindo == "1":
+                    intensity_class = "int-1"
+                elif shindo == "2":
+                    intensity_class = "int-2"
+                elif shindo == "3":
+                    intensity_class = "int-3"
+                elif shindo == "4":
+                    intensity_class = "int-4"
+                elif shindo in ["5-", "5弱"]:
+                    intensity_class = "int-5-weak"
+                elif shindo in ["5+", "5強", "5强"]:
+                    intensity_class = "int-5-strong"
+                elif shindo in ["6-", "6弱"]:
+                    intensity_class = "int-6-weak"
+                elif shindo in ["6+", "6強", "6强"]:
+                    intensity_class = "int-6-strong"
+                elif shindo == "7":
+                    intensity_class = "int-7"
+
+            return {
+                "location": location,
+                "time": time_str,
+                "magnitude": magnitude,
+                "depth": depth,
+                "intensity_display": intensity_display,
+                "intensity_class": intensity_class,
+                "raw": item,  # 保留原始数据用于文本模式
+            }
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 格式化列表项失败: {e}")
+            return None
+
     def is_in_silence_period(self) -> bool:
         """检查是否处于启动后的静默期"""
         if not hasattr(self, "start_time"):
@@ -424,7 +592,7 @@ class DisasterWarningService:
         if silence_duration <= 0:
             return False
 
-        elapsed = (datetime.now() - self.start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         return elapsed < silence_duration
 
     async def _handle_disaster_event(self, event: DisasterEvent):
@@ -433,7 +601,7 @@ class DisasterWarningService:
         if self.is_in_silence_period():
             debug_config = self.config.get("debug_config", {})
             silence_duration = debug_config.get("startup_silence_duration", 0)
-            elapsed = (datetime.now() - self.start_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
             logger.debug(
                 f"[灾害预警] 处于启动静默期 (剩余 {silence_duration - elapsed:.1f}s)，忽略事件: {event.id}"
             )
@@ -531,7 +699,7 @@ class DisasterWarningService:
         if not self.running or not hasattr(self, "start_time"):
             return "未运行"
 
-        delta = datetime.now() - self.start_time
+        delta = datetime.now(timezone.utc) - self.start_time
         days = delta.days
         hours, remainder = divmod(delta.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
@@ -567,8 +735,6 @@ class DisasterWarningService:
                         active_sources.append(f"{service_name}.{source_name}")
 
         return active_sources
-
-
 
 
 # 服务实例
