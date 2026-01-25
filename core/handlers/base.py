@@ -15,6 +15,7 @@ from ...models.data_source_config import get_data_source_config
 from ...models.models import (
     DisasterEvent,
 )
+from ...utils.time_converter import TimeConverter
 
 
 def _safe_float_convert(value) -> float | None:
@@ -140,35 +141,10 @@ class BaseDataHandler:
 
     def _parse_datetime(self, time_str: str) -> datetime | None:
         """解析时间字符串"""
-        if not time_str or not isinstance(time_str, str):
-            return None
-
-        # 首先尝试ISO 8601格式（带T分隔符和Z时区）
-        if "T" in time_str:
-            try:
-                # 处理 '2025-12-20T16:36:55.629Z' 格式
-                clean_str = time_str.replace("Z", "+00:00")
-                return datetime.fromisoformat(clean_str)
-            except ValueError:
-                pass
-
-        formats = [
-            "%Y-%m-%d %H:%M:%S",
-            "%Y/%m/%d %H:%M:%S",
-            "%Y-%m-%d %H:%M:%S.%f",
-            "%Y/%m/%d %H:%M:%S.%f",
-            "%Y/%m/%d %H:%M",
-            "%Y-%m-%d %H:%M",
-        ]
-
-        for fmt in formats:
-            try:
-                return datetime.strptime(time_str.strip(), fmt)
-            except ValueError:
-                continue
-
-        logger.warning(f"[灾害预警] 时间解析失败，返回None: '{time_str}'")
-        return None
+        dt = TimeConverter.parse_datetime(time_str)
+        if dt is None and time_str:
+            logger.warning(f"[灾害预警] 时间解析失败: '{time_str}'")
+        return dt
 
     def _safe_float_convert(self, value) -> float | None:
         """安全地将值转换为浮点数"""

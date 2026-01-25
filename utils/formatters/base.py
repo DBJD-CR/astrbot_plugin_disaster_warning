@@ -2,8 +2,10 @@
 基础消息格式化器
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
+
+from ..time_converter import TimeConverter
 
 
 class BaseMessageFormatter:
@@ -19,62 +21,7 @@ class BaseMessageFormatter:
     @staticmethod
     def format_time(dt: datetime, target_timezone: str = "UTC+8") -> str:
         """格式化时间显示 - 支持时区转换"""
-        if not dt:
-            return "未知时间"
-
-        # 解析目标时区
-        tz_offsets = {
-            "UTC+0": timezone.utc,
-            "UTC+8": timezone(timedelta(hours=8)),  # 北京时间
-            "UTC+9": timezone(timedelta(hours=9)),  # 日本时间
-        }
-        target_tz = tz_offsets.get(target_timezone, timezone(timedelta(hours=8)))
-
-        # 如果datetime带有时区信息，进行时区转换
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(target_tz)
-
-        return f"{dt.strftime('%Y年%m月%d日 %H时%M分%S秒')} ({target_timezone})"
-
-    @staticmethod
-    def get_map_link(
-        latitude: float,
-        longitude: float,
-        provider: str = "baidu",
-        zoom: int = 5,
-        magnitude: float = None,
-        place_name: str = None,
-    ) -> str:
-        """生成地图链接"""
-        if latitude is None or longitude is None:
-            return ""
-
-        # 构建震中信息（简化版，减少URL长度）
-        magnitude_info = f"M{magnitude:.1f}" if magnitude is not None else "地震"
-        location_info = place_name if place_name else "震中位置"
-
-        if provider == "openstreetmap":
-            # OpenStreetMap 简洁格式
-            return f"https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}&zoom={zoom}"
-
-        elif provider == "google":
-            # Google Maps 简洁格式
-            return f"https://maps.google.com/maps?q={latitude},{longitude}&z={zoom}"
-
-        elif provider == "baidu":
-            # 百度地图直接使用WGS84坐标
-            # 增加 coord_type=wgs84 提高精度
-            # 确保 zoom 参数正确传递
-            baidu_map_url = f"https://api.map.baidu.com/marker?location={latitude},{longitude}&zoom={zoom}&title={magnitude_info}+Epicenter&content={location_info[:32]}&coord_type=wgs84&output=html"
-            return baidu_map_url
-
-        elif provider == "amap":
-            # 高德地图简洁格式
-            # 高德Web端URI API可能不支持zoom参数，但尝试传递z参数
-            return f"https://uri.amap.com/marker?position={longitude},{latitude}&name=震中位置&src=disaster_warning&coordinate=wgs84&callnative=0"
-
-        # 默认返回百度地图
-        return f"https://api.map.baidu.com/marker?location={latitude},{longitude}&zoom={zoom}&title={magnitude_info}+Epicenter&content={location_info[:32]}&coord_type=wgs84&output=html"
+        return TimeConverter.format_time(dt, target_timezone)
 
     @staticmethod
     def format_message(data: Any) -> str:
