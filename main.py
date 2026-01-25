@@ -4,6 +4,8 @@ import os
 import traceback
 from datetime import datetime
 
+import astrbot.api.message_components as Comp
+
 # [已移除] Windows平台WebSocket兼容性修复
 # 采用 aiohttp 替代 websockets 库，原生支持 Windows EventLoop，无需修改全局策略
 from astrbot.api import AstrBotConfig, logger
@@ -20,6 +22,7 @@ from .models.models import (
     get_data_source_from_id,
 )
 from .utils.fe_regions import translate_place_name
+from .utils.version import get_plugin_version
 
 
 class DisasterWarningPlugin(Star):
@@ -31,6 +34,7 @@ class DisasterWarningPlugin(Star):
         self.disaster_service = None
         self._service_task = None
         self.telemetry: TelemetryManager | None = None
+        self._config_schema = None  # 新增属性用于缓存 Schema
 
     async def initialize(self):
         """初始化插件"""
@@ -38,7 +42,10 @@ class DisasterWarningPlugin(Star):
             logger.info("[灾害预警] 正在初始化灾害预警插件...")
 
             # 首次加载时，尝试同步 AstrBot 全局管理员到插件配置 (仅在未配置时)
-            if "admin_users" not in self.config or self.config.get("admin_users") is None:
+            if (
+                "admin_users" not in self.config
+                or self.config.get("admin_users") is None
+            ):
                 global_admins = self.context.get_config().get("admins_id", [])
                 if global_admins:
                     self.config["admin_users"] = list(global_admins)
@@ -68,11 +75,13 @@ class DisasterWarningPlugin(Star):
             # 将遥测管理器注入到灾害服务
             if self.disaster_service:
                 self.disaster_service.set_telemetry(self.telemetry)
-            
+
             if self.telemetry.enabled:
                 # 发送启动事件和配置快照
                 asyncio.create_task(self.telemetry.track_system_info())
-                asyncio.create_task(self.telemetry.track_config_snapshot(dict(self.config)))
+                asyncio.create_task(
+                    self.telemetry.track_config_snapshot(dict(self.config))
+                )
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
@@ -96,7 +105,7 @@ class DisasterWarningPlugin(Star):
 
             # 关闭浏览器管理器（释放 Playwright 资源）
             if self.disaster_service and self.disaster_service.message_manager:
-                if hasattr(self.disaster_service.message_manager, 'browser_manager'):
+                if hasattr(self.disaster_service.message_manager, "browser_manager"):
                     try:
                         await self.disaster_service.message_manager.cleanup_browser()
                     except Exception as be:
@@ -122,6 +131,7 @@ class DisasterWarningPlugin(Star):
 📋 可用命令：
 • /灾害预警 - 显示此帮助信息
 • /灾害预警状态 - 查看服务运行状态
+• /地震列表查询 [数据源] [数量] [格式] - 查询最新地震列表
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息
 • /灾害预警推送开关 - 开启或关闭当前会话的推送
@@ -240,8 +250,6 @@ class DisasterWarningPlugin(Star):
         except Exception as e:
             logger.error(f"[灾害预警] 获取统计信息失败: {e}")
             yield event.plain_result(f"❌ 获取统计信息失败: {str(e)}")
-
-
 
     @filter.command("灾害预警日志")
     async def disaster_logs(self, event: AstrMessageEvent):
@@ -368,48 +376,38 @@ class DisasterWarningPlugin(Star):
     async def toggle_push(self, event: AstrMessageEvent):
         """开关当前会话的推送"""
         try:
-            # 获取当前会话的群号/频道ID
-            session_id = event.unified_msg_origin
-            
-            # 只处理群组消息，不处理私聊
-            if not session_id or session_id.startswith("person_"):
-                yield event.plain_result("⚠️ 此命令仅支持在群组/频道中使用")
+            # 获取当前会话的 UMO
+            session_umo = event.unified_msg_origin
+
+            if not session_umo:
+                yield event.plain_result("❌ 无法获取当前会话的 UMO")
                 return
-            
-            # 提取实际的群号（移除平台前缀）
-            # unified_msg_origin 格式: "platform_group_123456" 或 "platform_channel_123456"
-            parts = session_id.split("_")
-            if len(parts) >= 3:
-                group_id = "_".join(parts[2:])  # 处理可能包含下划线的ID
-            else:
-                yield event.plain_result("❌ 无法获取会话ID")
-                return
-            
+
             # 获取当前推送列表
-            target_groups = self.config.get("target_groups", [])
-            if target_groups is None:
-                target_groups = []
-            
-            # 检查当前群号是否在列表中
-            if group_id in target_groups:
+            target_sessions = self.config.get("target_sessions", [])
+            if target_sessions is None:
+                target_sessions = []
+
+            # 检查当前 UMO 是否在列表中
+            if session_umo in target_sessions:
                 # 如果存在，则移除
-                target_groups.remove(group_id)
-                self.config["target_groups"] = target_groups
+                target_sessions.remove(session_umo)
+                self.config["target_sessions"] = target_sessions
                 self.config.save_config()
                 yield event.plain_result(
-                    f"✅ 推送已关闭\n\n当前会话（{group_id}）已从推送列表中移除。"
+                    f"✅ 推送已关闭\n\n会话 ({session_umo}) 已从推送列表中移除。"
                 )
-                logger.info(f"[灾害预警] 会话 {group_id} 已关闭推送")
+                logger.info(f"[灾害预警] 会话 {session_umo} 已关闭推送")
             else:
                 # 如果不存在，则添加
-                target_groups.append(group_id)
-                self.config["target_groups"] = target_groups
+                target_sessions.append(session_umo)
+                self.config["target_sessions"] = target_sessions
                 self.config.save_config()
                 yield event.plain_result(
-                    f"✅ 推送已开启\n\n当前会话（{group_id}）已添加到推送列表。"
+                    f"✅ 推送已开启\n\n会话 ({session_umo}) 已添加到推送列表。"
                 )
-                logger.info(f"[灾害预警] 会话 {group_id} 已开启推送")
-        
+                logger.info(f"[灾害预警] 会话 {session_umo} 已开启推送")
+
         except Exception as e:
             logger.error(f"[灾害预警] 切换推送状态失败: {e}")
             yield event.plain_result(f"❌ 切换推送状态失败: {str(e)}")
@@ -426,13 +424,18 @@ class DisasterWarningPlugin(Star):
             return
 
         try:
-            # 加载 schema 文件以获取中文描述
-            schema_path = os.path.join(os.path.dirname(__file__), "_conf_schema.json")
-            if os.path.exists(schema_path):
-                with open(schema_path, encoding="utf-8") as f:
-                    schema = json.load(f)
-            else:
-                schema = {}
+            # 加载 schema 文件以获取中文描述 (优先使用缓存)
+            if self._config_schema is None:
+                schema_path = os.path.join(
+                    os.path.dirname(__file__), "_conf_schema.json"
+                )
+                if os.path.exists(schema_path):
+                    with open(schema_path, encoding="utf-8") as f:
+                        self._config_schema = json.load(f)
+                else:
+                    self._config_schema = {}
+
+            schema = self._config_schema
 
             def _translate_recursive(config_item, schema_item):
                 """递归将配置键名转换为中文描述"""
@@ -519,6 +522,129 @@ class DisasterWarningPlugin(Star):
             },
         }
         return source_names.get(service, {}).get(source, source_key)
+
+    @filter.command("地震列表查询")
+    async def query_earthquake_list(
+        self,
+        event: AstrMessageEvent,
+        source: str = "cenc",
+        count: int = 5,
+        mode: str = "card",
+    ):
+        """查询最新的地震列表
+
+        Args:
+            source: 数据源 (cenc/jma)，默认为 cenc
+            count: 返回的事件数量，默认为 5
+            mode: 显示模式 (card/text)，默认为 card
+        """
+        if not self.disaster_service:
+            yield event.plain_result("❌ 灾害预警服务未启动")
+            return
+
+        source = source.lower()
+        if source not in ["cenc", "jma"]:
+            yield event.plain_result("❌ 无效的数据源，仅支持 cenc 或 jma")
+            return
+
+        try:
+            # 确定显示模式
+            show_card = mode.lower() != "text"
+
+            # 限制数量
+            # 文本模式最大 50，卡片模式最大 10
+            max_count = 10 if show_card else 50
+            if count > max_count:
+                count = max_count
+                yield event.plain_result(
+                    f"⚠️ 提示：{'卡片' if show_card else '文本'}模式最多支持显示 {max_count} 条记录"
+                )
+            elif count < 1:
+                count = 1
+
+            # 获取格式化后的数据
+            # 总是请求 max_count 个数据，以便在卡片渲染失败时回退到文本模式能有足够的数据
+            request_count = 50
+            formatted_list = self.disaster_service.get_formatted_list_data(
+                source, request_count
+            )
+
+            if not formatted_list:
+                yield event.plain_result(
+                    f"❌ 未找到 {source.upper()} 的地震列表数据，可能是因为服务刚启动，尚未获取到数据。"
+                )
+                return
+
+            if show_card and self.disaster_service.message_manager:
+                # 卡片模式
+                display_list = formatted_list[:count]
+                source_name = (
+                    "中国地震台网 (CENC)" if source == "cenc" else "日本气象厅 (JMA)"
+                )
+
+                # 渲染卡片
+                img_path = await self.disaster_service.message_manager.render_earthquake_list_card(
+                    display_list, source_name
+                )
+
+                if img_path:
+                    yield event.chain_result([Comp.Image.fromFileSystem(img_path)])
+                else:
+                    # 如果卡片渲染失败，回退到文本模式
+                    yield event.plain_result(
+                        "⚠️ 卡片渲染失败，转为文本显示\n"
+                        + self._format_list_text(formatted_list[:count], source)
+                    )
+            else:
+                # 文本模式
+                display_list = formatted_list[:count]
+                yield event.plain_result(self._format_list_text(display_list, source))
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询地震列表失败: {e}")
+            yield event.plain_result(f"❌ 查询失败: {e}")
+
+    def _format_list_text(self, data_list: list[dict], source: str) -> str:
+        """格式化地震列表文本 (仿 MessageLogger 风格)"""
+        if not data_list:
+            return "暂无数据"
+
+        source_name = "http_wolfx_cenc" if source == "cenc" else "http_wolfx_jma"
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        lines = [
+            f"🕐 查询时间: {current_time}",
+            f"📡 来源: {source_name}",
+            "📋 类型: earthquake_list_query",
+            "",
+            "📊 列表数据:",
+            f"    📋 total_events: {len(data_list)} (显示数量)",
+            f"    📋 sample_events ({len(data_list)}项):",
+        ]
+
+        for i, item in enumerate(data_list):
+            idx = i + 1
+            lines.append(f"      [{idx}]:")
+            lines.append(f"        📋 发生时间: {item['time']}")
+            lines.append(f"        📋 震中: {item['location']}")
+            lines.append(f"        📋 震级: {item['magnitude']}")
+            lines.append(f"        📋 深度: {item['depth']}")
+
+            if source == "cenc":
+                lines.append(f"        📋 烈度: {item['intensity_display']}")
+            else:
+                lines.append(f"        📋 震度: {item['intensity_display']}")
+
+        lines.append("")
+
+        # 获取插件版本
+        version = get_plugin_version()
+
+        lines.append(
+            f"🔧 @DBJD-CR/astrbot_plugin_disaster_warning (灾害预警) {version}"
+        )
+
+        return "\n".join(lines)
 
     @filter.command("灾害预警模拟")
     async def simulate_earthquake(
