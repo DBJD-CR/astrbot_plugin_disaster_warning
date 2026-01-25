@@ -339,7 +339,7 @@
 
             <div class="footer-grid">
                 <div class="footer-item">
-                    <span class="f-label">台站 (Used/Total)</span>
+                    <span class="f-label">触发测站 (Used/Total)</span>
                     <span class="f-val">{{ stations_used }} / {{ stations_total }}</span>
                 </div>
                 <div class="footer-item">
@@ -365,9 +365,10 @@
         const lng = Number("{{ longitude }}");
 
         // 初始化地图,中心为震中位置
+        const zoomLevel = Number("{{ zoom_level }}") || 5;
         const map = L.map('map-container', {
             center: [lat, lng],
-            zoom: 8,
+            zoom: zoomLevel,
             zoomControl: false,
             attributionControl: false
         });
