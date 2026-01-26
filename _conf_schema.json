@@ -13,7 +13,7 @@
   "target_sessions": {
     "description": "推送会话列表",
     "type": "list",
-    "hint": "请输入完整的 UMO，可通过 /sid 指令快捷获取。格式: {platform_name}:{message_type}:{session_id}。{platform_name} 就是你在 WebUI 中的 机器人 一栏自定义的机器人名称。{message_type} 可选参数为“GroupMessage”和“FriendMessage”。例如 aiocqhttp:GroupMessage:123456 或 aiocqhttp:Friend:Message:123456",
+    "hint": "请输入完整的 UMO，可通过 /sid 指令快捷获取。格式: {platform_name}:{message_type}:{session_id}。{platform_name} 就是你在 WebUI 中的 机器人 一栏自定义的机器人名称。{message_type} 可选参数为“GroupMessage”和“FriendMessage”。例如 aiocqhttp:GroupMessage:123456 或 aiocqhttp:FriendMessage:123456",
     "default": []
   },
   "display_timezone": {
@@ -57,7 +57,7 @@
           "japan_jma_eew": {
             "description": "日本气象厅（JMA）：紧急地震速报",
             "type": "bool",
-            "default": true,
+            "default": false,
             "hint": "通过FAN Studio WebSocket接收日本气象厅地震预警信息"
           },
           "usgs_earthquake": {
@@ -90,10 +90,10 @@
             "default": true
           },
           "japan_jma_eew": {
-            "description": "日本気象庁：緊急地震速報",
+            "description": "日本気象庁：緊急地震速報（警報）",
             "type": "bool",
             "default": true,
-            "hint": "通过P2P地震情報 WebSocket接收日本气象厅紧急地震速报（code:556）"
+            "hint": "通过P2P地震情報 WebSocket接收日本气象厅紧急地震速报（code:556）。注意：此源不包含予报信息。"
           },
           "japan_jma_earthquake": {
             "description": "日本気象庁（JMA）：地震情報",
@@ -179,13 +179,23 @@
         "description": "本地纬度",
         "type": "float",
         "hint": "选点建议位于中国大陆，目前中国台湾/日本地区没有相应的本地预估震度解析逻辑",
-        "default": 39.9042
+        "default": 39.9042,
+        "slider": {
+          "min": -90.0,
+          "max": 90.0,
+          "step": 0.0001
+        }
       },
       "longitude": {
         "description": "本地经度",
         "type": "float",
         "hint": "选点建议位于中国大陆，目前中国台湾/日本地区没有相应的本地预估震度解析逻辑",
-        "default": 116.4074
+        "default": 116.4074,
+        "slider": {
+          "min": -180.0,
+          "max": 180.0,
+          "step": 0.0001
+        }
       },
       "place_name": {
         "description": "本地地名",
@@ -475,7 +485,7 @@
       "map_zoom_level": {
         "description": "地图缩放级别",
         "type": "int",
-        "hint": "0-18，数值越大越详细",
+        "hint": "范围0-18，数值越大，固定视野中展现的区域范围就越小。",
         "default": 5,
         "slider": {
           "min": 0,
@@ -742,7 +752,7 @@
   "telemetry_config": {
     "description": "匿名遥测配置",
     "type": "object",
-    "hint": "用于收集插件使用情况和错误信息（可选，默认关闭）",
+    "hint": "用于收集插件使用情况和错误信息（可选，默认开启）",
     "items": {
       "enabled": {
         "description": "启用匿名遥测",
