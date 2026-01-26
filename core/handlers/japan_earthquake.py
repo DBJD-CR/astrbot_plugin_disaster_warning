@@ -48,10 +48,6 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {e}")
             return None
 
-    def _safe_float_convert(self, value) -> float | None:
-        """安全地将值转换为浮点数 - 为JMAEarthquakeP2PHandler提供此方法"""
-        return _safe_float_convert(value)
-
     def _parse_earthquake_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析地震情報"""
         try:
@@ -72,7 +68,10 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
 
             # 震级解析
             magnitude = self._safe_float_convert(magnitude_raw)
-            if magnitude is None:
+            if magnitude == -1:
+                magnitude = None
+
+            if magnitude is None and issue_type != "ScalePrompt":
                 logger.error(
                     f"[灾害预警] {self.source_id} 震级解析失败: {magnitude_raw}"
                 )
@@ -81,7 +80,12 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             # 经纬度解析
             lat = self._safe_float_convert(latitude)
             lon = self._safe_float_convert(longitude)
-            if lat is None or lon is None:
+            
+            # P2P API: -200 为位置信息缺失
+            if lat == -200: lat = None
+            if lon == -200: lon = None
+            
+            if (lat is None or lon is None) and issue_type != "ScalePrompt":
                 logger.error(
                     f"[灾害预警] {self.source_id} 经纬度解析失败: lat={latitude}, lon={longitude}"
                 )
@@ -103,6 +107,15 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             time_raw = earthquake_info.get("time", "")
             shock_time = self._parse_datetime(time_raw)
 
+            # 解析订正信息
+            correct_type = data.get("issue", {}).get("correct", "None")
+            correct_mapping = {
+                "ScaleOnly": "震度订正",
+                "DestinationOnly": "震源订正",
+                "ScaleAndDestination": "震源・震度订正",
+            }
+            correct_str = correct_mapping.get(correct_type, "")
+
             earthquake = EarthquakeData(
                 id=data.get("id", ""),  # P2P使用"id"字段
                 event_id=data.get("id", ""),  # 同样用作event_id
@@ -119,6 +132,7 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
                 domestic_tsunami=earthquake_info.get("domesticTsunami"),
                 foreign_tsunami=earthquake_info.get("foreignTsunami"),
                 info_type=issue_type,  # 填充info_type字段
+                revision=correct_str if correct_str else None,  # 使用revision字段存储订正信息（作为描述）
                 raw_data=data,
             )
 
@@ -217,7 +231,8 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
                 scale=self._parse_jma_scale(eq_info.get("shindo", "")),
                 place_name=eq_info.get("location", ""),
                 info_type=info_type,  # 填充 info_type 字段
-                raw_data=data,
+                domestic_tsunami=eq_info.get("info"),  # Wolfx 的 info 字段通常包含津波备注
+                raw_data=eq_info,  # 将 eq_info 设为 raw_data，方便格式化器获取字段
             )
 
             logger.info(
@@ -234,27 +249,3 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
             logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {e}")
             return None
 
-    def _safe_float_convert(self, value) -> float | None:
-        """安全地将值转换为浮点数 - 为JMAEarthquakeWolfxHandler提供此方法"""
-        return _safe_float_convert(value)
-
-    def _parse_jma_scale(self, scale_str: str) -> float | None:
-        """解析日本震度"""
-        if not scale_str:
-            return None
-
-        import re
-
-        match = re.search(r"(\d+)(弱|強)?", scale_str)
-        if match:
-            base = int(match.group(1))
-            suffix = match.group(2)
-
-            if suffix == "弱":
-                return base - 0.5
-            elif suffix == "強":
-                return base + 0.5
-            else:
-                return float(base)
-
-        return None

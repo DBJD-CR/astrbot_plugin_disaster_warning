@@ -60,7 +60,7 @@ class JMAEEWFanStudioHandler(BaseDataHandler):
                 longitude=float(msg_data.get("longitude", 0)),
                 depth=msg_data.get("depth"),
                 magnitude=msg_data.get("magnitude"),
-                intensity=msg_data.get("epiIntensity"),  # 预估最大震度
+                scale=self._parse_jma_scale(msg_data.get("epiIntensity", "")),
                 place_name=msg_data.get("placeName", ""),
                 updates=msg_data.get("updates", 1),
                 is_final=msg_data.get("final", False),
@@ -187,6 +187,15 @@ class JMAEEWP2PHandler(BaseDataHandler):
             if is_test:
                 logger.info(f"[灾害预警] {self.source_id} 收到测试模式的EEW事件")
 
+            # 检查PLUM法标识 (Assumption)
+            is_plum = earthquake_info.get("condition") == "仮定震源要素"
+            if not is_plum:
+                # 检查区域中是否有PLUM标识 (kindCode: 19)
+                for area in areas:
+                    if area.get("kindCode") == "19":
+                        is_plum = True
+                        break
+
             earthquake = EarthquakeData(
                 id=data.get("id", ""),
                 event_id=issue_info.get("eventId", ""),
@@ -202,6 +211,8 @@ class JMAEEWP2PHandler(BaseDataHandler):
                 is_final=data.get("is_final", False),
                 is_cancel=is_cancelled,
                 is_training=is_test,
+                is_assumption=is_plum,
+                info_type="警报",  # P2P 556代码明确为警报
                 serial=issue_info.get("serial", ""),
                 updates=issue_info.get("serial", 1)
                 if isinstance(issue_info.get("serial"), int)
@@ -269,6 +280,11 @@ class JMAEEWWolfxHandler(BaseDataHandler):
                 is_final=data.get("isFinal", False),
                 is_cancel=data.get("isCancel", False),
                 is_training=data.get("isTraining", False),
+                is_assumption=data.get("isAssumption", False),
+                is_sea=data.get("isSea", False),
+                info_type=data.get("WarnArea", {}).get("Type", "")
+                if isinstance(data.get("WarnArea"), dict)
+                else "",
                 raw_data=data,
             )
 
@@ -286,23 +302,3 @@ class JMAEEWWolfxHandler(BaseDataHandler):
             logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {e}")
             return None
 
-    def _parse_jma_scale(self, scale_str: str) -> float | None:
-        """解析日本震度"""
-        if not scale_str:
-            return None
-
-        import re
-
-        match = re.search(r"(\d+)(弱|強)?", scale_str)
-        if match:
-            base = int(match.group(1))
-            suffix = match.group(2)
-
-            if suffix == "弱":
-                return base - 0.5
-            elif suffix == "強":
-                return base + 0.5
-            else:
-                return float(base)
-
-        return None

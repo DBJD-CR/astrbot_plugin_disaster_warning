@@ -302,14 +302,22 @@ class JMAEEWFormatter(BaseMessageFormatter):
         # 判断是予报还是警报
         warning_type = "予报"  # 默认
 
-        # 优先使用info_type (Fan Studio)
+        # 优先使用info_type (Fan Studio / Wolfx)
         if earthquake.info_type:
             warning_type = earthquake.info_type
         # 回退到基于震度的推断 (P2P)
         elif earthquake.scale is not None and earthquake.scale >= 4.5:
             warning_type = "警报"
 
-        lines = [f"🚨[紧急地震速报] [{warning_type}] 日本气象厅"]
+        # 处理特殊标识：PLUM/训练
+        header_tags = []
+        if getattr(earthquake, "is_training", False):
+            header_tags.append("训练")
+        if getattr(earthquake, "is_assumption", False):
+            header_tags.append("PLUM法所得假定震源")
+
+        tag_str = f" [{'/'.join(header_tags)}]" if header_tags else ""
+        lines = [f"🚨[紧急地震速报] [{warning_type}]{tag_str} 日本气象厅"]
 
         # 报数信息
         report_num = getattr(earthquake, "updates", 1)
@@ -386,6 +394,19 @@ class JMAEEWFormatter(BaseMessageFormatter):
                     chunk_size = 3
                     for i in range(0, len(warn_areas), chunk_size):
                         lines.append("  " + "、".join(warn_areas[i : i + chunk_size]))
+
+            # Wolfx 特有的警报区域处理
+            warn_area_wolfx = raw_data.get("WarnArea", {})
+            if isinstance(warn_area_wolfx, dict) and warn_area_wolfx.get("Chiiki"):
+                lines.append(f"⚠️警报区域：{warn_area_wolfx.get('Chiiki')}")
+                # 显示预估震度范围
+                shindo1 = warn_area_wolfx.get("Shindo1")
+                shindo2 = warn_area_wolfx.get("Shindo2")
+                if shindo1:
+                    shindo_range = f"{shindo1}"
+                    if shindo2 and shindo2 != shindo1:
+                        shindo_range += f" ～ {shindo2}"
+                    lines.append(f"💥预估震度范围：{shindo_range}")
 
         # 本地烈度预估
         if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
@@ -481,47 +502,34 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
     @staticmethod
     def determine_info_type(earthquake: EarthquakeData) -> str:
         """判断情报类型"""
-        # 优先使用issue.type判断
-        raw_data = getattr(earthquake, "raw_data", {})
-        if isinstance(raw_data, dict):
-            issue = raw_data.get("issue", {})
-            issue_type = issue.get("type")
+        info_type = earthquake.info_type or ""
 
-            type_mapping = {
-                "ScalePrompt": "震度速报",
-                "Destination": "震源相关情报",
-                "ScaleAndDestination": "震度・震源相关情报",
-                "DetailScale": "各地震度相关情报",
-                "Foreign": "远地地震相关情报",
-                "Other": "其他情报",
-            }
+        # P2P 数据源的英文类型映射
+        type_mapping = {
+            "ScalePrompt": "震度速报",
+            "Destination": "震源相关情报",
+            "ScaleAndDestination": "震度・震源相关情报",
+            "DetailScale": "各地震度相关情报",
+            "Foreign": "远地地震相关情报",
+            "Other": "其他情报",
+        }
 
-            if issue_type in type_mapping:
-                return type_mapping[issue_type]
+        if info_type in type_mapping:
+            return type_mapping[info_type]
 
-        # 回退到基于数据内容的判断
-        # 如果是未知地点，震级深度为-1.0，只有震度信息 -> 震度速报
-        if (
-            (earthquake.place_name == "未知地点" or not earthquake.place_name)
-            and (earthquake.magnitude == -1.0 or earthquake.magnitude is None)
-            and (earthquake.depth == -1.0 or earthquake.depth is None)
-            and earthquake.scale is not None
+        # 如果 info_type 已经是中文描述（来自 Wolfx 或已填充的描述），直接返回
+        if info_type and any("\u4e00" <= char <= "\u9fff" for char in info_type):
+            return info_type
+
+        # 兜底：基于数据内容的判断（例如当 info_type 为空时）
+        if (earthquake.place_name == "未知地点" or not earthquake.place_name) and (
+            earthquake.magnitude is None or earthquake.magnitude == -1.0
         ):
             return "震度速报"
 
-        # 如果更新了震中、震级、深度，但没有震度信息 -> 震源相关情报
-        if (
-            earthquake.magnitude is not None
-            and earthquake.magnitude != -1.0
-            and earthquake.depth is not None
-            and earthquake.depth != -1.0
-            and earthquake.place_name
-            and earthquake.place_name != "未知地点"
-            and earthquake.scale is None
-        ):
+        if earthquake.scale is None:
             return "震源相关情报"
 
-        # 其他情况 -> 震源・震度情报
         return "震源・震度情报"
 
     @staticmethod
@@ -531,7 +539,13 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
         timezone = options.get("timezone", "UTC+8")
 
         info_type = JMAEarthquakeFormatter.determine_info_type(earthquake)
-        lines = [f"🚨[{info_type}] 日本气象厅"]
+        
+        # 处理订正信息
+        correct_tag = ""
+        if hasattr(earthquake, "revision") and earthquake.revision and isinstance(earthquake.revision, str):
+            correct_tag = f" [{earthquake.revision}]"
+            
+        lines = [f"🚨[{info_type}]{correct_tag} 日本气象厅"]
 
         # 时间
         if earthquake.shock_time:
@@ -579,12 +593,12 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
         # 津波信息
         if earthquake.domestic_tsunami:
             tsunami_mapping = {
-                "None": "无津波风险",
+                "None": "无需担心海啸",
                 "Unknown": "不明",
                 "Checking": "调查中",
-                "NonEffective": "若干海面变动，无被害忧虑",
-                "Watch": "津波注意报",
-                "Warning": "津波警报",
+                "NonEffective": "预计会有若干海面变动，无须担心受害",
+                "Watch": "正在/已经发布津波注意报",
+                "Warning": "正在/已经发布津波警报/大津波警报",
             }
             tsunami_info = tsunami_mapping.get(
                 earthquake.domestic_tsunami, earthquake.domestic_tsunami
