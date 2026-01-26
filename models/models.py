@@ -164,7 +164,9 @@ class EarthquakeData:
     report_num: int | None = None  # 报数（某些数据源使用）
     serial: str | None = None  # 序列号（P2P数据源）
     is_training: bool = False  # 是否为训练模式
-    revision: int | None = None  # 修订版本（Global Quake等）
+    is_assumption: bool = False  # 是否为推定震源 (PLUM法)
+    is_sea: bool = False  # 是否为海域地震
+    revision: Any | None = None  # 修订版本或订正信息
     max_pga: float | None = None  # 最大加速度 (gal)
     stations: dict[str, int] | None = None  # 测站信息 (total, used 等)
 
@@ -330,20 +332,3 @@ def validate_earthquake_data(earthquake: EarthquakeData) -> bool:
             return False
 
     return True
-
-
-# 向后兼容的函数
-def convert_old_model(old_model) -> DisasterEvent | None:
-    """将旧模型转换"""
-    try:
-        if hasattr(old_model, "source") and isinstance(old_model.source, Enum):
-            # 已经是新的模型格式
-            return old_model
-
-        # 转换逻辑（根据实际需求实现）
-        # 这里需要根据具体的旧模型结构来实现转换
-        return None
-
-    except Exception as e:
-        logger.error(f"模型转换失败: {e}")
-        return None
