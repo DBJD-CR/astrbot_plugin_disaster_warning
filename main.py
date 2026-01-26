@@ -70,7 +70,7 @@ class DisasterWarningPlugin(Star):
             # 初始化遥测
             self.telemetry = TelemetryManager(
                 config=dict(self.config),
-                plugin_version="v1.3.1",
+                plugin_version=get_plugin_version(),
             )
             # 将遥测管理器注入到灾害服务
             if self.disaster_service:
