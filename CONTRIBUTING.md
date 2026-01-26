@@ -34,7 +34,7 @@
 
 ## 💻 代码贡献
 
-我们非常欢迎您直接通过代码来改进这个项目！对于新功能的添加，请先通过 Issue 等方式讨论。
+我们非常欢迎您直接通过代码来改进这个项目！**对于新功能的添加，请先通过 Issue 等方式讨论。**
 
 标准的贡献流程如下：
 
@@ -48,7 +48,7 @@
     ```
 
 3. 确保您已安装 Python 3.10+。
-4. 安装项目依赖（通常 AstrBot 环境已包含大部分依赖，如有额外依赖请查看 `requirements.txt`）。
+4. 安装项目依赖（通常 AstrBot 环境已包含大部分依赖，并且会自动安装插件所需的额外依赖。如果确实缺少依赖请查看 `requirements.txt`）。
 
 ### 代码风格
 
@@ -106,6 +106,7 @@
 - @Gemini-3.0-Flash
 - @Gemini-3.0-Pro
 - @Gemini-3-Pro-Image
+- @Claude Opus 4.5
 - @Kimi-For-Coding
 - @sourcery-ai[bot]
 
