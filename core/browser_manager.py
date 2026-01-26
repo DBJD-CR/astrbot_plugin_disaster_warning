@@ -166,9 +166,7 @@ class BrowserManager:
                     elapsed = time.time() - start_time
 
                     if os.path.exists(output_path):
-                        logger.info(
-                            f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒: {output_path}"
-                        )
+                        logger.info(f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒")
                         return output_path
                     else:
                         logger.warning("[灾害预警] 截图未生成文件")
