@@ -6,6 +6,7 @@
 
 import asyncio
 import os
+import tempfile
 import time
 
 from playwright.async_api import Browser, Page, async_playwright
@@ -107,7 +108,6 @@ class BrowserManager:
 
                 try:
                     # 将 HTML 保存为临时文件，以支持相对路径加载本地资源
-                    import tempfile
 
                     temp_html = None
                     try:
@@ -166,9 +166,7 @@ class BrowserManager:
                     elapsed = time.time() - start_time
 
                     if os.path.exists(output_path):
-                        logger.info(
-                            f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒: {output_path}"
-                        )
+                        logger.info(f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒")
                         return output_path
                     else:
                         logger.warning("[灾害预警] 截图未生成文件")
