@@ -78,9 +78,9 @@ class DisasterWarningPlugin(Star):
 
             if self.telemetry.enabled:
                 # 发送启动事件和配置快照
-                asyncio.create_task(self.telemetry.track_system_info())
+                asyncio.create_task(self.telemetry.track_startup())
                 asyncio.create_task(
-                    self.telemetry.track_config_snapshot(dict(self.config))
+                    self.telemetry.track_config(dict(self.config))
                 )
 
         except Exception as e:
