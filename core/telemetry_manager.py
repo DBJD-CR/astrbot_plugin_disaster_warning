@@ -12,9 +12,9 @@
 import asyncio
 import base64
 import platform
-import re
-import sys
+
 import uuid
+import traceback
 from datetime import datetime, timezone
 from typing import Any
 
@@ -56,12 +56,8 @@ class TelemetryManager:
         # aiohttp session (延迟初始化)
         self._session: aiohttp.ClientSession | None = None
 
-        # 环境信息 (只收集一次)
-        self._env_info = {
-            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-            "os": platform.system().lower(),
-            "arch": platform.machine(),
-        }
+
+        self._env = "production"
 
         if self._enabled:
             logger.info(f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})")
@@ -111,36 +107,29 @@ class TelemetryManager:
 
     async def track(
         self,
-        event: str,
+        event_name: str,
         data: dict[str, Any] | None = None,
-        env: str = "production",
     ) -> bool:
         """
         发送遥测事件
 
         Args:
-            event: 事件名称 (snake_case)
-            data: 自定义数据对象 (第一层 key 用于聚合分析)
-            env: 环境标识 (production/development/staging)
-
-        Returns:
-            是否发送成功
+            event_name: 事件名称 (snake_case)
+            data: 自定义数据对象
         """
         if not self._enabled:
             return False
 
-        # 构造符合 API v2 的批量格式
-        event_item = {
-            "event": event,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "data": data or {},
-        }
-
+        # 构造符合新 API 的 payload
         payload = {
             "instance_id": self._instance_id,
             "version": self._plugin_version,
-            "env": env,
-            "batch": [event_item],
+            "env": self._env,
+            "batch": [{
+                "event": event_name,
+                "data": data or {},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }]
         }
 
         try:
@@ -154,7 +143,7 @@ class TelemetryManager:
                 self._ENDPOINT, json=payload, headers=headers
             ) as response:
                 if response.status == 200:
-                    logger.debug(f"[灾害预警] 遥测事件 '{event}' 发送成功")
+                    logger.debug(f"[灾害预警] 遥测事件 '{event_name}' 发送成功")
                     return True
                 elif response.status == 401:
                     logger.warning("[灾害预警] App Key 无效或项目已禁用")
@@ -173,20 +162,28 @@ class TelemetryManager:
 
         return False
 
-    async def track_system_info(self) -> bool:
-        """发送系统环境信息"""
+    async def track_startup(self) -> bool:
+        """上报启动事件和系统信息"""
         return await self.track(
-            "system_info",
+            "startup",
             {
-                **self._env_info,
-                "plugin_version": self._plugin_version,
+                "os": platform.system(),
+                "os_version": platform.release(),
+                "python_version": platform.python_version(),
+                "arch": platform.machine(),
             },
         )
 
-    async def track_config_snapshot(self, config: dict) -> bool:
-        """
-        发送配置快照 (脱敏后)
+    async def track_shutdown(self, exit_code: int = 0, runtime_seconds: float = 0) -> bool:
+        """上报退出事件"""
+        return await self.track("shutdown", {
+            "exit_code": exit_code,
+            "runtime_seconds": runtime_seconds,
+        })
 
+    async def track_config(self, config: dict) -> bool:
+        """
+        上报配置快照 (脱敏后)
         只收集统计性数据，不包含任何敏感信息
         """
         if not self._enabled:
@@ -239,41 +236,49 @@ class TelemetryManager:
                 ),
             }
 
-            return await self.track("config_stats", snapshot)
+            return await self.track("config", snapshot)
 
         except Exception as e:
             logger.debug(f"[灾害预警] 配置快照提取失败: {e}")
             return False
 
+    async def track_feature(self, feature_name: str, extra: dict = None) -> bool:
+        """上报功能使用事件"""
+        data = extra.copy() if extra else {}
+        # 强制设置 feature，防止被 extra 覆盖
+        data["feature"] = feature_name
+        return await self.track("feature", data)
+
     async def track_error(
         self,
-        error_type: str,
-        module: str,
-        message: str | None = None,
-        stack: str | None = None,
+        exception: Exception,
+        module: str = None,
     ) -> bool:
         """
-        发送错误事件
-
+        上报错误事件
+        
         Args:
-            error_type: 错误类型 (如 ConnectionError, ValueError)
+            exception: 捕获的异常对象
             module: 发生错误的模块名
-            message: 错误简述 (可选)
-            stack: 完整堆栈跟踪 (可选)
         """
+        # 先脱敏再截断，防止截断导致脱敏正则匹配失败
+        raw_message = str(exception)
+        sanitized_message = self._sanitize_message(raw_message)
+        
         data = {
-            "type": error_type,
+            "type": type(exception).__name__,
+            "message": sanitized_message[:500],
             "module": module,
+            "severity": "error",
         }
+        
+        # 获取堆栈并脱敏
+        stack = "".join(
+            traceback.format_exception(type(exception), exception, exception.__traceback__)
+        )
+        data["stack"] = self._sanitize_stack(stack)[:4000]
 
-        if message:
-            data["message"] = self._sanitize_message(message)[:500]
-
-        if stack:
-            # 脱敏并限制堆栈长度
-            data["stack"] = self._sanitize_stack(stack)[:4000]
-
-        return await self.track("exception", data)
+        return await self.track("error", data)
 
     def _sanitize_stack(self, stack: str) -> str:
         """
