@@ -6,6 +6,7 @@
 
 import asyncio
 import os
+import tempfile
 import time
 
 from playwright.async_api import Browser, Page, async_playwright
@@ -107,7 +108,6 @@ class BrowserManager:
 
                 try:
                     # 将 HTML 保存为临时文件，以支持相对路径加载本地资源
-                    import tempfile
 
                     temp_html = None
                     try:

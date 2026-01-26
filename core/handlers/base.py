@@ -4,6 +4,7 @@
 """
 
 import json
+import re
 import time
 import traceback
 from datetime import datetime
@@ -154,8 +155,6 @@ class BaseDataHandler:
         """解析日本震度字符串 (例如 '5-', '5+', '5弱', '5強')"""
         if not scale_str:
             return None
-
-        import re
 
         # 支持 5+, 5-, 5弱, 5強 等多种格式
         match = re.search(r"(\d+)(弱|強|\+|\-)?", scale_str)

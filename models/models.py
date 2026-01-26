@@ -8,8 +8,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from astrbot.api import logger
-
 # 中国所有省级行政区的名称列表
 CHINA_PROVINCES = [
     "北京",

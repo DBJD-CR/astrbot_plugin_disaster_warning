@@ -14,7 +14,7 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
-from .base import BaseDataHandler, _safe_float_convert
+from .base import BaseDataHandler
 
 
 class JMAEarthquakeP2PHandler(BaseDataHandler):
@@ -80,11 +80,13 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             # 经纬度解析
             lat = self._safe_float_convert(latitude)
             lon = self._safe_float_convert(longitude)
-            
+
             # P2P API: -200 为位置信息缺失
-            if lat == -200: lat = None
-            if lon == -200: lon = None
-            
+            if lat == -200:
+                lat = None
+            if lon == -200:
+                lon = None
+
             if (lat is None or lon is None) and issue_type != "ScalePrompt":
                 logger.error(
                     f"[灾害预警] {self.source_id} 经纬度解析失败: lat={latitude}, lon={longitude}"
@@ -132,7 +134,9 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
                 domestic_tsunami=earthquake_info.get("domesticTsunami"),
                 foreign_tsunami=earthquake_info.get("foreignTsunami"),
                 info_type=issue_type,  # 填充info_type字段
-                revision=correct_str if correct_str else None,  # 使用revision字段存储订正信息（作为描述）
+                revision=correct_str
+                if correct_str
+                else None,  # 使用revision字段存储订正信息（作为描述）
                 raw_data=data,
             )
 
@@ -231,7 +235,9 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
                 scale=self._parse_jma_scale(eq_info.get("shindo", "")),
                 place_name=eq_info.get("location", ""),
                 info_type=info_type,  # 填充 info_type 字段
-                domestic_tsunami=eq_info.get("info"),  # Wolfx 的 info 字段通常包含津波备注
+                domestic_tsunami=eq_info.get(
+                    "info"
+                ),  # Wolfx 的 info 字段通常包含津波备注
                 raw_data=eq_info,  # 将 eq_info 设为 raw_data，方便格式化器获取字段
             )
 
@@ -248,4 +254,3 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
         except Exception as e:
             logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {e}")
             return None
-

@@ -49,8 +49,8 @@ class IntensityCalculator:
         """
         # 1. 计算震源距 R (Hypocentral distance)
         # 考虑地表投影距离和深度的几何关系
-        R = math.sqrt(float(distance_km)**2 + float(depth_km)**2)
-        
+        R = math.sqrt(float(distance_km) ** 2 + float(depth_km) ** 2)
+
         # 限制最小有效距离，避免靠近震中时公式发散
         R_eff = max(R, 5.0)
 
@@ -62,7 +62,12 @@ class IntensityCalculator:
             # Ia = 3.733 + 1.458*M - 1.621 * log10(R + 9)
             # 此处采用更通用的自然对数转换版本，保持计算一致性
             # I = A + B*M - C*ln(R + R0)
-            A, B, C, R0 = 5.643, 1.538, 2.109, 25.0 # 维持原 2001 模型以保持稳定性，但确保输入为 float
+            A, B, C, R0 = (
+                5.643,
+                1.538,
+                2.109,
+                25.0,
+            )  # 维持原 2001 模型以保持稳定性，但确保输入为 float
         else:
             # 东部地区参数
             # Ia = 4.493 + 1.454*M - 1.792 * log10(R + 16)
@@ -72,7 +77,9 @@ class IntensityCalculator:
         # 公式: I = A + B * M - C * ln(R + R0)
         # 使用 math.log (自然对数) 以匹配系数定义
         magnitude_f = float(magnitude)
-        intensity = float(A) + float(B) * magnitude_f - float(C) * math.log(R_eff + float(R0))
+        intensity = (
+            float(A) + float(B) * magnitude_f - float(C) * math.log(R_eff + float(R0))
+        )
 
         # 4. 边界修正
         # 烈度范围 [0, 12]

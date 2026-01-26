@@ -539,12 +539,16 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
         timezone = options.get("timezone", "UTC+8")
 
         info_type = JMAEarthquakeFormatter.determine_info_type(earthquake)
-        
+
         # 处理订正信息
         correct_tag = ""
-        if hasattr(earthquake, "revision") and earthquake.revision and isinstance(earthquake.revision, str):
+        if (
+            hasattr(earthquake, "revision")
+            and earthquake.revision
+            and isinstance(earthquake.revision, str)
+        ):
             correct_tag = f" [{earthquake.revision}]"
-            
+
         lines = [f"🚨[{info_type}]{correct_tag} 日本气象厅"]
 
         # 时间

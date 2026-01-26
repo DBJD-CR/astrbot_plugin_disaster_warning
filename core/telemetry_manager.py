@@ -12,13 +12,16 @@
 import asyncio
 import base64
 import platform
+import re
 import sys
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
 
 from astrbot.api import logger
+from astrbot.api.star import StarTools
 
 
 class TelemetryManager:
@@ -67,7 +70,6 @@ class TelemetryManager:
 
     def _get_or_create_instance_id(self) -> str:
         """获取或创建实例 ID，存储在插件数据目录中"""
-        from astrbot.api.star import StarTools
 
         try:
             # 使用 StarTools 获取插件数据目录（与 message_logger 一致）
@@ -126,8 +128,6 @@ class TelemetryManager:
         """
         if not self._enabled:
             return False
-
-        from datetime import datetime, timezone
 
         # 构造符合 API v2 的批量格式
         event_item = {
@@ -283,7 +283,6 @@ class TelemetryManager:
         - 保留相对于插件的路径
         - 隐藏用户名
         """
-        import re
 
         # 替换 Windows 风格的用户路径
         # C:\Users\username\... -> <USER_HOME>\...
@@ -305,7 +304,6 @@ class TelemetryManager:
 
     def _sanitize_message(self, message: str) -> str:
         """脱敏错误消息，移除可能的敏感信息"""
-        import re
 
         # 移除路径中的用户名
         message = re.sub(r"/(?:home|Users)/[^/\s]+/", r"<USER_HOME>/", message)

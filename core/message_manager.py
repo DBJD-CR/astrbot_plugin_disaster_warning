@@ -454,25 +454,39 @@ class MessagePushManager:
             message_format_config = self.config.get("message_format", {})
             include_map = message_format_config.get("include_map", False)
             split_map_sources = {
-                "cea_fanstudio", "cea_wolfx",
-                "cwa_fanstudio", "cwa_wolfx",
-                "jma_fanstudio", "jma_wolfx", "jma_p2p"
+                "cea_fanstudio",
+                "cea_wolfx",
+                "cwa_fanstudio",
+                "cwa_wolfx",
+                "jma_fanstudio",
+                "jma_wolfx",
+                "jma_p2p",
             }
-            if include_map and source_id in split_map_sources and isinstance(event.data, EarthquakeData):
+            if (
+                include_map
+                and source_id in split_map_sources
+                and isinstance(event.data, EarthquakeData)
+            ):
                 # 频率控制逻辑：参考报数控制器，第1报必推，之后每5报推一次，最终报必推
                 current_report = getattr(event.data, "updates", 1)
                 is_final = getattr(event.data, "is_final", False)
-                
+
                 # 地图瓦片报数控制频率固定为 5 (暂时硬编码)
                 map_push_n = 5
-                
+
                 should_gen_map = False
                 if current_report == 1 or current_report % map_push_n == 0 or is_final:
                     should_gen_map = True
-                
+
                 if should_gen_map:
-                    logger.debug(f"[灾害预警] 触发异步地图渲染 (第 {current_report} 报)")
-                    asyncio.create_task(self._push_split_map(event, target_sessions, message_format_config))
+                    logger.debug(
+                        f"[灾害预警] 触发异步地图渲染 (第 {current_report} 报)"
+                    )
+                    asyncio.create_task(
+                        self._push_split_map(
+                            event, target_sessions, message_format_config
+                        )
+                    )
 
             # 7. 记录推送
             logger.info(
@@ -484,12 +498,19 @@ class MessagePushManager:
             logger.error(f"[灾害预警] 推送事件失败: {e}")
             return False
 
-    async def _push_split_map(self, event: DisasterEvent, target_sessions: list[str], config: dict):
+    async def _push_split_map(
+        self, event: DisasterEvent, target_sessions: list[str], config: dict
+    ):
         """后台渲染并发送分离的地图图片"""
         try:
             lat, lon = event.data.latitude, event.data.longitude
             # 再次检查坐标有效性
-            if lat is None or lon is None or not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+            if (
+                lat is None
+                or lon is None
+                or not (-90 <= lat <= 90)
+                or not (-180 <= lon <= 180)
+            ):
                 return
 
             # 开始渲染（可能耗时数秒）
@@ -500,9 +521,9 @@ class MessagePushManager:
             # 转为 Base64 并构建图片消息
             with open(map_image_path, "rb") as f:
                 b64_data = base64.b64encode(f.read()).decode()
-            
+
             map_message = MessageChain([Comp.Image.fromBase64(b64_data)])
-            
+
             # 发送到所有目标会话
             for session in target_sessions:
                 try:
@@ -611,31 +632,40 @@ class MessagePushManager:
 
         # 3. 检查是否需要附加地图图片
         include_map = message_format_config.get("include_map", False)
-        
+
         # 定义需要分离发送且进行报数控制的数据源 (EEW 类型)
         split_map_sources = {
-            "cea_fanstudio", "cea_wolfx",
-            "cwa_fanstudio", "cwa_wolfx",
-            "jma_fanstudio", "jma_wolfx", "jma_p2p"
+            "cea_fanstudio",
+            "cea_wolfx",
+            "cwa_fanstudio",
+            "cwa_wolfx",
+            "jma_fanstudio",
+            "jma_wolfx",
+            "jma_p2p",
         }
 
         if include_map and isinstance(event.data, EarthquakeData):
             # 如果是需要分离发送的数据源，则在此跳过同步附加图片，改为在 _execute_push 中后台处理
             if source_id in split_map_sources:
-                logger.debug(f"[灾害预警] 数据源 {source_id} 属于分离地图发送类型，跳过同步附加")
+                logger.debug(
+                    f"[灾害预警] 数据源 {source_id} 属于分离地图发送类型，跳过同步附加"
+                )
             else:
                 # 经纬度有效性检查：纬度 [-90, 90], 经度 [-180, 180]
                 lat_valid = (
                     event.data.latitude is not None and -90 <= event.data.latitude <= 90
                 )
                 lon_valid = (
-                    event.data.longitude is not None and -180 <= event.data.longitude <= 180
+                    event.data.longitude is not None
+                    and -180 <= event.data.longitude <= 180
                 )
 
                 if lat_valid and lon_valid:
                     try:
                         map_image_path = await self._render_map_image(
-                            event.data.latitude, event.data.longitude, message_format_config
+                            event.data.latitude,
+                            event.data.longitude,
+                            message_format_config,
                         )
                         if map_image_path:
                             # 核心修复点：使用 base64 替代文件路径，彻底解决 Windows 下 file:// 协议兼容性问题
@@ -645,7 +675,9 @@ class MessagePushManager:
                                 chain.chain.append(Comp.Image.fromBase64(b64_data))
                                 logger.debug("[灾害预警] 已附加地图图片 (Base64模式)")
                             except Exception as b64_err:
-                                logger.error(f"[灾害预警] 地图图片转Base64失败: {b64_err}")
+                                logger.error(
+                                    f"[灾害预警] 地图图片转Base64失败: {b64_err}"
+                                )
                     except Exception as e:
                         logger.error(f"[灾害预警] 地图图片生成失败: {e}")
 
@@ -701,7 +733,11 @@ class MessagePushManager:
         try:
             # 加载模板
             template_path = os.path.join(
-                self.plugin_root, "resources", "card_templates", "Base", "earthquake_list.html"
+                self.plugin_root,
+                "resources",
+                "card_templates",
+                "Base",
+                "earthquake_list.html",
             )
 
             if not os.path.exists(template_path):
