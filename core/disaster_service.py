@@ -632,10 +632,8 @@ class DisasterWarningService:
             if self._telemetry and self._telemetry.enabled:
                 asyncio.create_task(
                     self._telemetry.track_error(
-                        error_type=type(e).__name__,
+                        exception=e,
                         module="disaster_service._handle_disaster_event",
-                        message=str(e)[:100],
-                        stack=traceback.format_exc(),
                     )
                 )
 
