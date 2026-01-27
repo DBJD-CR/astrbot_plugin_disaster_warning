@@ -334,22 +334,70 @@ class WebSocketHandlerRegistry:
                     f"[灾害预警] Wolfx处理器收到消息 - 连接: {connection_name}"
                 )
 
-            # 根据连接名称选择具体的处理器
-            if connection_name:
-                source_mapping = {
-                    "wolfx_japan_jma_eew": "jma_wolfx",
-                    "wolfx_china_cenc_eew": "cea_wolfx",
-                    "wolfx_taiwan_cwa_eew": "cwa_wolfx",
-                    "wolfx_china_cenc_earthquake": "cenc_wolfx",
-                    "wolfx_japan_jma_earthquake": "jma_wolfx_info",
+            try:
+                # 尝试解析JSON
+                try:
+                    data = json.loads(message)
+                except json.JSONDecodeError as e:
+                    logger.error(f"[灾害预警] Wolfx JSON解析失败: {e}")
+                    return None
+
+                # 定义源映射关系 (type -> (config_key, handler_id))
+                source_map = {
+                    "jma_eew": ("japan_jma_eew", "jma_wolfx"),
+                    "cenc_eew": ("china_cenc_eew", "cea_wolfx"),
+                    "sc_eew": (
+                        "china_cenc_eew",
+                        "cea_wolfx",
+                    ),  # 四川预警也归类为中国预警
+                    "fj_eew": (
+                        "china_cenc_eew",
+                        "cea_wolfx",
+                    ),  # 福建预警也归类为中国预警
+                    "cwa_eew": ("taiwan_cwa_eew", "cwa_wolfx"),
+                    "cenc_eqlist": ("china_cenc_earthquake", "cenc_wolfx"),
+                    "jma_eqlist": ("japan_jma_earthquake", "jma_wolfx_info"),
                 }
 
-                target_source = source_mapping.get(connection_name)
-                if target_source and target_source in self.service.handlers:
-                    handler = self.service.handlers[target_source]
-                    logger.debug(f"[灾害预警] 使用Wolfx处理器: {target_source}")
+                # 识别消息类型
+                msg_type = data.get("type")
 
-                    try:
+                # 处理心跳包
+                if msg_type in ["heartbeat", "pong"]:
+                    return None
+
+                # 识别数据源并处理
+                if msg_type in source_map:
+                    config_key, handler_id = source_map[msg_type]
+
+                    # 检查是否启用
+                    if not self.service.is_wolfx_source_enabled(config_key):
+                        logger.debug(
+                            f"[灾害预警] Wolfx数据源 {config_key} ({msg_type}) 未启用，忽略"
+                        )
+                        return None
+
+                    handler = self.service.handlers.get(handler_id)
+                    if handler:
+                        logger.debug(
+                            f"[灾害预警] 使用Wolfx处理器: {handler_id} 处理 {msg_type}"
+                        )
+
+                        # 如果是地震列表，更新缓存并记录摘要日志
+                        if msg_type == "cenc_eqlist":
+                            self.service.update_earthquake_list("cenc", data)
+                            if self.service.message_logger:
+                                self.service.message_logger.log_earthquake_list_summary(
+                                    source="wolfx_cenc_eqlist", earthquake_list=data
+                                )
+                        elif msg_type == "jma_eqlist":
+                            self.service.update_earthquake_list("jma", data)
+                            if self.service.message_logger:
+                                self.service.message_logger.log_earthquake_list_summary(
+                                    source="wolfx_jma_eqlist", earthquake_list=data
+                                )
+
+                        # 解析消息
                         event = handler.parse_message(message)
                         if event:
                             # 利用connection_info增强事件信息
@@ -367,28 +415,29 @@ class WebSocketHandlerRegistry:
                                     "established_time": connection_info.get(
                                         "established_time"
                                     ),
+                                    "source_channel": msg_type,
                                 }
 
-                            logger.debug(f"[灾害预警] Wolfx处理器解析成功: {event.id}")
                             await self.service._handle_disaster_event(event)
                             return
-                    except Exception as e:
-                        logger.error(
-                            f"[灾害预警] Wolfx处理器解析消息失败 - 连接: {connection_name}, 错误: {e}"
-                        )
-                        if connection_info:
-                            logger.error(
-                                f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
-                            )
-                        return
+                    else:
+                        logger.warning(f"[灾害预警] 未找到Wolfx处理器: {handler_id}")
                 else:
-                    logger.warning(
-                        f"[灾害预警] 无法识别Wolfx连接名称: {connection_name}"
+                    # 如果不是心跳包且未识别，记录警告
+                    logger.debug(
+                        f"[灾害预警] 未识别的 Wolfx 消息类型: {msg_type}, 连接: {connection_name}"
                     )
-                    return
-            else:
-                logger.warning("[灾害预警] Wolfx处理器未收到连接名称")
-                return
+
+            except Exception as e:
+                logger.error(
+                    f"[灾害预警] Wolfx处理器处理失败 - 连接: {connection_name}, 错误: {e}"
+                )
+                if connection_info:
+                    logger.error(
+                        f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
+                    )
+
+            return None
 
         return wolfx_handler
 

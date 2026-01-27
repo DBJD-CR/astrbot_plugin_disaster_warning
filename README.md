@@ -1,11 +1,11 @@
 <!-- markdownlint-disable MD033 -->
-<div align="center">
+<!-- markdownlint-disable MD041 -->
+![astrbot_plugin_disaster_warning](https://socialify.git.ci/DBJD-CR/astrbot_plugin_disaster_warning/image?custom_description=%F0%9F%9A%A8+%E4%B8%80%E4%B8%AA%E5%9F%BA%E4%BA%8E+AstrBot+%E7%9A%84%E5%A4%9A%E6%95%B0%E6%8D%AE%E6%BA%90%E7%81%BE%E5%AE%B3%E9%A2%84%E8%AD%A6%E6%8F%92%E4%BB%B6&description=1&font=Inter&forks=1&issues=1&language=1&name=1&owner=1&pattern=Charlie+Brown&pulls=1&stargazers=1&theme=Auto)
 
-# 🚨 AstrBot 灾害预警插件
-
-# Disaster Warning Plugin for AstrBot
-
-</div>
+<p align="center">
+  <img src="resources/PluginRank.svg" alt="PluginRank">
+  <img src="resources/StarRank.svg" alt="StarRank">
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-AGPL_3.0-blue.svg" alt="License: AGPL-3.0">
@@ -68,7 +68,7 @@
 
 > 当然，这次的开发过程也没顺利到哪去。尽管用上了新的工作流，提高了很多效率。但是开发过程中还是遇到了相当多的 Bug，调试起来花了很多时间。
 >
-> 最终，经过了上百次 debug，我们才终于开发出一个较为稳定的版本。
+> 最终，经过了上百次 debug，我们才终于开发出一个稳定的版本。
 >
 > 但我还是要感谢 AI ，没有他，这个项目不可能完成。(此外还要感谢[@Aloys233](https://github.com/Aloys233)，为插件开发提供了莫大支持)
 >
@@ -86,21 +86,21 @@
 > [!TIP]
 > 本项目的相关开发数据 (持续更新中)：
 >
-> 开发时长：累计 30 天（主插件部分）
+> 开发时长：累计 39 天（主插件部分）
 >
-> 累计工时：约 141 小时（主插件部分）
+> 累计工时：约 186 小时（主插件部分）
 >
 > 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro (With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：435,417,025
+> Tokens Used：529,806,955
 
 ## ✨ 功能特性
 
 ### 🌍 多数据源支持
 
-插件支持多达 16 个可自由选择启用的细粒度数据源，覆盖全球主要地震监测机构：
+插件支持四大数据源和多达 16 个可自由选择启用的细粒度数据源，覆盖全球主要地震监测机构：
 
 - **中国地震网地震预警** (FAN Studio / Wolfx) - 实时地震预警信息。
 - **台湾中央气象署强震即时警报** (FAN Studio / Wolfx) - 台湾地区地震预警。
@@ -133,7 +133,7 @@
 ### 📱 灵活配置
 
 - **WebUI配置** - 支持通过 AstrBot WebUI 界面进行配置，配备了新潮的滑块组件。
-- **多群推送** - 支持配置特定群聊接收预警（留空则不推送）。
+- **自定义推送** - 支持多平台/多实例，配置特定私聊/群聊接收预警（留空则不推送）。
 - **专门格式化** - 针对不同数据源的信息进行专门格式化，确保了良好的信息展示。
 
 ## 🚀 安装与使用
@@ -142,7 +142,7 @@
 2. **安装依赖**: 本插件的核心依赖大多已包含在 AstrBot 的默认依赖中，通常无需额外安装。如果你的环境中缺少以下依赖，请安装：
 
    ```bash
-   pip install python-dateutil asyncio-mqtt jinja2 playwright
+   pip install python-dateutil asyncio-mqtt jinja2 playwright tzdata
    ```
 
 3. **重启 AstrBot (可选)**: 如果插件没有正常加载或生效，可以尝试重启你的 AstrBot 程序。
@@ -165,7 +165,7 @@
 
 📍本地预估：
 距离震中 3588.8 km，预估最大烈度 0.0 (⚪ 无感)
-🗺️地图链接:[URL]
+🗺️地图瓦片:[Image]
 ```
 
 **日本气象厅紧急地震速报示例**：
@@ -181,7 +181,7 @@
 
 📍本地预估：
 距离震中 2223.7 km，预估最大烈度 0.0 (⚪ 无感)
-🗺️地图链接: [URL]
+🗺️地图瓦片:[Image]
 ```
 
 **Global Quake 推送示例**:
@@ -196,7 +196,7 @@
 💥预估最大烈度：5.0 🟢
 📈最大加速度：16.9 gal
 📡触发测站：62/69
-🗺️地图链接: [URL]
+🗺️地图瓦片:[Image]
 ```
 
 **日本气象厅地震情报示例 (开启详细震度)**：
@@ -208,11 +208,11 @@
 📊震级：M 3.4
 🏔️深度：10.0 km
 💥最大震度：2.0 🟦
-🌊津波：无津波风险
+🌊津波：无需担心海啸
 📡各地震度详情：
   🟦[震度2] 鳥取南部町天萬、日南町生山
   ⬜[震度1] 鳥取南部町法勝寺、米子市東町、境港市東本町、伯耆町溝口、鳥取日野町根雨、江府町上之段広場、松江市東出雲町揖屋、安来市広瀬町広瀬祖父谷丁、安来市伯太町東母里、安来市安来町、雲南市大東町大東、奥出雲町三成、庄原市東城町
-🗺️地图链接: [URL]
+🗺️地图瓦片:[Image]
 ```
 
 **USGS地震情报示例**：
@@ -223,7 +223,7 @@
 📍震中：巴勒尼群岛地区附近 (63.89°S, 172.71°E)
 📊震级：M 5.6
 🏔️深度：10.0 km​
-🗺️地图链接: [URL]
+🗺️地图瓦片:[Image]
 ```
 
 ### 海啸预警推送示例
@@ -264,6 +264,7 @@
 📋山东省潍坊市发布大风黄色预警信号🟡
 📝潍坊市气象台2026年01月08日18时42分发布大风黄色预警信号：受气旋和冷空气影响，预计9日夜间到11日白天北风风力较大，滨海区8～9级阵风10级，潍城区、奎文区、坊子区、峡山区、高新区、保税区5～6级阵风8～9级，请注意防范。
 ⏰生效时间：2026年01月08日 18时42分00秒 (UTC+8)
+⚠️预警图标:[Image]
 ```
 
 ## 🖼️ 图片渲染功能
@@ -272,28 +273,52 @@
 
 ### 🎨 效果展示
 
-目前图片渲染主要支持 **Global Quake** 数据源，有两种精美的主题模板可供选择。
+#### 1. Global Quake 预警卡片
 
-<img width="622" height="670" alt="Image" src="https://github.com/user-attachments/assets/ea5b89e9-86e9-4827-b0b6-76c655418a74" />
+目前 `Global Quake` 数据源有两种精美的主题模板可供选择，提供极致的可视化预警体验。
+
+<img width="622" height="670" alt="Aurora" src="https://github.com/user-attachments/assets/e7c58efe-0e47-40a0-a5da-4cd8e57e1afa" />
 
 > 极光主题 (Aurora)
 
 ---
 
-<img width="522" height="418" alt="Image" src="https://github.com/user-attachments/assets/9b657b5d-4f1d-4f88-9caa-f2cffddd54cc" />
+<img width="522" height="418" alt="DarkNight" src="https://github.com/user-attachments/assets/a28fb78f-224e-417e-b558-fbbe2d93c862" />
 
 > 暗夜主题 (DarkNight)
 
-未来或许还可以接受自定义的模板投稿！目前相关内容还处于设想与讨论阶段，欢迎分享你的想法！
+#### 2. 通用地图瓦片 (Base Map)
+
+现在，所有地震消息都可以附带一张**实时的地图位置卡片**。该功能基于 Leaflet.js 构建，支持多种地图源（如 PetalMaps, OSM 等），为每一条预警提供直观的地理参考。
+
+<img width="463" height="464" alt="PetalMapLight" src="https://github.com/user-attachments/assets/09f406ee-545f-4968-b13b-6d3dd3c8791e" />
+
+> 效果参考图 (PetalMap 矢量图 亮)
+
+#### 3. 地震列表查询卡片 (List Card)
+
+使用 `/地震列表查询` 命令时，插件可以生成精美的，仿 `JQuake` 风格的历史地震列表卡片，一次性直观展示最近发生的多次地震事件及其震级、烈度/震度分布。
+
+<img width="300" height="494" alt="CENC_EQ_List" src="https://github.com/user-attachments/assets/5646a52c-fc83-442a-908e-3016e6432b8a" />
+
+> 使用指令 /地震列表查询 cenc 9 生成
+
+---
+
+<img width="300" height="494" alt="JMA_EQ_List" src="https://github.com/user-attachments/assets/eded213b-2d6a-4022-95a7-4d8be961803a" />
+
+> 使用指令 /地震列表查询 jma 9 生成
 
 ### ✨ 核心特性
 
 插件的图片渲染引擎是一个动态的、数据驱动的前端生成系统：
 
-- **动态地球仪绘制**: 渲染器会基于 `D3.js` 实时绘制矢量地球仪，精准标注震中位置，提供直观的地理定位。
-- **自适应烈度色阶**: 背景色调与视觉元素会根据最大预估烈度自动切换颜色（遵循 MMI 或相关烈度标准），让危险等级一目了然。
-- **高清矢量渲染**: 采用 3x 设备像素比 (Device Scale Factor) 进行渲染，确保输出的图片在 `Retina` 屏幕或高分屏手机上依然清晰锐利。
-- **数据可视化**: 直观展示震级、深度、数据拟合度和台站参与数量等关键元数据。
+- **动态绘图与可视化**:基于 `Leaflet.js` 动态加载瓦片地图，支持自适应缩放。
+- **自适应视觉语言**: 背景色调与视觉元素会根据烈度等级（MMI / 气象厅震度）自动切换，让危险等级一目了然。
+- **高清矢量渲染**: 采用高倍率设备像素比 (Device Scale Factor) 进行渲染，确保输出图片在手机高分屏上依然清晰锐利。
+- **跨平台兼容性增强**:
+  - **Base64 传输**: 渲染生成的图片直接转换为 Base64 编码发送，彻底解决了 Windows 环境下 `file://` 协议的路径兼容性问题。
+  - **浏览器池预热**: 插件启动时会自动预热无头浏览器实例，确保第一条预警下发时的渲染速度，显著降低首推延迟。
 
 ### ⚠️ 注意事项与系统要求
 
@@ -316,13 +341,17 @@
 
 - **存储空间 (Storage)**：
   - 生成的图片文件会临时存储在插件的数据目录下的 `temp` 文件夹中。
-  - **极光主题 (Aurora)**：单张图片约 **500KB**。
-  - **暗夜主题 (DarkNight)**：单张图片约 **200KB**。
-  - 插件内置了自动清理机制，会每隔 24 小时自动清理 **3 小时前** 生成的图片，无需担心占用过多磁盘空间。
+  - **极光主题 (Aurora)**：单张图片约 **600KB**。
+  - **暗夜主题 (DarkNight)**：单张图片约 **500KB**。
+  - **地震列表图片**：单张图片约 **100KB**。
+  - **地图瓦片**：单张图片约 **800KB**。
+  - 插件内置了自动清理机制，会每隔 **24 小时** 自动清理 **3 小时前** 生成的图片，无需担心占用过多磁盘空间，但仍建议预留 200-300MB 左右的空间。
 
 - **渲染延迟 (Latency)**:
-  - 生成一张高清卡片通常需要 **1-2 秒** 的时间。
-  - 尽管渲染过程是异步的，不会阻塞主要的文本消息推送，但在极端高并发的情况下，图片发送可能会有轻微的排队延迟。
+  - 生成一张高清卡片通常需要 **1-7 秒** 的时间。
+  - **异步分离发送**: 针对 CEA、JMA、CWA 的地震预警（EEW），插件会自动将文本消息与地图瓦片**分离发送**。文本消息将毫秒级秒发，而地图图片在后台渲染完成后自动补发，确保预警时效性不受渲染耗时影响。
+  - **智能报数控制**: 为了优化性能，EEW 地图图片仅在 **第 1...5...10...以及最终报** 时触发渲染，避免在高频更新时造成不必要的资源开销。
+  - **坐标自动校验**: 插件会自动检查上游数据的经纬度有效性，若出现无效坐标将自动跳过渲染，确保系统鲁棒性。
 
 - **字体问题 (Fonts)**:
   - 渲染器默认使用宿主系统的字体。
@@ -333,11 +362,11 @@
 | 数据源 | 提供者 | 类型 | 状态 |
 | :--- | :--- | :--- | :--- |
 | 中国地震预警网 | FAN Studio | EEW | ✅ |
-| 中国地震预警网 | Wolfx | EEW | ⚠️ |
+| 中国地震预警网 | Wolfx | EEW | ✅ |
 | 台湾中央气象署 | FAN Studio | EEW | ✅ |
 | 台湾中央气象署 | Wolfx | EEW | ⚠️ |
-| 日本气象厅紧急地震速报 | P2P | EEW | ⚠️ |
-| 日本气象厅紧急地震速报 | Wolfx | EEW | ⚠️ |
+| 日本气象厅紧急地震速报 | P2P | EEW | ✅ |
+| 日本气象厅紧急地震速报 | Wolfx | EEW | ✅ |
 | 日本气象厅紧急地震速报 | FAN Studio | EEW | ✅ |
 | Global Quake | Global Quake | EEW | ✅ |
 | 中国地震台网 | FAN Studio | Info | ✅ |
@@ -354,6 +383,21 @@
 ❌ **完全不可用**  
 🚧 **维护中**  
 🧪 **测试中**  
+
+### ⏰ 数据延迟
+
+根据不同数据源，以及 API 服务的收发耗时，接收到的数据再经插件处理后可能会产生一定的推送延迟：
+
+- **中国地震预警网 (CEA)**：约 0.5-2s
+- **台湾中央气象署 (CWA)**：首报推送延迟约 2-5s ，少数情况可达 10 秒以上，后续约 0.5s-2s
+- **日本气象厅紧急地震速报 (JMA)**：约 0.5-2s
+- **Global Quake 地震预警**：首报推送最快约 15-60s ，部分情况可达 3-5 分钟以上，后续约 0.5s-15s
+- **中国地震台网地震测定 (CENC)**：约 0.5-2s
+- **日本气象厅地震情报 (JMA)**：约 0.5-2s
+- **美国地质调查局地震测定 (USGS)**：约 0.5-15s
+- **中国气象局气象预警 (CMA)**：约 3-15 分钟
+  - 开启地图瓦片渲染 / GQ 卡片还将额外增加约 1-2.5s 的延迟。(地图瓦片仅影响地震情报延迟，不阻塞地震预警类事件的推送)
+  - 不同数据源间的延迟一般为 Fan = P2P ＜ Wolfx ＜ Global Quake
 
 ## 📑 WebUI 配置详解
 
@@ -375,21 +419,21 @@
     - 拥有管理员权限的用户可以执行查看日志、清除统计、修改配置等敏感操作。
     - AstrBot 的全局管理员默认拥有插件管理权限，无需在此重复添加。
 
-- **推送群号列表 (`target_groups`)**:
-  - 类型：`List[int]`
-  - 说明：指定接收消息的 QQ 群号。
-  - 提示：插件支持多群并行推送。如果此列表为空，插件将处于“静默模式”，仅在日志中记录事件而不发出消息。
+- **推送会话列表 (`target_sessions`)**:
+  - 类型：`List[string]`
+  - 说明：指定接收消息的会话 UMO。
+  - 提示：格式为 `{platform_name}:{message_type}:{session_id}`。可通过 `/sid` 指令快捷获取当前会话的完整 UMO。支持多会话并行推送。
 
-- **消息平台名称 (`platform_name`)**:
+- **默认显示时区 (`display_timezone`)**:
   - 类型：`String`
-  - 默认值：`default`
-  - 说明：用于确认需要推送的会话umo。在 AstrBot 的“机器人”设置页面中自定义的名称即为此处填写的名称。
+  - 默认值：`UTC+8`
+  - 说明：所有灾害预警消息中时间显示的默认时区。支持 `UTC+8`, `Asia/Shanghai` 等格式。
 
 ```json
 {
   "enabled": true,                // 启用或禁用插件
-  "target_groups": [123456789],   // 推送目标群号列表
-  "platform_name": "default"      // 机器人实例名称，需与 WebUI 中一致
+  "target_sessions": ["aiocqhttp:GroupMessage:123456789"],   // 推送目标会话列表
+  "display_timezone": "UTC+8"     // 自定义时区显示
 }
 ```
 
@@ -404,7 +448,6 @@
 插件中目前最全面、最稳定的综合灾害数据流。
 
 - **启用 (`enabled`)**: 开启后将订阅来自 FAN Studio 的实时推送。
-
 - **中国地震预警网 (`china_earthquake_warning`)**: 接入国内地震预警系统，通常能在地震横波到达前数秒至数十秒下发预警。
 - **台湾中央气象署 (`taiwan_cwa_earthquake`)**: 针对台湾地区的强震即时警报。
 - **中国地震台网 (`china_cenc_earthquake`)**: 接收地震测定正式报，信息包含确切的发震时间、经纬度、深度和震级。
@@ -418,14 +461,20 @@
 日本本土最为流行的互助式地震监测网络，对日本地震有极高的敏感度。
 
 - **启用 (`enabled`)**: 建立到 p2pquake.net 的 WebSocket 长连接。
-- **緊急地震速報 (`japan_jma_eew`)**: 对应 P2P 代码 556，提供预估震度和波及范围。
+- **緊急地震速報 (`japan_jma_eew`)**: 对应 P2P 代码 556，提供**警报**级 EEW 的预估震度和波及范围。注意：此源不接收“予报”级信息。
 - **地震情報 (`japan_jma_earthquake`)**: 对应 P2P 代码 551，地震发生后的详细震度分布报告。
 - **津波予報 (`japan_jma_tsunami`)**: 对应 P2P 代码 552。
 
 #### 🔹 Wolfx API (备份)
 
-- **说明**: 优秀的第三方多源集成 API。
-- **提示**: 部分数据源（如 JMA/CWA）可能返回 503 错误，这是由于上游服务连接不稳导致的。插件会自动重试，但如果长期报错，建议在 WebUI 中暂时关闭对应子项。
+优秀的第三方多源集成 API。
+
+- **启用 (`enabled`)**: 开启后将定期轮询 Wolfx API。
+- **日本气象厅紧急地震速报 (`japan_jma_eew`)**: 接收 JMA 预警。
+- **中国地震台网地震预警 (`china_cenc_eew`)**: 接收 CENC 预警。
+- **台湾中央气象署地震预警 (`taiwan_cwa_eew`)**: 接收 CWA 预警。
+- **日本气象厅地震情报 (`japan_jma_earthquake`)**: 接收 JMA 地震列表。
+- **中国地震台网地震测定 (`china_cenc_earthquake`)**: 接收 CENC 地震列表。
 
 #### 🔹 Global Quake (实时测算)
 
@@ -440,17 +489,14 @@
 
 - **启用本地监控 (`enabled`)**: 是否开启基于坐标的计算逻辑。
 - **本地经纬度 (`latitude`/`longitude`)**:
-  - 说明：填写机器人所在地的坐标。
+  - 说明：填写机器人所在地的坐标。建议选点位于中国大陆，目前中国台湾/日本地区没有相应的本地预估震度解析逻辑。
 - **本地地名 (`place_name`)**: 在推送消息中标识您的位置，例如：“北京市海淀区”。
 - **严格过滤模式 (`strict_mode`)**:
   - **开启时**: 插件将变成“私人地震卫士”。如果计算出的本地烈度低于阈值，哪怕是其它地区的大地震也不会推送。
   - **关闭时**: 只要地震本身满足全局过滤器，就会推送。
 - **通知阈值(烈度) (`intensity_threshold`)**:
   - 范围：0.0 - 12.0
-  - 简单参考值：
-    - `0.0 - 2.0`: 无感至轻微震感。
-    - `3.0 - 4.0`: 室内多数人有感，可能有器物晃动。
-    - `5.0+`: 可能造成器物跌落或轻微损坏。
+  - 说明：只有当本地预估烈度大于等于此值时才通知。
 
 ```json
 "local_monitoring": {
@@ -465,13 +511,39 @@
 
 ---
 
-### 🔍 4. 地震过滤器 (`earthquake_filters`)
+### 🧠 4. 高级策略配置 (`strategies`)
 
-通过科学的逻辑控制，避免群内充斥微小地震消息。过滤器之间采用 `OR` 逻辑。
+提供针对特定数据源的增强处理逻辑。
+
+#### 🧬 CENC 地震情报融合策略 (`cenc_fusion`)
+
+- **启用融合策略 (`enabled`)**: Fan (主) + Wolfx (副) 融合模式。优先使用 Fan 的数据，并尝试等待 Wolfx 的烈度信息进行补充。
+- **等待超时时间 (`timeout`)**: 单位：秒。等待 Wolfx 数据补充的最大时间。建议 10-20 秒。
+
+```json
+"strategies": {
+  "cenc_fusion": {
+    "enabled": true,      // 是否启用融合策略
+    "timeout": 10         // 等待超时时间
+  }
+}
+```
+
+---
+
+### 🔍 5. 地震过滤器 (`earthquake_filters`)
+
+通过科学的逻辑控制，避免群内充斥微小地震消息。过滤器之间采用 `OR` 逻辑（即满足任意一个启用的过滤器的条件即可推送）。
+
+#### 📖 关键词过滤器 (Keyword Filter)
+
+- **启用 (`enabled`)**: 是否开启关键词过滤。
+- **黑名单 (`blacklist`)**: 包含这些关键词的事件将被拦截（例如过滤特定地区的地震）。
+- **白名单 (`whitelist`)**: 仅推送包含这些关键词的事件（留空则不启用白名单模式）。
 
 #### 📖 烈度过滤器 (Intensity Filter)
 
-主要用于国内数据源。
+主要用于国内及通用数据源。
 
 - **最小震级 (`min_magnitude`)**: 设置为 `4.5` 可过滤掉绝大多数无感小震。
 - **最小烈度 (`min_intensity`)**: 针对震中或本地计算的预估烈度。建议设置为 `4.0`。
@@ -480,11 +552,17 @@
 
 专门针对日本气象厅（JMA）的震度等级。
 
-- **最小震度 (`min_scale`)**: 注意日本震度与中国烈度标准不同。
+- **最小震度 (`min_scale`)**: 注意日本震度与中国烈度标准不同（0-7）。
+
+#### 📖 USGS 震级过滤器 (Magnitude Only)
+
+适用于仅提供震级信息的源（如 USGS）。
+
+- **最小震级 (`min_magnitude`)**: 低于此震级的消息将被过滤。
 
 #### 📖 Global Quake 专用过滤器
 
-由于 GQ 数据波动较大，建议：
+由于 GQ 数据波动较大，建议设置较高的阈值：
 
 - **最小震级**: `4.5`
 - **最小烈度**: `5.0`
@@ -505,16 +583,19 @@
 
 ---
 
-### ⏱️ 5. 推送频率控制 (`push_frequency_control`)
+### ⏱️ 6. 推送频率控制 (`push_frequency_control`)
 
 这是一项针对地震预警（EEW）的多报特性设计的平衡功能。
 
-- **每收到 N 报推送一次**:
-  - 地震预警会随时间不断修正数据，对于较大的地震，JMA 甚至会下发 20+ 报。
-  - 设置 `jma_report_n = 5` 意味着第 1、5、10... 报会被推送。
+- **CEA/CWA 每收到 N 报推送一次**:
+  - 适用于中国地震预警网和台湾中央气象署。由于这类源报数较少，建议设为 1。
+- **JMA 每收到 N 报推送一次**:
+  - 适用于日本气象厅。设置 `jma_report_n = 3` 意味着第 1、3、6、9... 报会被推送。
+- **Global Quake 每收到 N 报推送一次**:
+  - 适用于 GQ。
 - **首报推送保证**: **（插件核心逻辑）** 无论 N 设置为多少，事件的第一报总是会第一时间送达。（固定配置）
 - **最终报总是推送 (`final_report_always_push`)**: 确保用户能看到修正后的最终震级和烈度。
-- **忽略非最终报 (`ignore_non_final_reports`)**: 极致精简配置，只发送第一报和最终报。
+- **忽略非最终报 (`ignore_non_final_reports`)**: 极致精简配置，只发送第一报和最终报，仅适用于 JMA 相关数据源。
 
 ```json
 "push_frequency_control": {
@@ -527,45 +608,56 @@
 
 ---
 
-### 🎨 6. 消息展现与格式化 (`message_format`)
+### 🎨 7. 消息展现与格式化 (`message_format`)
 
-- **地图提供商 (`map_provider`)**:
-  - `amap` / `baidu`: 中国大陆环境的首选，坐标偏移处理更佳。
-  - `openstreetmap` / `google`: 适合海外部署环境。
+- **是否包含地图图片 (`include_map`)**: 消息末尾附加地图瓦片渲染出的图片。
+- **地图瓦片源 (`map_source`)**:
+  - `petallight` / `petaldark`: PetalMap 矢量图 亮/暗，推荐使用。
+  - `arcwi` / `arcwob` / `arcwh`: ArcGIS 卫星影像/地形图/山影图。
+  - `geovis`: 中科星图 卫星影像。
+- **地图缩放级别 (`map_zoom_level`)**: 范围 0-18 ，数值越大，固定视野中展现的区域范围就越小。(默认值 5)
+  - z=0-2：全球视图
+  - z=3-5：国家视图
+  - z=6-8：省级视图
+  - z=9-11：城市视图
+  - z=12-13：区县视图
+  - z=14-16：街道视图
+  - z=17-18：建筑视图
 - **详细显示 JMA 区域震度**:
   - **开启**: 将列出所有观测到震度的具体市町村名称。
   - **关闭**: 仅显示全日本的最大观测震度地区。
-- **Global Quake 渲染卡片**:
+- **启用 Global Quake 卡片消息**:
   - 开启后，插件会启动后台渲染器，将复杂的数值转换为直观的彩色卡片图片。
-  - 模板：`Aurora` (极光) / `DarkNight` (暗夜)。
+- **Global Quake 卡片模板**:
+  - `Aurora` (极光): 浅色背景，清新现代。
+  - `DarkNight` (暗夜): 深色背景，极客风格。
 
 ```json
 "message_format": {
-  "include_map": true,                // 是否在消息中附带地图位置链接
-  "map_provider": "baidu",            // 地图服务提供商 (baidu/amap/google/osm)
-  "map_zoom_level": 8,                // 地图默认缩放比例
-  "use_global_quake_card": true,      // 是否启用图片渲染卡片
-  "global_quake_template": "Aurora"   // 卡片视觉主题
+  "include_map": true,                // 是否在消息中附带地图图片
+  "map_source": "petallight",         // 使用的地图源 (通用)
+  "use_global_quake_card": true,      // 是否启用 GQ 卡片渲染
+  "global_quake_template": "Aurora"   // GQ 卡片视觉主题
 }
 ```
 
 ---
 
-### ☁️ 7. 气象预警精细过滤 (`weather_config`)
+### ☁️ 8. 气象预警精细过滤 (`weather_config`)
 
-- **省份白名单 (`provinces`)**:
-  - 格式：输入中文名称列表。
-  - 示例：`["北京", "河北", "山东"]`
-  - 说明：如果为空，则推送全国预警；否则仅推送名单内的省份。
-- **最低颜色级别 (`min_color_level`)**:
-  - 等级顺序：`白色 < 蓝色 < 黄色 < 橙色 < 红色`
+- **气象预警过滤器 (`weather_filter`)**:
+  - **启用 (`enabled`)**: 开启后将应用省份和级别过滤。
+  - **省份白名单 (`provinces`)**: 输入中文名称列表（如 `["北京", "四川"]`）。留空则推送全国。
+  - **最低预警级别 (`min_color_level`)**: 等级排序：白色 < 蓝色 < 黄色 < 橙色 < 红色。
+- **正文描述字数限制 (`max_description_length`)**: 超过此字数将被截断。
+- **显示预警图标 (`enable_weather_icon`)**: 根据预警类型自动附加官方图标。
 
 ```json
 "weather_config": {
   "weather_filter": {
     "enabled": true,                  // 是否开启省份和等级过滤
     "provinces": ["北京", "四川"],    // 仅推送这些省份的预警（留空为全国）
-    "min_color_level": "黄色"        // 推送的最低颜色级别要求
+    "min_color_level": "黄色"        // 推送的最低预警颜色级别要求
   },
   "max_description_length": 384     // 正文描述信息的截断上限
 }
@@ -573,14 +665,16 @@
 
 ---
 
-### 🛠️ 8. 调试与高级网络配置 (`websocket_config` / `debug_config`)
+### 🛠️ 9. 调试与高级网络配置 (`websocket_config` / `debug_config`)
 
-- **重连间隔 (`reconnect_interval`)**: 当网络断开时，尝试重新连接的频率。
-- **最大重连次数**: 短时连续尝试次数，若均失败则触发“兜底重连”。
-- **兜底重试机制 (`fallback_retry_enabled`)**:
-  - **原理**: 当短时间多次重连失败后（可能是服务器故障或本地断网），插件会进入“长周期重连”模式（默认每 30 分钟尝试一次），直到服务恢复。
-- **原始消息日志 (`enable_raw_message_logging`)**:
-  - **进行开发推荐**: 开启此项后，插件会把收到的原始 JSON 报文进行精美的中文格式化并记录到 `raw_messages.log`。这不仅是排查问题的神器，更是学习各机构数据结构的绝佳资料。
+- **WebSocket 连接配置**:
+  - **重连间隔**: 网络断开后的重试间隔。
+  - **最大重连次数**: 超过此次数将触发长周期的“兜底重试”。
+  - **心跳间隔**: 维持连接活跃的 Ping/Pong 频率。
+- **调试配置**:
+  - **原始消息日志 (`enable_raw_message_logging`)**: 记录并格式化上游原始 JSON 报文到 `raw_messages.log`。
+  - **过滤机制**: 可选择过滤心跳包、P2P 区域状态消息、重复事件等，减少日志噪音。
+  - **启动静默期 (`startup_silence_duration`)**: 插件启动后在此时间内自动忽略所有事件。
 
 ```json
 "websocket_config": {
@@ -595,6 +689,14 @@
 
 ---
 
+### 📡 10. 匿名遥测 (`telemetry_config`)
+
+- **启用匿名遥测 (`enabled`)**:
+  - 默认开启。插件会发送匿名的使用统计（如活跃状态、报错信息）以帮助开发者改进插件。
+  - 不会收集任何个人隐私信息（如群号、聊天内容等）。
+
+---
+
 ## 📋 使用命令
 
 插件提供以下命令：
@@ -603,9 +705,10 @@
 | :--- | :--- |
 | `/灾害预警` | 显示插件帮助信息 |
 | `/灾害预警状态` | 查看服务运行状态 |
-| `/灾害预警测试 [群号] [灾害类型] [格式]` | 测试推送功能 |
+| `/地震列表查询 [数据源] [数量] [格式]` | 查询最新地震列表 (card/text 格式) |
 | `/灾害预警统计` | 查看详细的事件统计报告 |
 | `/灾害预警统计清除` | 清除所有统计信息 **(仅管理员)** |
+| `/灾害预警推送开关` | 开启或关闭当前会话的推送 **(仅管理员)** |
 | `/灾害预警配置 查看` | 查看当前配置信息 **(仅管理员)** |
 | `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]` | 模拟地震事件测试 |
 | `/灾害预警日志` | 查看原始消息日志统计摘要 **(仅管理员)** |
@@ -626,77 +729,97 @@
 
 预期效果：
 📊 灾害预警统计报告
-📅 统计开始时间: 2026-01-08 07:17:24
-🔢 记录到的事件总数: 781
-🚨 去重后的事件总数: 264
+📅 统计开始时间: 2026-01-11 20:51:55
+🔢 记录到的事件总数: 12593
+🚨 去重后的事件总数: 3695
 
 📈 分类统计:
-地震: 213
-气象: 38
-地震预警: 13
+地震: 3211
+气象: 367
+地震预警: 117
 
 🌍 地震震级分布:
-< M3.0: 133
-M3.0 - M3.9: 63
-M4.0 - M4.9: 18
-M5.0 - M5.9: 10
-M6.0 - M6.9: 2
+< M3.0: 2214
+M3.0 - M3.9: 726
+M4.0 - M4.9: 269
+M5.0 - M5.9: 103
+M6.0 - M6.9: 16
 
-🔥 最大地震: M6.2 菲律宾群岛地区 (fan_studio_cenc)
+📍 地震高发地区 (国内Top 10):
+新疆: 2
+云南: 2
+台湾: 1
+贵州: 1
+青海: 1
+
+🔥 最大地震: M6.3 千岛群岛附近 (fan_studio_usgs)
 
 ☁️ 气象预警分布:
 
 类型Top10:
-大风: 15
-道路冰雪: 6
-霜冻: 5
-道路结冰: 4
-寒潮: 3
-寒冷: 2
-大雾: 2
-其他: 1
+大风: 106
+道路结冰: 104
+大雾: 51
+寒潮: 48
+低温: 18
+道路冰雪: 13
+寒冷: 5
+沙尘: 5
+霜冻: 4
+暴雪: 4
+
+地区Top10:
+辽宁: 51
+河南: 44
+江西: 40
+湖北: 28
+山东: 26
+内蒙古: 19
+陕西: 19
+安徽: 19
+广西: 18
+吉林: 12
 
 级别分布:
-🟠橙色: 1
-🟡黄色: 16
-🔵蓝色: 21
+🔴红色: 3
+🟠橙色: 28
+🟡黄色: 186
+🔵蓝色: 150
 
 📡 数据源事件统计:
-global_quake: 625
-fan_studio_usgs: 78
-fan_studio_weather: 39
-fan_studio_jma: 12
-fan_studio_cenc: 8
-fan_studio_cea: 7
-p2p_earthquake: 6
-wolfx_cenc_eq: 3
-wolfx_cenc_eew: 2
-fan_studio_cwa: 1
+global_quake: 10609
+fan_studio_usgs: 1040
+fan_studio_weather: 369
+fan_studio_jma: 274
+p2p_earthquake: 134
+fan_studio_cenc: 79
+fan_studio_cea: 42
+wolfx_cenc_eq: 29
+fan_studio_cwa: 11
+wolfx_cenc_eew: 6
 
 🛡️ 日志过滤拦截统计:
-重复数据拦截: 1805
-心跳包/连接状态拦截: 21194
-总计拦截: 22999
+• 重复数据拦截: 13129
+• 心跳包过滤: 134763
+• P2P节点状态: 8317
+• 连接状态过滤: 1270
+📊 总计拦截: 157479
 
-# 测试推送到当前群（默认地震预警）
-/灾害预警测试
+# 查询地震列表
+# 格式：/地震列表查询 [数据源] [数量] [格式]
+# 图片模式最大传入参数为 10 ，纯文本模式最大传入参数为 50
 
-# 测试推送到当前群（指定灾害类型，命令也支持中文，如 地震|海啸|气象|中国|日本|美国）
-/灾害预警测试 earthquake     # 测试地震预警
-/灾害预警测试 tsunami        # 测试海啸预警
-/灾害预警测试 weather        # 测试气象预警
+# 1. 默认查询 (中国地震台网 - 最近5条 - 卡片格式)
+/地震列表查询
 
-# 测试推送到当前群（指定灾害类型和格式）
-/灾害预警测试 earthquake japan  # 测试日本地震格式
-/灾害预警测试 earthquake usgs   # 测试美国地震格式
+# 2. 以图片格式查询日本气象厅数据 (JMA)
+/地震列表查询 jma
 
-# 测试推送到指定群（默认地震预警）
-/灾害预警测试 123456789
+# 3. 以图片格式查询 CENC 最近 10 条地震记录
+/地震列表查询 cenc 10
 
-# 测试推送到指定群（指定灾害类型）
-/灾害预警测试 123456789 earthquake  # 在群123456789测试地震预警
-/灾害预警测试 123456789 tsunami     # 在群123456789测试海啸预警
-/灾害预警测试 123456789 weather     # 在群123456789测试气象预警
+# 4. 以纯文本格式显示 CENC 最近 5 条地震记录
+/地震列表查询 cenc 5 text
 
 # 模拟地震事件（用于测试过滤器和本地监控）
 # 格式：/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]
@@ -714,25 +837,25 @@ fan_studio_cwa: 1
 /灾害预警模拟 34.05 -118.24 6.5 20 usgs_fanstudio
 
 # 4. 日本数据源测试 (JMA P2P)
-# 模拟东京 M5.8 地震 (震度自动估算，很粗略，仅供参考)
+# 模拟东京 M5.8 地震 (震度自动估算，很粗略，仅供测试使用)
 /灾害预警模拟 35.69 139.76 5.8 50 jma_p2p
 
 # 可用数据源ID参考:
 #
-# 🇨🇳 中国大陆:
+# 中国大陆:
 # cea_fanstudio (中国地震预警网 - 预警)
 # cenc_fanstudio (中国地震台网 - 正式)
 # cea_wolfx (中国地震预警网 - Wolfx源)
 #
-# 🇹🇼 中国台湾:
+# 中国台湾:
 # cwa_fanstudio (台湾中央气象署)
 #
-# 🇯🇵 日本:
+# 日本:
 # jma_p2p (日本气象厅 - P2P预警)
 # jma_p2p_info (日本气象厅 - P2P情报)
 # jma_fanstudio (日本气象厅 - FanStudio源)
 #
-# 🌍 国际/全球:
+# 国际/全球:
 # usgs_fanstudio (USGS)
 # global_quake (Global Quake)
 ```
@@ -741,7 +864,7 @@ fan_studio_cwa: 1
 >
 > 插件对于灾害事件的统计与日志统计是分开管理的，如果需要清除对应的数据请使用相应的指令。
 >
-> `灾害预警统计`命令中，地震震级分布与最大地震的统计可能会不一致，这是由于对数据源的筛选逻辑不一样导致的，前者比较宽松，后者比较严格。
+> `/灾害预警统计`命令中，地震震级分布与最大地震的统计可能会不一致，这是由于对数据源的筛选逻辑不一样导致的，前者比较宽松，后者比较严格。
 
 ---
 
@@ -754,23 +877,25 @@ AstrBot/
 └─ data/
    └─ plugins/
       └─ astrbot_plugin_disaster_warning/
-         ├─ __init__.py                    # Python包初始化文件，支持相对导入
-         ├─ _conf_schema.json              # WebUI配置界面schema定义
+         ├─ __init__.py                    # Python 包初始化文件，支持相对导入
+         ├─ _conf_schema.json              # WebUI 配置界面 schema 定义
          ├─ main.py                        # 插件主入口文件，包含命令处理
          ├─ metadata.yaml                  # 插件元数据信息
          ├─ README.md                      # 插件说明文档
          ├─ requirements.txt               # 插件依赖列表
-         ├─ logo.png                       # 插件Logo，适用于AstrBot v4.5.0+
+         ├─ logo.png                       # 插件 Logo，适用于 AstrBot v4.5.0+
          ├─ LICENSE                        # 许可证文件
          ├─ core/                          # 核心模块目录
          │   ├─ __init__.py
          │   ├─ disaster_service.py        # 核心灾害预警服务
-         │   ├─ websocket_manager.py       # WebSocket连接管理器
+         │   ├─ websocket_manager.py       # WebSocket 连接管理器
          │   ├─ handler_registry.py        # 处理器注册表
          │   ├─ event_deduplicator.py      # 基础事件去重器
          │   ├─ intensity_calculator.py    # 本地烈度计算器
          │   ├─ message_manager.py         # 消息推送管理器
+         │   ├─ browser_manager.py         # Playwright 浏览器实例管理器
          │   ├─ message_logger.py          # 原始消息记录器
+         │   ├─ telemetry_manager.py       # 匿名遥测管理器
          │   ├─ statistics_manager.py      # 统计数据持久化管理器
          │   ├─ handlers/                  # 数据处理器目录
          │   │   ├─ __init__.py
@@ -796,6 +921,8 @@ AstrBot/
          ├─ utils/                         # 工具模块目录
          │   ├─ __init__.py
          │   ├─ fe_regions.py              # FE地震区划中文翻译
+         │   ├─ time_converter.py          # 时间格式转换工具
+         │   ├─ version.py                 # 获取插件版本号的工具
          │   └─ formatters/                # 消息格式化器目录
          │       ├─ __init__.py
          │       ├─ base.py                # 基础格式化器
@@ -803,11 +930,12 @@ AstrBot/
          │       ├─ tsunami.py             # 海啸消息格式化器
          │       └─ weather.py             # 气象消息格式化器
          └─ resources/                     # 资源文件目录
-             ├─ epsp-area.csv              # P2P地震区域代码映射表
-             ├─ fe_regions_data.json       # FE全球地震区划映射表
+             ├─ epsp-area.csv              # P2P 地震区域代码映射表
+             ├─ fe_regions_data.json       # FE 全球地震区划映射表
              └─ card_templates/            # 消息卡片 HTML 模板
                  ├─ Aurora/                # 极光主题模板
-                 └─ DarkNight/             # 暗夜主题模板
+                 ├─ DarkNight/             # 暗夜主题模板
+                 └─ Base/                  # 基础通用模板 (地图瓦片、地震列表等)
 ```
 
 ### 💾 数据持久化与存储
@@ -820,7 +948,9 @@ AstrBot/
    └─ plugin_data/
       └─ astrbot_plugin_disaster_warning/
          ├─ temp/                          # 临时文件夹，用于存放渲染生成的图片文件
+         ├─ .telemetry_id                  # 匿名遥测实例ID（不包含任何用户信息）
          ├─ statistics.json                # 灾害事件统计数据（包含震级分布、历史极值等）
+         ├─ earthquake_lists_cache.json    # Wolfx 地震列表数据缓存
          ├─ logger_stats.json              # 日志过滤器统计摘要
          ├─ raw_messages.log               # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
          ├─ raw_messages.log.1             # 轮转日志文件（自动管理）
@@ -828,8 +958,12 @@ AstrBot/
 ```
 
 - **统计数据 (`statistics.json`)**: 记录自插件启动以来的所有灾害事件，包含了丰富的统计信息内容。即使插件重启，去重指纹和历史统计信息也会被保留。
+- **列表缓存 (`earthquake_lists_cache.json`)**: 持久化缓存获取到的地震列表数据，用于重载插件后也能第一时间使用 `/地震列表查询` 命令。
+- **日志统计 (`logger_stats.json`)**: 记录日志过滤器的拦截统计信息，如心跳包过滤数、重复事件拦截数等。
+- **匿名ID (`.telemetry_id`)**: 用于遥测统计的匿名随机实例标识符。
 - **原始日志 (`raw_messages.log`)**: 仅在 WebUI 配置中启用 `enable_raw_message_logging` 时生成。它以极高的可读性记录了上游数据源的原始 JSON 结构，是开发者和高级用户排查问题的利器。
 - **日志轮转机制**: 插件内置了日志自动管理逻辑。默认单个日志上限为 50MB，和可配置的历史备份文件上限，防止占满磁盘空间。
+- **图片缓存 (`temp/`)**: 用于存放 Playwright 渲染生成的预警卡片图片。该目录有自动清理机制，无需手动维护。
 
 ---
 
@@ -847,7 +981,7 @@ graph TD
     classDef output fill:#fdd,stroke:#a00,stroke-width:2px;
     classDef auxiliary fill:#eee,stroke:#999,stroke-dasharray: 5 5;
 
-    subgraph INGESTION_LAYER ["1. 接入层 (Ingestion Layer)"]
+    subgraph INGESTION_LAYER ["1. 接入层"]
         direction LR
         subgraph FS_GROUP ["FAN Studio 综合源"]
             FS_CEA["CEA 地震预警"]
@@ -872,75 +1006,77 @@ graph TD
         GQ_WS["Global Quake WebSocket"]
     end
 
-    subgraph CORE_SERVICE ["2. 核心服务层 (Core Service Layer)"]
-        DS["DisasterWarningService<br/>(Singleton Controller)"]
-        WSM["WebSocketManager<br/>(aiohttp Session Manager)"]
+    subgraph CORE_SERVICE ["2. 核心服务层"]
+        DS["灾害预警服务<br/>(单例控制器)"]
+        WSM["WebSocket 管理器<br/>(aiohttp 会话管理)"]
         
         subgraph WSM_INTERNAL ["WSM 内部逻辑"]
-            RECONN["重连算法<br/>(Exponential Backoff)"]
-            FALLBACK["兜底机制<br/>(30min Fallback)"]
-            HB["心跳监测<br/>(Liveness Check)"]
+            RECONN["重连算法<br/>(指数退避)"]
+            FALLBACK["兜底机制<br/>(30分钟回退)"]
+            HB["心跳监测<br/>(存活检查)"]
         end
     end
 
-    subgraph PROCESSING_PIPELINE ["3. 数据处理流水线 (Processing Pipeline)"]
+    subgraph PROCESSING_PIPELINE ["3. 数据处理流水线"]
         subgraph ROUTING ["路由与解析"]
-            REG["HandlerRegistry<br/>(Pattern Matching)"]
-            H_BASE["BaseDataHandler"]
-            H_EEW["EEW Handlers"]
-            H_EQ["Earthquake Handlers"]
-            H_TSU["Tsunami Handlers"]
+            REG["处理器注册表<br/>(模式匹配)"]
+            H_BASE["基础数据处理器"]
+            H_EEW["EEW 处理器群"]
+            H_EQ["地震情报处理器群"]
+            H_TSU["海啸处理器群"]
         end
 
         subgraph NORMALIZATION ["数据规范化"]
-            MODEL_EVT["DisasterEvent"]
-            MODEL_DATA["Earthquake/Tsunami/Weather Models"]
+            MODEL_EVT["灾害事件模型"]
+            MODEL_DATA["地震/海啸/气象模型"]
         end
 
         subgraph DEDUPLICATION ["去重矩阵"]
-            DEDUPE["EventDeduplicator"]
-            FINGERPRINT["指纹算法<br/>(Location Grid + Magnitude + Time)"]
+            DEDUPE["事件去重器"]
+            FINGERPRINT["指纹算法<br/>(网格+震级+时间)"]
         end
     end
 
-    subgraph FILTER_STATION ["4. 过滤与控制站 (Filter Station)"]
-        MPM["MessagePushManager"]
+    subgraph FILTER_STATION ["4. 过滤与控制站"]
+        MPM["消息推送管理器"]
         
         subgraph GLOBAL_FILTERS ["全局过滤器"]
-            F_INT["IntensityFilter<br/>(烈度阈值)"]
-            F_SCA["ScaleFilter<br/>(日本震度阈值)"]
-            F_WTR["WeatherFilter<br/>(地域/级别过滤)"]
+            F_INT["烈度过滤器<br/>(烈度阈值)"]
+            F_SCA["震度过滤器<br/>(日本震度阈值)"]
+            F_KW["关键词过滤器<br/>(白/黑名单)"]
+            F_WTR["气象过滤器<br/>(地域/级别过滤)"]
         end
 
         subgraph LOCAL_ESTIMATION ["本地化评估"]
-            L_MONITOR["LocalIntensityFilter"]
-            CALC["IntensityCalculator<br/>(距离/烈度衰减计算)"]
+            L_MONITOR["本地烈度过滤器"]
+            CALC["烈度计算器<br/>(距离/烈度衰减计算)"]
         end
 
         subgraph PUSH_CONTROL ["报数调度"]
-            RPC["ReportCountController<br/>(1st/N-th/Final Logic)"]
+            RPC["报数控制器<br/>(首报/N报/最终报逻辑)"]
         end
     end
 
-    subgraph PRESENTATION_LAYER ["5. 展现层 (Presentation Layer)"]
+    subgraph PRESENTATION_LAYER ["5. 展现层"]
         subgraph FORMATTING ["文案格式化"]
-            F_EQ["EarthquakeFormatter"]
-            F_W["WeatherFormatter"]
-            F_T["TsunamiFormatter"]
+            F_EQ["地震消息格式化器"]
+            F_W["气象消息格式化器"]
+            F_T["海啸消息格式化器"]
         end
 
         subgraph RENDERING ["高级渲染"]
-            T_ENG["Jinja2 Template Engine"]
-            PW["Playwright Renderer<br/>(Headless Browser)"]
-            TEMPLATES["HTML Templates<br/>(Aurora / DarkNight)"]
+            T_ENG["Jinja2 模板引擎"]
+            PW["Playwright 渲染器<br/>(无头浏览器)"]
+            TEMPLATES["HTML 模板<br/>(Aurora / DarkNight / Base)"]
         end
 
-        BOT_CTX["AstrBot Context<br/>(MessageChain Construction)"]
+        BOT_CTX["AstrBot 上下文<br/>(消息链构建)"]
     end
 
-    subgraph AUXILIARY_SYSTEM ["6. 辅助系统 (Auxiliary System)"]
-        LOG["MessageLogger<br/>(Raw Logging & Rotation)"]
-        STATS["StatisticsManager<br/>(Persistence & Analytics)"]
+    subgraph AUXILIARY_SYSTEM ["6. 辅助系统"]
+        LOG["消息记录器<br/>(原始日志与轮转)"]
+        STATS["统计管理器<br/>(持久化与分析)"]
+        TELE["遥测管理器<br/>(匿名统计)"]
     end
 
     %% 连接关系定义
@@ -967,15 +1103,16 @@ graph TD
     %% 辅助关系
     WSM -.-> LOG
     MODEL_EVT -.-> STATS
+    DS -.-> TELE
     RECONN & FALLBACK & HB -.-> WSM
 
     %% 样式应用
     class FS_CEA,FS_CWA,FS_JMA,FS_CENC,FS_WTR,FS_TSU,P2P_556,P2P_551,P2P_552,W_CENC,W_JMA,GQ_WS source;
     class DS,WSM,MPM manager;
     class H_BASE,H_EEW,H_EQ,H_TSU,REG,MODEL_EVT,MODEL_DATA processor;
-    class F_INT,F_SCA,F_WTR,L_MONITOR,CALC,RPC,DEDUPE,FINGERPRINT filter;
+    class F_INT,F_SCA,F_WTR,F_KW,L_MONITOR,CALC,RPC,DEDUPE,FINGERPRINT filter;
     class F_EQ,F_W,F_T,T_ENG,PW,TEMPLATES,BOT_CTX output;
-    class LOG,STATS auxiliary;
+    class LOG,STATS,TELE auxiliary;
 ```
 
 ### 📋 架构特点与细节
@@ -1021,6 +1158,35 @@ graph TD
 - **双重失效切换**: 对 Fan Studio 源支持主备服务器切换，当主节点连接失败时自动尝试备用节点。
 - **指数退避重连**: 避免在网络波动时频繁重试给上游服务器造成压力。
 - **长效兜底**: 即使遭遇长时间断网，插件也会进入低频轮询模式，在网络恢复后第一时间重新建立实时推送通道。
+
+#### 📡 6. 可观测性与遥测 (Observability & Telemetry)
+
+插件集成了完整的**匿名遥测与诊断系统**：
+
+- **隐私优先设计**: 仅收集去敏后的统计数据（如活跃数据源数量、报错模块名），严禁上传任何用户隐私（群号、消息内容）。
+- **全链路追踪**: `TelemetryManager` 能够捕获并在本地脱敏异常堆栈，帮助开发者快速定位跨国网络环境下的边缘情况 Bug。
+- **健康度监控**: 配合 `MessageLogger` 的原始报文记录，构建了从网络层到应用层的完整可观测性视图。
+
+## 📈 性能报告
+
+本插件采用了全异步化的底层架构，在保证高实时性的同时也维持了极低的系统资源占用。以下为核心组件的性能参考指标：
+
+- **⚡ 数据处理性能**:
+  - **消息解析**: 单次 JSON 报文解析与规范化耗时 **< 2ms**。
+  - **去重算法**: 基于哈希指纹的 $O(1)$ 匹配，处理延迟可忽略不计。
+  - **烈度计算**: 采用解析解数学模型，本地烈度估算耗时为**微秒级**。
+- **🌐 网络资源占用**:
+  - **连接维护**: 维持 10+ 个 WebSocket 连接时，空闲带宽占用 **< 1 KB/s**。
+  - **事件峰值**: 特大地震多源并发时，峰值流量通常 **< 200 KB/s**。
+- **🖥️ 系统资源开销**:
+  - **内存占用**:
+    - **轻量模式**（未开启图片渲染）：约 **60 - 120 MB**。
+    - **富媒体模式**（开启图片渲染）：由于采用了**浏览器页面池预热技术** (`Pool Size = 2`)，基础常驻内存将增加至 **300 - 500 MB**。渲染任务执行期间，内存峰值可能达到 **600 MB+**。
+  - **图片渲染**:
+    - **耗时**: 单张卡片（Global Quake / 地图瓦片 / 列表）生成耗时约 **1-7s**。
+    - **并发**: 内置并发控制队列，支持多任务并行处理，有效降低多源并发推送时的排队延迟。
+- **🛡️ 稳定性表现**:
+  - 具备完善的退避重连机制，极端网络环境下的自愈成功率接近 **100%**。
 
 ## 📒 增强的可读性日志格式
 
@@ -1248,7 +1414,7 @@ graph TD
 **智能格式化特性**：
 
 - **键名翻译**：自动将绝大部分英文键名翻译为中文。
-- **列表优化**：数组内容显示项数和前 5 项详情（如"points (8项):"）。
+- **列表优化**：数组内容显示项数和前 5 项详情。
 - **嵌套处理**：支持多层 JSON 结构的递归格式化，保持层次清晰。
 - **专业术语**：保留原始数据源的专业术语。
 - **时间标准化**：统一时间格式显示，便于阅读。
@@ -1262,23 +1428,6 @@ graph TD
 3. **功能扩展**：基于真实数据格式开发新的解析器。
 4. **性能分析**：统计各数据源的消息频率和内容。
 
-## 📈 性能报告
-
-本插件采用了全异步化的底层架构，在保证高实时性的同时也维持了极低的系统资源占用。以下为核心组件的性能参考指标：
-
-- **⚡ 数据处理性能**:
-  - **消息解析**: 单次 JSON 报文解析与规范化耗时 **< 2ms**。
-  - **去重算法**: 基于哈希指纹的 $O(1)$ 匹配，处理延迟可忽略不计。
-  - **烈度计算**: 采用解析解数学模型，本地烈度估算耗时为**微秒级**。
-- **🌐 网络资源占用**:
-  - **连接维护**: 维持 10+ 个 WebSocket 连接时，空闲带宽占用 **< 1 KB/s**。
-  - **事件峰值**: 特大地震多源并发时，峰值流量通常 **< 200 KB/s**。
-- **🖥️ 系统资源开销**:
-  - **内存占用**: 约 **60 - 120 MB**（未开启图片渲染）。
-  - **图片渲染**: 开启 `Playwright` 渲染预警卡片时，单张生成耗时约 **1 - 2s**，瞬时内存波动约 **200 MB**。
-- **🛡️ 稳定性表现**:
-  - 具备完善的指数退避重连机制，极端网络环境下的自愈成功率接近 **100%**。
-
 ---
 
 ## ❓ 常见问题简答
@@ -1288,36 +1437,42 @@ graph TD
 >**A**: 请检查以下几点：
 >
 > 1. **插件开关**：确认插件已全局启用 (`enabled: true`)。
-> 2. **推送目标**：检查 **推送群号列表 (`target_groups`)** 是否已正确填写目标群号。
-> 3. **实例匹配**：检查 **消息平台名称 (`platform_name`)** 是否与 AstrBot WebUI 中机器人设置的名称一致。
-> 4. **连接状态**：使用命令 `/灾害预警状态` 确认 WebSocket 连接是否正常 (🟢)。如果显示 🔴，请检查网络或确认上游服务是否宕机。
-> 5. **过滤器拦截**：检查 **地震过滤器** 或 **本地监控** 的阈值设置是否过高。
-> 6. **启动静默期**：确认当前不在插件启动后的 **静默期** 内（若配置了 `startup_silence_duration`）。
-> 7. **数据源开关**：确保在 `data_sources` 中启用了具体的子数据源。
+> 2. **推送目标**：检查 **推送会话列表 (`target_sessions`)** 是否已正确填写。
+>    - 现在的格式为 `平台名:消息类型:会话ID`。
+>    - 最简单的配置方法：在目标群聊/私聊中发送 `/sid` 指令，直接复制返回的完整会话 ID 填入即可。
+> 3. **连接状态**：使用命令 `/灾害预警状态` 确认 WebSocket 连接是否正常 (🟢)。如果显示 🔴，请尝试重载插件并检查网络或确认上游服务是否宕机。
+> 4. **过滤器拦截**：检查 **地震/气象过滤器** 或 **本地监控** 的阈值设置是否过高。
+> 5. **启动静默期**：确认当前不在插件启动后的 **静默期** 内。
+> 6. **数据源开关**：确保在 `data_sources` 中启用了具体的子数据源。
 
-**Q: 为什么收到了地震消息，但没有地图链接或卡片图片？**
+**Q: 为什么收到了地震消息，但没有地图卡片/图片？**
 
 >**A**: 请检查：
 >
-> 1. **地图配置**：确认配置中的 **包含地图链接 (`include_map`)** 已启用。
+> 1. **地图配置**：确认配置中的 **包含地图图片 (`include_map`)** 已启用。
 > 2. **渲染环境**：若使用 Global Quake 卡片，需确认 **启用 Global Quake 卡片消息 (`use_global_quake_card`)** 已开启。
 > 3. **内核安装**：Playwright 需要手动安装浏览器内核。请在终端执行 `playwright install chromium`（下载耗时可能较长）。
-> 4. **网络限制**：检查机器人所在网络环境是否可以正常访问所选的地图服务商。
+> 4. **网络限制**：检查机器人所在网络环境是否可以正常访问所选的地图瓦片源。
 
 **Q: 为什么地震预警会短时间内推送多条消息？**
 
 >**A**: 这是由于地震预警（EEW）具有随震情演进而不断更新报数的特性（数据会随时间推移变得更精准）。
 >
 > 1. **调大间隔**：您可以在 **推送频率控制 (`push_frequency_control`)** 中调大 `每收到N报推送一次` 的参数。
-> 2. **极简模式**：开启 **是否忽略非最终报 (`ignore_non_final_reports`)**，这样插件只会推送事件的第一报和最后一报。
+> 2. **极简模式**：开启 **是否忽略非最终报 (`ignore_non_final_reports`)**，这样插件只会推送事件的第一报和最后一报。仅适用于 JMA 相关数据源。
 
-**Q: 为什么气象预警推送了很多我不关心的地区？**
+**Q: 为什么插件预警推送了很多我不关心的地区？**
 
 >**A**: 您需要配置精细过滤规则：
 >
-> 1. **开启过滤**：在 **气象预警配置** 中开启 **气象过滤**。
-> 2. **设置白名单**：在 **省份白名单** 中填入您关注的省份名称（如 `["北京", "四川"]`），留空则默认推送全国预警。
-> 3. **设置等级**：调整 **最低预警级别**（如设置为“黄色”），过滤掉轻微的气象消息。
+> 1. **开启过滤**：插件内置了强大的过滤器。您可以前往 **气象预警配置 (`weather_config`)** 或 **地震过滤器 (`earthquake_filters`)** 中开启相应的过滤功能。
+> 2. **本地监控模式**：在 **本地预估烈度 (`local_monitoring`)** 中填入您的位置坐标并开启 **严格过滤模式 (`strict_mode`)**，插件将变身为您的“私人地震卫士”，仅推送您所在地有震感（预估烈度达标）的地震。
+> 3. **设置白名单/黑名单**：
+>    - **气象预警**：在 **省份白名单** 中填入您关注的省份名称（如 `["北京", "四川"]`），留空则默认推送全国预警。
+>    - **地震预警**：在 **关键词过滤器** 中配置黑名单（屏蔽特定地区）或白名单（只看特定地区）。
+> 4. **设置阈值**：
+>    - **气象预警**：调整 **最低预警级别**（如设置为“黄色”），过滤掉轻微的气象消息。
+>    - **地震预警**：调整 **最小震级/烈度/震度**，过滤掉无感的微小地震。
 
 **Q: 为什么 Global Quake 的数据与官方通报（如 CENC）有差异？**
 
@@ -1349,6 +1504,13 @@ graph TD
 > 1. **冗余策略**：为了防止漏报，如果不同机构（如 USGS 和 JMA）对同一地震的定位差异超过 20km 或震级差异较大，会被识别为不同事件。
 > 2. **信息升级**：当事件从“自动测定”转为“正式测定”时，由于信息重要性提升，通常会打破去重策略再次推送。
 
+**Q: 为什么有时候我没有收到第 1 报，却收到了后续的报数？**
+
+>**A**: 可能的原因有：
+>
+> 1. 数据源本身没有推送第 1 报 。
+> 2. 第 1 报及后续某些报数不满足推送标准被过滤，但随着后续数据更新变动又满足，因此会出现推送不完整的情况。
+
 ### 📋 日志查看
 
 插件日志会显示在 AstrBot 的控制台日志中，关键词为`[灾害预警]`。
@@ -1362,17 +1524,13 @@ graph TD
 
 ## 🚧 最新版本的已知限制
 
-**地图链接缩放级别问题**：
-
-- 已知部分地图服务商的缩放级别参数可能不生效。
 - 暂时不支持对单个会话进行精细化的推送配置，目前统一采用全局配置。
-- 需要完善多平台同时推送的逻辑。
-
----
 
 ## 🤝 贡献与支持
 
 欢迎提交 [Issue](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/issues) 和 [Pull Request](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/pulls) 来改进这个插件！
+
+- 对于新功能的添加，请先通过 Issue 等方式讨论。
 
 ### 📞 联系我们
 
@@ -1416,7 +1574,7 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 - [EPSP](https://github.com/p2pquake/epsp-specifications) - 提供 P2P 区域代码和详细的 API 文档。
 - [Wolfx](https://wolfx.jp/) - 提供地震 API 服务。
 - [Global Quake](https://globalquake.net/) - 提供全球地震监测。
-- [Aloys233](https://github.com/Aloys233) - 为插件提供 Global Quake 数据转译、收发服务。以及参与了多项重要的插件功能开发。
+- [Aloys233](https://github.com/Aloys233) - 为插件提供 Global Quake 数据转译、收发服务，提供遥测数据收集服务，以及参与了多项重要的插件功能开发。
 
 ## 📚 推荐阅读
 

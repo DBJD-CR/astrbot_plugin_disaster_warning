@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Map Card</title>
+    <link rel="stylesheet" href="{{ leaflet_css_url }}" />
+    <script src="{{ leaflet_js_url }}"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 600px;
+            height: 400px;
+            background-color: transparent !important;
+            overflow: hidden;
+        }
+        #card-wrapper {
+            width: 600px;
+            height: 400px;
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        #map-container {
+            width: 100%;
+            height: 100%;
+        }
+        .epicenter-marker {
+            font-size: 24px;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="card-wrapper">
+        <div id="map-container"></div>
+    </div>
+
+    <script>
+        const lat = Number("{{ latitude }}");
+        const lng = Number("{{ longitude }}");
+        const zoom = Number("{{ zoom_level }}");
+        const source = "{{ map_source }}";
+
+        // 初始化地图
+        const map = L.map('map-container', {
+            center: [lat, lng],
+            zoom: zoom,
+            zoomControl: false,
+            attributionControl: false
+        });
+
+        // 添加瓦片层
+        L.tileLayer(`https://tilemap.fanstudio.tech/${source}/{z}/{y}/{x}`, {
+            maxZoom: 18,
+            minZoom: 0
+        }).addTo(map);
+
+        // 使用与 Global Quake 卡片一致的震中标记 SVG
+        const svgContent = `
+            <svg width="30" height="30" viewBox="-15 -15 30 30" style="overflow: visible;">
+                <!-- 轮廓 (淡黄色) -->
+                <line x1="-8" y1="-8" x2="8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
+                <line x1="8" y1="-8" x2="-8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
+                <!-- 红色叉 (\) -->
+                <line x1="-8" y1="-8" x2="8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
+                <!-- 红色叉 (/) -->
+                <line x1="8" y1="-8" x2="-8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
+            </svg>
+        `;
+
+        const epicenterIcon = L.divIcon({
+            className: 'epicenter-marker',
+            html: svgContent,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        });
+
+        L.marker([lat, lng], { icon: epicenterIcon }).addTo(map);
+
+        // 标记渲染完成
+        document.body.classList.add('map-ready');
+    </script>
+</body>
+</html>

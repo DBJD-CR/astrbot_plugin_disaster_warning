@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地震列表</title>
+    <style>
+        /* =========================================
+           1. 全局基础设置 (Global Settings)
+           ========================================= */
+        
+        /* 字体定义 */
+        @font-face {
+            font-family: 'MiSans';
+            src: local('MiSans'), local('MiSans-Regular'), local('Microsoft YaHei');
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #333439; /* 卡片整体背景色 */
+            font-family: 'MiSans', 'Microsoft YaHei', sans-serif;
+            color: white;
+            width: 300px; /* 卡片固定宽度 */
+            overflow: hidden;
+        }
+
+        /* 列表容器 */
+        .container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            gap: 4px; /* 列表项之间的间距 */
+            border: 4px solid #333439; /* 容器边框 */
+            box-sizing: border-box;
+        }
+
+        /* 隐藏头部 */
+        .header {
+            display: none;
+        }
+
+        /* =========================================
+           2. 通用列表项样式 (General List Item)
+           适用于列表中的第2个及之后的条目
+           ========================================= */
+        
+        .event-item {
+            display: flex;
+            height: 42px; /* 列表项高度 */
+            position: relative;
+            background-color: #232427; /* 条目背景色 */
+            align-items: stretch;
+            box-sizing: border-box;
+        }
+
+        /* --- 左侧：震度/烈度显示区域 --- */
+        .intensity-box {
+            width: 42px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            position: relative;
+            background-color: transparent; /* 背景透明 */
+        }
+
+        /* 震度数值容器 (实际承载背景色的色块) */
+        .int-content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            line-height: 1;
+            font-family: 'Arial', sans-serif;
+        }
+
+        /* --- 中间：地震信息区域 (地点 + 时间) --- */
+        .info-box {
+            flex-grow: 1; /* 自动占据剩余宽度 */
+            min-width: 0; /* 关键：允许flex子项收缩，防止文字撑开容器 */
+            padding: 0 3px; /* 减小左右内边距，给文字更多空间 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        /* 地点名称 */
+        .location {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 1px;
+            white-space: nowrap; /* 强制单行 */
+            overflow: hidden;
+            text-overflow: ellipsis; /* 超出显示省略号 */
+            color: #fff;
+            line-height: 1.2;
+        }
+
+        /* 时间 */
+        .time {
+            font-size: 12px;
+            color: #ccc;
+            font-family: 'Roboto', 'Arial', sans-serif;
+        }
+
+        /* --- 右侧：元数据区域 (震级) --- */
+        .meta-box {
+            width: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-end;
+            padding-right: 6px; /* 减小右侧内边距 */
+            padding-left: 4px;
+            flex-shrink: 0;
+            height: 100%;
+        }
+
+        /* 震级数值 */
+        .magnitude {
+            font-size: 16px;
+            font-weight: bold;
+            line-height: 1;
+            white-space: nowrap;
+            display: flex;
+            align-items: baseline;
+        }
+        
+        .magnitude span {
+            font-size: 16px;
+            margin-right: 2px;
+            font-weight: normal;
+        }
+
+        /* 普通列表项隐藏深度信息 */
+        .depth {
+            display: none;
+        }
+
+        /* =========================================
+           3. 最新事件特殊样式 (Latest Event Item)
+           列表中的第一个条目，样式特殊且详细
+           ========================================= */
+        
+        /* 增加高度 */
+        .event-item:first-child {
+            height: 74px;
+            background-color: #232427;
+        }
+
+        /* --- 最新事件：左侧震度区域调整 --- */
+        .event-item:first-child .intensity-box {
+            width: 60px;
+            justify-content: flex-end; /* 内容靠底对齐 */
+            padding-top: 0;
+            background-color: #232427; /* 确保背景色与卡片一致 */
+        }
+
+        /* 震度数值色块：高度减小，为顶部标签留出空间 */
+        .event-item:first-child .int-content {
+            height: 60px; /* 74px - 14px = 60px (正方形) */
+            width: 60px;  /* 强制宽度，确保正方形 */
+            font-size: 48px;
+            align-items: center;
+            padding-bottom: 0;
+        }
+
+        /* "最大震度" 标签：位于色块上方，背景为卡片底色 */
+        .event-item:first-child .intensity-box::before {
+            content: attr(data-label);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 14px; /* 顶部标签高度 */
+            line-height: 14px;
+            text-align: center;
+            font-size: 10px;
+            font-weight: normal;
+            color: #ddd; /* 浅灰色文字 */
+            background-color: #232427; /* 关键：使用卡片底色，不透明 */
+            z-index: 2;
+        }
+
+        /* --- 最新事件：中间信息区域调整 --- */
+        .event-item:first-child .info-box {
+            position: absolute;
+            top: 0;
+            left: 60px; /* 紧贴震度框 */
+            right: 0;   /* 延伸到最右侧 */
+            width: auto;
+            height: auto; /* 自适应高度 */
+            bottom: 26px; /* 底部留出空间给 Meta 区域，防止重叠 */
+            padding: 2px 4px 0 4px; /* 减小顶部padding，给文字更多空间 */
+            box-sizing: border-box;
+            display: flex; /* 恢复 flex 布局以便垂直排列 */
+            flex-direction: column;
+            justify-content: flex-start; /* 顶部对齐 */
+        }
+
+        /* 地点：允许换行，显示更完整 */
+        .event-item:first-child .location {
+            font-size: 20px; /* 稍微减小字体以防遮挡 */
+            margin-bottom: 1px;
+            margin-top: 0;
+            white-space: normal; /* 允许换行 */
+            line-height: 1.1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            padding-right: 0;
+        }
+
+        /* 时间 */
+        .event-item:first-child .time {
+            font-size: 13px;
+            color: #ddd;
+            margin-top: 6px; /* 下移，使视觉分布更均匀 */
+        }
+
+        /* --- 最新事件：右侧元数据 (震级+深度) --- */
+        /* 修复：震级在左，深度在右，两端对齐 */
+        .event-item:first-child .meta-box {
+            position: absolute;
+            bottom: 2px; /* 稍微下移，给上方留出更多空间 */
+            left: 60px; /* 紧贴震度框 */
+            right: 0;   /* 延伸到最右侧 */
+            width: auto;
+            height: auto; /* 高度自适应 */
+            flex-direction: row; /* 正常顺序：M在前(左)，深度在后(右) */
+            justify-content: space-between; /* 两端对齐 */
+            align-items: baseline; /* 基线对齐，防止数值飘起 */
+            padding: 0 4px; /* 左右内边距 */
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        /* 震级样式 */
+        .event-item:first-child .magnitude {
+            font-size: 20px;
+            margin-bottom: 0;
+            line-height: 1;
+            /* 确保 M 靠左 */
+            text-align: left;
+            display: flex;
+            align-items: baseline;
+        }
+
+        .event-item:first-child .magnitude span {
+            font-size: 20px;
+            margin-right: 2px;
+            font-weight: bold; /* M 加粗 */
+        }
+
+        /* 深度样式 */
+        .event-item:first-child .depth {
+            display: flex;
+            align-items: baseline;
+            justify-content: flex-end;
+            font-size: 16px;
+            color: #fff;
+            font-weight: bold;
+            line-height: 1; /* 消除底部空白 */
+        }
+        
+        .event-item:first-child .depth .label {
+            font-size: 14px; /* 稍微调大 */
+            font-weight: normal;
+            margin-right: 2px;
+            color: #fff;
+        }
+
+        .event-item:first-child .depth .unit {
+            font-size: 14px; /* 稍微调大 */
+            font-weight: bold;
+            margin-left: 1px;
+            color: #fff;
+        }
+        
+        .event-item:first-child .depth .value {
+            font-size: 20px; /* 稍微调大 */
+            line-height: 1;
+        }
+
+        /* =========================================
+           4. 震度/烈度颜色定义 (Intensity Colors)
+           ========================================= */
+        .int-1 { background-color: #6B7878; }
+        .int-2 { background-color: #1E6EE6; }
+        .int-3 { background-color: #32B464; }
+        .int-4 { background-color: #FFE05D; color: #333; text-shadow: none; }
+        .int-5-weak { background-color: #FFAA13; }
+        .int-5-strong { background-color: #EF700F; }
+        .int-6-weak { background-color: #E60000; }
+        .int-6-strong { background-color: #A00000; }
+        .int-7 { background-color: #5D0090; }
+        .int-unknown { background-color: #6B7878; }
+
+        /* =========================================
+           5. 页脚 (Footer)
+           ========================================= */
+        .footer {
+            padding: 6px 10px;
+            text-align: center;
+            font-size: 11px;
+            color: #999;
+            background-color: #232427;
+            margin-top: 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="card-wrapper">
+        {% for event in events %}
+        <div class="event-item">
+            <!-- 
+                震度/烈度框 
+                data-label: 用于首个卡片显示 "最大烈度" 或 "最大震度"
+            -->
+            <div class="intensity-box" data-label="{% if 'CENC' in source_name %}最大烈度{% else %}最大震度{% endif %}">
+                <!-- 内部色块：承载背景色和数值，与顶部标签分离 -->
+                <div class="int-content {{ event.intensity_class }}">
+                    {{ event.intensity_display }}
+                </div>
+            </div>
+            
+            <!-- 中间信息：地点和时间 -->
+            <div class="info-box">
+                <div class="location">{{ event.location }}</div>
+                <div class="time">{{ event.time }}</div>
+            </div>
+            
+            <!-- 右侧元数据：震级和深度 -->
+            <div class="meta-box">
+                <div class="magnitude"><span>M</span>{{ event.magnitude }}</div>
+                <div class="depth">
+                    <span class="label">深度: </span><span class="value">{{ event.depth | replace('km', '') | replace('KM', '') | replace(' ', '') | trim }}</span><span class="unit">km</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        
+        <div class="footer">
+            {{ footer_text }}
+        </div>
+    </div>
+</body>
+</html>

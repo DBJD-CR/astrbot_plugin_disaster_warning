@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from astrbot.api import logger
 
-from ..models.models import DataSource, DisasterEvent, EarthquakeData
+from ..models.models import DataSource, DisasterEvent, DisasterType, EarthquakeData
 
 
 class EventDeduplicator:
@@ -37,12 +37,9 @@ class EventDeduplicator:
         # 生成事件指纹
         event_fingerprint = self.generate_event_fingerprint(earthquake)
 
-        # 关键修复：如果地震时间解析失败，使用当前时间作为后备
-        current_time = (
-            earthquake.shock_time
-            if earthquake.shock_time is not None
-            else datetime.now()
-        )
+        # 统一使用 UTC 时间进行比较，避免 naive/aware 混合导致的 TypeError
+        # 如果 shock_time 为 None，使用当前 UTC 时间
+        current_time = self._to_utc(earthquake.shock_time, earthquake.source)
 
         logger.debug(
             f"[灾害预警] 检查事件: {event.source.value}, 指纹: {event_fingerprint}"
@@ -57,8 +54,14 @@ class EventDeduplicator:
                 existing_event = source_events[source_id]
 
                 # 如果在时间窗口内，检查是否允许更新
+                # 注意：existing_event["timestamp"] 已经是 UTC aware (由之前的 _to_utc 保证)
+                existing_timestamp = existing_event["timestamp"]
+                if existing_timestamp.tzinfo is None:
+                    # 兼容旧数据的 naive 时间
+                    existing_timestamp = existing_timestamp.astimezone(timezone.utc)
+
                 time_diff = abs(
-                    (current_time - existing_event["timestamp"]).total_seconds() / 60
+                    (current_time - existing_timestamp).total_seconds() / 60
                 )
 
                 if time_diff <= self.time_window.total_seconds() / 60:
@@ -132,6 +135,34 @@ class EventDeduplicator:
 
     def generate_event_fingerprint(self, earthquake: EarthquakeData) -> str:
         """生成事件指纹 - 基于地理位置和震级的简化指纹"""
+        # 对于地震预警 (EEW)，优先使用各数据源共享的事件 ID
+        # 尤其是 JMA，所有数据源 (Fan, Wolfx, P2P) 都使用气象厅分配的 14 位唯一 ID
+        if earthquake.disaster_type == DisasterType.EARTHQUAKE_WARNING:
+            # JMA 地震预警
+            if earthquake.source in [
+                DataSource.FAN_STUDIO_JMA,
+                DataSource.WOLFX_JMA_EEW,
+                DataSource.P2P_EEW,
+            ]:
+                if earthquake.event_id:
+                    return f"jma_{earthquake.event_id}"
+
+            # 中国地震预警 (CEA)
+            if earthquake.source in [
+                DataSource.FAN_STUDIO_CEA,
+                DataSource.WOLFX_CENC_EEW,
+            ]:
+                if earthquake.event_id:
+                    return f"cea_{earthquake.event_id}"
+
+            # 台湾地震预警 (CWA)
+            if earthquake.source in [
+                DataSource.FAN_STUDIO_CWA,
+                DataSource.WOLFX_CWA_EEW,
+            ]:
+                if earthquake.event_id:
+                    return f"cwa_{earthquake.event_id}"
+
         # GlobalQuake使用UUID作为事件ID，直接使用该ID作为指纹
         # 这样可以避免同一事件因为毫秒级时间差异而生成不同指纹
         if earthquake.source == DataSource.GLOBAL_QUAKE:
@@ -157,11 +188,9 @@ class EventDeduplicator:
         )
 
         # 关键修复：处理时间可能为None的情况
-        if earthquake.shock_time is not None:
-            time_minute = earthquake.shock_time.replace(second=0, microsecond=0)
-        else:
-            # 如果时间解析失败，使用当前时间但标记为特殊值
-            time_minute = datetime.now().replace(second=0, microsecond=0)
+        # 统一转换为 UTC 时间生成指纹，提高跨数据源去重能力
+        utc_time = self._to_utc(earthquake.shock_time, earthquake.source)
+        time_minute = utc_time.replace(second=0, microsecond=0)
 
         return f"{lat_grid:.3f},{lon_grid:.3f},{mag_grid:.1f},{time_minute.strftime('%Y%m%d%H%M')}"
 
@@ -266,8 +295,7 @@ class EventDeduplicator:
 
     def cleanup_old_events(self):
         """清理过期事件"""
-        # 准备两种类型的截止时间，以处理 naive 和 aware 的时间戳
-        cutoff_naive = datetime.now() - self.time_window * 2
+        # 统一使用 UTC 时间进行比较
         cutoff_aware = datetime.now(timezone.utc) - self.time_window * 2
 
         old_fingerprints = []
@@ -277,19 +305,59 @@ class EventDeduplicator:
             for event_info in source_events.values():
                 timestamp = event_info["timestamp"]
 
-                # 根据时间戳类型选择对应的截止时间进行比较
+                # 确保存储的时间戳是 aware 的 (由 _to_utc 保证)
+                # 如果旧数据中遗留了 naive 时间，进行兼容处理
                 if timestamp.tzinfo is None:
-                    if timestamp >= cutoff_naive:
-                        all_expired = False
-                        break
-                else:
-                    # offset-aware 时间可以直接与其他 offset-aware 时间比较
-                    if timestamp >= cutoff_aware:
-                        all_expired = False
-                        break
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+                if timestamp >= cutoff_aware:
+                    all_expired = False
+                    break
 
             if all_expired:
                 old_fingerprints.append(fingerprint)
 
         for fingerprint in old_fingerprints:
             del self.recent_events[fingerprint]
+
+    def _to_utc(
+        self, dt: datetime | None, source: DataSource | None = None
+    ) -> datetime:
+        """将时间转换为 UTC Aware，处理 naive/aware 混合情况"""
+        if dt is None:
+            return datetime.now(timezone.utc)
+
+        if dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc)
+
+        # 处理 Naive 时间
+        # JST (UTC+9) 数据源
+        jst_sources = [
+            DataSource.FAN_STUDIO_JMA,
+            DataSource.P2P_EEW,
+            DataSource.P2P_EARTHQUAKE,
+            DataSource.WOLFX_JMA_EEW,
+            DataSource.WOLFX_JMA_EQ,
+            DataSource.P2P_TSUNAMI,
+        ]
+
+        # 检查是否为 JST 数据源
+        is_jst = False
+        if source:
+            # 如果 source 是 DataSource 枚举成员，直接比较
+            if isinstance(source, DataSource):
+                is_jst = source in jst_sources
+            # 如果 source 是枚举的值（字符串），进行比较
+            else:
+                try:
+                    is_jst = any(s.value == source for s in jst_sources)
+                except Exception:
+                    pass
+
+        if is_jst:
+            tz = timezone(timedelta(hours=9))
+        else:
+            # 默认为 UTC+8 (CST) - 适用于中国/台湾/FanStudio转换后的数据
+            tz = timezone(timedelta(hours=8))
+
+        return dt.replace(tzinfo=tz).astimezone(timezone.utc)
