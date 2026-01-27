@@ -37,6 +37,7 @@ class DisasterWarningService:
         self.config = config
         self.context = context
         self.running = False
+        self._start_lock = asyncio.Lock()  # 防止并发启动的锁
 
         # 初始化消息记录器
         self.message_logger = MessageLogger(config, "disaster_warning")
@@ -213,48 +214,51 @@ class DisasterWarningService:
 
     async def start(self):
         """启动服务"""
-        if self.running:
-            return
+        # 使用锁防止并发启动导致的重复连接
+        async with self._start_lock:
+            if self.running:
+                logger.debug("[灾害预警] 服务已在运行中，跳过重复启动")
+                return
 
-        try:
-            self.running = True
-            self.start_time = datetime.now(timezone.utc)  # 记录启动时间
-            logger.info("[灾害预警] 正在启动灾害预警服务...")
+            try:
+                self.running = True
+                self.start_time = datetime.now(timezone.utc)  # 记录启动时间
+                logger.info("[灾害预警] 正在启动灾害预警服务...")
 
-            # 加载缓存数据
-            self._load_earthquake_lists_cache()
+                # 加载缓存数据
+                self._load_earthquake_lists_cache()
 
-            # 启动WebSocket管理器
-            await self.ws_manager.start()
+                # 启动WebSocket管理器
+                await self.ws_manager.start()
 
-            # 建立WebSocket连接
-            await self._establish_websocket_connections()
+                # 建立WebSocket连接
+                await self._establish_websocket_connections()
 
-            # 启动定时HTTP数据获取
-            await self._start_scheduled_http_fetch()
+                # 启动定时HTTP数据获取
+                await self._start_scheduled_http_fetch()
 
-            # 启动清理任务
-            await self._start_cleanup_task()
+                # 启动清理任务
+                await self._start_cleanup_task()
 
-            # 检查并提示日志记录器状态
-            if self.message_logger.enabled:
-                logger.debug(
-                    f"[灾害预警] 原始消息日志记录已启用，日志文件: {self.message_logger.log_file_path}"
-                )
-            else:
-                logger.debug(
-                    "[灾害预警] 原始消息日志记录未启用。如需调试或记录原始数据，请使用命令 '/灾害预警日志开关' 启用。"
-                )
+                # 检查并提示日志记录器状态
+                if self.message_logger.enabled:
+                    logger.debug(
+                        f"[灾害预警] 原始消息日志记录已启用，日志文件: {self.message_logger.log_file_path}"
+                    )
+                else:
+                    logger.debug(
+                        "[灾害预警] 原始消息日志记录未启用。如需调试或记录原始数据，请使用命令 '/灾害预警日志开关' 启用。"
+                    )
 
-            logger.info("[灾害预警] 灾害预警服务已启动")
+                logger.info("[灾害预警] 灾害预警服务已启动")
 
-        except Exception as e:
-            logger.error(f"[灾害预警] 启动服务失败: {e}")
-            self.running = False
-            # 上报启动失败错误到遥测
-            if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.disaster_service.start")
-            raise
+            except Exception as e:
+                logger.error(f"[灾害预警] 启动服务失败: {e}")
+                self.running = False
+                # 上报启动失败错误到遥测
+                if self._telemetry and self._telemetry.enabled:
+                    await self._telemetry.track_error(e, module="core.disaster_service.start")
+                raise
 
     async def stop(self):
         """停止服务"""
@@ -292,6 +296,8 @@ class DisasterWarningService:
 
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""
+        logger.debug(f"[灾害预警] 开始建立WebSocket连接，当前任务数: {len(self.connection_tasks)}")
+        
         for conn_name, conn_config in self.connections.items():
             if conn_config["handler"] in ["fan_studio", "p2p", "wolfx", "global_quake"]:
                 # 使用WebSocket管理器功能，传递连接信息
@@ -321,6 +327,8 @@ class DisasterWarningService:
                 logger.debug(
                     f"[灾害预警] 已启动WebSocket连接任务: {conn_name} (数据源: {connection_info['data_source']}{backup_info})"
                 )
+        
+        logger.debug(f"[灾害预警] WebSocket连接建立完成，总任务数: {len(self.connection_tasks)}")
 
     def _get_data_source_from_connection(self, connection_name: str) -> str:
         """从连接名称获取数据源ID"""
