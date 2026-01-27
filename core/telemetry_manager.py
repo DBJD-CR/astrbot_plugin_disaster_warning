@@ -49,7 +49,7 @@ class TelemetryManager:
 
         # 从配置中读取遥测开关
         telemetry_config = config.get("telemetry_config", {})
-        self._enabled = telemetry_config.get("enabled", False)
+        self._enabled = telemetry_config.get("enabled", True)
 
         # 获取或创建实例 ID（存储在插件数据目录中）
         self._instance_id = self._get_or_create_instance_id()
