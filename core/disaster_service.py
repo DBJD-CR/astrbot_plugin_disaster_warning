@@ -21,6 +21,7 @@ from ..models.models import (
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
+    get_data_source_from_id,
 )
 from .handler_registry import WebSocketHandlerRegistry
 from .handlers import DATA_HANDLERS
@@ -66,6 +67,9 @@ class DisasterWarningService:
 
         # 定时任务
         self.scheduled_tasks = []
+        
+        # Web 管理端服务器引用（用于事件驱动的 WebSocket 推送）
+        self.web_admin_server = None
 
         # 地震列表缓存（用于查询指令）
         self.earthquake_lists = {"cenc": {}, "jma": {}}
@@ -623,6 +627,20 @@ class DisasterWarningService:
                 logger.debug(f"[灾害预警] ✅ 事件推送成功: {event.id}")
             else:
                 logger.debug(f"[灾害预警] 事件推送被过滤: {event.id}")
+            
+            # 实时通知 Web 管理端（如果已配置）
+            if self.web_admin_server:
+                try:
+                    # 构建事件摘要
+                    event_summary = {
+                        "id": event.id,
+                        "type": event.disaster_type.value if hasattr(event.disaster_type, 'value') else str(event.disaster_type),
+                        "source": event.source.value if hasattr(event.source, 'value') else str(event.source),
+                        "time": datetime.now().isoformat()
+                    }
+                    await self.web_admin_server.notify_event(event_summary)
+                except Exception as ws_e:
+                    logger.debug(f"[灾害预警] WebSocket 通知失败: {ws_e}")
 
         except Exception as e:
             logger.error(f"[灾害预警] 处理灾害事件失败: {e}")
@@ -692,6 +710,7 @@ class DisasterWarningService:
             if self.message_logger
             else False,
             "uptime": self._get_uptime(),  # 添加运行时间
+            "start_time": self.start_time.isoformat() if hasattr(self, "start_time") else None,
         }
 
     def _get_uptime(self) -> str:
