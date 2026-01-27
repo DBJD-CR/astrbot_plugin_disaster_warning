@@ -88,13 +88,13 @@
 >
 > 开发时长：累计 39 天（主插件部分）
 >
-> 累计工时：约 186 小时（主插件部分）
+> 累计工时：约 189 小时（主插件部分）
 >
 > 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro (With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：529,806,955
+> Tokens Used：544,806,955
 
 ## ✨ 功能特性
 
