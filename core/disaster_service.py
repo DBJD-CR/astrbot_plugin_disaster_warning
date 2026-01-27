@@ -110,7 +110,7 @@ class DisasterWarningService:
             logger.error(f"[灾害预警] 初始化服务失败: {e}")
             # 上报初始化失败错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.disaster_service.__init__")
+                await self._telemetry.track_error(e, module="core.disaster_service.initialize")
             raise
 
     def _register_handlers(self):

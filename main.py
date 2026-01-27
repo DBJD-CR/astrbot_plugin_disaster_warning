@@ -869,7 +869,7 @@ class DisasterWarningPlugin(Star):
             logger.error(f"[灾害预警] 模拟测试失败: {e}\n{error_trace}")
             # 上报模拟测试错误到遥测
             if self.telemetry and self.telemetry.enabled:
-                await self.telemetry.track_error(e, module="main.simulate_test")
+                await self.telemetry.track_error(e, module="main.simulate_earthquake")
             yield event.plain_result(f"❌ 模拟失败: {e}")
 
     @filter.on_astrbot_loaded()
