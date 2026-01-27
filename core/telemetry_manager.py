@@ -11,15 +11,15 @@
 
 import asyncio
 import base64
+import copy
 import platform
 import re
-import uuid
 import traceback
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
-
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
@@ -154,11 +154,14 @@ class TelemetryManager:
 
         except asyncio.TimeoutError:
             logger.debug("[灾害预警] 遥测请求超时")
+            return False
         except aiohttp.ClientError as e:
             logger.debug(f"[灾害预警] 遥测网络错误: {e}")
+            return False
         except Exception as e:
             # 静默处理所有错误，不影响插件正常运行
             logger.debug(f"[灾害预警] 未知错误: {e}")
+            return False
 
         return False
 
@@ -183,60 +186,40 @@ class TelemetryManager:
 
     async def track_config(self, config: dict) -> bool:
         """
-        上报配置快照 (脱敏后)
-        只收集统计性数据，不包含任何敏感信息
+        上报配置快照
+        收集除敏感信息外的所有配置项
+        敏感信息过滤列表：
+        - admin_users
+        - target_sessions
+        - local_monitoring.latitude
+        - local_monitoring.longitude
+        - local_monitoring.place_name
         """
         if not self._enabled:
             return False
 
-        # 提取脱敏的配置摘要
         try:
-            data_sources = config.get("data_sources", {})
-            local_monitoring = config.get("local_monitoring", {})
-            filters = config.get("earthquake_filters", {})
-            weather = config.get("weather_config", {})
+            # 深拷贝配置，避免修改原对象
+            config_copy = copy.deepcopy(config)
+            
+            # 移除顶层敏感字段
+            if "admin_users" in config_copy:
+                del config_copy["admin_users"]
+            if "target_sessions" in config_copy:
+                del config_copy["target_sessions"]
+                
+            # 移除本地监控敏感字段
+            if "local_monitoring" in config_copy:
+                lm = config_copy["local_monitoring"]
+                if isinstance(lm, dict):
+                    if "latitude" in lm:
+                        del lm["latitude"]
+                    if "longitude" in lm:
+                        del lm["longitude"]
+                    if "place_name" in lm:
+                        del lm["place_name"]
 
-            # 统计启用的数据源数量
-            enabled_sources_count = 0
-            for service_name, service_config in data_sources.items():
-                if isinstance(service_config, dict) and service_config.get(
-                    "enabled", False
-                ):
-                    # 计算该服务下启用的子项数量
-                    for key, value in service_config.items():
-                        if key != "enabled" and value is True:
-                            enabled_sources_count += 1
-
-            snapshot = {
-                # 数据源统计
-                "sources_enabled": enabled_sources_count,
-                "fan_studio_enabled": data_sources.get("fan_studio", {}).get(
-                    "enabled", False
-                ),
-                "p2p_enabled": data_sources.get("p2p_earthquake", {}).get(
-                    "enabled", False
-                ),
-                "wolfx_enabled": data_sources.get("wolfx", {}).get("enabled", False),
-                "global_quake_enabled": data_sources.get("global_quake", {}).get(
-                    "enabled", False
-                ),
-                # 本地监控
-                "local_monitoring_enabled": local_monitoring.get("enabled", False),
-                "local_strict_mode": local_monitoring.get("strict_mode", False),
-                # 过滤器
-                "intensity_filter_enabled": filters.get("intensity_filter", {}).get(
-                    "enabled", False
-                ),
-                "scale_filter_enabled": filters.get("scale_filter", {}).get(
-                    "enabled", False
-                ),
-                # 气象
-                "weather_filter_enabled": weather.get("weather_filter", {}).get(
-                    "enabled", False
-                ),
-            }
-
-            return await self.track("config", snapshot)
+            return await self.track("config", config_copy)
 
         except Exception as e:
             logger.debug(f"[灾害预警] 配置快照提取失败: {e}")
