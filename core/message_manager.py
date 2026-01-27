@@ -53,9 +53,10 @@ from .filters import (
 class MessagePushManager:
     """消息推送管理器"""
 
-    def __init__(self, config: dict[str, Any], context):
+    def __init__(self, config: dict[str, Any], context, telemetry=None):
         self.config = config
         self.context = context
+        self._telemetry = telemetry
         # 初始化插件根目录 (用于访问 resources)
         self.plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -144,7 +145,7 @@ class MessagePushManager:
         self.weather_filter = WeatherFilter(weather_filter_config)
 
         # 初始化浏览器管理器
-        self.browser_manager = BrowserManager(pool_size=2)
+        self.browser_manager = BrowserManager(pool_size=2, telemetry=telemetry)
 
         # 检查是否需要预启动浏览器
         # 如果启用了地图瓦片 (include_map) 或 Global Quake 卡片 (use_global_quake_card)
@@ -496,6 +497,9 @@ class MessagePushManager:
 
         except Exception as e:
             logger.error(f"[灾害预警] 推送事件失败: {e}")
+            # 上报推送失败错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.message_manager._execute_push")
             return False
 
     async def _push_split_map(

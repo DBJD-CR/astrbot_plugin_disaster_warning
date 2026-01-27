@@ -17,12 +17,13 @@ from astrbot.api import logger
 class BrowserManager:
     """浏览器管理器 - 单例浏览器 + 页面对象池"""
 
-    def __init__(self, pool_size: int = 2):
+    def __init__(self, pool_size: int = 2, telemetry=None):
         """
         初始化浏览器管理器
 
         Args:
             pool_size: 页面池大小，默认 2 个页面
+            telemetry: 遥测管理器（可选）
         """
         self.pool_size = pool_size
         self._browser: Browser | None = None
@@ -31,6 +32,7 @@ class BrowserManager:
         self._semaphore = asyncio.Semaphore(pool_size)  # 并发控制
         self._initialized = False
         self._closed = False
+        self._telemetry = telemetry
 
     async def initialize(self):
         """初始化浏览器和页面池"""
@@ -66,6 +68,9 @@ class BrowserManager:
 
         except Exception as e:
             logger.error(f"[灾害预警] 浏览器初始化失败: {e}")
+            # 上报浏览器初始化错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.browser_manager.initialize")
             # 清理已创建的资源
             await self._cleanup()
             raise
@@ -179,6 +184,9 @@ class BrowserManager:
 
         except Exception as e:
             logger.error(f"[灾害预警] 卡片渲染失败: {e}")
+            # 上报卡片渲染错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.browser_manager.render_card")
             # 如果页面损坏，尝试重新创建一个新页面
             if page:
                 try:

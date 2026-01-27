@@ -18,9 +18,10 @@ from astrbot.api import logger
 class WebSocketManager:
     """WebSocket连接管理器"""
 
-    def __init__(self, config: dict[str, Any], message_logger=None):
+    def __init__(self, config: dict[str, Any], message_logger=None, telemetry=None):
         self.config = config
         self.message_logger = message_logger
+        self._telemetry = telemetry
         self.connections: dict[str, ClientWebSocketResponse] = {}
         self.message_handlers: dict[str, Callable] = {}
         self.reconnect_tasks: dict[str, asyncio.Task] = {}
@@ -159,6 +160,11 @@ class WebSocketManager:
         except Exception as e:
             logger.error(f"[灾害预警] 未知连接错误 {name}: {type(e).__name__} - {e}")
             logger.debug(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
+            # 上报未知 WebSocket 错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                asyncio.create_task(
+                    self._telemetry.track_error(e, module=f"core.websocket_manager.connect.{name}")
+                )
             self._handle_connection_error(name, uri, headers, e)
 
     def _log_message(self, name: str, message: Any, uri: str):
