@@ -11,6 +11,7 @@
 
 import asyncio
 import base64
+import copy
 import platform
 import re
 import traceback
@@ -199,7 +200,6 @@ class TelemetryManager:
 
         try:
             # 深拷贝配置，避免修改原对象
-            import copy
             config_copy = copy.deepcopy(config)
             
             # 移除顶层敏感字段
