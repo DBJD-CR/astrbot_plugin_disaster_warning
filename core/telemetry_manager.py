@@ -153,11 +153,14 @@ class TelemetryManager:
 
         except asyncio.TimeoutError:
             logger.debug("[灾害预警] 遥测请求超时")
+            return False
         except aiohttp.ClientError as e:
             logger.debug(f"[灾害预警] 遥测网络错误: {e}")
+            return False
         except Exception as e:
             # 静默处理所有错误，不影响插件正常运行
             logger.debug(f"[灾害预警] 未知错误: {e}")
+            return False
 
         return False
 
