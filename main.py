@@ -76,6 +76,12 @@ class DisasterWarningPlugin(Star):
             if self.disaster_service:
                 self.disaster_service.set_telemetry(self.telemetry)
 
+            # 设置全局 asyncio 异常处理器（捕获未处理的 task 异常）
+            if self.telemetry.enabled:
+                loop = asyncio.get_event_loop()
+                loop.set_exception_handler(self._handle_asyncio_exception)
+                logger.debug("[灾害预警] 已设置全局异常处理器")
+
             if self.telemetry.enabled:
                 # 发送启动事件和配置快照
                 asyncio.create_task(self.telemetry.track_startup())
@@ -83,6 +89,9 @@ class DisasterWarningPlugin(Star):
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
+            # 上报初始化失败错误到遥测
+            if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+                await self.telemetry.track_error(e, module="main.initialize")
             raise
 
     async def terminate(self):
@@ -120,6 +129,60 @@ class DisasterWarningPlugin(Star):
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件停止时出错: {e}")
+            # 上报停止错误到遥测
+            if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+                await self.telemetry.track_error(e, module="main.terminate")
+
+    def _handle_asyncio_exception(self, loop, context):
+        """
+        全局 asyncio 异常处理器
+        捕获未被处理的 asyncio task 异常并上报到遥测
+        """
+        # 获取异常信息
+        exception = context.get('exception')
+        message = context.get('message', '未知异常')
+        
+        # 记录日志
+        if exception:
+            logger.error(f"[灾害预警] 捕获未处理的异步异常: {exception}")
+            logger.error(f"[灾害预警] 异常上下文: {message}")
+        else:
+            logger.error(f"[灾害预警] 捕获未处理的异步错误: {message}")
+        
+        # 上报到遥测
+        if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+            if exception:
+                # 提取 task 名称或协程名称
+                task = context.get('future')
+                task_name = "unknown"
+                if task:
+                    # 尝试提取 task name（如 'Task-323'）
+                    task_name = getattr(task, 'get_name', lambda: str(task))()
+                    if not task_name or task_name == str(task):
+                        # 如果没有名字，尝试从 repr 中提取
+                        task_repr = repr(task)
+                        if "name=" in task_repr:
+                            import re
+                            match = re.search(r"name='([^']+)'", task_repr)
+                            if match:
+                                task_name = match.group(1)
+                
+                # 创建一个新的 task 来上报错误（避免在异常处理器中使用 await）
+                asyncio.create_task(
+                    self.telemetry.track_error(
+                        exception, 
+                        module=f"main.unhandled_async.{task_name}"
+                    )
+                )
+            else:
+                # 如果没有具体的异常对象，创建一个 RuntimeError
+                runtime_error = RuntimeError(message)
+                asyncio.create_task(
+                    self.telemetry.track_error(
+                        runtime_error,
+                        module="main.unhandled_async"
+                    )
+                )
 
     @filter.command("灾害预警")
     async def disaster_warning_help(self, event: AstrMessageEvent):
@@ -804,6 +867,9 @@ class DisasterWarningPlugin(Star):
         except Exception as e:
             error_trace = traceback.format_exc()
             logger.error(f"[灾害预警] 模拟测试失败: {e}\n{error_trace}")
+            # 上报模拟测试错误到遥测
+            if self.telemetry and self.telemetry.enabled:
+                await self.telemetry.track_error(e, module="main.simulate_earthquake")
             yield event.plain_result(f"❌ 模拟失败: {e}")
 
     @filter.on_astrbot_loaded()

@@ -44,15 +44,17 @@ class DisasterWarningService:
         # 初始化统计管理器
         self.statistics_manager = StatisticsManager()
 
-        # 初始化组件
-        self.ws_manager = WebSocketManager(
-            config.get("websocket_config", {}), self.message_logger
-        )
-        self.http_fetcher: HTTPDataFetcher | None = None
-        self.message_manager = MessagePushManager(config, context)
-
         # 遥测管理器引用 (由 main.py 注入)
         self._telemetry: TelemetryManager | None = None
+
+        # 初始化组件（传入 telemetry，但此时可能为 None）
+        self.ws_manager = WebSocketManager(
+            config.get("websocket_config", {}), self.message_logger, telemetry=self._telemetry
+        )
+        self.http_fetcher: HTTPDataFetcher | None = None
+        
+        # 初始化消息管理器
+        self.message_manager = MessagePushManager(config, context, telemetry=self._telemetry)
 
         # 数据处理器
         self.handlers = {}
@@ -80,6 +82,13 @@ class DisasterWarningService:
     def set_telemetry(self, telemetry: Optional["TelemetryManager"]):
         """设置遥测管理器引用"""
         self._telemetry = telemetry
+        # 同时更新子组件的遥测引用
+        if self.ws_manager:
+            self.ws_manager._telemetry = telemetry
+        if self.message_manager:
+            self.message_manager._telemetry = telemetry
+            if self.message_manager.browser_manager:
+                self.message_manager.browser_manager._telemetry = telemetry
 
     async def initialize(self):
         """初始化服务"""
@@ -99,6 +108,9 @@ class DisasterWarningService:
 
         except Exception as e:
             logger.error(f"[灾害预警] 初始化服务失败: {e}")
+            # 上报初始化失败错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.disaster_service.initialize")
             raise
 
     def _register_handlers(self):
@@ -239,6 +251,9 @@ class DisasterWarningService:
         except Exception as e:
             logger.error(f"[灾害预警] 启动服务失败: {e}")
             self.running = False
+            # 上报启动失败错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.disaster_service.start")
             raise
 
     async def stop(self):
@@ -271,6 +286,9 @@ class DisasterWarningService:
 
         except Exception as e:
             logger.error(f"[灾害预警] 停止服务时出错: {e}")
+            # 上报停止服务错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.disaster_service.stop")
 
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""
