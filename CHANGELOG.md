@@ -5,6 +5,24 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+# 2026/01/27 v1.3.6
+
+Hot Fix For v1.3.5
+
+## 🚀 What's Changed
+
+### 🐛 Bug Fixes (修复)
+
+- 修复了预警消息重复推送的问题 in #55 by @Aloys233
+- 修复并增强了遥测的错误上报功能 in #51 by @Aloys233
+- 修复了未清理干净的函数调用 by @DBJD-CR
+
+---
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.3.1...v1.3.6
+
+---
+
 # 2026/01/27 v1.3.5
 
 > [!IMPORTANT]
@@ -29,7 +47,7 @@
   - 新增 **中国省份常量列表 (Model)**：增强文件复用性，让代码更简洁 by @DBJD-CR
 - **Commands (指令系统)**:
   - 新增 `/地震列表查询` 指令：支持查询历史地震记录，并配备了仿 `JQuake` 风格的精美 **卡片渲染模板** by @DBJD-CR
-  - 新增 `/灾害预警推送开关` 指令：支持在群组/会话中快速开启或关闭推送功能 by @Aloys233 & @DBJD-CR in # 44 & # 46
+  - 新增 `/灾害预警推送开关` 指令：支持在群组/会话中快速开启或关闭推送功能 by @Aloys233 & @DBJD-CR in #44 & #46
 - **Configuration (配置升级)**:
   - **UMO 重构**：全面重构会话构建逻辑，支持更灵活的多平台/多实例推送配置 by @DBJD-CR
   - 新增 **自定义时区** 配置项，优化跨时区服务器的时间显示问题 by @DBJD-CR
@@ -69,13 +87,9 @@
 
 - **Badges**: 新增 **高仿 GitHub Trending** 与 **Plugin Market Rank** 徽章，排面拉满 by @DBJD-CR
 - **Changelog**: 初始提交 - 新增符合 AstrBot v4.12.0+ 规范的 **插件更新日志文档** (`CHANGELOG.md`)，支持在  AstrBot WebUI 直接查看更新日志 by @DBJD-CR
-- **Guide**: 更新适用于 v1.3.5 的 `README.md` 和 `CONTRIBUTING.md`，以及众多插件文件中的文字描述 by @DBJD-CR & @copilot-swe-agent[bot]
+- **Guide**: 更新适用于 v1.3.5 的 `README.md` 和 `CONTRIBUTING.md`，以及众多插件文件中的文字描述 by @DBJD-CR
 
 ---
-
-## ❤️ New Contributors
-
-@copilot-swe-agent[bot] made their first contribution in # 46
 
 > 下个版本中将会推出插件自己的 WebUI 并实现精细化的配置管理，敬请期待！
 
