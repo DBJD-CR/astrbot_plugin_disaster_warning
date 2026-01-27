@@ -51,8 +51,9 @@ class GlobalQuakeHandler(BaseDataHandler):
             action = data.get("action")
 
             if msg_type == "earthquake":
+                eq_id = data.get("data", {}).get("id", "unknown")
                 logger.debug(
-                    f"[灾害预警] {self.source_id} 收到地震消息，action: {action}"
+                    f"[灾害预警] {self.source_id} 收到地震消息，action: {action}, id: {eq_id}"
                 )
                 return self._parse_earthquake_data(data)
             else:

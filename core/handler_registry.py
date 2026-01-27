@@ -443,18 +443,33 @@ class WebSocketHandlerRegistry:
 
     def _create_global_quake_handler(self):
         """创建 Global Quake WebSocket 处理器"""
+        
+        # Counter to track handler invocations
+        call_counter = {"count": 0}
 
         async def global_quake_handler(
             message, connection_name=None, connection_info=None
         ):
+            # Increment call counter
+            call_counter["count"] += 1
+            call_id = call_counter["count"]
+            
+            # Extract event ID for tracking
+            import json
+            try:
+                msg_data = json.loads(message)
+                event_id = msg_data.get("data", {}).get("id", "unknown")
+            except:
+                event_id = "unknown"
+            
             # 利用connection_info增强日志记录
             if connection_info:
-                logger.debug(
-                    f"[灾害预警] Global Quake处理器收到消息 - 连接: {connection_name}, URI: {connection_info.get('uri', 'unknown')}"
+                logger.info(
+                    f"[灾害预警] [Call#{call_id}] Global Quake处理器收到消息 - 连接: {connection_name}, URI: {connection_info.get('uri', 'unknown')}, 事件ID: {event_id}"
                 )
             else:
-                logger.debug(
-                    f"[灾害预警] Global Quake处理器收到消息 - 连接: {connection_name}"
+                logger.info(
+                    f"[灾害预警] [Call#{call_id}] Global Quake处理器收到消息 - 连接: {connection_name}, 事件ID: {event_id}"
                 )
 
             handler = self.service.handlers.get("global_quake")

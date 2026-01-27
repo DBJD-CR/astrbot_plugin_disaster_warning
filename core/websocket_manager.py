@@ -100,6 +100,11 @@ class WebSocketManager:
                         if msg.type == WSMsgType.TEXT:
                             message = msg.data
                             try:
+                                # Debug: Log message hash to detect duplicates
+                                import hashlib
+                                msg_hash = hashlib.md5(message.encode()).hexdigest()[:8]
+                                logger.debug(f"[灾害预警] WebSocket收到消息 - 连接: {name}, 消息哈希: {msg_hash}")
+                                
                                 # 记录原始消息
                                 if self.message_logger:
                                     self._log_message(name, message, uri)
