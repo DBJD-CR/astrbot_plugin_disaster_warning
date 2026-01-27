@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AstrBot-v4.10.2%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.10.2">
+  <img src="https://img.shields.io/badge/AstrBot-v4.12.1%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.12.1">
   <img src="https://img.shields.io/github/v/release/DBJD-CR/astrbot_plugin_disaster_warning?label=Release&color=brightgreen" alt="Latest Release">
   <img src="https://img.shields.io/badge/QQ群-1033089808-12B7F3.svg" alt="QQ Group">
 </p>
