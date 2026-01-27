@@ -152,11 +152,26 @@ class DisasterWarningPlugin(Star):
         # 上报到遥测
         if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
             if exception:
+                # 提取 task 名称或协程名称
+                task = context.get('future')
+                task_name = "unknown"
+                if task:
+                    # 尝试提取 task name（如 'Task-323'）
+                    task_name = getattr(task, 'get_name', lambda: str(task))()
+                    if not task_name or task_name == str(task):
+                        # 如果没有名字，尝试从 repr 中提取
+                        task_repr = repr(task)
+                        if "name=" in task_repr:
+                            import re
+                            match = re.search(r"name='([^']+)'", task_repr)
+                            if match:
+                                task_name = match.group(1)
+                
                 # 创建一个新的 task 来上报错误（避免在异常处理器中使用 await）
                 asyncio.create_task(
                     self.telemetry.track_error(
                         exception, 
-                        module=f"main.unhandled_async.{context.get('future', 'unknown')}"
+                        module=f"main.unhandled_async.{task_name}"
                     )
                 )
             else:
