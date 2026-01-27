@@ -218,9 +218,6 @@ class DisasterWarningService:
             # 建立WebSocket连接
             await self._establish_websocket_connections()
 
-            # 启动Global Quake连接（如果启用）
-            await self._start_global_quake_connection()
-
             # 启动定时HTTP数据获取
             await self._start_scheduled_http_fetch()
 
