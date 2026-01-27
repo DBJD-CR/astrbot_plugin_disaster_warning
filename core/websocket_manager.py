@@ -33,7 +33,7 @@ class WebSocketManager:
     def register_handler(self, connection_name: str, handler: Callable):
         """注册消息处理器"""
         self.message_handlers[connection_name] = handler
-        logger.info(f"[灾害预警] 注册处理器: {connection_name}")
+        logger.debug(f"[灾害预警] 注册处理器: {connection_name}")
 
     async def connect(
         self,

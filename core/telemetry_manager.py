@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
+
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
@@ -56,11 +57,12 @@ class TelemetryManager:
         # aiohttp session (延迟初始化)
         self._session: aiohttp.ClientSession | None = None
 
-
         self._env = "production"
 
         if self._enabled:
-            logger.info(f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})")
+            logger.debug(
+                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})"
+            )
         else:
             logger.debug("[灾害预警] 遥测功能未启用")
 
@@ -125,11 +127,13 @@ class TelemetryManager:
             "instance_id": self._instance_id,
             "version": self._plugin_version,
             "env": self._env,
-            "batch": [{
-                "event": event_name,
-                "data": data or {},
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }]
+            "batch": [
+                {
+                    "event": event_name,
+                    "data": data or {},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
         }
 
         try:
@@ -177,12 +181,17 @@ class TelemetryManager:
             },
         )
 
-    async def track_shutdown(self, exit_code: int = 0, runtime_seconds: float = 0) -> bool:
+    async def track_shutdown(
+        self, exit_code: int = 0, runtime_seconds: float = 0
+    ) -> bool:
         """上报退出事件"""
-        return await self.track("shutdown", {
-            "exit_code": exit_code,
-            "runtime_seconds": runtime_seconds,
-        })
+        return await self.track(
+            "shutdown",
+            {
+                "exit_code": exit_code,
+                "runtime_seconds": runtime_seconds,
+            },
+        )
 
     async def track_config(self, config: dict) -> bool:
         """
@@ -201,13 +210,13 @@ class TelemetryManager:
         try:
             # 深拷贝配置，避免修改原对象
             config_copy = copy.deepcopy(config)
-            
+
             # 移除顶层敏感字段
             if "admin_users" in config_copy:
                 del config_copy["admin_users"]
             if "target_sessions" in config_copy:
                 del config_copy["target_sessions"]
-                
+
             # 移除本地监控敏感字段
             if "local_monitoring" in config_copy:
                 lm = config_copy["local_monitoring"]
@@ -239,7 +248,7 @@ class TelemetryManager:
     ) -> bool:
         """
         上报错误事件
-        
+
         Args:
             exception: 捕获的异常对象
             module: 发生错误的模块名
@@ -247,17 +256,19 @@ class TelemetryManager:
         # 先脱敏再截断，防止截断导致脱敏正则匹配失败
         raw_message = str(exception)
         sanitized_message = self._sanitize_message(raw_message)
-        
+
         data = {
             "type": type(exception).__name__,
             "message": sanitized_message[:500],
             "module": module,
             "severity": "error",
         }
-        
+
         # 获取堆栈并脱敏
         stack = "".join(
-            traceback.format_exception(type(exception), exception, exception.__traceback__)
+            traceback.format_exception(
+                type(exception), exception, exception.__traceback__
+            )
         )
         data["stack"] = self._sanitize_stack(stack)[:4000]
 

@@ -229,11 +229,11 @@ class DisasterWarningService:
 
             # 检查并提示日志记录器状态
             if self.message_logger.enabled:
-                logger.info(
+                logger.debug(
                     f"[灾害预警] 原始消息日志记录已启用，日志文件: {self.message_logger.log_file_path}"
                 )
             else:
-                logger.info(
+                logger.debug(
                     "[灾害预警] 原始消息日志记录未启用。如需调试或记录原始数据，请使用命令 '/灾害预警日志开关' 启用。"
                 )
 
@@ -303,7 +303,7 @@ class DisasterWarningService:
                     if conn_config.get("backup_url")
                     else ""
                 )
-                logger.info(
+                logger.debug(
                     f"[灾害预警] 已启动WebSocket连接任务: {conn_name} (数据源: {connection_info['data_source']}{backup_info})"
                 )
 
@@ -437,7 +437,7 @@ class DisasterWarningService:
                     data = json.load(f)
                     if isinstance(data, dict) and "cenc" in data and "jma" in data:
                         self.earthquake_lists = data
-                        logger.info("[灾害预警] 已恢复 Wolfx 地震列表本地缓存")
+                        logger.debug("[灾害预警] 已恢复 Wolfx 地震列表本地缓存")
             else:
                 logger.debug("[灾害预警] 本地缓存文件不存在，将使用空的 Wolfx 地震列表")
         except Exception as e:

@@ -79,9 +79,7 @@ class DisasterWarningPlugin(Star):
             if self.telemetry.enabled:
                 # 发送启动事件和配置快照
                 asyncio.create_task(self.telemetry.track_startup())
-                asyncio.create_task(
-                    self.telemetry.track_config(dict(self.config))
-                )
+                asyncio.create_task(self.telemetry.track_config(dict(self.config)))
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")

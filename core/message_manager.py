@@ -843,7 +843,7 @@ class MessagePushManager:
         if self.browser_manager:
             try:
                 await self.browser_manager.close()
-                logger.info("[灾害预警] 浏览器管理器已关闭")
+                logger.debug("[灾害预警] 浏览器管理器已关闭")
             except Exception as e:
                 logger.error(f"[灾害预警] 关闭浏览器管理器失败: {e}")
 

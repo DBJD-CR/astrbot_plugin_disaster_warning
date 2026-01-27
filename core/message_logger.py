@@ -93,11 +93,11 @@ class MessageLogger:
 
         logger.info("[灾害预警] 消息记录器初始化完成")
         if self.filter_heartbeat:
-            logger.info("[灾害预警] 消息过滤配置已启用:")
-            logger.info(f"[灾害预警] - 基础类型过滤: {self.filter_types}")
-            logger.info(f"[灾害预警] - P2P节点状态过滤: {self.filter_p2p_areas}")
-            logger.info(f"[灾害预警] - 重复事件过滤: {self.filter_duplicate_events}")
-            logger.info(f"[灾害预警] - 连接状态过滤: {self.filter_connection_status}")
+            logger.debug("[灾害预警] 消息过滤配置已启用:")
+            logger.debug(f"[灾害预警] - 基础类型过滤: {self.filter_types}")
+            logger.debug(f"[灾害预警] - P2P节点状态过滤: {self.filter_p2p_areas}")
+            logger.debug(f"[灾害预警] - 重复事件过滤: {self.filter_duplicate_events}")
+            logger.debug(f"[灾害预警] - 连接状态过滤: {self.filter_connection_status}")
 
     def _should_filter_message(self, raw_data: Any, source_id: str = "") -> str:
         """判断是否应该过滤该消息，返回过滤原因，空字符串表示不过滤"""
@@ -900,7 +900,7 @@ class MessageLogger:
                             except (ValueError, IndexError):
                                 continue
 
-                logger.info(
+                logger.debug(
                     f"[灾害预警] 成功加载 {len(area_mapping)} 个P2P区域代码映射"
                 )
             else:
