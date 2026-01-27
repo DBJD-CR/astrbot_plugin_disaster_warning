@@ -4,11 +4,47 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from astrbot.api import logger
+# 中国所有省级行政区的名称列表
+CHINA_PROVINCES = [
+    "北京",
+    "天津",
+    "上海",
+    "重庆",
+    "河北",
+    "山西",
+    "辽宁",
+    "吉林",
+    "黑龙江",
+    "江苏",
+    "浙江",
+    "安徽",
+    "福建",
+    "江西",
+    "山东",
+    "河南",
+    "湖北",
+    "湖南",
+    "广东",
+    "海南",
+    "四川",
+    "贵州",
+    "云南",
+    "陕西",
+    "甘肃",
+    "青海",
+    "台湾",
+    "内蒙古",
+    "广西",
+    "西藏",
+    "宁夏",
+    "新疆",
+    "香港",
+    "澳门",
+]
 
 
 class DisasterType(Enum):
@@ -126,7 +162,9 @@ class EarthquakeData:
     report_num: int | None = None  # 报数（某些数据源使用）
     serial: str | None = None  # 序列号（P2P数据源）
     is_training: bool = False  # 是否为训练模式
-    revision: int | None = None  # 修订版本（Global Quake等）
+    is_assumption: bool = False  # 是否为推定震源 (PLUM法)
+    is_sea: bool = False  # 是否为海域地震
+    revision: Any | None = None  # 修订版本或订正信息
     max_pga: float | None = None  # 最大加速度 (gal)
     stations: dict[str, int] | None = None  # 测站信息 (total, used 等)
 
@@ -214,7 +252,7 @@ class DisasterEvent:
     data: Any  # EarthquakeData, TsunamiData, WeatherAlarmData
     source: DataSource
     disaster_type: DisasterType
-    receive_time: datetime = field(default_factory=datetime.now)
+    receive_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # 新增字段
     source_id: str = ""  # 数据源ID
@@ -250,7 +288,7 @@ def create_earthquake_data(
         event_id=event_data.get("event_id", event_data.get("id", "")),
         source=data_source,
         disaster_type=disaster_type,
-        shock_time=kwargs.get("shock_time", datetime.now()),
+        shock_time=kwargs.get("shock_time", datetime.now(timezone.utc)),
         latitude=kwargs.get("latitude", 0.0),
         longitude=kwargs.get("longitude", 0.0),
         place_name=kwargs.get("place_name", ""),
@@ -292,20 +330,3 @@ def validate_earthquake_data(earthquake: EarthquakeData) -> bool:
             return False
 
     return True
-
-
-# 向后兼容的函数
-def convert_old_model(old_model) -> DisasterEvent | None:
-    """将旧模型转换"""
-    try:
-        if hasattr(old_model, "source") and isinstance(old_model.source, Enum):
-            # 已经是新的模型格式
-            return old_model
-
-        # 转换逻辑（根据实际需求实现）
-        # 这里需要根据具体的旧模型结构来实现转换
-        return None
-
-    except Exception as e:
-        logger.error(f"模型转换失败: {e}")
-        return None

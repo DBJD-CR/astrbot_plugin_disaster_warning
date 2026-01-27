@@ -160,3 +160,49 @@ class GlobalQuakeFilter:
             f"[灾害预警] Global Quake过滤: 震级{earthquake.magnitude} < {self.min_magnitude} 且 烈度{earthquake.intensity} < {self.min_intensity}"
         )
         return True
+
+
+class KeywordFilter:
+    """关键词过滤器 - 适用于所有地震信息"""
+
+    def __init__(
+        self,
+        enabled: bool = False,
+        blacklist: list[str] = None,
+        whitelist: list[str] = None,
+    ):
+        self.enabled = enabled
+        self.blacklist = blacklist or []
+        self.whitelist = whitelist or []
+
+    def should_filter(self, earthquake: EarthquakeData) -> bool:
+        """判断是否过滤该地震事件"""
+        if not self.enabled:
+            return False
+
+        location = earthquake.place_name or ""
+
+        # 黑名单过滤
+        if self.blacklist:
+            for keyword in self.blacklist:
+                if keyword and keyword in location:
+                    logger.debug(
+                        f"[灾害预警] 关键词过滤(黑名单): '{location}' 包含 '{keyword}'"
+                    )
+                    return True
+
+        # 白名单过滤
+        if self.whitelist:
+            hit = False
+            for keyword in self.whitelist:
+                if keyword and keyword in location:
+                    hit = True
+                    break
+
+            if not hit:
+                logger.debug(
+                    f"[灾害预警] 关键词过滤(白名单): '{location}' 不包含任一白名单关键词"
+                )
+                return True
+
+        return False

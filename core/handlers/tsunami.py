@@ -4,7 +4,7 @@
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from astrbot.api import logger
@@ -69,8 +69,8 @@ class TsunamiHandler(BaseDataHandler):
             if issue_time_str:
                 issue_time = self._parse_datetime(issue_time_str)
             else:
-                # 后备方案：使用当前时间
-                issue_time = datetime.now()
+                # 后备方案：使用当前时间 (UTC)
+                issue_time = datetime.now(timezone.utc)
 
             # 验证关键字段，防止空信息推送
             title = tsunami_data.get("warningInfo", {}).get("title", "")

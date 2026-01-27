@@ -1,6 +1,7 @@
 from .intensity_filter import (
     GlobalQuakeFilter,
     IntensityFilter,
+    KeywordFilter,
     ScaleFilter,
     USGSFilter,
 )
@@ -10,6 +11,7 @@ from .weather_filter import WeatherFilter
 
 __all__ = [
     "IntensityFilter",
+    "KeywordFilter",
     "ScaleFilter",
     "USGSFilter",
     "GlobalQuakeFilter",

@@ -5,16 +5,19 @@
 
 import asyncio
 import json
+import os
 import traceback
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Optional
 
 from astrbot.api import logger
+from astrbot.api.star import StarTools
+
+if TYPE_CHECKING:
+    from .telemetry_manager import TelemetryManager
 
 from ..models.models import (
-    DataSource,
     DisasterEvent,
-    DisasterType,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
@@ -42,12 +45,17 @@ class DisasterWarningService:
         # 初始化统计管理器
         self.statistics_manager = StatisticsManager()
 
-        # 初始化组件
+        # 遥测管理器引用 (由 main.py 注入)
+        self._telemetry: TelemetryManager | None = None
+
+        # 初始化组件（传入 telemetry，但此时可能为 None）
         self.ws_manager = WebSocketManager(
-            config.get("websocket_config", {}), self.message_logger
+            config.get("websocket_config", {}), self.message_logger, telemetry=self._telemetry
         )
         self.http_fetcher: HTTPDataFetcher | None = None
-        self.message_manager = MessagePushManager(config, context)
+        
+        # 初始化消息管理器
+        self.message_manager = MessagePushManager(config, context, telemetry=self._telemetry)
 
         # 数据处理器
         self.handlers = {}
@@ -63,10 +71,28 @@ class DisasterWarningService:
         # Web 管理端服务器引用（用于事件驱动的 WebSocket 推送）
         self.web_admin_server = None
 
+        # 地震列表缓存（用于查询指令）
+        self.earthquake_lists = {"cenc": {}, "jma": {}}
+
+        # 数据持久化路径
+        self.storage_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
+        self.cache_file = os.path.join(self.storage_dir, "earthquake_lists_cache.json")
+
     def _initialize_handlers(self):
         """初始化数据处理器"""
         for source_id, handler_class in DATA_HANDLERS.items():
             self.handlers[source_id] = handler_class(self.message_logger)
+
+    def set_telemetry(self, telemetry: Optional["TelemetryManager"]):
+        """设置遥测管理器引用"""
+        self._telemetry = telemetry
+        # 同时更新子组件的遥测引用
+        if self.ws_manager:
+            self.ws_manager._telemetry = telemetry
+        if self.message_manager:
+            self.message_manager._telemetry = telemetry
+            if self.message_manager.browser_manager:
+                self.message_manager.browser_manager._telemetry = telemetry
 
     async def initialize(self):
         """初始化服务"""
@@ -86,6 +112,9 @@ class DisasterWarningService:
 
         except Exception as e:
             logger.error(f"[灾害预警] 初始化服务失败: {e}")
+            # 上报初始化失败错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.disaster_service.initialize")
             raise
 
     def _register_handlers(self):
@@ -153,18 +182,25 @@ class DisasterWarningService:
         # Wolfx连接配置
         wolfx_config = data_sources.get("wolfx", {})
         if isinstance(wolfx_config, dict) and wolfx_config.get("enabled", True):
-            wolfx_sources = [
-                ("japan_jma_eew", "wss://ws-api.wolfx.jp/jma_eew"),
-                ("china_cenc_eew", "wss://ws-api.wolfx.jp/cenc_eew"),
-                ("taiwan_cwa_eew", "wss://ws-api.wolfx.jp/cwa_eew"),
-                ("japan_jma_earthquake", "wss://ws-api.wolfx.jp/jma_eqlist"),
-                ("china_cenc_earthquake", "wss://ws-api.wolfx.jp/cenc_eqlist"),
+            wolfx_sub_sources = [
+                "japan_jma_eew",
+                "china_cenc_eew",
+                "taiwan_cwa_eew",
+                "japan_jma_earthquake",
+                "china_cenc_earthquake",
             ]
 
-            for source_key, url in wolfx_sources:
-                if wolfx_config.get(source_key, True):
-                    conn_name = f"wolfx_{source_key}"
-                    self.connections[conn_name] = {"url": url, "handler": "wolfx"}
+            any_wolfx_source_enabled = any(
+                wolfx_config.get(source, True) for source in wolfx_sub_sources
+            )
+
+            if any_wolfx_source_enabled:
+                # 使用 /all_eew 路径建立单一连接
+                self.connections["wolfx_all"] = {
+                    "url": "wss://ws-api.wolfx.jp/all_eew",
+                    "handler": "wolfx",
+                }
+                logger.info("[灾害预警] 已配置 Wolfx 全量数据连接 (/all_eew)")
 
         # Global Quake连接配置 - 服务器地址硬编码，用户只需配置是否启用
         global_quake_config = data_sources.get("global_quake", {})
@@ -186,17 +222,17 @@ class DisasterWarningService:
 
         try:
             self.running = True
-            self.start_time = datetime.now()  # 记录启动时间
+            self.start_time = datetime.now(timezone.utc)  # 记录启动时间
             logger.info("[灾害预警] 正在启动灾害预警服务...")
+
+            # 加载缓存数据
+            self._load_earthquake_lists_cache()
 
             # 启动WebSocket管理器
             await self.ws_manager.start()
 
             # 建立WebSocket连接
             await self._establish_websocket_connections()
-
-            # 启动Global Quake连接（如果启用）
-            await self._start_global_quake_connection()
 
             # 启动定时HTTP数据获取
             await self._start_scheduled_http_fetch()
@@ -206,11 +242,11 @@ class DisasterWarningService:
 
             # 检查并提示日志记录器状态
             if self.message_logger.enabled:
-                logger.info(
+                logger.debug(
                     f"[灾害预警] 原始消息日志记录已启用，日志文件: {self.message_logger.log_file_path}"
                 )
             else:
-                logger.info(
+                logger.debug(
                     "[灾害预警] 原始消息日志记录未启用。如需调试或记录原始数据，请使用命令 '/灾害预警日志开关' 启用。"
                 )
 
@@ -219,6 +255,9 @@ class DisasterWarningService:
         except Exception as e:
             logger.error(f"[灾害预警] 启动服务失败: {e}")
             self.running = False
+            # 上报启动失败错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.disaster_service.start")
             raise
 
     async def stop(self):
@@ -227,6 +266,9 @@ class DisasterWarningService:
             return
 
         try:
+            # 保存缓存数据
+            self._save_earthquake_lists_cache()
+
             self.running = False
             logger.info("[灾害预警] 正在停止灾害预警服务...")
 
@@ -242,12 +284,15 @@ class DisasterWarningService:
 
             # 关闭HTTP获取器
             if self.http_fetcher:
-                await self.http_fetcher.__aexit__(None, None, None)
+                await self.http_fetcher.close()  # 修改点：调用显式的 close()
 
             logger.info("[灾害预警] 灾害预警服务已停止")
 
         except Exception as e:
             logger.error(f"[灾害预警] 停止服务时出错: {e}")
+            # 上报停止服务错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(e, module="core.disaster_service.stop")
 
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""
@@ -277,7 +322,7 @@ class DisasterWarningService:
                     if conn_config.get("backup_url")
                     else ""
                 )
-                logger.info(
+                logger.debug(
                     f"[灾害预警] 已启动WebSocket连接任务: {conn_name} (数据源: {connection_info['data_source']}{backup_info})"
                 )
 
@@ -290,11 +335,7 @@ class DisasterWarningService:
             # P2P
             "p2p_main": "jma_p2p",
             # Wolfx
-            "wolfx_japan_jma_eew": "jma_wolfx",
-            "wolfx_china_cenc_eew": "cea_wolfx",
-            "wolfx_taiwan_cwa_eew": "cwa_wolfx",
-            "wolfx_china_cenc_earthquake": "cenc_wolfx",
-            "wolfx_japan_jma_earthquake": "jma_wolfx_info",
+            "wolfx_all": "wolfx_mixed",  # 混合数据源
             # Global Quake
             "global_quake": "global_quake",
         }
@@ -313,18 +354,15 @@ class DisasterWarningService:
 
         return fan_studio_config.get(source_key, True)
 
-    async def _start_global_quake_connection(self):
-        """启动Global Quake WebSocket连接 - 现已整合到 WebSocketManager，此方法保留仅用于日志"""
-        # Global Quake 现在通过 _configure_connections 和 _establish_websocket_connections 统一管理
-        # 此方法保留以保持向后兼容，但不再执行任何操作
-        global_quake_config = self.config.get("data_sources", {}).get(
-            "global_quake", {}
-        )
-        if isinstance(global_quake_config, dict) and global_quake_config.get(
-            "enabled", False
-        ):
-            if "global_quake" in self.connections:
-                logger.debug("[灾害预警] Global Quake 已通过 WebSocketManager 统一管理")
+    def is_wolfx_source_enabled(self, source_key: str) -> bool:
+        """检查特定的 Wolfx 数据源是否启用"""
+        data_sources = self.config.get("data_sources", {})
+        wolfx_config = data_sources.get("wolfx", {})
+
+        if not isinstance(wolfx_config, dict) or not wolfx_config.get("enabled", True):
+            return False
+
+        return wolfx_config.get(source_key, True)
 
     async def _start_scheduled_http_fetch(self):
         """启动定时HTTP数据获取"""
@@ -340,52 +378,36 @@ class DisasterWarningService:
                             "https://api.wolfx.jp/cenc_eqlist.json"
                         )
                         if cenc_data:
-                            # 记录原始HTTP响应数据（仅摘要，避免日志膨胀）
-                            if self.message_logger:
-                                try:
-                                    self.message_logger.log_http_earthquake_list(
-                                        source="http_wolfx_cenc",
-                                        url="https://api.wolfx.jp/cenc_eqlist.json",
-                                        earthquake_list=cenc_data,
-                                        max_items=5,
-                                    )
-                                except Exception as log_e:
-                                    logger.warning(
-                                        f"[灾害预警] HTTP响应记录失败: {log_e}"
-                                    )
+                            # HTTP 获取的数据不再写入日志，避免冗余
 
-                            # 使用新处理器
-                            handler = self.handlers.get("cenc_wolfx")
-                            if handler:
-                                event = handler.parse_message(json.dumps(cenc_data))
-                                if event:
-                                    await self._handle_disaster_event(event)
+                            # 更新缓存
+                            self.update_earthquake_list("cenc", cenc_data)
+
+                            # 仅在启用该数据源时才解析并尝试推送
+                            if self.is_wolfx_source_enabled("china_cenc_earthquake"):
+                                handler = self.handlers.get("cenc_wolfx")
+                                if handler:
+                                    event = handler.parse_message(json.dumps(cenc_data))
+                                    if event:
+                                        await self._handle_disaster_event(event)
 
                         # 获取日本气象厅地震列表
                         jma_data = await fetcher.fetch_json(
                             "https://api.wolfx.jp/jma_eqlist.json"
                         )
                         if jma_data:
-                            # 记录原始HTTP响应数据（仅摘要，避免日志膨胀）
-                            if self.message_logger:
-                                try:
-                                    self.message_logger.log_http_earthquake_list(
-                                        source="http_wolfx_jma",
-                                        url="https://api.wolfx.jp/jma_eqlist.json",
-                                        earthquake_list=jma_data,
-                                        max_items=5,
-                                    )
-                                except Exception as log_e:
-                                    logger.warning(
-                                        f"[灾害预警] HTTP响应记录失败: {log_e}"
-                                    )
+                            # HTTP 获取的数据不再写入日志，避免冗余
 
-                            # 使用新处理器
-                            handler = self.handlers.get("jma_wolfx_info")
-                            if handler:
-                                event = handler.parse_message(json.dumps(jma_data))
-                                if event:
-                                    await self._handle_disaster_event(event)
+                            # 更新缓存
+                            self.update_earthquake_list("jma", jma_data)
+
+                            # 仅在启用该数据源时才解析并尝试推送
+                            if self.is_wolfx_source_enabled("japan_jma_earthquake"):
+                                handler = self.handlers.get("jma_wolfx_info")
+                                if handler:
+                                    event = handler.parse_message(json.dumps(jma_data))
+                                    if event:
+                                        await self._handle_disaster_event(event)
 
                 except Exception as e:
                     logger.error(f"[灾害预警] 定时HTTP数据获取失败: {e}")
@@ -407,6 +429,164 @@ class DisasterWarningService:
         task = asyncio.create_task(cleanup())
         self.scheduled_tasks.append(task)
 
+    def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
+        """更新内存中的地震列表"""
+        if list_type in self.earthquake_lists:
+            self.earthquake_lists[list_type] = data
+            logger.debug(f"[灾害预警] 已更新 {list_type} 地震列表缓存")
+
+    def _load_earthquake_lists_cache(self):
+        """从文件加载地震列表缓存"""
+        try:
+            if os.path.exists(self.cache_file):
+                with open(self.cache_file, encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and "cenc" in data and "jma" in data:
+                        self.earthquake_lists = data
+                        logger.debug("[灾害预警] 已恢复 Wolfx 地震列表本地缓存")
+            else:
+                logger.debug("[灾害预警] 本地缓存文件不存在，将使用空的 Wolfx 地震列表")
+        except Exception as e:
+            logger.warning(f"[灾害预警] 加载 Wolfx 地震列表缓存失败: {e}")
+
+    def _save_earthquake_lists_cache(self):
+        """保存地震列表缓存到文件"""
+        try:
+            if not os.path.exists(self.storage_dir):
+                os.makedirs(self.storage_dir, exist_ok=True)
+
+            with open(self.cache_file, "w", encoding="utf-8") as f:
+                json.dump(self.earthquake_lists, f, ensure_ascii=False)
+            logger.info("[灾害预警] Wolfx 地震列表缓存已保存")
+        except Exception as e:
+            logger.error(f"[灾害预警] 保存 Wolfx 地震列表缓存失败: {e}")
+
+    def get_formatted_list_data(self, source_type: str, count: int) -> list[dict]:
+        """获取格式化后的地震列表数据（用于卡片渲染）"""
+        data = self.earthquake_lists.get(source_type, {})
+        if not data:
+            return []
+
+        # 排序 keys: No1, No2...
+        sorted_keys = sorted(
+            [k for k in data.keys() if k.startswith("No")],
+            key=lambda x: int(x[2:]) if x[2:].isdigit() else 999,
+        )
+
+        result = []
+        for key in sorted_keys[:count]:
+            item = data[key]
+            formatted_item = self._format_list_item(source_type, item)
+            if formatted_item:
+                result.append(formatted_item)
+
+        return result
+
+    def _format_list_item(self, source_type: str, item: dict) -> dict | None:
+        """格式化单个列表项"""
+        try:
+            location = item.get("location", "未知地点")
+            time_str = item.get("time", "")
+            magnitude = item.get("magnitude", "0.0")
+            depth = item.get("depth", "0")
+
+            # 统一深度格式
+            if isinstance(depth, (int, float)):
+                depth = f"{depth}km"
+            elif isinstance(depth, str) and not depth.endswith("km"):
+                depth = f"{depth}km"
+
+            intensity_display = "-"
+            intensity_class = "int-unknown"
+
+            if source_type == "cenc":
+                # CENC 使用 intensity (烈度) 或 magnitude (震级) 估算
+                # Wolfx CENC 列表通常包含 intensity 字段，如果没有则用震级估算
+                intensity = item.get("intensity")
+                if intensity is None or intensity == "":
+                    # 简单的震级到烈度映射估算 (仅用于显示颜色)
+                    try:
+                        mag_val = float(magnitude)
+                        if mag_val < 3:
+                            intensity = "1"
+                        elif mag_val < 5:
+                            intensity = "3"
+                        elif mag_val < 6:
+                            intensity = "5"
+                        elif mag_val < 7:
+                            intensity = "7"
+                        elif mag_val < 8:
+                            intensity = "9"
+                        else:
+                            intensity = "11"
+                    except Exception:
+                        intensity = "0"
+
+                intensity_display = str(intensity)
+
+                # 映射颜色类
+                try:
+                    int_val = float(intensity)
+                    if int_val < 3:
+                        intensity_class = "int-1"
+                    elif int_val < 5:
+                        intensity_class = "int-2"
+                    elif int_val < 6:
+                        intensity_class = "int-3"
+                    elif int_val < 7:
+                        intensity_class = "int-4"
+                    elif int_val < 8:
+                        intensity_class = "int-5-weak"
+                    elif int_val < 9:
+                        intensity_class = "int-5-strong"
+                    elif int_val < 10:
+                        intensity_class = "int-6-weak"
+                    elif int_val < 11:
+                        intensity_class = "int-6-strong"
+                    else:
+                        intensity_class = "int-7"
+                except Exception:
+                    pass
+
+            elif source_type == "jma":
+                # JMA 使用 shindo (震度)
+                shindo = str(item.get("shindo", ""))
+                intensity_display = shindo
+
+                # 映射颜色类
+                if shindo == "1":
+                    intensity_class = "int-1"
+                elif shindo == "2":
+                    intensity_class = "int-2"
+                elif shindo == "3":
+                    intensity_class = "int-3"
+                elif shindo == "4":
+                    intensity_class = "int-4"
+                elif shindo in ["5-", "5弱"]:
+                    intensity_class = "int-5-weak"
+                elif shindo in ["5+", "5強", "5强"]:
+                    intensity_class = "int-5-strong"
+                elif shindo in ["6-", "6弱"]:
+                    intensity_class = "int-6-weak"
+                elif shindo in ["6+", "6強", "6强"]:
+                    intensity_class = "int-6-strong"
+                elif shindo == "7":
+                    intensity_class = "int-7"
+
+            return {
+                "location": location,
+                "time": time_str,
+                "magnitude": magnitude,
+                "depth": depth,
+                "intensity_display": intensity_display,
+                "intensity_class": intensity_class,
+                "raw": item,  # 保留原始数据用于文本模式
+            }
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 格式化列表项失败: {e}")
+            return None
+
     def is_in_silence_period(self) -> bool:
         """检查是否处于启动后的静默期"""
         if not hasattr(self, "start_time"):
@@ -418,7 +598,7 @@ class DisasterWarningService:
         if silence_duration <= 0:
             return False
 
-        elapsed = (datetime.now() - self.start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         return elapsed < silence_duration
 
     async def _handle_disaster_event(self, event: DisasterEvent):
@@ -427,7 +607,7 @@ class DisasterWarningService:
         if self.is_in_silence_period():
             debug_config = self.config.get("debug_config", {})
             silence_duration = debug_config.get("startup_silence_duration", 0)
-            elapsed = (datetime.now() - self.start_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
             logger.debug(
                 f"[灾害预警] 处于启动静默期 (剩余 {silence_duration - elapsed:.1f}s)，忽略事件: {event.id}"
             )
@@ -468,6 +648,14 @@ class DisasterWarningService:
                 f"[灾害预警] 失败的事件ID: {event.id if hasattr(event, 'id') else 'unknown'}"
             )
             logger.error(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
+            # 遥测: 记录错误（包含堆栈，便于诊断，同时由 _sanitize_stack 处理隐私）
+            if self._telemetry and self._telemetry.enabled:
+                asyncio.create_task(
+                    self._telemetry.track_error(
+                        exception=e,
+                        module="disaster_service._handle_disaster_event",
+                    )
+                )
 
     def _log_event(self, event: DisasterEvent):
         """记录事件日志"""
@@ -504,7 +692,7 @@ class DisasterWarningService:
             1 for status in connection_status.values() if status["connected"]
         )
 
-        # 统计Global Quake连接（如果有的话）
+        # 统计Global Quake连接
         global_quake_connected = any(
             "global_quake" in task.get_name() if hasattr(task, "get_name") else False
             for task in self.connection_tasks
@@ -530,7 +718,7 @@ class DisasterWarningService:
         if not self.running or not hasattr(self, "start_time"):
             return "未运行"
 
-        delta = datetime.now() - self.start_time
+        delta = datetime.now(timezone.utc) - self.start_time
         days = delta.days
         hours, remainder = divmod(delta.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
@@ -566,557 +754,6 @@ class DisasterWarningService:
                         active_sources.append(f"{service_name}.{source_name}")
 
         return active_sources
-
-    async def test_push(
-        self, session: str, disaster_type: str = "earthquake", test_type: str = None
-    ):
-        """测试推送功能 - 预设符合实际消息格式化器的数据格式"""
-        try:
-            # 预设测试配置，对应不同的消息格式化器
-            test_configs = {
-                "earthquake": {
-                    "china_eew": {  # 中国地震预警网格式
-                        "source_id": "cea_fanstudio",
-                        "magnitude": 5.5,
-                        "depth": 10.0,
-                        "intensity": 6.0,
-                        "place_name": "测试地名",
-                        "latitude": 31.2,
-                        "longitude": 103.8,
-                        "updates": 1,
-                        "is_final": False,
-                    },
-                    "japan_eew": {  # 日本紧急地震速报格式
-                        "source_id": "jma_wolfx",
-                        "magnitude": 6.2,
-                        "depth": 35.0,
-                        "scale": 5.0,  # 震度
-                        "place_name": "测试地名",
-                        "latitude": 37.5,
-                        "longitude": 141.8,
-                        "updates": 2,
-                        "is_final": False,
-                        "raw_data": {
-                            "areas": [
-                                {
-                                    "name": "测试区域1",
-                                    "scaleFrom": 50,
-                                    "kindCode": "10",
-                                },  # 震度5强，未到达
-                                {
-                                    "name": "测试区域2",
-                                    "scaleFrom": 45,
-                                    "kindCode": "11",
-                                },  # 震度5弱，已到达
-                            ]
-                        },
-                    },
-                    "usgs_info": {  # USGS地震情报格式
-                        "source_id": "usgs_fanstudio",
-                        "magnitude": 4.8,
-                        "depth": 15.5,
-                        "place_name": "测试地名",
-                        "latitude": 34.1,
-                        "longitude": -118.2,
-                        "info_type": "automatic",
-                    },
-                },
-                "tsunami": {
-                    "china_tsunami": {  # 中国海啸预警格式
-                        "source_id": "china_tsunami_fanstudio",
-                        "title": "海啸黄色警报",
-                        "level": "Warning",
-                        "org_unit": "自然资源部海啸预警中心",
-                        "forecasts": [
-                            {
-                                "name": "测试海域",
-                                "grade": "Warning",
-                                "immediate": True,
-                                "estimatedArrivalTime": "12:30",
-                                "maxWaveHeight": "50cm",
-                            }
-                        ],
-                        "subtitle": "测试地点附近海域发生地震",
-                    },
-                    "japan_tsunami": {  # 日本海啸预警格式 - 基于P2P实际数据结构
-                        "source_id": "jma_tsunami_p2p",
-                        "title": "津波注意報",
-                        "level": "Watch",  # P2P使用Watch/Warning/MajorWarning
-                        "org_unit": "日本气象厅",
-                        "forecasts": [
-                            {
-                                "name": "测试地点 1",
-                                "grade": "Watch",  # P2P实际使用Watch/Warning/MajorWarning
-                                "immediate": False,
-                                "firstHeight": {
-                                    "arrivalTime": "2023-12-12T13:15:00",
-                                    "condition": "津波到達中と推測",
-                                },
-                                "maxHeight": {"description": "１ｍ", "value": 1},
-                            },
-                            {
-                                "name": "测试地点 2",
-                                "grade": "Watch",
-                                "immediate": False,
-                                "firstHeight": {"arrivalTime": "2023-12-12T13:25:00"},
-                                "maxHeight": {"description": "０．５ｍ", "value": 0.5},
-                            },
-                        ],
-                        "subtitle": "三陸沖を震源とする地震により、津波注意報が発表されています。",
-                        "cancelled": False,  # 添加取消状态
-                        "issue": {
-                            "source": "日本气象厅",
-                            "time": "2023-12-12T12:30:00",
-                            "type": "Focus",
-                        },
-                    },
-                },
-                "weather": {
-                    "china_weather": {  # 中国气象预警格式
-                        "source_id": "china_weather_fanstudio",
-                        "headline": "大风黄色预警信号",
-                        "title": "大风黄色预警信号",
-                        "description": "气象台发布大风黄色预警信号：预计今天夜间到明天白天，沿岸海域将有西南风6～7级，阵风8～9级。",
-                        "type": "wind",
-                        "effective_time": datetime.now(),
-                        "longitude": 116.0,
-                        "latitude": 39.0,
-                    }
-                },
-            }
-
-            # 根据灾害类型和测试类型选择配置
-            if disaster_type == "earthquake":
-                if test_type == "china" or test_type is None:
-                    test_config = test_configs["earthquake"]["china_eew"]
-                elif test_type == "japan":
-                    test_config = test_configs["earthquake"]["japan_eew"]
-                elif test_type == "usgs":
-                    test_config = test_configs["earthquake"]["usgs_info"]
-                else:
-                    test_config = test_configs["earthquake"]["china_eew"]  # 默认
-
-            elif disaster_type == "tsunami":
-                if test_type == "japan" or test_type is None:
-                    test_config = test_configs["tsunami"]["japan_tsunami"]
-                elif test_type == "china":
-                    test_config = test_configs["tsunami"]["china_tsunami"]
-                else:
-                    test_config = test_configs["tsunami"]["japan_tsunami"]  # 默认
-
-            elif disaster_type == "weather":
-                test_config = test_configs["weather"][
-                    "china_weather"
-                ]  # 气象只有一种格式
-
-            else:
-                # 默认使用地震配置
-                test_config = test_configs["earthquake"]["china_eew"]
-
-            # 创建测试事件
-            test_event = self._create_simple_test_event(disaster_type, test_config)
-
-            logger.info(
-                f"[灾害预警] 创建测试事件: {test_event.id} (类型: {disaster_type}, 配置: {test_config['source_id']})"
-            )
-
-            # 注入本地预估信息（使用统一的辅助方法）
-            if disaster_type == "earthquake" and self.message_manager.local_monitor:
-                self.message_manager.local_monitor.inject_local_estimation(
-                    test_event.data
-                )
-
-            # 直接构建消息并推送（绕过复杂的过滤逻辑，仅测试消息链路）
-            message = self.message_manager._build_message(test_event)
-            await self.message_manager._send_message(session, message)
-
-            logger.info(f"[灾害预警] 测试推送成功: {test_event.id}")
-
-            # 返回简洁的成功信息
-            source_name = self._get_source_display_name(test_config["source_id"])
-            return f"✅ 测试推送成功\n📡 数据源: {source_name}\n🎯 消息链路畅通"
-
-        except Exception as e:
-            logger.error(f"[灾害预警] 测试推送失败: {e}")
-            return f"❌ 测试推送失败: {str(e)}"
-
-    async def simulate_custom_event(
-        self,
-        session: str,
-        disaster_type: str = "earthquake",
-        test_type: str = "china",
-        custom_params: dict = None
-    ):
-        """
-        自定义模拟灾害事件推送
-        
-        参数:
-        - session: 目标会话
-        - disaster_type: 灾害类型 (earthquake/tsunami/weather)
-        - test_type: 测试格式 (china/japan/usgs)
-        - custom_params: 自定义参数字典，可包含:
-            - magnitude: 震级 (float)
-            - latitude: 纬度 (float)
-            - longitude: 经度 (float)
-            - depth: 深度 (float, km)
-            - place_name: 地名 (str)
-            - intensity: 烈度 (float, 中国标准)
-            - scale: 震度 (float, 日本标准)
-            - source_id: 数据源ID (str)
-        """
-        try:
-            custom_params = custom_params or {}
-            
-            # 基础配置模板 - 按数据源 ID 组织
-            base_configs = {
-                "earthquake": {
-                    # FAN Studio 数据源
-                    "cea_fanstudio": {
-                        "source_id": "cea_fanstudio",
-                        "magnitude": 5.5,
-                        "depth": 10.0,
-                        "intensity": 6.0,
-                        "place_name": "四川省成都市",
-                        "latitude": 30.67,
-                        "longitude": 104.07,
-                        "updates": 1,
-                        "is_final": False,
-                    },
-                    "cenc_fanstudio": {
-                        "source_id": "cenc_fanstudio",
-                        "magnitude": 4.2,
-                        "depth": 12.0,
-                        "place_name": "云南省昆明市",
-                        "latitude": 25.04,
-                        "longitude": 102.71,
-                        "info_type": "automatic",
-                    },
-                    "cwa_fanstudio": {
-                        "source_id": "cwa_fanstudio",
-                        "magnitude": 5.8,
-                        "depth": 15.0,
-                        "scale": 4.0,
-                        "place_name": "台湾花莲县",
-                        "latitude": 23.99,
-                        "longitude": 121.62,
-                        "updates": 1,
-                        "is_final": False,
-                    },
-                    "jma_fanstudio": {
-                        "source_id": "jma_fanstudio",
-                        "magnitude": 6.0,
-                        "depth": 30.0,
-                        "scale": 5.0,
-                        "place_name": "東京都千代田区",
-                        "latitude": 35.69,
-                        "longitude": 139.69,
-                        "updates": 2,
-                        "is_final": False,
-                    },
-                    "usgs_fanstudio": {
-                        "source_id": "usgs_fanstudio",
-                        "magnitude": 4.8,
-                        "depth": 15.5,
-                        "place_name": "California, USA",
-                        "latitude": 34.05,
-                        "longitude": -118.24,
-                        "info_type": "automatic",
-                    },
-                    # Wolfx 数据源
-                    "jma_wolfx": {
-                        "source_id": "jma_wolfx",
-                        "magnitude": 6.2,
-                        "depth": 35.0,
-                        "scale": 5.0,
-                        "place_name": "福島県沖",
-                        "latitude": 37.5,
-                        "longitude": 141.8,
-                        "updates": 2,
-                        "is_final": False,
-                        "raw_data": {
-                            "areas": [
-                                {"name": "福島県", "scaleFrom": 50, "kindCode": "10"},
-                                {"name": "宮城県", "scaleFrom": 45, "kindCode": "11"},
-                            ]
-                        },
-                    },
-                    "cea_wolfx": {
-                        "source_id": "cea_wolfx",
-                        "magnitude": 5.0,
-                        "depth": 10.0,
-                        "intensity": 5.0,
-                        "place_name": "甘肃省兰州市",
-                        "latitude": 36.06,
-                        "longitude": 103.83,
-                        "updates": 1,
-                        "is_final": False,
-                    },
-                    "cwa_wolfx": {
-                        "source_id": "cwa_wolfx",
-                        "magnitude": 5.5,
-                        "depth": 20.0,
-                        "scale": 4.0,
-                        "place_name": "台湾宜兰县",
-                        "latitude": 24.76,
-                        "longitude": 121.75,
-                        "updates": 1,
-                        "is_final": False,
-                    },
-                    "cenc_wolfx": {
-                        "source_id": "cenc_wolfx",
-                        "magnitude": 3.8,
-                        "depth": 8.0,
-                        "place_name": "新疆阿克苏地区",
-                        "latitude": 41.17,
-                        "longitude": 80.26,
-                        "info_type": "automatic",
-                    },
-                    "jma_wolfx_info": {
-                        "source_id": "jma_wolfx_info",
-                        "magnitude": 4.5,
-                        "depth": 40.0,
-                        "scale": 3.0,
-                        "place_name": "茨城県沖",
-                        "latitude": 36.0,
-                        "longitude": 141.0,
-                        "info_type": "automatic",
-                    },
-                    # P2P 数据源
-                    "jma_p2p": {
-                        "source_id": "jma_p2p",
-                        "magnitude": 5.5,
-                        "depth": 25.0,
-                        "scale": 4.0,
-                        "place_name": "石川県能登地方",
-                        "latitude": 37.22,
-                        "longitude": 136.72,
-                        "updates": 1,
-                        "is_final": False,
-                    },
-                    "jma_p2p_info": {
-                        "source_id": "jma_p2p_info",
-                        "magnitude": 4.2,
-                        "depth": 30.0,
-                        "max_scale": 3.0,
-                        "place_name": "千葉県北西部",
-                        "latitude": 35.6,
-                        "longitude": 140.1,
-                        "info_type": "confirmed",
-                    },
-                    # Global Quake
-                    "global_quake": {
-                        "source_id": "global_quake",
-                        "magnitude": 5.0,
-                        "depth": 10.0,
-                        "place_name": "Pacific Ocean",
-                        "latitude": 0.0,
-                        "longitude": -150.0,
-                        "revision": 1,
-                    },
-                },
-                "tsunami": {
-                    "china_tsunami_fanstudio": {
-                        "source_id": "china_tsunami_fanstudio",
-                        "title": "海啸黄色警报",
-                        "level": "Warning",
-                        "org_unit": "自然资源部海啸预警中心",
-                        "forecasts": [
-                            {
-                                "name": "浙江沿海",
-                                "grade": "Warning",
-                                "immediate": True,
-                                "estimatedArrivalTime": "14:30",
-                                "maxWaveHeight": "50cm",
-                            }
-                        ],
-                        "subtitle": "日本南海海域发生地震引发海啸预警",
-                    },
-                    "jma_tsunami_p2p": {
-                        "source_id": "jma_tsunami_p2p",
-                        "title": "津波注意報",
-                        "level": "Watch",
-                        "org_unit": "日本气象厅",
-                        "forecasts": [
-                            {
-                                "name": "三陸沿岸",
-                                "grade": "Watch",
-                                "immediate": False,
-                                "firstHeight": {"arrivalTime": "2024-01-01T13:15:00"},
-                                "maxHeight": {"description": "１ｍ", "value": 1},
-                            }
-                        ],
-                        "subtitle": "三陸沖を震源とする地震により津波注意報発表",
-                    },
-                },
-                "weather": {
-                    "china_weather_fanstudio": {
-                        "source_id": "china_weather_fanstudio",
-                        "headline": "大风黄色预警信号",
-                        "title": "大风黄色预警信号",
-                        "description": "气象台发布大风黄色预警信号：预计今天夜间到明天白天，沿岸海域将有西南风6～7级，阵风8～9级。",
-                        "type": "wind",
-                        "effective_time": datetime.now(),
-                        "longitude": 116.0,
-                        "latitude": 39.0,
-                    }
-                }
-            }
-
-            
-            # 获取基础配置
-            type_configs = base_configs.get(disaster_type, base_configs["earthquake"])
-            test_config = type_configs.get(test_type, list(type_configs.values())[0]).copy()
-            
-            # 合并自定义参数 (自定义参数优先)
-            for key, value in custom_params.items():
-                if value is not None and value != "":
-                    # 类型转换
-                    if key in ["magnitude", "depth", "intensity", "scale", "latitude", "longitude"]:
-                        try:
-                            test_config[key] = float(value)
-                        except (ValueError, TypeError):
-                            pass
-                    else:
-                        test_config[key] = value
-            
-            # 创建测试事件
-            test_event = self._create_simple_test_event(disaster_type, test_config)
-            
-            logger.info(
-                f"[灾害预警] 创建自定义模拟事件: {test_event.id} (类型: {disaster_type}, 格式: {test_type})"
-            )
-            logger.debug(f"[灾害预警] 自定义参数: {custom_params}")
-            
-            # 注入本地预估信息
-            if disaster_type == "earthquake" and self.message_manager.local_monitor:
-                self.message_manager.local_monitor.inject_local_estimation(
-                    test_event.data
-                )
-            
-            # 构建消息并推送
-            message = self.message_manager._build_message(test_event)
-            await self.message_manager._send_message(session, message)
-            
-            logger.info(f"[灾害预警] 自定义模拟推送成功: {test_event.id}")
-            
-            # 返回详细的成功信息
-            source_name = self._get_source_display_name(test_config["source_id"])
-            
-            if disaster_type == "earthquake":
-                return (
-                    f"✅ 模拟推送成功\n"
-                    f"📡 数据源: {source_name}\n"
-                    f"📍 位置: {test_config.get('place_name', '未知')}\n"
-                    f"📊 震级: M{test_config.get('magnitude', 0):.1f}\n"
-                    f"🎯 消息链路畅通"
-                )
-            else:
-                return f"✅ 模拟推送成功\n📡 数据源: {source_name}\n🎯 消息链路畅通"
-            
-        except Exception as e:
-            logger.error(f"[灾害预警] 自定义模拟推送失败: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return f"❌ 模拟推送失败: {str(e)}"
-
-    def _create_simple_test_event(
-        self, disaster_type: str, test_config: dict
-    ) -> "DisasterEvent":
-        """创建简化的测试事件"""
-        # 使用顶部导入的类，无需在此处重新导入
-
-        source_id = test_config["source_id"]
-
-        # 获取数据源枚举值
-
-        source_enum = get_data_source_from_id(source_id)
-        if not source_enum:
-            logger.warning(f"[灾害预警] 未知的测试数据源ID: {source_id}, 使用默认为 FAN_STUDIO_CEA")
-            source_enum = DataSource.FAN_STUDIO_CEA
-
-        if disaster_type == "earthquake":
-            # 创建地震测试数据
-            test_data = EarthquakeData(
-                id=f"test_{source_id}_{int(datetime.now().timestamp())}",
-                event_id=f"test_event_{source_id}",
-                source=source_enum,
-                disaster_type=DisasterType.EARTHQUAKE,
-                shock_time=datetime.now(),
-                latitude=test_config.get("latitude", 35.0),
-                longitude=test_config.get("longitude", 105.0),
-                magnitude=test_config.get("magnitude", 5.5),
-                depth=test_config.get("depth", 10.0),
-                intensity=test_config.get("intensity"),
-                scale=test_config.get("scale"),
-                place_name=test_config.get("place_name", "测试地震地点"),
-                raw_data={
-                    **{"test": True, "source_id": source_id},
-                    **test_config.get("raw_data", {}),
-                },
-                info_type=test_config.get("info_type"),
-                updates=test_config.get("updates", 1),
-                is_final=test_config.get("is_final", False),
-            )
-            disaster_type_enum = DisasterType.EARTHQUAKE
-
-        elif disaster_type == "tsunami":
-            # 创建海啸测试数据
-            test_data = TsunamiData(
-                id=f"test_{source_id}_{int(datetime.now().timestamp())}",
-                code=f"test_tsunami_{source_id}",
-                source=source_enum,
-                title=test_config.get("title", "海啸警报测试"),
-                level=test_config.get("level", "Warning"),
-                org_unit=test_config.get("org_unit", "测试海啸预警中心"),
-                forecasts=test_config.get("forecasts", []),
-                raw_data={
-                    **{"test": True, "source_id": source_id},
-                    **test_config.get("raw_data", {}),
-                },
-                issue_time=datetime.now(),
-                subtitle=test_config.get("subtitle", "测试震源信息"),
-            )
-            disaster_type_enum = DisasterType.TSUNAMI
-
-        elif disaster_type == "weather":
-            # 创建气象预警测试数据
-            test_data = WeatherAlarmData(
-                id=f"test_{source_id}_{int(datetime.now().timestamp())}",
-                source=source_enum,
-                headline=test_config.get("headline", "气象预警测试"),
-                title=test_config.get("title", "测试预警"),
-                description=test_config.get("description", "测试描述"),
-                type=test_config.get("type", "unknown"),
-                effective_time=test_config.get("effective_time", datetime.now()),
-                longitude=test_config.get("longitude", 116.0),
-                latitude=test_config.get("latitude", 39.0),
-                raw_data={
-                    **{"test": True, "source_id": source_id},
-                    **test_config.get("raw_data", {}),
-                },
-                issue_time=datetime.now(),
-            )
-            disaster_type_enum = DisasterType.WEATHER_ALARM
-
-        else:
-            # 默认创建地震数据
-            return self._create_simple_test_event("earthquake", test_config)
-
-        return DisasterEvent(
-            id=test_data.id,
-            data=test_data,
-            source=test_data.source,
-            disaster_type=disaster_type_enum,
-        )
-
-    def _get_source_display_name(self, source_id: str) -> str:
-        """获取数据源显示名称"""
-        from ..models.data_source_config import get_data_source_config
-
-        config = get_data_source_config(source_id)
-        if config:
-            return config.display_name
-        return source_id
 
 
 # 服务实例

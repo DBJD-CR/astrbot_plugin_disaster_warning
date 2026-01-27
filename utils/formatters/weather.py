@@ -156,8 +156,9 @@ class WeatherFormatter(BaseMessageFormatter):
 
         # 发布时间
         if weather.issue_time:
+            timezone = options.get("timezone", "UTC+8")
             lines.append(
-                f"⏰生效时间：{WeatherFormatter.format_time(weather.issue_time)}"
+                f"⏰生效时间：{WeatherFormatter.format_time(weather.issue_time, timezone)}"
             )
 
         return "\n".join(lines)

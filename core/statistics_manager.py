@@ -1,12 +1,13 @@
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 from ..models.models import (
+    CHINA_PROVINCES,
     DisasterEvent,
     DisasterType,
     EarthquakeData,
@@ -28,8 +29,8 @@ class StatisticsManager:
         self.stats: dict[str, Any] = {
             "total_received": 0,  # 总接收次数（包括被过滤的）
             "total_events": 0,  # 独立事件数（去重后）
-            "start_time": datetime.now().isoformat(),
-            "last_updated": datetime.now().isoformat(),
+            "start_time": datetime.now(timezone.utc).isoformat(),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
             "by_type": defaultdict(int),
             "by_source": defaultdict(int),
             "earthquake_stats": {
@@ -58,7 +59,7 @@ class StatisticsManager:
     def record_push(self, event: DisasterEvent):
         """记录一次事件处理（无论是否推送）"""
         try:
-            current_time = datetime.now().isoformat()
+            current_time = datetime.now(timezone.utc).isoformat()
             self.stats["last_updated"] = current_time
 
             # 兼容旧字段名或初始化新字段
@@ -198,15 +199,16 @@ class StatisticsManager:
                         "time": (
                             data.shock_time.isoformat()
                             if data.shock_time
-                            else datetime.now().isoformat()
+                            else datetime.now(timezone.utc).isoformat()
                         ),
                         "source": data.source.value,  # 记录来源以便调试
                     }
 
             # CENC 正式测定地区统计
             if is_cenc_official:
-                region = self._extract_region(data.place_name)
-                self.stats["earthquake_stats"]["by_region"][region] += 1
+                region = self._extract_region(data.place_name, strict=True)
+                if region:
+                    self.stats["earthquake_stats"]["by_region"][region] += 1
 
     def _record_weather_stats(self, data: WeatherAlarmData):
         """记录气象预警详细统计"""
@@ -234,50 +236,13 @@ class StatisticsManager:
         region = self._extract_region(headline)
         self.stats["weather_stats"]["by_region"][region] += 1
 
-    def _extract_region(self, text: str) -> str:
+    def _extract_region(self, text: str, strict: bool = False) -> str | None:
         """从文本中提取地区（省份）信息"""
         if not text:
-            return "未知"
-
-        provinces = [
-            "北京",
-            "天津",
-            "河北",
-            "山西",
-            "内蒙古",
-            "辽宁",
-            "吉林",
-            "黑龙江",
-            "上海",
-            "江苏",
-            "浙江",
-            "安徽",
-            "福建",
-            "江西",
-            "山东",
-            "河南",
-            "湖北",
-            "湖南",
-            "广东",
-            "广西",
-            "海南",
-            "重庆",
-            "四川",
-            "贵州",
-            "云南",
-            "西藏",
-            "陕西",
-            "甘肃",
-            "青海",
-            "宁夏",
-            "新疆",
-            "台湾",
-            "香港",
-            "澳门",
-        ]
+            return None if strict else "未知"
 
         # 优先匹配省份
-        for p in provinces:
+        for p in CHINA_PROVINCES:
             if text.startswith(p):
                 return p
 
@@ -285,6 +250,9 @@ class StatisticsManager:
         if text.startswith("内蒙古") or text.startswith("黑龙江"):
             # 上面的循环已经覆盖了（startswith），但为了保险起见检查一下
             pass
+
+        if strict:
+            return None
 
         # 如果不是省份开头，可能是具体的市或海域，尝试取前两个字
         # 比如 "南海海域", "东海海域"
@@ -331,8 +299,8 @@ class StatisticsManager:
             self.stats = {
                 "total_received": 0,
                 "total_events": 0,
-                "start_time": datetime.now().isoformat(),
-                "last_updated": datetime.now().isoformat(),
+                "start_time": datetime.now(timezone.utc).isoformat(),
+                "last_updated": datetime.now(timezone.utc).isoformat(),
                 "by_type": defaultdict(int),
                 "by_source": defaultdict(int),
                 "earthquake_stats": {

@@ -18,9 +18,10 @@ from astrbot.api import logger
 class WebSocketManager:
     """WebSocket连接管理器"""
 
-    def __init__(self, config: dict[str, Any], message_logger=None):
+    def __init__(self, config: dict[str, Any], message_logger=None, telemetry=None):
         self.config = config
         self.message_logger = message_logger
+        self._telemetry = telemetry
         self.connections: dict[str, ClientWebSocketResponse] = {}
         self.message_handlers: dict[str, Callable] = {}
         self.reconnect_tasks: dict[str, asyncio.Task] = {}
@@ -35,7 +36,7 @@ class WebSocketManager:
     def register_handler(self, connection_name: str, handler: Callable):
         """注册消息处理器"""
         self.message_handlers[connection_name] = handler
-        logger.info(f"[灾害预警] 注册处理器: {connection_name}")
+        logger.debug(f"[灾害预警] 注册处理器: {connection_name}")
 
     async def connect(
         self,
@@ -68,7 +69,7 @@ class WebSocketManager:
                 current_retry = self.connection_retry_counts.get(name, 0) + 1
                 self.connection_retry_counts[name] = current_retry
             else:
-                logger.info(f"[灾害预警] 正在连接 {name}")
+                logger.debug(f"[灾害预警] 正在连接 {name}")
                 # 首次连接时重置重试计数
                 self.connection_retry_counts[name] = 0
 
@@ -172,6 +173,11 @@ class WebSocketManager:
         except Exception as e:
             logger.error(f"[灾害预警] 未知连接错误 {name}: {type(e).__name__} - {e}")
             logger.debug(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
+            # 上报未知 WebSocket 错误到遥测
+            if self._telemetry and self._telemetry.enabled:
+                asyncio.create_task(
+                    self._telemetry.track_error(e, module=f"core.websocket_manager.connect.{name}")
+                )
             self._handle_connection_error(name, uri, headers, e)
 
     def _log_message(self, name: str, message: Any, uri: str):
@@ -567,7 +573,11 @@ class HTTPDataFetcher:
         return self
 
     async def __aexit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        if self.session:
+        await self.close()  # 调用显式的 close
+
+    async def close(self):
+        """显式关闭 Session"""
+        if self.session and not self.session.closed:
             await self.session.close()
 
     async def fetch_json(self, url: str, headers: dict | None = None) -> dict | None:
