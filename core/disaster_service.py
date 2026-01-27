@@ -345,19 +345,6 @@ class DisasterWarningService:
 
         return wolfx_config.get(source_key, True)
 
-    async def _start_global_quake_connection(self):
-        """启动Global Quake WebSocket连接 - 现已整合到 WebSocketManager，此方法保留仅用于日志"""
-        # Global Quake 现在通过 _configure_connections 和 _establish_websocket_connections 统一管理
-        # 此方法保留以保持向后兼容，但不再执行任何操作
-        global_quake_config = self.config.get("data_sources", {}).get(
-            "global_quake", {}
-        )
-        if isinstance(global_quake_config, dict) and global_quake_config.get(
-            "enabled", False
-        ):
-            if "global_quake" in self.connections:
-                logger.debug("[灾害预警] Global Quake 已通过 WebSocketManager 统一管理")
-
     async def _start_scheduled_http_fetch(self):
         """启动定时HTTP数据获取"""
 
@@ -672,7 +659,7 @@ class DisasterWarningService:
             1 for status in connection_status.values() if status["connected"]
         )
 
-        # 统计Global Quake连接（如果有的话）
+        # 统计Global Quake连接
         global_quake_connected = any(
             "global_quake" in task.get_name() if hasattr(task, "get_name") else False
             for task in self.connection_tasks
