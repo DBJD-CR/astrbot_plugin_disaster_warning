@@ -432,7 +432,7 @@ class MessagePushManager:
 
         try:
             # 3. 构建消息 (使用异步构建以支持卡片渲染)
-            message = await self._build_message_async(event)
+            message = await self.build_message_async(event)
             logger.debug("[灾害预警] 消息构建完成")
 
             # 4. 获取目标会话

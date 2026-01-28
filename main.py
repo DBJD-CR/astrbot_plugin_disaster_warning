@@ -686,12 +686,12 @@ class DisasterWarningPlugin(Star):
                     # 如果卡片渲染失败，回退到文本模式
                     yield event.plain_result(
                         "⚠️ 卡片渲染失败，转为文本显示\n"
-                        + self._format_list_text(formatted_list[:count], source)
+                        + DisasterWarningPlugin._format_list_text(formatted_list[:count], source)
                     )
             else:
                 # 文本模式
                 display_list = formatted_list[:count]
-                yield event.plain_result(self._format_list_text(display_list, source))
+                yield event.plain_result(DisasterWarningPlugin._format_list_text(display_list, source))
 
         except Exception as e:
             logger.error(f"[灾害预警] 查询地震列表失败: {e}")
