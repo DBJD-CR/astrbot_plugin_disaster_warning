@@ -35,6 +35,7 @@ class DisasterWarningPlugin(Star):
         self._service_task = None
         self.telemetry: TelemetryManager | None = None
         self._config_schema = None  # 新增属性用于缓存 Schema
+        self._original_exception_handler = None  # 保存原有的异常处理器
 
     async def initialize(self):
         """初始化插件"""
@@ -79,6 +80,8 @@ class DisasterWarningPlugin(Star):
             # 设置全局 asyncio 异常处理器（捕获未处理的 task 异常）
             if self.telemetry.enabled:
                 loop = asyncio.get_event_loop()
+                # 保存原有的异常处理器
+                self._original_exception_handler = loop.get_exception_handler()
                 loop.set_exception_handler(self._handle_asyncio_exception)
                 logger.debug("[灾害预警] 已设置全局异常处理器")
 
@@ -142,7 +145,30 @@ class DisasterWarningPlugin(Star):
         exception = context.get('exception')
         message = context.get('message', '未知异常')
         
-        # 记录日志
+        # 检查异常是否来自本插件
+        is_plugin_exception = False
+        if exception:
+            # 通过 traceback 检查是否包含本插件的模块路径
+            tb = exception.__traceback__
+            while tb is not None:
+                frame = tb.tb_frame
+                filename = frame.f_code.co_filename
+                # 检查文件路径是否属于本插件
+                if 'astrbot_plugin_disaster_warning' in filename:
+                    is_plugin_exception = True
+                    break
+                tb = tb.tb_next
+        
+        # 如果不是本插件的异常，传递给原处理器
+        if not is_plugin_exception:
+            if hasattr(self, '_original_exception_handler') and self._original_exception_handler:
+                self._original_exception_handler(loop, context)
+            else:
+                # 使用默认处理器
+                loop.default_exception_handler(context)
+            return
+        
+        # 记录日志（仅本插件的异常）
         if exception:
             logger.error(f"[灾害预警] 捕获未处理的异步异常: {exception}")
             logger.error(f"[灾害预警] 异常上下文: {message}")
@@ -556,7 +582,8 @@ class DisasterWarningPlugin(Star):
 
         return False
 
-    def _format_source_name(self, source_key: str) -> str:
+    @staticmethod
+    def _format_source_name(source_key: str) -> str:
         """格式化数据源名称 - 细粒度配置结构"""
         # 配置格式：service.source (如：fan_studio.china_earthquake_warning)
         service, source = source_key.split(".", 1)
@@ -599,6 +626,7 @@ class DisasterWarningPlugin(Star):
         """查询最新的地震列表
 
         Args:
+            event: 消息事件对象
             source: 数据源 (cenc/jma)，默认为 cenc
             count: 返回的事件数量，默认为 5
             mode: 显示模式 (card/text)，默认为 card
@@ -669,7 +697,8 @@ class DisasterWarningPlugin(Star):
             logger.error(f"[灾害预警] 查询地震列表失败: {e}")
             yield event.plain_result(f"❌ 查询失败: {e}")
 
-    def _format_list_text(self, data_list: list[dict], source: str) -> str:
+    @staticmethod
+    def _format_list_text(data_list: list[dict], source: str) -> str:
         """格式化地震列表文本 (仿 MessageLogger 风格)"""
         if not data_list:
             return "暂无数据"
@@ -849,7 +878,7 @@ class DisasterWarningPlugin(Star):
                 try:
                     logger.info("[灾害预警] 开始构建模拟预警消息...")
                     # 使用异步版本以支持卡片渲染
-                    msg_chain = await manager._build_message_async(disaster_event)
+                    msg_chain = await manager.build_message_async(disaster_event)
                     logger.info(
                         f"[灾害预警] 消息构建成功，链长度: {len(msg_chain.chain)}"
                     )

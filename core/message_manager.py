@@ -548,7 +548,7 @@ class MessagePushManager:
         chain = self._build_text_message(event, source_id, message_format_config)
         return chain
 
-    async def _build_message_async(self, event: DisasterEvent) -> MessageChain:
+    async def build_message_async(self, event: DisasterEvent) -> MessageChain:
         """构建消息 (异步版本) - 支持卡片渲染"""
         source_id = self._get_source_id(event)
         message_format_config = self.config.get("message_format", {})
