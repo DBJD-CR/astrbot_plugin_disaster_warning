@@ -31,8 +31,8 @@ from astrbot.api.star import StarTools
 class TelemetryManager:
     """遥测管理器 - 异步发送匿名遥测数据"""
 
-    _ENDPOINT = "http://0.0.0.0:8000/api/ingest"
-    _ENCODED_KEY = "dGtfQm02X2lUQWhZaXNrLS1pWk9pLWhEVldmVmdZUlhldGw="
+    _ENDPOINT = "https://telemetry.aloys233.top/api/ingest"
+    _ENCODED_KEY = "dGtfVFMxaVEtcGVJbUlKczFVM3VBcGM4anREUlRhbC00VGY="
     _APP_KEY = base64.b64decode(_ENCODED_KEY).decode()
 
     def __init__(
