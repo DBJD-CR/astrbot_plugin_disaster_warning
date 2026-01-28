@@ -223,32 +223,52 @@ class BrowserManager:
         logger.info("[灾害预警] 浏览器已关闭")
 
     async def _cleanup(self):
-        """清理资源"""
-        # 关闭页面池中的所有页面
-        while not self._page_pool.empty():
-            try:
-                page = self._page_pool.get_nowait()
-                await page.close()
-            except Exception as e:
-                logger.debug(f"[灾害预警] 关闭页面失败: {e}")
+        """清理资源 - 确保每个步骤独立执行,即使前面失败也继续后续清理"""
+        cleanup_errors = []
 
-        # 关闭浏览器
-        if self._browser:
-            try:
+        # 步骤 1: 关闭页面池中的所有页面
+        try:
+            while not self._page_pool.empty():
+                try:
+                    page = self._page_pool.get_nowait()
+                    await page.close()
+                except Exception as e:
+                    cleanup_errors.append(f"关闭页面失败: {e}")
+                    logger.debug(f"[灾害预警] 关闭页面失败: {e}")
+        except Exception as e:
+            cleanup_errors.append(f"清理页面池失败: {e}")
+            logger.warning(f"[灾害预警] 清理页面池时发生异常: {e}")
+
+        # 步骤 2: 关闭浏览器
+        try:
+            if self._browser:
                 await self._browser.close()
                 self._browser = None
-            except Exception as e:
-                logger.debug(f"[灾害预警] 关闭浏览器失败: {e}")
+        except Exception as e:
+            cleanup_errors.append(f"关闭浏览器失败: {e}")
+            logger.warning(f"[灾害预警] 关闭浏览器失败: {e}")
+            # 即使关闭失败,也强制置空引用,防止后续误用
+            self._browser = None
 
-        # 停止 Playwright
-        if self._playwright:
-            try:
+        # 步骤 3: 停止 Playwright
+        try:
+            if self._playwright:
                 await self._playwright.stop()
                 self._playwright = None
-            except Exception as e:
-                logger.debug(f"[灾害预警] 停止 Playwright 失败: {e}")
+        except Exception as e:
+            cleanup_errors.append(f"停止 Playwright 失败: {e}")
+            logger.warning(f"[灾害预警] 停止 Playwright 失败: {e}")
+            # 即使停止失败,也强制置空引用
+            self._playwright = None
 
+        # 标记为未初始化
         self._initialized = False
+
+        # 如果有清理错误,记录汇总日志
+        if cleanup_errors:
+            logger.warning(
+                f"[灾害预警] 资源清理过程中遇到 {len(cleanup_errors)} 个错误"
+            )
 
     def __del__(self):
         """析构函数 - 确保资源释放"""
