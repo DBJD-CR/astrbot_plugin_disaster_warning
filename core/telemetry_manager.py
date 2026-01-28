@@ -297,7 +297,11 @@ class TelemetryManager:
         # 替换 Unix 风格的用户路径
         # /home/username/... -> <USER_HOME>/...
         # /Users/username/... -> <USER_HOME>/...
-        stack = re.sub(r"/(?:home|Users)/[^/]+/", r"<USER_HOME>/", stack)
+        # /root/... -> <USER_HOME>/... (Docker 容器等环境)
+        stack = re.sub(r"/(?:home|Users|root)/[^/]+/", r"<USER_HOME>/", stack)
+        
+        # 处理 /root/ 根目录（没有子目录的情况）
+        stack = re.sub(r"/root/", r"<USER_HOME>/", stack)
 
         # 简化插件路径，只保留相对路径
         # .../astrbot_plugin_disaster_warning/... -> <PLUGIN>/...
@@ -311,8 +315,9 @@ class TelemetryManager:
     def _sanitize_message(self, message: str) -> str:
         """脱敏错误消息，移除可能的敏感信息"""
 
-        # 移除路径中的用户名
-        message = re.sub(r"/(?:home|Users)/[^/\s]+/", r"<USER_HOME>/", message)
+        # 移除路径中的用户名（包括 /root/ 路径）
+        message = re.sub(r"/(?:home|Users|root)/[^/\s]+/", r"<USER_HOME>/", message)
+        message = re.sub(r"/root/", r"<USER_HOME>/", message)
         message = re.sub(r"[A-Za-z]:\\Users\\[^\\\s]+\\", r"<USER_HOME>\\", message)
 
         return message
