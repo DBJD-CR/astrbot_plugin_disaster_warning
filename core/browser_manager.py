@@ -30,6 +30,7 @@ class BrowserManager:
         self._playwright = None
         self._page_pool: asyncio.Queue = asyncio.Queue(maxsize=pool_size)
         self._semaphore = asyncio.Semaphore(pool_size)  # 并发控制
+        self._page_creation_lock = asyncio.Lock()  # 页面创建锁,防止并发创建超出池大小
         self._initialized = False
         self._closed = False
         self._telemetry = telemetry
@@ -195,17 +196,24 @@ class BrowserManager:
                 except Exception:
                     pass
 
-                # 创建新页面并放回池中
-                try:
-                    if self._browser and not self._closed:
-                        new_page = await self._browser.new_page(
-                            viewport={"width": 800, "height": 800},
-                            device_scale_factor=2,
-                        )
-                        await self._page_pool.put(new_page)
-                        logger.debug("[灾害预警] 已重新创建页面")
-                except Exception as recover_err:
-                    logger.error(f"[灾害预警] 页面恢复失败: {recover_err}")
+                # 创建新页面并放回池中（使用锁防止并发创建超出池大小）
+                async with self._page_creation_lock:
+                    try:
+                        if self._browser and not self._closed:
+                            # 检查页面池是否已满（防止超出池大小限制）
+                            if self._page_pool.qsize() < self.pool_size:
+                                new_page = await self._browser.new_page(
+                                    viewport={"width": 800, "height": 800},
+                                    device_scale_factor=2,
+                                )
+                                await self._page_pool.put(new_page)
+                                logger.debug("[灾害预警] 已重新创建页面")
+                            else:
+                                logger.warning(
+                                    "[灾害预警] 页面池已满，跳过创建新页面（池大小限制保护）"
+                                )
+                    except Exception as recover_err:
+                        logger.error(f"[灾害预警] 页面恢复失败: {recover_err}")
 
             return None
 
