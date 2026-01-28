@@ -14,12 +14,15 @@ import base64
 import copy
 import platform
 import re
+import tomllib
 import traceback
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import aiohttp
+import astrbot
 
 from astrbot.api import logger
 from astrbot.api.star import StarTools
@@ -46,6 +49,9 @@ class TelemetryManager:
         """
         self._config = config
         self._plugin_version = plugin_version
+        
+        # 获取 AstrBot 版本号
+        self._astrbot_version = self._get_astrbot_version()
 
         # 从配置中读取遥测开关
         telemetry_config = config.get("telemetry_config", {})
@@ -61,7 +67,7 @@ class TelemetryManager:
 
         if self._enabled:
             logger.debug(
-                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})"
+                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id}, AstrBot: {self._astrbot_version})"
             )
         else:
             logger.debug("[灾害预警] 遥测功能未启用")
@@ -178,6 +184,7 @@ class TelemetryManager:
                 "os_version": platform.release(),
                 "python_version": platform.python_version(),
                 "arch": platform.machine(),
+                "astrbot_version": self._astrbot_version,
             },
         )
 
@@ -290,7 +297,11 @@ class TelemetryManager:
         # 替换 Unix 风格的用户路径
         # /home/username/... -> <USER_HOME>/...
         # /Users/username/... -> <USER_HOME>/...
-        stack = re.sub(r"/(?:home|Users)/[^/]+/", r"<USER_HOME>/", stack)
+        # /root/... -> <USER_HOME>/... (Docker 容器等环境)
+        stack = re.sub(r"/(?:home|Users|root)/[^/]+/", r"<USER_HOME>/", stack)
+        
+        # 处理 /root/ 根目录（没有子目录的情况）
+        stack = re.sub(r"/root/", r"<USER_HOME>/", stack)
 
         # 简化插件路径，只保留相对路径
         # .../astrbot_plugin_disaster_warning/... -> <PLUGIN>/...
@@ -304,11 +315,42 @@ class TelemetryManager:
     def _sanitize_message(self, message: str) -> str:
         """脱敏错误消息，移除可能的敏感信息"""
 
-        # 移除路径中的用户名
-        message = re.sub(r"/(?:home|Users)/[^/\s]+/", r"<USER_HOME>/", message)
+        # 移除路径中的用户名（包括 /root/ 路径）
+        message = re.sub(r"/(?:home|Users|root)/[^/\s]+/", r"<USER_HOME>/", message)
+        message = re.sub(r"/root/", r"<USER_HOME>/", message)
         message = re.sub(r"[A-Za-z]:\\Users\\[^\\\s]+\\", r"<USER_HOME>\\", message)
 
         return message
+
+
+    @staticmethod
+    def _get_astrbot_version() -> str:
+        """
+        从 pyproject.toml 获取 AstrBot 版本号
+        
+        Returns:
+            str: AstrBot 版本号,获取失败则返回 "unknown"
+        """
+        try:
+            # 从 astrbot 包路径定位 pyproject.toml
+            astrbot_path = Path(astrbot.__file__).parent.parent
+            pyproject_path = astrbot_path / 'pyproject.toml'
+            
+            if pyproject_path.exists():
+                with open(pyproject_path, 'rb') as f:
+                    data = tomllib.load(f)
+                    version_str = data.get('project', {}).get('version', 'unknown')
+                    if version_str != 'unknown':
+                        logger.debug(f"[灾害预警] ✅ 从 pyproject.toml 获取到 AstrBot 版本: {version_str}")
+                        return version_str
+            
+            logger.debug(f"[灾害预警] ⚠️  无法读取 AstrBot 版本,pyproject.toml 不存在: {pyproject_path}")
+            return "unknown"
+            
+        except Exception as e:
+            logger.debug(f"[灾害预警] ❌ 获取 AstrBot 版本时出错: {e}")
+            return "unknown"
+
 
     async def close(self):
         """关闭遥测会话"""

@@ -432,7 +432,7 @@ class MessagePushManager:
 
         try:
             # 3. 构建消息 (使用异步构建以支持卡片渲染)
-            message = await self._build_message_async(event)
+            message = await self.build_message_async(event)
             logger.debug("[灾害预警] 消息构建完成")
 
             # 4. 获取目标会话
@@ -548,7 +548,7 @@ class MessagePushManager:
         chain = self._build_text_message(event, source_id, message_format_config)
         return chain
 
-    async def _build_message_async(self, event: DisasterEvent) -> MessageChain:
+    async def build_message_async(self, event: DisasterEvent) -> MessageChain:
         """构建消息 (异步版本) - 支持卡片渲染"""
         source_id = self._get_source_id(event)
         message_format_config = self.config.get("message_format", {})
@@ -692,7 +692,7 @@ class MessagePushManager:
             p_code = event.data.type
             if p_code:
                 # 拼接中国气象局官方图标 URL
-                icon_url = f"http://image.nmc.cn/assets/img/alarm/{p_code}.png"
+                icon_url = f"https://image.nmc.cn/assets/img/alarm/{p_code}.png"
                 try:
                     chain.chain.append(Comp.Image.fromURL(icon_url))
                     logger.debug(f"[灾害预警] 已附加气象预警图标: {icon_url}")
