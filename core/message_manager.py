@@ -692,7 +692,7 @@ class MessagePushManager:
             p_code = event.data.type
             if p_code:
                 # 拼接中国气象局官方图标 URL
-                icon_url = f"http://image.nmc.cn/assets/img/alarm/{p_code}.png"
+                icon_url = f"https://image.nmc.cn/assets/img/alarm/{p_code}.png"
                 try:
                     chain.chain.append(Comp.Image.fromURL(icon_url))
                     logger.debug(f"[灾害预警] 已附加气象预警图标: {icon_url}")
