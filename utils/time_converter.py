@@ -143,6 +143,31 @@ class TimeConverter:
         return dt.astimezone(target_tz)
 
     @staticmethod
+    def _safe_strftime(dt: datetime, fmt: str) -> str:
+        """
+        安全的 strftime，解决 Windows 下中文编码错误问题
+        """
+        try:
+            return dt.strftime(fmt)
+        except UnicodeEncodeError:
+            # 如果包含中文导致编码错误，先替换为占位符，格式化后再填回
+            safe_fmt = ""
+            replacements = []
+
+            for char in fmt:
+                if ord(char) > 127:
+                    safe_fmt += "{}"
+                    replacements.append(char)
+                elif char == "{":
+                    safe_fmt += "{{"
+                elif char == "}":
+                    safe_fmt += "}}"
+                else:
+                    safe_fmt += char
+
+            return dt.strftime(safe_fmt).format(*replacements)
+
+    @staticmethod
     def format_time(
         dt: datetime | None,
         target_timezone: str = "UTC+8",
@@ -161,5 +186,6 @@ class TimeConverter:
             dt = dt.astimezone(target_tz)
 
         # 返回格式化字符串 + 时区名
-        # 如果是 IANA 时区名，可能比较长，还是原样显示用户配置的字符串比较好
-        return f"{dt.strftime(fmt)} ({target_timezone})"
+        # 使用 _safe_strftime 替代直接调用 strftime
+        time_str = TimeConverter._safe_strftime(dt, fmt)
+        return f"{time_str} ({target_timezone})"
