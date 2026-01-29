@@ -5,6 +5,60 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+# 2026/01/30 v1.3.7
+
+本次更新主要适配了 Fan Studio 上游 API 服务端点变更，并对台湾地区的地震预警功能进行了升级。
+
+> [!TIP]
+>
+> **有关地震关键词过滤的补充说明**：
+>
+> 我们在 v1.3.5 版本的更新中引入了基于关键词的地震事件过滤器，如果你要填写黑白名单，请注意：
+>
+> - 关键词填写应以 `省州市区/督道府县` 的级别填写， **请勿填写国家/地区名**，这会导致绝大部分的消息被过滤。
+> - ✅ 正确示例（精确过滤）：“新疆”、“西双版纳州”、“大同市”、“陇西县”、“宜蘭縣”、“千葉県”、“能登半島”、“宗谷地方”、“阿拉斯加”
+> - ✅ 正确示例（模糊匹配）：“省”、“州”、“市”、“县”、“県”、“区”、“地区”、“道”、“附近”、“岛”、“海”、“沖”
+> - ❌ 错误示例：“中国”、“台湾”、“日本”、“美国”
+
+## 🚀 What's Changed
+
+### ✨ New Features (新功能)
+
+- **CWA Upgrade (台湾气象署升级)**:
+  - 适配了 Fan Studio 新的 `/cwa-eew` 接口，确保地震预警功能正常运行 by @DBJD-CR
+  - 新增 **台湾地震报告** (CWA Report) 数据源，支持接收包含震中图、等震度图的正式地震报告 by @DBJD-CR
+  - 新增 `locationDesc` 字段解析，支持显示台湾地震预警的 **影响区域** 描述 by @DBJD-CR
+  - 新增 `CWAReportFormatter` 消息格式化器，优化台湾地震报告的排版与图片展示 by @DBJD-CR
+  
+### 🎨 Visualization (可视化与渲染)
+  
+- **UI Polish (UI 润色)**:
+  - 新增 **强降温预警** Emoji 图标映射 (📉🥶) by @DBJD-CR
+  - 优化地震列表卡片的深度显示：0km 智能显示为“极浅”或“ごく浅い”，并自动适配中日文标签 by @DBJD-CR
+  
+### ♻️ Refactor (架构重构)
+
+- **Config Update**: 更新配置文件结构，新增 `taiwan_cwa_report` 开关，允许用户独立控制预警和报告的推送 by @DBJD-CR
+- **Router Logic**: 适配 `handler_registry` 的消息路由逻辑，根据消息特征智能分发至对应的 EEW 或 Report 处理器 by @DBJD-CR
+- 移除获取 AstrBot 版本的静态方法，改为使用独立函数获取版本信息 by @Aloys233 in #58
+
+### 🐛 Bug Fixes (修复)
+
+- 修复了因上游 API 变更导致的 CWA 数据源解析错误的问题 by @DBJD-CR
+- 修复了在 Windows 系统下时间格式化时因中文字符导致的 `UnicodeEncodeError` 报错 by @DBJD-CR
+- 修复了遥测上报其他插件报错的问题 by @Aloys233 in #57
+
+### 📚 Documentation & Chore (文档与杂项)
+
+- 根据 AI 审核建议调整了多个代码文件 by @Aloys233 in #57
+- 更新适用于 v1.3.7 的 `README.md` 文档和 `CHANGELOG.md` by @DBJD-CR
+
+---
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.3.6...v1.3.7
+
+---
+
 # 2026/01/27 v1.3.6
 
 Hot Fix For v1.3.5
@@ -19,7 +73,7 @@ Hot Fix For v1.3.5
 
 ---
 
-**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.3.1...v1.3.6
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.3.5...v1.3.6
 
 ---
 
