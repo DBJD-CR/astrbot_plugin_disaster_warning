@@ -346,7 +346,7 @@
             <div class="meta-box">
                 <div class="magnitude"><span>M</span>{{ event.magnitude }}</div>
                 <div class="depth">
-                    <span class="label">深度: </span><span class="value">{{ event.depth | replace('km', '') | replace('KM', '') | replace(' ', '') | trim }}</span><span class="unit">km</span>
+                    <span class="label">{{ event.depth_label }}: </span><span class="value">{{ event.depth_value }}</span><span class="unit">{{ event.depth_unit }}</span>
                 </div>
             </div>
         </div>
