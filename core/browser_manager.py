@@ -71,7 +71,9 @@ class BrowserManager:
             logger.error(f"[灾害预警] 浏览器初始化失败: {e}")
             # 上报浏览器初始化错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.browser_manager.initialize")
+                await self._telemetry.track_error(
+                    e, module="core.browser_manager.initialize"
+                )
             # 清理已创建的资源
             await self._cleanup()
             raise
@@ -187,7 +189,9 @@ class BrowserManager:
             logger.error(f"[灾害预警] 卡片渲染失败: {e}")
             # 上报卡片渲染错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.browser_manager.render_card")
+                await self._telemetry.track_error(
+                    e, module="core.browser_manager.render_card"
+                )
             # 如果页面损坏，尝试重新创建一个新页面
             if page:
                 try:

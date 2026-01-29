@@ -45,7 +45,7 @@ class WebSocketManager:
         connection_info: dict[str, Any] | None = None,
     ):
         """建立WebSocket连接 - aiohttp版本
-        
+
         Args:
             name: 连接名称
             uri: WebSocket URI
@@ -147,13 +147,13 @@ class WebSocketManager:
                     # 精细化处理 WebSocket 关闭代码
                     if websocket.close_code is not None:
                         close_code = websocket.close_code
-                        
+
                         # 正常关闭代码（不需要重连）
                         normal_close_codes = {
                             1000,  # Normal Closure - 正常关闭
                             1001,  # Going Away - 服务器/客户端正常离开
                         }
-                        
+
                         # 不应重连的关闭代码（协议/认证错误）
                         no_reconnect_codes = {
                             1002,  # Protocol Error - 协议错误
@@ -164,11 +164,13 @@ class WebSocketManager:
                             1010,  # Mandatory Extension - 必需的扩展
                             1011,  # Internal Server Error - 服务器内部错误
                         }
-                        
+
                         # 特殊处理的关闭代码
                         if close_code in normal_close_codes:
                             # 正常关闭，不触发异常
-                            logger.info(f"[灾害预警] WebSocket正常关闭: {name}, code={close_code}")
+                            logger.info(
+                                f"[灾害预警] WebSocket正常关闭: {name}, code={close_code}"
+                            )
                         elif close_code in no_reconnect_codes:
                             # 协议/配置错误，不应该重连
                             raise Exception(
@@ -182,9 +184,7 @@ class WebSocketManager:
                             )
                         else:
                             # 其他未知关闭代码，尝试重连
-                            raise Exception(
-                                f"WebSocket意外关闭，代码 {close_code}"
-                            )
+                            raise Exception(f"WebSocket意外关闭，代码 {close_code}")
 
                 except asyncio.CancelledError:
                     # 任务被取消，正常传播（不记录为错误）
@@ -215,7 +215,9 @@ class WebSocketManager:
             # 上报未知 WebSocket 错误到遥测
             if self._telemetry and self._telemetry.enabled:
                 asyncio.create_task(
-                    self._telemetry.track_error(e, module=f"core.websocket_manager.connect.{name}")
+                    self._telemetry.track_error(
+                        e, module=f"core.websocket_manager.connect.{name}"
+                    )
                 )
             self._handle_connection_error(name, uri, headers, e)
 
@@ -262,10 +264,10 @@ class WebSocketManager:
 
     def _should_reconnect_on_error(self, error: Exception) -> bool:
         """判断遇到错误时是否应该重连
-        
+
         Args:
             error: 捕获到的异常对象
-            
+
         Returns:
             bool: True 表示应该重连，False 表示不应重连
         """
@@ -278,7 +280,7 @@ class WebSocketManager:
         # 认证错误不需要重试
         if "401" in error_msg or "403" in error_msg:
             return False
-        
+
         # 协议错误关闭代码不应重连（由关闭代码处理逻辑抛出）
         if "协议错误关闭（不重连）" in error_msg:
             return False
@@ -317,7 +319,7 @@ class WebSocketManager:
         connection_info: dict[str, Any] | None = None,
     ):
         """计划重连 - 优化版本，基于配置的固定间隔
-        
+
         Args:
             name: 连接名称
             uri: WebSocket URI

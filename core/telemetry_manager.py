@@ -17,7 +17,6 @@ import re
 import traceback
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -49,7 +48,7 @@ class TelemetryManager:
         """
         self._config = config
         self._plugin_version = plugin_version
-        
+
         # 获取 AstrBot 版本号
         self._astrbot_version = get_astrbot_version()
 
@@ -299,7 +298,7 @@ class TelemetryManager:
         # /Users/username/... -> <USER_HOME>/...
         # /root/... -> <USER_HOME>/... (Docker 容器等环境)
         stack = re.sub(r"/(?:home|Users|root)/[^/]+/", r"<USER_HOME>/", stack)
-        
+
         # 处理 /root/ 根目录（没有子目录的情况）
         stack = re.sub(r"/root/", r"<USER_HOME>/", stack)
 
@@ -321,7 +320,6 @@ class TelemetryManager:
         message = re.sub(r"[A-Za-z]:\\Users\\[^\\\s]+\\", r"<USER_HOME>\\", message)
 
         return message
-
 
     async def close(self):
         """关闭遥测会话"""
