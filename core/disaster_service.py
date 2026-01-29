@@ -50,12 +50,16 @@ class DisasterWarningService:
 
         # 初始化组件（传入 telemetry，但此时可能为 None）
         self.ws_manager = WebSocketManager(
-            config.get("websocket_config", {}), self.message_logger, telemetry=self._telemetry
+            config.get("websocket_config", {}),
+            self.message_logger,
+            telemetry=self._telemetry,
         )
         self.http_fetcher: HTTPDataFetcher | None = None
-        
+
         # 初始化消息管理器
-        self.message_manager = MessagePushManager(config, context, telemetry=self._telemetry)
+        self.message_manager = MessagePushManager(
+            config, context, telemetry=self._telemetry
+        )
 
         # 数据处理器
         self.handlers = {}
@@ -111,7 +115,9 @@ class DisasterWarningService:
             logger.error(f"[灾害预警] 初始化服务失败: {e}")
             # 上报初始化失败错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.disaster_service.initialize")
+                await self._telemetry.track_error(
+                    e, module="core.disaster_service.initialize"
+                )
             raise
 
     def _register_handlers(self):
@@ -138,6 +144,7 @@ class DisasterWarningService:
             fan_sub_sources = [
                 "china_earthquake_warning",
                 "taiwan_cwa_earthquake",
+                "taiwan_cwa_report",
                 "china_cenc_earthquake",
                 "usgs_earthquake",
                 "china_weather_alarm",
@@ -257,7 +264,9 @@ class DisasterWarningService:
                 self.running = False
                 # 上报启动失败错误到遥测
                 if self._telemetry and self._telemetry.enabled:
-                    await self._telemetry.track_error(e, module="core.disaster_service.start")
+                    await self._telemetry.track_error(
+                        e, module="core.disaster_service.start"
+                    )
                 raise
 
     async def stop(self):
@@ -292,12 +301,16 @@ class DisasterWarningService:
             logger.error(f"[灾害预警] 停止服务时出错: {e}")
             # 上报停止服务错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.disaster_service.stop")
+                await self._telemetry.track_error(
+                    e, module="core.disaster_service.stop"
+                )
 
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""
-        logger.debug(f"[灾害预警] 开始建立WebSocket连接，当前任务数: {len(self.connection_tasks)}")
-        
+        logger.debug(
+            f"[灾害预警] 开始建立WebSocket连接，当前任务数: {len(self.connection_tasks)}"
+        )
+
         for conn_name, conn_config in self.connections.items():
             if conn_config["handler"] in ["fan_studio", "p2p", "wolfx", "global_quake"]:
                 # 使用WebSocket管理器功能，传递连接信息
@@ -327,8 +340,10 @@ class DisasterWarningService:
                 logger.debug(
                     f"[灾害预警] 已启动WebSocket连接任务: {conn_name} (数据源: {connection_info['data_source']}{backup_info})"
                 )
-        
-        logger.debug(f"[灾害预警] WebSocket连接建立完成，总任务数: {len(self.connection_tasks)}")
+
+        logger.debug(
+            f"[灾害预警] WebSocket连接建立完成，总任务数: {len(self.connection_tasks)}"
+        )
 
     def _get_data_source_from_connection(self, connection_name: str) -> str:
         """从连接名称获取数据源ID"""
@@ -494,11 +509,60 @@ class DisasterWarningService:
             magnitude = item.get("magnitude", "0.0")
             depth = item.get("depth", "0")
 
-            # 统一深度格式
-            if isinstance(depth, (int, float)):
-                depth = f"{depth}km"
-            elif isinstance(depth, str) and not depth.endswith("km"):
-                depth = f"{depth}km"
+            # 解析深度数值
+            depth_val = 0.0
+            try:
+                if isinstance(depth, (int, float)):
+                    depth_val = float(depth)
+                elif isinstance(depth, str):
+                    clean_depth = depth.lower().replace("km", "").strip()
+                    if clean_depth:
+                        depth_val = float(clean_depth)
+            except Exception:
+                depth_val = -1.0
+
+            # 深度显示逻辑
+            depth_label = "深度"
+            depth_value_str = str(depth).replace("km", "").strip()
+            depth_unit = "km"
+
+            if source_type == "jma":
+                depth_label = "深さ"
+                if depth_val == 0.0:
+                    depth_value_str = "ごく浅い"
+                    depth_unit = ""
+                    depth = "ごく浅い"
+                else:
+                    if depth_val >= 0:
+                        formatted_val = (
+                            f"{int(depth_val)}"
+                            if depth_val.is_integer()
+                            else f"{depth_val}"
+                        )
+                        depth = f"{formatted_val} km"
+                        depth_value_str = formatted_val
+                    else:
+                        clean_d = str(depth).replace("km", "").strip()
+                        depth = f"{clean_d} km"
+            else:
+                # cenc
+                depth_label = "深度"
+                if depth_val == 0.0:
+                    depth_value_str = "极浅"
+                    depth_unit = ""
+                    depth = "极浅"
+                else:
+                    if depth_val >= 0:
+                        formatted_val = (
+                            f"{int(depth_val)}"
+                            if depth_val.is_integer()
+                            else f"{depth_val}"
+                        )
+                        depth = f"{formatted_val} km"
+                        depth_value_str = formatted_val
+                    else:
+                        clean_d = str(depth).replace("km", "").strip()
+                        depth = f"{clean_d} km"
 
             intensity_display = "-"
             intensity_class = "int-unknown"
@@ -582,6 +646,9 @@ class DisasterWarningService:
                 "time": time_str,
                 "magnitude": magnitude,
                 "depth": depth,
+                "depth_label": depth_label,
+                "depth_value": depth_value_str,
+                "depth_unit": depth_unit,
                 "intensity_display": intensity_display,
                 "intensity_class": intensity_class,
                 "raw": item,  # 保留原始数据用于文本模式
