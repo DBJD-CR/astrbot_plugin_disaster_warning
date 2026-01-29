@@ -62,7 +62,8 @@ class WebSocketHandlerRegistry:
                     "cenc": ("china_cenc_earthquake", "cenc_fanstudio"),
                     "cea": ("china_earthquake_warning", "cea_fanstudio"),
                     "jma": ("japan_jma_eew", "jma_fanstudio"),
-                    "cwa": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
+                    "cwa": ("taiwan_cwa_report", "cwa_fanstudio_report"),
+                    "cwa-eew": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
                     "usgs": ("usgs_earthquake", "usgs_fanstudio"),
                 }
 
@@ -116,13 +117,23 @@ class WebSocketHandlerRegistry:
                             and isinstance(msg_data.get("epiIntensity"), str)
                         ):
                             detected_source = "jma"
+                        elif "imageURI" in msg_data and "shockTime" in msg_data:
+                            detected_source = "cwa"
+                        elif (
+                            ("epiIntensity" in msg_data or "depth" in msg_data)
+                            and "shockTime" in msg_data
+                            and "updates" in msg_data
+                            and "locationDesc" in msg_data
+                        ):
+                            detected_source = "cwa-eew"
                         elif (
                             "epiIntensity" in msg_data
                             and "createTime" in msg_data
                             and "shockTime" in msg_data
                             and "infoTypeName" not in msg_data
                         ):
-                            detected_source = "cwa"
+                            # 旧版特征兼容 (如果 cwa-eew 不匹配)
+                            detected_source = "cwa-eew"
                         elif (
                             "epiIntensity" in msg_data
                             and "eventId" in msg_data
