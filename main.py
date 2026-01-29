@@ -2,8 +2,9 @@ import asyncio
 import json
 import os
 import traceback
+import re
 from datetime import datetime
-from typing import Any, Dict, Set
+from typing import Any
 
 import astrbot.api.message_components as Comp
 
@@ -35,9 +36,9 @@ class DisasterWarningPlugin(Star):
         self.disaster_service: Any = None  # DisasterService 类型，避免循环导入
         self._service_task: asyncio.Task[None] | None = None
         self.telemetry: TelemetryManager | None = None
-        self._config_schema: Dict[str, Any] | None = None  # JSON Schema 缓存
+        self._config_schema: dict[str, Any] | None = None  # JSON Schema 缓存
         self._original_exception_handler: Any = None  # asyncio 异常处理器
-        self._telemetry_tasks: Set[asyncio.Task[None]] = set()  # 遥测任务引用集合
+        self._telemetry_tasks: set[asyncio.Task[None]] = set()  # 遥测任务引用集合
 
     async def initialize(self):
         """初始化插件"""
@@ -90,7 +91,9 @@ class DisasterWarningPlugin(Star):
             if self.telemetry.enabled:
                 # 发送启动事件和配置快照
                 startup_task = asyncio.create_task(self.telemetry.track_startup())
-                config_task = asyncio.create_task(self.telemetry.track_config(dict(self.config)))
+                config_task = asyncio.create_task(
+                    self.telemetry.track_config(dict(self.config))
+                )
                 # 保存任务引用,防止被垃圾回收
                 self._telemetry_tasks.add(startup_task)
                 self._telemetry_tasks.add(config_task)
@@ -101,7 +104,7 @@ class DisasterWarningPlugin(Star):
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
             # 上报初始化失败错误到遥测
-            if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+            if hasattr(self, "telemetry") and self.telemetry and self.telemetry.enabled:
                 await self.telemetry.track_error(e, module="main.initialize")
             raise
 
@@ -141,7 +144,7 @@ class DisasterWarningPlugin(Star):
         except Exception as e:
             logger.error(f"[灾害预警] 插件停止时出错: {e}")
             # 上报停止错误到遥测
-            if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+            if hasattr(self, "telemetry") and self.telemetry and self.telemetry.enabled:
                 await self.telemetry.track_error(e, module="main.terminate")
 
     def _handle_asyncio_exception(self, loop, context):
@@ -150,9 +153,9 @@ class DisasterWarningPlugin(Star):
         捕获未被处理的 asyncio task 异常并上报到遥测
         """
         # 获取异常信息
-        exception = context.get('exception')
-        message = context.get('message', '未知异常')
-        
+        exception = context.get("exception")
+        message = context.get("message", "未知异常")
+
         # 检查异常是否来自本插件
         is_plugin_exception = False
         if exception:
@@ -162,50 +165,51 @@ class DisasterWarningPlugin(Star):
                 frame = tb.tb_frame
                 filename = frame.f_code.co_filename
                 # 检查文件路径是否属于本插件
-                if 'astrbot_plugin_disaster_warning' in filename:
+                if "astrbot_plugin_disaster_warning" in filename:
                     is_plugin_exception = True
                     break
                 tb = tb.tb_next
-        
+
         # 如果不是本插件的异常，传递给原处理器
         if not is_plugin_exception:
-            if hasattr(self, '_original_exception_handler') and self._original_exception_handler:
+            if (
+                hasattr(self, "_original_exception_handler")
+                and self._original_exception_handler
+            ):
                 self._original_exception_handler(loop, context)
             else:
                 # 使用默认处理器
                 loop.default_exception_handler(context)
             return
-        
+
         # 记录日志（仅本插件的异常）
         if exception:
             logger.error(f"[灾害预警] 捕获未处理的异步异常: {exception}")
             logger.error(f"[灾害预警] 异常上下文: {message}")
         else:
             logger.error(f"[灾害预警] 捕获未处理的异步错误: {message}")
-        
+
         # 上报到遥测
-        if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+        if hasattr(self, "telemetry") and self.telemetry and self.telemetry.enabled:
             if exception:
                 # 提取 task 名称或协程名称
-                task = context.get('future')
+                task = context.get("future")
                 task_name = "unknown"
                 if task:
                     # 尝试提取 task name（如 'Task-323'）
-                    task_name = getattr(task, 'get_name', lambda: str(task))()
+                    task_name = getattr(task, "get_name", lambda: str(task))()
                     if not task_name or task_name == str(task):
                         # 如果没有名字，尝试从 repr 中提取
                         task_repr = repr(task)
                         if "name=" in task_repr:
-                            import re
                             match = re.search(r"name='([^']+)'", task_repr)
                             if match:
                                 task_name = match.group(1)
-                
+
                 # 创建一个新的 task 来上报错误（避免在异常处理器中使用 await）
                 error_task = asyncio.create_task(
                     self.telemetry.track_error(
-                        exception, 
-                        module=f"main.unhandled_async.{task_name}"
+                        exception, module=f"main.unhandled_async.{task_name}"
                     )
                 )
                 # 保存任务引用,防止被垃圾回收
@@ -216,8 +220,7 @@ class DisasterWarningPlugin(Star):
                 runtime_error = RuntimeError(message)
                 error_task = asyncio.create_task(
                     self.telemetry.track_error(
-                        runtime_error,
-                        module="main.unhandled_async"
+                        runtime_error, module="main.unhandled_async"
                     )
                 )
                 # 保存任务引用,防止被垃圾回收
@@ -584,7 +587,7 @@ class DisasterWarningPlugin(Star):
 
     async def is_plugin_admin(self, event: AstrMessageEvent) -> bool:
         """检查用户是否为插件管理员或Bot管理员
-        
+
         Note: 改为异步方法以防止 event.is_admin() 可能的阻塞风险
               在某些适配器实现中，is_admin() 可能涉及数据库查询
         """
@@ -611,6 +614,7 @@ class DisasterWarningPlugin(Star):
             "fan_studio": {
                 "china_earthquake_warning": "中国地震网地震预警",
                 "taiwan_cwa_earthquake": "台湾中央气象署强震即时警报",
+                "taiwan_cwa_report": "台湾中央气象署地震报告",
                 "china_cenc_earthquake": "中国地震台网地震测定",
                 "japan_jma_eew": "日本气象厅紧急地震速报",
                 "usgs_earthquake": "USGS地震测定",
@@ -706,12 +710,16 @@ class DisasterWarningPlugin(Star):
                     # 如果卡片渲染失败，回退到文本模式
                     yield event.plain_result(
                         "⚠️ 卡片渲染失败，转为文本显示\n"
-                        + DisasterWarningPlugin._format_list_text(formatted_list[:count], source)
+                        + DisasterWarningPlugin._format_list_text(
+                            formatted_list[:count], source
+                        )
                     )
             else:
                 # 文本模式
                 display_list = formatted_list[:count]
-                yield event.plain_result(DisasterWarningPlugin._format_list_text(display_list, source))
+                yield event.plain_result(
+                    DisasterWarningPlugin._format_list_text(display_list, source)
+                )
 
         except Exception as e:
             logger.error(f"[灾害预警] 查询地震列表失败: {e}")
@@ -742,7 +750,8 @@ class DisasterWarningPlugin(Star):
             lines.append(f"        📋 发生时间: {item['time']}")
             lines.append(f"        📋 震中: {item['location']}")
             lines.append(f"        📋 震级: {item['magnitude']}")
-            lines.append(f"        📋 深度: {item['depth']}")
+            depth_label = item.get("depth_label", "深度")
+            lines.append(f"        📋 {depth_label}: {item['depth']}")
 
             if source == "cenc":
                 lines.append(f"        📋 烈度: {item['intensity_display']}")
@@ -837,7 +846,7 @@ class DisasterWarningPlugin(Star):
 
             # 分开的消息构建
             report_lines = [
-                "🧪 **灾害预警模拟报告**",
+                "🧪 灾害预警模拟报告",
                 f"Input: M{magnitude} @ ({lat}, {lon}), Depth {depth}km\n",
             ]
 
