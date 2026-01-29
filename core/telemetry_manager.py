@@ -14,7 +14,6 @@ import base64
 import copy
 import platform
 import re
-import tomllib
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -22,10 +21,11 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
-import astrbot
 
 from astrbot.api import logger
 from astrbot.api.star import StarTools
+
+from ..utils.version import get_astrbot_version
 
 
 class TelemetryManager:
@@ -51,7 +51,7 @@ class TelemetryManager:
         self._plugin_version = plugin_version
         
         # 获取 AstrBot 版本号
-        self._astrbot_version = self._get_astrbot_version()
+        self._astrbot_version = get_astrbot_version()
 
         # 从配置中读取遥测开关
         telemetry_config = config.get("telemetry_config", {})
@@ -321,35 +321,6 @@ class TelemetryManager:
         message = re.sub(r"[A-Za-z]:\\Users\\[^\\\s]+\\", r"<USER_HOME>\\", message)
 
         return message
-
-
-    @staticmethod
-    def _get_astrbot_version() -> str:
-        """
-        从 pyproject.toml 获取 AstrBot 版本号
-        
-        Returns:
-            str: AstrBot 版本号,获取失败则返回 "unknown"
-        """
-        try:
-            # 从 astrbot 包路径定位 pyproject.toml
-            astrbot_path = Path(astrbot.__file__).parent.parent
-            pyproject_path = astrbot_path / 'pyproject.toml'
-            
-            if pyproject_path.exists():
-                with open(pyproject_path, 'rb') as f:
-                    data = tomllib.load(f)
-                    version_str = data.get('project', {}).get('version', 'unknown')
-                    if version_str != 'unknown':
-                        logger.debug(f"[灾害预警] ✅ 从 pyproject.toml 获取到 AstrBot 版本: {version_str}")
-                        return version_str
-            
-            logger.debug(f"[灾害预警] ⚠️  无法读取 AstrBot 版本,pyproject.toml 不存在: {pyproject_path}")
-            return "unknown"
-            
-        except Exception as e:
-            logger.debug(f"[灾害预警] ❌ 获取 AstrBot 版本时出错: {e}")
-            return "unknown"
 
 
     async def close(self):
