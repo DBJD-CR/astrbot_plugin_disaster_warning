@@ -30,6 +30,7 @@ from ..models.models import (
     WeatherAlarmData,
 )
 from ..utils.formatters import (
+    CWAReportFormatter,
     GlobalQuakeFormatter,
     format_earthquake_message,
     format_tsunami_message,
@@ -499,7 +500,9 @@ class MessagePushManager:
             logger.error(f"[灾害预警] 推送事件失败: {e}")
             # 上报推送失败错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.message_manager._execute_push")
+                await self._telemetry.track_error(
+                    e, module="core.message_manager._execute_push"
+                )
             return False
 
     async def _push_split_map(
@@ -723,7 +726,11 @@ class MessagePushManager:
                 "detailed_jma_intensity": detailed_jma,
                 "timezone": display_timezone,
             }
-            message_text = format_earthquake_message(source_id, event.data, options)
+            # 特殊处理 CWA 报告格式化
+            if source_id == "cwa_fanstudio_report":
+                message_text = CWAReportFormatter.format_message(event.data, options)
+            else:
+                message_text = format_earthquake_message(source_id, event.data, options)
         else:
             logger.warning(f"[灾害预警] 未知事件类型: {type(event.data)}")
             message_text = f"🚨[未知事件]\n📋事件ID：{event.id}\n⏰时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
