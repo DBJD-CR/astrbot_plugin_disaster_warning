@@ -510,7 +510,7 @@ class DisasterWarningService:
             depth = item.get("depth", "0")
 
             # 解析深度数值
-            depth_val = 0.0
+            depth_val = -1.0
             try:
                 if isinstance(depth, (int, float)):
                     depth_val = float(depth)
