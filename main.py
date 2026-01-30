@@ -1,8 +1,8 @@
 import asyncio
 import json
 import os
-import traceback
 import re
+import traceback
 from datetime import datetime
 from typing import Any
 
@@ -108,10 +108,40 @@ class DisasterWarningPlugin(Star):
                 await self.telemetry.track_error(e, module="main.initialize")
             raise
 
+    async def _cleanup_telemetry_tasks(self) -> None:
+        """清理并终止所有未完成的遥测任务，避免任务泄漏"""
+        if not self._telemetry_tasks:
+            return
+
+        # 创建快照，避免遍历过程中集合被修改
+        pending_tasks = list(self._telemetry_tasks)
+
+        # 先取消所有仍在运行的任务
+        for task in pending_tasks:
+            if not task.done():
+                task.cancel()
+
+        # 等待所有任务结束，吞掉异常防止影响终止流程
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+        # 统一从集合中移除已处理的任务
+        self._telemetry_tasks.clear()
+
     async def terminate(self):
         """插件销毁时调用"""
         try:
             logger.info("[灾害预警] 正在停止灾害预警插件...")
+
+            # 恢复原有异常处理器
+            if self._original_exception_handler is not None:
+                loop = asyncio.get_running_loop()
+                loop.set_exception_handler(self._original_exception_handler)
+                self._original_exception_handler = None
+                logger.debug("[灾害预警] 已恢复全局异常处理器")
+
+            # 清理遥测任务
+            await self._cleanup_telemetry_tasks()
 
             # 停止服务任务
             if self._service_task:
