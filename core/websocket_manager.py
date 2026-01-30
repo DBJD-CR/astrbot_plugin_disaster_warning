@@ -187,8 +187,7 @@ class WebSocketManager:
                             raise Exception(f"WebSocket意外关闭，代码 {close_code}")
 
                 except asyncio.CancelledError:
-                    # 任务被取消，正常传播（不记录为错误）
-                    logger.info(f"[灾害预警] WebSocket连接任务被取消: {name}")
+                    # 任务被取消，正常传播（不在此处记录，交由外层统一记录）
                     raise
                 except Exception as e:
                     # 这里的异常通常是处理循环中的非预期间断

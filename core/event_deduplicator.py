@@ -130,7 +130,7 @@ class EventDeduplicator:
             }
         }
 
-        logger.info(f"[灾害预警] 事件通过基础去重检查: {event.source.value}")
+        logger.debug(f"[灾害预警] 事件通过基础去重检查: {event.source.value}")
         return True
 
     def generate_event_fingerprint(self, earthquake: EarthquakeData) -> str:
