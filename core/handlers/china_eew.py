@@ -19,8 +19,8 @@ from .base import BaseDataHandler
 class CEAEEWHandler(BaseDataHandler):
     """中国地震预警网处理器 - FAN Studio"""
 
-    def __init__(self, message_logger=None):
-        super().__init__("cea_fanstudio", message_logger)
+    def __init__(self, message_logger=None, source_id="cea_fanstudio"):
+        super().__init__(source_id, message_logger)
 
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析中国地震预警网数据"""
@@ -44,10 +44,15 @@ class CEAEEWHandler(BaseDataHandler):
                 logger.debug(f"[灾害预警] {self.source_id} 非地震预警数据，跳过")
                 return None
 
+            # 确定数据源类型
+            source_enum = DataSource.FAN_STUDIO_CEA
+            if self.source_id == "cea_pr_fanstudio":
+                source_enum = DataSource.FAN_STUDIO_CEA_PR
+
             earthquake = EarthquakeData(
                 id=msg_data.get("id", ""),
                 event_id=msg_data.get("eventId", ""),
-                source=DataSource.FAN_STUDIO_CEA,
+                source=source_enum,
                 disaster_type=DisasterType.EARTHQUAKE_WARNING,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
                 latitude=float(msg_data.get("latitude", 0)),
@@ -75,6 +80,13 @@ class CEAEEWHandler(BaseDataHandler):
         except Exception as e:
             logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {e}")
             return None
+
+
+class CEAEEWPRHandler(CEAEEWHandler):
+    """中国地震预警网(省级)处理器 - FAN Studio"""
+
+    def __init__(self, message_logger=None):
+        super().__init__(message_logger, source_id="cea_pr_fanstudio")
 
 
 class CEAEEWWolfxHandler(BaseDataHandler):

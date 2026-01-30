@@ -62,6 +62,7 @@ class DataSource(Enum):
     # FAN Studio 数据源
     FAN_STUDIO_CENC = "fan_studio_cenc"  # 中国地震台网
     FAN_STUDIO_CEA = "fan_studio_cea"  # 中国地震预警网
+    FAN_STUDIO_CEA_PR = "fan_studio_cea_pr"  # 中国地震预警网(省级)
     FAN_STUDIO_CWA = "fan_studio_cwa"  # 台湾中央气象署(预警)
     FAN_STUDIO_CWA_REPORT = "fan_studio_cwa_report"  # 台湾中央气象署(报告)
     FAN_STUDIO_USGS = "fan_studio_usgs"  # USGS
@@ -89,6 +90,7 @@ class DataSource(Enum):
 DATA_SOURCE_MAPPING = {
     # EEW预警数据源
     "cea_fanstudio": DataSource.FAN_STUDIO_CEA,
+    "cea_pr_fanstudio": DataSource.FAN_STUDIO_CEA_PR,
     "cea_wolfx": DataSource.WOLFX_CENC_EEW,
     "cwa_fanstudio": DataSource.FAN_STUDIO_CWA,
     "cwa_fanstudio_report": DataSource.FAN_STUDIO_CWA_REPORT,

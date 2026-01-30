@@ -61,6 +61,7 @@ class WebSocketHandlerRegistry:
                     "tsunami": ("china_tsunami", "china_tsunami_fanstudio"),
                     "cenc": ("china_cenc_earthquake", "cenc_fanstudio"),
                     "cea": ("china_earthquake_warning", "cea_fanstudio"),
+                    "cea-pr": ("china_earthquake_warning", "cea_pr_fanstudio"),
                     "jma": ("japan_jma_eew", "jma_fanstudio"),
                     "cwa": ("taiwan_cwa_report", "cwa_fanstudio_report"),
                     "cwa-eew": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
@@ -139,7 +140,10 @@ class WebSocketHandlerRegistry:
                             and "eventId" in msg_data
                             and "updates" in msg_data
                         ):
-                            detected_source = "cea"
+                            if "province" in msg_data:
+                                detected_source = "cea-pr"
+                            else:
+                                detected_source = "cea"
                         elif "url" in msg_data and "usgs.gov" in msg_data.get(
                             "url", ""
                         ):
