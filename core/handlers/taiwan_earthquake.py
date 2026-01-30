@@ -36,14 +36,22 @@ class CWAReportHandler(BaseDataHandler):
                 logger.debug(f"[灾害预警] {self.source_id} 非CWA地震报告数据，跳过")
                 return None
 
+            # 增强数值解析健壮性
+            try:
+                lat = float(msg_data.get("latitude") or 0)
+                lon = float(msg_data.get("longitude") or 0)
+            except (ValueError, TypeError):
+                lat = 0.0
+                lon = 0.0
+
             earthquake = EarthquakeData(
                 id=str(msg_data.get("id", "")),
                 event_id=str(msg_data.get("id", "")),  # 报告ID通常就是事件ID
                 source=DataSource.FAN_STUDIO_CWA_REPORT,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
-                latitude=float(msg_data.get("latitude", 0)),
-                longitude=float(msg_data.get("longitude", 0)),
+                latitude=lat,
+                longitude=lon,
                 depth=msg_data.get("depth"),
                 magnitude=msg_data.get("magnitude"),
                 place_name=msg_data.get("placeName", ""),
