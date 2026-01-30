@@ -148,6 +148,9 @@ class MessagePushManager:
         # 初始化浏览器管理器
         self.browser_manager = BrowserManager(pool_size=2, telemetry=telemetry)
 
+        # 启动时执行一次清理，避免开发环境下重载插件导致临时文件堆积
+        self.cleanup_old_records()
+
         # 检查是否需要预启动浏览器
         # 如果启用了地图瓦片 (include_map) 或 Global Quake 卡片 (use_global_quake_card)
         # 则在后台异步预热浏览器，避免第一次推送时因启动浏览器造成延迟
