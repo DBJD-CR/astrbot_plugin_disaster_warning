@@ -159,7 +159,12 @@ class CEAEEWFormatter(BaseMessageFormatter):
         options = options or {}
         timezone = options.get("timezone", "UTC+8")
 
-        lines = ["🚨[地震预警] 中国地震预警网"]
+        # 检查是否有 province 字段来判断是否为省级预警
+        source_name = "中国地震预警网"
+        if earthquake.province:
+            source_name = f"{earthquake.province}地震局"
+
+        lines = [f"🚨[地震预警] {source_name}"]
 
         # 报数信息
         report_num = getattr(earthquake, "updates", 1)
