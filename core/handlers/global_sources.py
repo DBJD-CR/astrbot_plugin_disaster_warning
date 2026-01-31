@@ -98,22 +98,14 @@ class GlobalQuakeHandler(BaseDataHandler):
 
             # 格式化震级和深度 - 保留1位小数，与其他数据源保持一致
             magnitude_raw = eq_data.get("magnitude")
-            if magnitude_raw is not None:
-                try:
-                    magnitude = round(float(magnitude_raw), 1)
-                except (ValueError, TypeError):
-                    magnitude = None
-            else:
-                magnitude = None
+            magnitude = self._safe_float_convert(magnitude_raw)
+            if magnitude is not None:
+                magnitude = round(magnitude, 1)
 
             depth_raw = eq_data.get("depth")
-            if depth_raw is not None:
-                try:
-                    depth = round(float(depth_raw), 1)
-                except (ValueError, TypeError):
-                    depth = None
-            else:
-                depth = None
+            depth = self._safe_float_convert(depth_raw)
+            if depth is not None:
+                depth = round(depth, 1)
 
             # 翻译地名（使用FE Regions，类似USGS处理）
             original_region = eq_data.get("region", "未知地点")
@@ -223,27 +215,19 @@ class USGSEarthquakeHandler(BaseDataHandler):
                 return data.get(field_name) or data.get(field_name.capitalize())
 
             magnitude_raw = get_field(msg_data, "magnitude")
-            if magnitude_raw is not None:
-                try:
-                    magnitude = round(float(magnitude_raw), 1)
-                except (ValueError, TypeError):
-                    magnitude = None
-            else:
-                magnitude = None
+            magnitude = self._safe_float_convert(magnitude_raw)
+            if magnitude is not None:
+                magnitude = round(magnitude, 1)
 
             depth_raw = get_field(msg_data, "depth")
-            if depth_raw is not None:
-                try:
-                    depth = round(float(depth_raw), 1)
-                except (ValueError, TypeError):
-                    depth = None
-            else:
-                depth = None
+            depth = self._safe_float_convert(depth_raw)
+            if depth is not None:
+                depth = round(depth, 1)
 
             # 验证关键字段 - 如果缺少关键信息，不创建地震对象
             usgs_id = get_field(msg_data, "id") or ""
-            usgs_latitude = float(get_field(msg_data, "latitude") or 0)
-            usgs_longitude = float(get_field(msg_data, "longitude") or 0)
+            usgs_latitude = self._safe_float_convert(get_field(msg_data, "latitude")) or 0.0
+            usgs_longitude = self._safe_float_convert(get_field(msg_data, "longitude")) or 0.0
             usgs_place_name_en = get_field(msg_data, "placeName") or ""
 
             if not usgs_id:
