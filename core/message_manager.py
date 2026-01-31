@@ -146,7 +146,9 @@ class MessagePushManager:
         self.weather_filter = WeatherFilter(weather_filter_config)
 
         # 初始化浏览器管理器
-        self.browser_manager = BrowserManager(pool_size=2, telemetry=telemetry)
+        msg_config = config.get("message_format", {})
+        pool_size = msg_config.get("browser_pool_size", 2)
+        self.browser_manager = BrowserManager(pool_size=pool_size, telemetry=telemetry)
 
         # 启动时执行一次清理，避免开发环境下重载插件导致临时文件堆积
         self.cleanup_old_records()
