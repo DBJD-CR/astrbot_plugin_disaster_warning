@@ -128,7 +128,9 @@ class CWAEEWWolfxHandler(BaseDataHandler):
                 latitude=self._safe_float_convert(data.get("Latitude")) or 0.0,
                 longitude=self._safe_float_convert(data.get("Longitude")) or 0.0,
                 depth=self._safe_float_convert(data.get("Depth")),
-                magnitude=self._safe_float_convert(data.get("Magunitude") or data.get("Magnitude")),
+                magnitude=self._safe_float_convert(
+                    data.get("Magunitude") or data.get("Magnitude")
+                ),
                 scale=self._parse_cwa_scale(data.get("MaxIntensity", "")),
                 place_name=data.get("HypoCenter", ""),
                 updates=data.get("ReportNum", 1),

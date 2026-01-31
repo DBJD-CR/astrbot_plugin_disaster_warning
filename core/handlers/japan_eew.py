@@ -273,7 +273,9 @@ class JMAEEWWolfxHandler(BaseDataHandler):
                 latitude=self._safe_float_convert(data.get("Latitude")) or 0.0,
                 longitude=self._safe_float_convert(data.get("Longitude")) or 0.0,
                 depth=self._safe_float_convert(data.get("Depth")),
-                magnitude=self._safe_float_convert(data.get("Magunitude") or data.get("Magnitude")),
+                magnitude=self._safe_float_convert(
+                    data.get("Magunitude") or data.get("Magnitude")
+                ),
                 place_name=data.get("Hypocenter", ""),
                 scale=self._parse_jma_scale(data.get("MaxIntensity", "")),
                 updates=data.get("Serial", 1),

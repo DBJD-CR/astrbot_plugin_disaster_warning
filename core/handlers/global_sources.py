@@ -226,8 +226,12 @@ class USGSEarthquakeHandler(BaseDataHandler):
 
             # 验证关键字段 - 如果缺少关键信息，不创建地震对象
             usgs_id = get_field(msg_data, "id") or ""
-            usgs_latitude = self._safe_float_convert(get_field(msg_data, "latitude")) or 0.0
-            usgs_longitude = self._safe_float_convert(get_field(msg_data, "longitude")) or 0.0
+            usgs_latitude = (
+                self._safe_float_convert(get_field(msg_data, "latitude")) or 0.0
+            )
+            usgs_longitude = (
+                self._safe_float_convert(get_field(msg_data, "longitude")) or 0.0
+            )
             usgs_place_name_en = get_field(msg_data, "placeName") or ""
 
             if not usgs_id:

@@ -55,7 +55,9 @@ def get_astrbot_version() -> str:
 
         if pyproject_path.exists():
             if tomllib is None:
-                logger.warning("[灾害预警] ⚠️ 未找到 tomllib 或 tomli 模块，无法解析 pyproject.toml")
+                logger.warning(
+                    "[灾害预警] ⚠️ 未找到 tomllib 或 tomli 模块，无法解析 pyproject.toml"
+                )
                 return "unknown"
 
             with open(pyproject_path, "rb") as f:
