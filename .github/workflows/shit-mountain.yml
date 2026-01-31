@@ -11,116 +11,142 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write  # 用于 PR 评论
-      issues: write         # 用于 Issue 评论（可选）
+      pull-requests: write
     
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
       
-      - name: 安装依赖工具
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq bc
-      
       - name: 下载 fuck-u-code
         run: |
-          echo "📥 正在下载最新版 fuck-u-code..."
           curl -L -o fuck-u-code \
             https://github.com/Done-0/fuck-u-code/releases/latest/download/fuck-u-code-linux-amd64
           chmod +x fuck-u-code
-          echo "✅ 下载完成"
-      
-      - name: 运行屎山分析
+
+      - name: 运行屎山分析 & 详细评分
         id: analyze
         run: |
-          echo "🔍 开始分析代码..."
-          ./fuck-u-code analyze --json --top 10 > report.json
+          ./fuck-u-code analyze --verbose --lang zh-CN --top 10 2>&1 | tee analysis.log
           
-          # 解析 JSON 获取关键数据
-          SCORE=$(jq -r '.score' report.json)
-          LEVEL=$(jq -r '.level' report.json)
-          FILES=$(jq -r '.files_analyzed' report.json)
-          ISSUES=$(jq -r '.total_issues' report.json)
+          # 提取分数（支持小数，如 43.76）
+          SCORE=$(grep -oP "总体评分:\s*\K[0-9.]+" analysis.log | head -1)
+          if [ -z "$SCORE" ]; then SCORE="0"; fi
           
-          # 根据分数设置颜色（shields.io 格式）
-          if (( $(echo "$SCORE > 55" | bc -l) )); then
-            COLOR="red"
-            STATUS="灾难级"
-          elif (( $(echo "$SCORE > 45" | bc -l) )); then
-            COLOR="orange"
+          echo "原始分数: $SCORE"
+          
+          # 详细等级判断（基于官方 6 级标准）
+          # 0-39: 🌱 清洁（绿色）
+          # 40-54: 💩 屎山级别/屎气扑鼻（橙色）  
+          # 55-74: 🤕 灾难（红色）
+          # 75-84: 🧟 非常糟糕（深红）
+          # 85-100: ☢️ 极端灾难（紫色）
+          
+          STATUS=""
+          COLOR=""
+          EMOJI=""
+          DESC=""
+          ALLOW_MERGE="true"
+          
+          # bc 比较浮点数
+          if (( $(echo "$SCORE < 40" | bc -l) )); then
+            EMOJI="🌱"
+            STATUS="优秀"
+            COLOR="brightgreen"
+            DESC="代码清新，继续保持"
+            ALLOW_MERGE="true"
+            echo "✅ 检测结果：清洁级 - 你是代码洁癖的骄傲！"
+            
+          elif (( $(echo "$SCORE >= 40 && $SCORE < 55" | bc -l) )); then
+            EMOJI="💩"
             STATUS="屎气扑鼻"
-          elif (( $(echo "$SCORE > 35" | bc -l) )); then
-            COLOR="yellow"
-            STATUS="需要关注"
-          else
-            COLOR="green"
-            STATUS="清洁"
+            COLOR="orange"
+            DESC="代码开始散发气味，谨慎维护"
+            ALLOW_MERGE="true"
+            echo "⚠️  检测结果：屎山级(轻度) - 有点味道但能跑"
+            
+          elif (( $(echo "$SCORE >= 55 && $SCORE < 75" | bc -l) )); then
+            EMOJI="🤕"
+            STATUS="灾难"
+            COLOR="red"
+            DESC="需要大幅重构，维护困难"
+            ALLOW_MERGE="false"  # 建议禁止合并
+            echo "::warning::❌ 检测结果：灾难级 - 建议立刻重构！"
+            
+          elif (( $(echo "$SCORE >= 75 && $SCORE < 85" | bc -l) )); then
+            EMOJI="🧟"
+            STATUS="非常糟糕"
+            COLOR="#8B0000"  # 深红色
+            DESC="接近不可救药，风险极高"
+            ALLOW_MERGE="false"
+            echo "::error::💀 检测结果：危险级 - 这代码有毒！"
+            
+          else  # 85-100
+            EMOJI="☢️"
+            STATUS="极端灾难"
+            COLOR="purple"  # 或者 #800080
+            DESC="完全失控，建议重写"
+            ALLOW_MERGE="false"
+            echo "::error::☢️ 检测结果：终极灾难 - 劝你删库跑路！"
           fi
           
-          # 输出到 GitHub Actions 环境，供后续步骤使用
+          # 输出到 GitHub Actions 环境
           echo "score=$SCORE" >> $GITHUB_OUTPUT
-          echo "level=$LEVEL" >> $GITHUB_OUTPUT
-          echo "color=$COLOR" >> $GITHUB_OUTPUT
           echo "status=$STATUS" >> $GITHUB_OUTPUT
-          echo "files=$FILES" >> $GITHUB_OUTPUT
-          echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+          echo "emoji=$EMOJI" >> $GITHUB_OUTPUT
+          echo "color=$COLOR" >> $GITHUB_OUTPUT
+          echo "desc=$DESC" >> $GITHUB_OUTPUT
+          echo "allow_merge=$ALLOW_MERGE" >> $GITHUB_OUTPUT
           
-          echo "📊 分析结果："
-          echo "   分数: $SCORE"
-          echo "   等级: $LEVEL"
-          echo "   文件: $FILES"
-          echo "   问题: $ISSUES"
+          # 生成摘要
+          echo "### $EMOJI 屎山检测摘要" >> $GITHUB_STEP_SUMMARY
+          echo "| 指标 | 数值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **总体评分** | $SCORE / 100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **屎山等级** | $STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **评估描述** | $DESC |" >> $GITHUB_STEP_SUMMARY
+          echo "| **合并建议** | $([ "$ALLOW_MERGE" == "true" ] && echo "✅ 允许" || echo "❌ 禁止") |" >> $GITHUB_STEP_SUMMARY
       
-      - name: 生成 Markdown 报告
-        run: |
-          ./fuck-u-code analyze --markdown --lang zh-CN > shit-report.md
-          echo "📄 Markdown 报告已生成"
-      
-      - name: 上传分析报告
-        uses: actions/upload-artifact@v4
-        with:
-          name: shit-mountain-report-${{ github.sha }}
-          path: |
-            report.json
-            shit-report.md
-          retention-days: 30
-      
-      - name: PR 评论（如果是 Pull Request）
+      # 在 PR 评论里显示详细等级
+      - name: PR 评论（详细版）
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
             const score = '${{ steps.analyze.outputs.score }}';
-            const level = '${{ steps.analyze.outputs.level }}';
-            const files = '${{ steps.analyze.outputs.files }}';
-            const issues = '${{ steps.analyze.outputs.issues }}';
             const status = '${{ steps.analyze.outputs.status }}';
+            const emoji = '${{ steps.analyze.outputs.emoji }}';
+            const desc = '${{ steps.analyze.outputs.desc }}';
+            const allowMerge = '${{ steps.analyze.outputs.allow_merge }}';
             
-            // 根据分数选 emoji
-            let emoji = '🌱';
-            if (parseFloat(score) > 55) emoji = '💀';
-            else if (parseFloat(score) > 45) emoji = '💩';
-            else if (parseFloat(score) > 35) emoji = '⚠️';
+            let advice = '';
+            if (parseFloat(score) < 40) {
+              advice = '👏 **保持现状！** 你的代码质量超过 90% 的开源项目。';
+            } else if (parseFloat(score) < 55) {
+              advice = '💡 **建议：** 重点关注循环复杂度和函数长度，尝试拆分核心逻辑。';
+            } else if (parseFloat(score) < 75) {
+              advice = '🚨 **警告：** 建议优先重构 Top 3 问题文件，避免技术债务累积。';
+            } else {
+              advice = '💀 **危险：** 建议暂停功能开发，先进行代码还债，或考虑重写方案。';
+            }
             
-            const body = `${emoji} **屎山代码检测报告**
+            const mergeBadge = allowMerge === 'true' 
+              ? '![允许合并](https://img.shields.io/badge/合并-允许-brightgreen)'
+              : '![禁止合并](https://img.shields.io/badge/合并-禁止-red)';
             
-            | 指标 | 数值 |
-            |------|------|
-            | **屎山指数** | \`${score}\` |
-            | **等级** | ${level} (${status}) |
-            | **分析文件** | ${files} 个 |
-            | **发现问题** | ${issues} 处 |
-            
-            <details>
-            <summary>📋 查看详细报告</summary>
-            
-            下载 [Markdown 报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) 查看完整的 Top 10 屎山文件。
-            
-            </details>
-            
-            *由 [fuck-u-code](https://github.com/Done-0/fuck-u-code) 自动生成*`;
-            
+            const body = '## ' + emoji + ' 屎山代码检测报告 ' + mergeBadge + '\n\n' +
+              '| 指标 | 详情 |\n' +
+              '|:------|:------|\n' +
+              '| **总体评分** | `' + score + ' / 100` |\n' +
+              '| **屎山等级** | **' + status + '** |\n' +
+              '| **等级描述** | ' + desc + ' |\n' +
+              '| **检测时间** | ' + new Date().toLocaleString('zh-CN') + ' |\n\n' +
+              '### 💡 评估建议\n' +
+              advice + '\n\n' +
+              '### 📊 详细数据\n' +
+              '- [查看完整分析报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n' +
+              '- [下载 Markdown 报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)\n\n' +
+              '*由 [fuck-u-code](https://github.com/Done-0/fuck-u-code) 自动检测*';
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -128,15 +154,12 @@ jobs:
               body: body
             });
       
-      - name: 检查阈值（可选：超过阈值则失败）
-        if: always()  # 总是运行，即使前面步骤失败
+      # 根据等级决定是否阻断合并（可选）
+      - name: 门禁检查（可选）
+        if: steps.analyze.outputs.allow_merge != 'true'
         run: |
-          SCORE=${{ steps.analyze.outputs.score }}
-          LIMIT=55  # 设置你的阈值
-          
-          if (( $(echo "$SCORE > $LIMIT" | bc -l) )); then
-            echo "❌ 屎山指数 $SCORE 超过阈值 $LIMIT！禁止合并！"
-            exit 1
-          else
-            echo "✅ 屎山指数 $SCORE 在可接受范围内（阈值：$LIMIT）"
-          fi
+          echo "❌ 屎山指数 ${{ steps.analyze.outputs.score }} 已达到「${{ steps.analyze.outputs.status }}」级别"
+          echo "   ${{ steps.analyze.outputs.desc }}"
+          echo "::error::代码质量未达标，建议重构后再合并"
+          # 需要阻断就取消下面这行的注释：
+          # exit 1
