@@ -3,6 +3,8 @@
 提供灾害消息的统一格式化接口
 """
 
+from astrbot.api import logger
+
 from ...models.models import EarthquakeData, TsunamiData, WeatherAlarmData
 from .base import BaseMessageFormatter
 from .earthquake import (
@@ -54,12 +56,29 @@ def format_earthquake_message(
 ) -> str:
     """格式化地震消息"""
     formatter_class = get_formatter(source_id)
+
+    # 检查映射是否存在，如果不存在则记录警告
+    if source_id not in MESSAGE_FORMATTERS:
+        logger.warning(
+            f"[灾害预警] 未找到数据源 '{source_id}' 的专用格式化器，将回退到基础格式化。"
+            f"请检查 core/message_manager.py 中的 ID 映射或 utils/formatters/__init__.py 中的注册。"
+        )
+
     if hasattr(formatter_class, "format_message"):
         try:
             return formatter_class.format_message(earthquake, options=options)
         except TypeError:
             # 如果不支持 options 参数，回退到旧调用方式
-            return formatter_class.format_message(earthquake)
+            try:
+                return formatter_class.format_message(earthquake)
+            except Exception as e:
+                logger.error(
+                    f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式"
+                )
+        except Exception as e:
+            logger.error(
+                f"[灾害预警] 格式化器 {formatter_class.__name__} 执行出错: {e}，回退到基础格式"
+            )
 
     # 回退到基础格式化
     return BaseMessageFormatter.format_message(earthquake)
@@ -70,11 +89,26 @@ def format_tsunami_message(
 ) -> str:
     """格式化海啸消息"""
     formatter_class = get_formatter(source_id)
+
+    if source_id not in MESSAGE_FORMATTERS:
+        logger.warning(
+            f"[灾害预警] 未找到数据源 '{source_id}' 的专用格式化器，将回退到基础格式化。"
+        )
+
     if hasattr(formatter_class, "format_message"):
         try:
             return formatter_class.format_message(tsunami, options=options)
         except TypeError:
-            return formatter_class.format_message(tsunami)
+            try:
+                return formatter_class.format_message(tsunami)
+            except Exception as e:
+                logger.error(
+                    f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式"
+                )
+        except Exception as e:
+            logger.error(
+                f"[灾害预警] 格式化器 {formatter_class.__name__} 执行出错: {e}，回退到基础格式"
+            )
 
     # 回退到基础格式化
     return BaseMessageFormatter.format_message(tsunami)
@@ -85,11 +119,26 @@ def format_weather_message(
 ) -> str:
     """格式化气象消息"""
     formatter_class = get_formatter(source_id)
+
+    if source_id not in MESSAGE_FORMATTERS:
+        logger.warning(
+            f"[灾害预警] 未找到数据源 '{source_id}' 的专用格式化器，将回退到基础格式化。"
+        )
+
     if hasattr(formatter_class, "format_message"):
         try:
             return formatter_class.format_message(weather, options=options)
         except TypeError:
-            return formatter_class.format_message(weather)
+            try:
+                return formatter_class.format_message(weather)
+            except Exception as e:
+                logger.error(
+                    f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式"
+                )
+        except Exception as e:
+            logger.error(
+                f"[灾害预警] 格式化器 {formatter_class.__name__} 执行出错: {e}，回退到基础格式"
+            )
 
     # 回退到基础格式化
     return BaseMessageFormatter.format_message(weather)
