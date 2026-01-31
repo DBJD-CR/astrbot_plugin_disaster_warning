@@ -66,7 +66,7 @@ class EventDeduplicator:
 
                 if time_diff <= self.time_window.total_seconds() / 60:
                     if self._should_allow_update(earthquake, existing_event):
-                        logger.info(
+                        logger.debug(
                             f"[灾害预警] 允许同一数据源更新: {event.source.value}"
                         )
                         # 更新记录 - 添加当前报数到已处理集合
@@ -254,7 +254,7 @@ class EventDeduplicator:
                 prev_idx = jma_types.index(existing_issue_type)
                 # 只有状态升级（索引变大）时才允许更新
                 if curr_idx > prev_idx:
-                    logger.info(
+                    logger.debug(
                         f"[灾害预警] 允许JMA情报升级: {existing_issue_type} -> {current_issue_type}"
                     )
                     return True
@@ -267,7 +267,7 @@ class EventDeduplicator:
 
         # 自动测定 -> 正式测定
         if "自动" in existing_info_type and "正式" in current_info_type:
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 允许状态升级: {existing_info_type} -> {current_info_type}"
             )
             return True
