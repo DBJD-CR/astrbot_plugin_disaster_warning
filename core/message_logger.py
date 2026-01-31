@@ -969,6 +969,36 @@ class MessageLogger:
             return
 
         try:
+            # 特殊处理 Wolfx 的地震列表数据 (eqlist)
+            # 避免记录巨大的 JSON 列表，转为记录摘要
+            parsed_data = None
+
+            if isinstance(raw_data, dict):
+                parsed_data = raw_data
+            elif isinstance(raw_data, str) and len(raw_data) > 10:
+                # 简单预检查以提高性能，避免对每条消息都做 json.loads
+                if '"type"' in raw_data[:200] or "'type'" in raw_data[:200]:
+                    try:
+                        parsed_data = json.loads(raw_data)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            if parsed_data and isinstance(parsed_data, dict):
+                msg_type = parsed_data.get("type", "")
+                # 兼容 Wolfx 的标准类型和可能的前缀变体
+                if msg_type in [
+                    "jma_eqlist",
+                    "cenc_eqlist",
+                    "wolfx_jma_eqlist",
+                    "wolfx_cenc_eqlist",
+                ]:
+                    self.log_earthquake_list_summary(
+                        source=source,
+                        earthquake_list=parsed_data,
+                        url=connection_info.get("url") if connection_info else None,
+                    )
+                    return
+
             # 检查是否应该过滤该消息
             filter_reason = self._should_filter_message(raw_data, source)
             if filter_reason:
@@ -1090,6 +1120,12 @@ class MessageLogger:
             max_items: 只记录前多少条事件，默认为配置值
         """
         if not self.enabled:
+            return
+
+        # 针对 Wolfx 数据源的特殊逻辑：HTTP获取的数据完全不写入日志
+        if source == "http_response" or "http" in source.lower():
+            return
+        if url and (url.startswith("http://") or url.startswith("https://")):
             return
 
         # 使用配置值作为默认值

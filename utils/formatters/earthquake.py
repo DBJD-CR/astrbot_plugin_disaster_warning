@@ -159,7 +159,12 @@ class CEAEEWFormatter(BaseMessageFormatter):
         options = options or {}
         timezone = options.get("timezone", "UTC+8")
 
-        lines = ["🚨[地震预警] 中国地震预警网"]
+        # 检查是否有 province 字段来判断是否为省级预警
+        source_name = "中国地震预警网"
+        if earthquake.province:
+            source_name = f"{earthquake.province}地震局"
+
+        lines = [f"🚨[地震预警] {source_name}"]
 
         # 报数信息
         report_num = getattr(earthquake, "updates", 1)
@@ -268,6 +273,10 @@ class CWAEEWFormatter(BaseMessageFormatter):
             emoji = _get_intensity_emoji(earthquake.scale, is_eew=True, is_shindo=True)
             lines.append(f"💥预估最大震度：{earthquake.scale} {emoji}")
 
+        # 影响区域 (locationDesc)
+        if earthquake.province:
+            lines.append(f"⚠️影响区域：{earthquake.province}")
+
         # 本地烈度预估
         if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
             local_est = earthquake.raw_data.get("local_estimation")
@@ -282,6 +291,52 @@ class CWAEEWFormatter(BaseMessageFormatter):
                 lines.append(
                     f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})"
                 )
+
+        return "\n".join(lines)
+
+
+class CWAReportFormatter(BaseMessageFormatter):
+    """台湾中央气象署地震报告格式化器"""
+
+    @staticmethod
+    def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
+        """格式化台湾中央气象署地震报告消息"""
+        options = options or {}
+        timezone = options.get("timezone", "UTC+8")
+
+        lines = ["🚨[地震报告] 台湾中央气象署"]
+
+        # 时间
+        if earthquake.shock_time:
+            lines.append(
+                f"⏰发震时间：{CWAReportFormatter.format_time(earthquake.shock_time, timezone)}"
+            )
+
+        # 震中
+        if (
+            earthquake.place_name
+            and earthquake.latitude is not None
+            and earthquake.longitude is not None
+        ):
+            coords = CWAReportFormatter.format_coordinates(
+                earthquake.latitude, earthquake.longitude
+            )
+            lines.append(f"📍震中：{earthquake.place_name} ({coords})")
+
+        # 震级
+        if earthquake.magnitude is not None:
+            lines.append(f"📊震级：M {earthquake.magnitude:.1f}")
+
+        # 深度
+        if earthquake.depth is not None:
+            lines.append(f"🏔️深度：{_format_depth(earthquake.depth)}")
+
+        # 图片链接 (如果有)
+        if earthquake.image_uri:
+            lines.append(f"🖼️报告图片：{earthquake.image_uri}")
+
+        if earthquake.shakemap_uri:
+            lines.append(f"🗺️等震度图：{earthquake.shakemap_uri}")
 
         return "\n".join(lines)
 

@@ -42,9 +42,17 @@ class WebSocketManager:
         uri: str,
         headers: dict | None = None,
         is_retry: bool = False,
-        connection_info: dict | None = None,
+        connection_info: dict[str, Any] | None = None,
     ):
-        """建立WebSocket连接 - aiohttp版本"""
+        """建立WebSocket连接 - aiohttp版本
+
+        Args:
+            name: 连接名称
+            uri: WebSocket URI
+            headers: 可选的HTTP头
+            is_retry: 是否为重试连接
+            connection_info: 可选的连接元数据（如 backup_url 等）
+        """
         # 确保 session 存在
         if not self.session or self.session.closed:
             logger.warning(f"[灾害预警] WebSocket会话未就绪，正在重新初始化: {name}")
@@ -120,6 +128,7 @@ class WebSocketManager:
                                     )
                             except Exception as e:
                                 # 消息处理层面的错误不应导致连接断开
+                                # 注：使用 Exception 是安全的，KeyboardInterrupt/SystemExit 继承自 BaseException 不会被捕获
                                 logger.error(f"[灾害预警] 消息处理错误 {name}: {e}")
                                 logger.debug(
                                     f"[灾害预警] 异常堆栈: {traceback.format_exc()}"
@@ -135,15 +144,51 @@ class WebSocketManager:
                             )
                             break
 
-                    # 检查连接关闭代码，如果是非正常关闭则抛出异常以触发重连
-                    if (
-                        websocket.close_code is not None
-                        and websocket.close_code not in (1000, 1001)
-                    ):
-                        raise Exception(
-                            f"WebSocket连接意外关闭，代码 {websocket.close_code}"
-                        )
+                    # 精细化处理 WebSocket 关闭代码
+                    if websocket.close_code is not None:
+                        close_code = websocket.close_code
 
+                        # 正常关闭代码（不需要重连）
+                        normal_close_codes = {
+                            1000,  # Normal Closure - 正常关闭
+                            1001,  # Going Away - 服务器/客户端正常离开
+                        }
+
+                        # 不应重连的关闭代码（协议/认证错误）
+                        no_reconnect_codes = {
+                            1002,  # Protocol Error - 协议错误
+                            1003,  # Unsupported Data - 不支持的数据类型
+                            1007,  # Invalid Frame Payload Data - 无效的帧数据
+                            1008,  # Policy Violation - 策略违规
+                            1009,  # Message Too Big - 消息过大
+                            1010,  # Mandatory Extension - 必需的扩展
+                            1011,  # Internal Server Error - 服务器内部错误
+                        }
+
+                        # 特殊处理的关闭代码
+                        if close_code in normal_close_codes:
+                            # 正常关闭，不触发异常
+                            logger.info(
+                                f"[灾害预警] WebSocket正常关闭: {name}, code={close_code}"
+                            )
+                        elif close_code in no_reconnect_codes:
+                            # 协议/配置错误，不应该重连
+                            raise Exception(
+                                f"WebSocket协议错误关闭（不重连），代码 {close_code}"
+                            )
+                        elif close_code == 1006:
+                            # Abnormal Closure - 异常关闭（连接意外断开）
+                            # 这是最常见的网络故障，应该重连
+                            raise Exception(
+                                f"WebSocket异常关闭（连接中断），代码 {close_code}"
+                            )
+                        else:
+                            # 其他未知关闭代码，尝试重连
+                            raise Exception(f"WebSocket意外关闭，代码 {close_code}")
+
+                except asyncio.CancelledError:
+                    # 任务被取消，正常传播（不在此处记录，交由外层统一记录）
+                    raise
                 except Exception as e:
                     # 这里的异常通常是处理循环中的非预期间断
                     logger.error(f"[灾害预警] WebSocket消息循环异常 {name}: {e}")
@@ -157,13 +202,21 @@ class WebSocketManager:
             logger.warning(f"[灾害预警] 连接中断或失败 {name}: {e}")
             self._handle_connection_error(name, uri, headers, e)
 
+        except asyncio.CancelledError:
+            # 任务被取消（通常在 stop() 时），不触发重连
+            logger.info(f"[灾害预警] WebSocket连接任务被取消: {name}")
+            self.connections.pop(name, None)
+            self.connection_info.pop(name, None)
+            raise  # 正常传播取消信号
         except Exception as e:
             logger.error(f"[灾害预警] 未知连接错误 {name}: {type(e).__name__} - {e}")
             logger.debug(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
             # 上报未知 WebSocket 错误到遥测
             if self._telemetry and self._telemetry.enabled:
                 asyncio.create_task(
-                    self._telemetry.track_error(e, module=f"core.websocket_manager.connect.{name}")
+                    self._telemetry.track_error(
+                        e, module=f"core.websocket_manager.connect.{name}"
+                    )
                 )
             self._handle_connection_error(name, uri, headers, e)
 
@@ -209,7 +262,14 @@ class WebSocketManager:
                 logger.warning(f"[灾害预警] {name} 遇到不可恢复错误，停止重连")
 
     def _should_reconnect_on_error(self, error: Exception) -> bool:
-        """判断遇到错误时是否应该重连"""
+        """判断遇到错误时是否应该重连
+
+        Args:
+            error: 捕获到的异常对象
+
+        Returns:
+            bool: True 表示应该重连，False 表示不应重连
+        """
         error_msg = str(error).lower()
 
         # SSL错误通常不需要重试（配置问题）
@@ -218,6 +278,10 @@ class WebSocketManager:
 
         # 认证错误不需要重试
         if "401" in error_msg or "403" in error_msg:
+            return False
+
+        # 协议错误关闭代码不应重连（由关闭代码处理逻辑抛出）
+        if "协议错误关闭（不重连）" in error_msg:
             return False
 
         # 其他大部分网络错误都值得重试
@@ -251,9 +315,16 @@ class WebSocketManager:
         name: str,
         uri: str,
         headers: dict | None = None,
-        connection_info: dict | None = None,
+        connection_info: dict[str, Any] | None = None,
     ):
-        """计划重连 - 优化版本，基于配置的固定间隔"""
+        """计划重连 - 优化版本，基于配置的固定间隔
+
+        Args:
+            name: 连接名称
+            uri: WebSocket URI
+            headers: 可选的HTTP头
+            connection_info: 从 _handle_connection_error 传递的连接元数据
+        """
         if name in self.reconnect_tasks:
             self.reconnect_tasks[name].cancel()
 

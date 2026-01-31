@@ -1,8 +1,10 @@
 import asyncio
 import json
 import os
+import re
 import traceback
 from datetime import datetime
+from typing import Any
 
 import astrbot.api.message_components as Comp
 
@@ -28,13 +30,15 @@ from .utils.version import get_plugin_version
 class DisasterWarningPlugin(Star):
     """多数据源灾害预警插件，支持地震、海啸、气象预警"""
 
-    def __init__(self, context: Context, config: AstrBotConfig):
+    def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
-        self.config = config
-        self.disaster_service = None
-        self._service_task = None
+        self.config: AstrBotConfig = config
+        self.disaster_service: Any = None  # DisasterService 类型，避免循环导入
+        self._service_task: asyncio.Task[None] | None = None
         self.telemetry: TelemetryManager | None = None
-        self._config_schema = None  # 新增属性用于缓存 Schema
+        self._config_schema: dict[str, Any] | None = None  # JSON Schema 缓存
+        self._original_exception_handler: Any = None  # asyncio 异常处理器
+        self._telemetry_tasks: set[asyncio.Task[None]] = set()  # 遥测任务引用集合
 
     async def initialize(self):
         """初始化插件"""
@@ -79,25 +83,65 @@ class DisasterWarningPlugin(Star):
             # 设置全局 asyncio 异常处理器（捕获未处理的 task 异常）
             if self.telemetry.enabled:
                 loop = asyncio.get_event_loop()
+                # 保存原有的异常处理器
+                self._original_exception_handler = loop.get_exception_handler()
                 loop.set_exception_handler(self._handle_asyncio_exception)
                 logger.debug("[灾害预警] 已设置全局异常处理器")
 
             if self.telemetry.enabled:
                 # 发送启动事件和配置快照
-                asyncio.create_task(self.telemetry.track_startup())
-                asyncio.create_task(self.telemetry.track_config(dict(self.config)))
+                startup_task = asyncio.create_task(self.telemetry.track_startup())
+                config_task = asyncio.create_task(
+                    self.telemetry.track_config(dict(self.config))
+                )
+                # 保存任务引用,防止被垃圾回收
+                self._telemetry_tasks.add(startup_task)
+                self._telemetry_tasks.add(config_task)
+                # 任务完成后自动从集合中移除
+                startup_task.add_done_callback(self._telemetry_tasks.discard)
+                config_task.add_done_callback(self._telemetry_tasks.discard)
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
             # 上报初始化失败错误到遥测
-            if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+            if hasattr(self, "telemetry") and self.telemetry and self.telemetry.enabled:
                 await self.telemetry.track_error(e, module="main.initialize")
             raise
+
+    async def _cleanup_telemetry_tasks(self) -> None:
+        """清理并终止所有未完成的遥测任务，避免任务泄漏"""
+        if not self._telemetry_tasks:
+            return
+
+        # 创建快照，避免遍历过程中集合被修改
+        pending_tasks = list(self._telemetry_tasks)
+
+        # 先取消所有仍在运行的任务
+        for task in pending_tasks:
+            if not task.done():
+                task.cancel()
+
+        # 等待所有任务结束，吞掉异常防止影响终止流程
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+        # 统一从集合中移除已处理的任务
+        self._telemetry_tasks.clear()
 
     async def terminate(self):
         """插件销毁时调用"""
         try:
             logger.info("[灾害预警] 正在停止灾害预警插件...")
+
+            # 恢复原有异常处理器
+            if self._original_exception_handler is not None:
+                loop = asyncio.get_running_loop()
+                loop.set_exception_handler(self._original_exception_handler)
+                self._original_exception_handler = None
+                logger.debug("[灾害预警] 已恢复全局异常处理器")
+
+            # 清理遥测任务
+            await self._cleanup_telemetry_tasks()
 
             # 停止服务任务
             if self._service_task:
@@ -130,7 +174,7 @@ class DisasterWarningPlugin(Star):
         except Exception as e:
             logger.error(f"[灾害预警] 插件停止时出错: {e}")
             # 上报停止错误到遥测
-            if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+            if hasattr(self, "telemetry") and self.telemetry and self.telemetry.enabled:
                 await self.telemetry.track_error(e, module="main.terminate")
 
     def _handle_asyncio_exception(self, loop, context):
@@ -139,50 +183,79 @@ class DisasterWarningPlugin(Star):
         捕获未被处理的 asyncio task 异常并上报到遥测
         """
         # 获取异常信息
-        exception = context.get('exception')
-        message = context.get('message', '未知异常')
-        
-        # 记录日志
+        exception = context.get("exception")
+        message = context.get("message", "未知异常")
+
+        # 检查异常是否来自本插件
+        is_plugin_exception = False
+        if exception:
+            # 通过 traceback 检查是否包含本插件的模块路径
+            tb = exception.__traceback__
+            while tb is not None:
+                frame = tb.tb_frame
+                filename = frame.f_code.co_filename
+                # 检查文件路径是否属于本插件
+                if "astrbot_plugin_disaster_warning" in filename:
+                    is_plugin_exception = True
+                    break
+                tb = tb.tb_next
+
+        # 如果不是本插件的异常，传递给原处理器
+        if not is_plugin_exception:
+            if (
+                hasattr(self, "_original_exception_handler")
+                and self._original_exception_handler
+            ):
+                self._original_exception_handler(loop, context)
+            else:
+                # 使用默认处理器
+                loop.default_exception_handler(context)
+            return
+
+        # 记录日志（仅本插件的异常）
         if exception:
             logger.error(f"[灾害预警] 捕获未处理的异步异常: {exception}")
             logger.error(f"[灾害预警] 异常上下文: {message}")
         else:
             logger.error(f"[灾害预警] 捕获未处理的异步错误: {message}")
-        
+
         # 上报到遥测
-        if hasattr(self, 'telemetry') and self.telemetry and self.telemetry.enabled:
+        if hasattr(self, "telemetry") and self.telemetry and self.telemetry.enabled:
             if exception:
                 # 提取 task 名称或协程名称
-                task = context.get('future')
+                task = context.get("future")
                 task_name = "unknown"
                 if task:
                     # 尝试提取 task name（如 'Task-323'）
-                    task_name = getattr(task, 'get_name', lambda: str(task))()
+                    task_name = getattr(task, "get_name", lambda: str(task))()
                     if not task_name or task_name == str(task):
                         # 如果没有名字，尝试从 repr 中提取
                         task_repr = repr(task)
                         if "name=" in task_repr:
-                            import re
                             match = re.search(r"name='([^']+)'", task_repr)
                             if match:
                                 task_name = match.group(1)
-                
+
                 # 创建一个新的 task 来上报错误（避免在异常处理器中使用 await）
-                asyncio.create_task(
+                error_task = asyncio.create_task(
                     self.telemetry.track_error(
-                        exception, 
-                        module=f"main.unhandled_async.{task_name}"
+                        exception, module=f"main.unhandled_async.{task_name}"
                     )
                 )
+                # 保存任务引用,防止被垃圾回收
+                self._telemetry_tasks.add(error_task)
+                error_task.add_done_callback(self._telemetry_tasks.discard)
             else:
                 # 如果没有具体的异常对象，创建一个 RuntimeError
                 runtime_error = RuntimeError(message)
-                asyncio.create_task(
+                error_task = asyncio.create_task(
                     self.telemetry.track_error(
-                        runtime_error,
-                        module="main.unhandled_async"
+                        runtime_error, module="main.unhandled_async"
                     )
                 )
+                # 保存任务引用,防止被垃圾回收
+                self._telemetry_tasks.add(error_task)
+                error_task.add_done_callback(self._telemetry_tasks.discard)
 
     @filter.command("灾害预警")
     async def disaster_warning_help(self, event: AstrMessageEvent):
@@ -315,7 +388,7 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警日志")
     async def disaster_logs(self, event: AstrMessageEvent):
         """查看原始消息日志信息"""
-        if not self.is_plugin_admin(event):
+        if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
@@ -361,7 +434,7 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警日志开关")
     async def toggle_message_logging(self, event: AstrMessageEvent):
         """开关原始消息日志记录"""
-        if not self.is_plugin_admin(event):
+        if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
@@ -394,7 +467,7 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警日志清除")
     async def clear_message_logs(self, event: AstrMessageEvent):
         """清除所有原始消息日志"""
-        if not self.is_plugin_admin(event):
+        if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
@@ -415,7 +488,7 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警统计清除")
     async def clear_statistics(self, event: AstrMessageEvent):
         """清除统计数据"""
-        if not self.is_plugin_admin(event):
+        if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
@@ -436,7 +509,7 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警推送开关")
     async def toggle_push(self, event: AstrMessageEvent):
         """开关当前会话的推送"""
-        if not self.is_plugin_admin(event):
+        if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
@@ -480,7 +553,7 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警配置")
     async def disaster_config(self, event: AstrMessageEvent, action: str = None):
         """查看当前配置信息"""
-        if not self.is_plugin_admin(event):
+        if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
@@ -542,9 +615,15 @@ class DisasterWarningPlugin(Star):
             logger.error(f"[灾害预警] 获取配置详情失败: {e}")
             yield event.plain_result(f"❌ 获取配置详情失败: {str(e)}")
 
-    def is_plugin_admin(self, event: AstrMessageEvent) -> bool:
-        """检查用户是否为插件管理员或Bot管理员"""
+    async def is_plugin_admin(self, event: AstrMessageEvent) -> bool:
+        """检查用户是否为插件管理员或Bot管理员
+
+        Note: 改为异步方法以防止 event.is_admin() 可能的阻塞风险
+              在某些适配器实现中，is_admin() 可能涉及数据库查询
+        """
         # 1. 检查是否为 AstrBot 全局管理员
+        # event.is_admin() 是同步方法，但在 async 函数中调用是安全的
+        # 如果未来 AstrBot 将其改为异步方法，只需添加 await 即可
         if event.is_admin():
             return True
 
@@ -556,7 +635,8 @@ class DisasterWarningPlugin(Star):
 
         return False
 
-    def _format_source_name(self, source_key: str) -> str:
+    @staticmethod
+    def _format_source_name(source_key: str) -> str:
         """格式化数据源名称 - 细粒度配置结构"""
         # 配置格式：service.source (如：fan_studio.china_earthquake_warning)
         service, source = source_key.split(".", 1)
@@ -564,6 +644,7 @@ class DisasterWarningPlugin(Star):
             "fan_studio": {
                 "china_earthquake_warning": "中国地震网地震预警",
                 "taiwan_cwa_earthquake": "台湾中央气象署强震即时警报",
+                "taiwan_cwa_report": "台湾中央气象署地震报告",
                 "china_cenc_earthquake": "中国地震台网地震测定",
                 "japan_jma_eew": "日本气象厅紧急地震速报",
                 "usgs_earthquake": "USGS地震测定",
@@ -599,6 +680,7 @@ class DisasterWarningPlugin(Star):
         """查询最新的地震列表
 
         Args:
+            event: 消息事件对象
             source: 数据源 (cenc/jma)，默认为 cenc
             count: 返回的事件数量，默认为 5
             mode: 显示模式 (card/text)，默认为 card
@@ -658,18 +740,23 @@ class DisasterWarningPlugin(Star):
                     # 如果卡片渲染失败，回退到文本模式
                     yield event.plain_result(
                         "⚠️ 卡片渲染失败，转为文本显示\n"
-                        + self._format_list_text(formatted_list[:count], source)
+                        + DisasterWarningPlugin._format_list_text(
+                            formatted_list[:count], source
+                        )
                     )
             else:
                 # 文本模式
                 display_list = formatted_list[:count]
-                yield event.plain_result(self._format_list_text(display_list, source))
+                yield event.plain_result(
+                    DisasterWarningPlugin._format_list_text(display_list, source)
+                )
 
         except Exception as e:
             logger.error(f"[灾害预警] 查询地震列表失败: {e}")
             yield event.plain_result(f"❌ 查询失败: {e}")
 
-    def _format_list_text(self, data_list: list[dict], source: str) -> str:
+    @staticmethod
+    def _format_list_text(data_list: list[dict], source: str) -> str:
         """格式化地震列表文本 (仿 MessageLogger 风格)"""
         if not data_list:
             return "暂无数据"
@@ -693,7 +780,8 @@ class DisasterWarningPlugin(Star):
             lines.append(f"        📋 发生时间: {item['time']}")
             lines.append(f"        📋 震中: {item['location']}")
             lines.append(f"        📋 震级: {item['magnitude']}")
-            lines.append(f"        📋 深度: {item['depth']}")
+            depth_label = item.get("depth_label", "深度")
+            lines.append(f"        📋 {depth_label}: {item['depth']}")
 
             if source == "cenc":
                 lines.append(f"        📋 烈度: {item['intensity_display']}")
@@ -788,7 +876,7 @@ class DisasterWarningPlugin(Star):
 
             # 分开的消息构建
             report_lines = [
-                "🧪 **灾害预警模拟报告**",
+                "🧪 灾害预警模拟报告",
                 f"Input: M{magnitude} @ ({lat}, {lon}), Depth {depth}km\n",
             ]
 
@@ -849,7 +937,7 @@ class DisasterWarningPlugin(Star):
                 try:
                     logger.info("[灾害预警] 开始构建模拟预警消息...")
                     # 使用异步版本以支持卡片渲染
-                    msg_chain = await manager._build_message_async(disaster_event)
+                    msg_chain = await manager.build_message_async(disaster_event)
                     logger.info(
                         f"[灾害预警] 消息构建成功，链长度: {len(msg_chain.chain)}"
                     )

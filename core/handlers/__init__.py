@@ -7,10 +7,11 @@
 
 from .base import BaseDataHandler, _safe_float_convert
 from .china_earthquake import CENCEarthquakeHandler, CENCEarthquakeWolfxHandler
-from .china_eew import CEAEEWHandler, CEAEEWWolfxHandler
+from .china_eew import CEAEEWHandler, CEAEEWPRHandler, CEAEEWWolfxHandler
 from .global_sources import GlobalQuakeHandler, USGSEarthquakeHandler
 from .japan_earthquake import JMAEarthquakeP2PHandler, JMAEarthquakeWolfxHandler
 from .japan_eew import JMAEEWFanStudioHandler, JMAEEWP2PHandler, JMAEEWWolfxHandler
+from .taiwan_earthquake import CWAReportHandler
 from .taiwan_eew import CWAEEWHandler, CWAEEWWolfxHandler
 from .tsunami import JMATsunamiP2PHandler, TsunamiHandler
 from .weather import WeatherAlarmHandler
@@ -19,8 +20,10 @@ from .weather import WeatherAlarmHandler
 DATA_HANDLERS = {
     # EEW 预警数据源
     "cea_fanstudio": CEAEEWHandler,
+    "cea_pr_fanstudio": CEAEEWPRHandler,
     "cea_wolfx": CEAEEWWolfxHandler,
     "cwa_fanstudio": CWAEEWHandler,
+    "cwa_fanstudio_report": CWAReportHandler,
     "cwa_wolfx": CWAEEWWolfxHandler,
     "jma_fanstudio": JMAEEWFanStudioHandler,
     "jma_p2p": JMAEEWP2PHandler,
@@ -45,11 +48,13 @@ __all__ = [
     "_safe_float_convert",
     # 各种处理器
     "CEAEEWHandler",
+    "CEAEEWPRHandler",
     "CEAEEWWolfxHandler",
     "CENCEarthquakeHandler",
     "CENCEarthquakeWolfxHandler",
     "CWAEEWHandler",
     "CWAEEWWolfxHandler",
+    "CWAReportHandler",
     "JMAEEWFanStudioHandler",
     "JMAEEWP2PHandler",
     "JMAEEWWolfxHandler",

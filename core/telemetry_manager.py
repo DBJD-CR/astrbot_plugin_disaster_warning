@@ -24,6 +24,8 @@ import aiohttp
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
+from ..utils.version import get_astrbot_version
+
 
 class TelemetryManager:
     """遥测管理器 - 异步发送匿名遥测数据"""
@@ -47,6 +49,9 @@ class TelemetryManager:
         self._config = config
         self._plugin_version = plugin_version
 
+        # 获取 AstrBot 版本号
+        self._astrbot_version = get_astrbot_version()
+
         # 从配置中读取遥测开关
         telemetry_config = config.get("telemetry_config", {})
         self._enabled = telemetry_config.get("enabled", True)
@@ -61,7 +66,7 @@ class TelemetryManager:
 
         if self._enabled:
             logger.debug(
-                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id})"
+                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id}, AstrBot: {self._astrbot_version})"
             )
         else:
             logger.debug("[灾害预警] 遥测功能未启用")
@@ -178,6 +183,7 @@ class TelemetryManager:
                 "os_version": platform.release(),
                 "python_version": platform.python_version(),
                 "arch": platform.machine(),
+                "astrbot_version": self._astrbot_version,
             },
         )
 
@@ -290,7 +296,11 @@ class TelemetryManager:
         # 替换 Unix 风格的用户路径
         # /home/username/... -> <USER_HOME>/...
         # /Users/username/... -> <USER_HOME>/...
-        stack = re.sub(r"/(?:home|Users)/[^/]+/", r"<USER_HOME>/", stack)
+        # /root/... -> <USER_HOME>/... (Docker 容器等环境)
+        stack = re.sub(r"/(?:home|Users|root)/[^/]+/", r"<USER_HOME>/", stack)
+
+        # 处理 /root/ 根目录（没有子目录的情况）
+        stack = re.sub(r"/root/", r"<USER_HOME>/", stack)
 
         # 简化插件路径，只保留相对路径
         # .../astrbot_plugin_disaster_warning/... -> <PLUGIN>/...
@@ -304,8 +314,9 @@ class TelemetryManager:
     def _sanitize_message(self, message: str) -> str:
         """脱敏错误消息，移除可能的敏感信息"""
 
-        # 移除路径中的用户名
-        message = re.sub(r"/(?:home|Users)/[^/\s]+/", r"<USER_HOME>/", message)
+        # 移除路径中的用户名（包括 /root/ 路径）
+        message = re.sub(r"/(?:home|Users|root)/[^/\s]+/", r"<USER_HOME>/", message)
+        message = re.sub(r"/root/", r"<USER_HOME>/", message)
         message = re.sub(r"[A-Za-z]:\\Users\\[^\\\s]+\\", r"<USER_HOME>\\", message)
 
         return message

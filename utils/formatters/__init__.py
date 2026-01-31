@@ -9,6 +9,7 @@ from .earthquake import (
     CEAEEWFormatter,
     CENCEarthquakeFormatter,
     CWAEEWFormatter,
+    CWAReportFormatter,
     GlobalQuakeFormatter,
     JMAEarthquakeFormatter,
     JMAEEWFormatter,
@@ -23,6 +24,7 @@ MESSAGE_FORMATTERS = {
     "cea_fanstudio": CEAEEWFormatter,
     "cea_wolfx": CEAEEWFormatter,
     "cwa_fanstudio": CWAEEWFormatter,
+    "cwa_fanstudio_report": CWAReportFormatter,
     "cwa_wolfx": CWAEEWFormatter,
     "jma_fanstudio": JMAEEWFormatter,
     "jma_p2p": JMAEEWFormatter,
@@ -103,6 +105,7 @@ __all__ = [
     # 导出各个Formatter以便Typing或其他用途
     "CEAEEWFormatter",
     "CWAEEWFormatter",
+    "CWAReportFormatter",
     "JMAEEWFormatter",
     "GlobalQuakeFormatter",
     "CENCEarthquakeFormatter",

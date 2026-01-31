@@ -43,6 +43,9 @@ class EarthquakeInfoSource(Enum):
     CENC_FANSTUDIO = "cenc_fanstudio"
     CENC_WOLFX = "cenc_wolfx"
 
+    # 台湾中央气象署地震报告
+    CWA_FANSTUDIO_REPORT = "cwa_fanstudio_report"
+
     # 日本气象厅地震情报
     JMA_P2P_INFO = "jma_p2p_info"
     JMA_WOLFX_INFO = "jma_wolfx_info"
@@ -196,6 +199,17 @@ DATA_SOURCE_CONFIGS: dict[str, DataSourceConfig] = {
         uses_intensity=True,
         uses_scale=False,
         priority=2,
+    ),
+    EarthquakeInfoSource.CWA_FANSTUDIO_REPORT.value: DataSourceConfig(
+        source_id=EarthquakeInfoSource.CWA_FANSTUDIO_REPORT.value,
+        source_type=DataSourceType.EARTHQUAKE_INFO,
+        display_name="台湾中央气象署",
+        description="台湾中央气象署（CWA）：地震报告 - FAN Studio WebSocket",
+        supports_report_count=False,
+        supports_final_report=False,
+        uses_intensity=False,
+        uses_scale=True,
+        priority=1,
     ),
     EarthquakeInfoSource.JMA_P2P_INFO.value: DataSourceConfig(
         source_id=EarthquakeInfoSource.JMA_P2P_INFO.value,

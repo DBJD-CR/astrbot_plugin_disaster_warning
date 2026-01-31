@@ -30,6 +30,7 @@ from ..models.models import (
     WeatherAlarmData,
 )
 from ..utils.formatters import (
+    CWAReportFormatter,
     GlobalQuakeFormatter,
     format_earthquake_message,
     format_tsunami_message,
@@ -146,6 +147,9 @@ class MessagePushManager:
 
         # 初始化浏览器管理器
         self.browser_manager = BrowserManager(pool_size=2, telemetry=telemetry)
+
+        # 启动时执行一次清理，避免开发环境下重载插件导致临时文件堆积
+        self.cleanup_old_records()
 
         # 检查是否需要预启动浏览器
         # 如果启用了地图瓦片 (include_map) 或 Global Quake 卡片 (use_global_quake_card)
@@ -432,7 +436,7 @@ class MessagePushManager:
 
         try:
             # 3. 构建消息 (使用异步构建以支持卡片渲染)
-            message = await self._build_message_async(event)
+            message = await self.build_message_async(event)
             logger.debug("[灾害预警] 消息构建完成")
 
             # 4. 获取目标会话
@@ -499,7 +503,9 @@ class MessagePushManager:
             logger.error(f"[灾害预警] 推送事件失败: {e}")
             # 上报推送失败错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.message_manager._execute_push")
+                await self._telemetry.track_error(
+                    e, module="core.message_manager._execute_push"
+                )
             return False
 
     async def _push_split_map(
@@ -548,7 +554,7 @@ class MessagePushManager:
         chain = self._build_text_message(event, source_id, message_format_config)
         return chain
 
-    async def _build_message_async(self, event: DisasterEvent) -> MessageChain:
+    async def build_message_async(self, event: DisasterEvent) -> MessageChain:
         """构建消息 (异步版本) - 支持卡片渲染"""
         source_id = self._get_source_id(event)
         message_format_config = self.config.get("message_format", {})
@@ -692,7 +698,7 @@ class MessagePushManager:
             p_code = event.data.type
             if p_code:
                 # 拼接中国气象局官方图标 URL
-                icon_url = f"http://image.nmc.cn/assets/img/alarm/{p_code}.png"
+                icon_url = f"https://image.nmc.cn/assets/img/alarm/{p_code}.png"
                 try:
                     chain.chain.append(Comp.Image.fromURL(icon_url))
                     logger.debug(f"[灾害预警] 已附加气象预警图标: {icon_url}")
@@ -723,7 +729,11 @@ class MessagePushManager:
                 "detailed_jma_intensity": detailed_jma,
                 "timezone": display_timezone,
             }
-            message_text = format_earthquake_message(source_id, event.data, options)
+            # 特殊处理 CWA 报告格式化
+            if source_id == "cwa_fanstudio_report":
+                message_text = CWAReportFormatter.format_message(event.data, options)
+            else:
+                message_text = format_earthquake_message(source_id, event.data, options)
         else:
             logger.warning(f"[灾害预警] 未知事件类型: {type(event.data)}")
             message_text = f"🚨[未知事件]\n📋事件ID：{event.id}\n⏰时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
