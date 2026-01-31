@@ -88,13 +88,13 @@
 >
 > 开发时长：累计 43 天（主插件部分）
 >
-> 累计工时：约 203 小时（主插件部分）
+> 累计工时：约 205 小时（主插件部分）
 >
 > 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro (With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：586,637,402
+> Tokens Used：588,755,012
 
 ## ✨ 功能特性
 
@@ -642,13 +642,17 @@
 - **Global Quake 卡片模板**:
   - `Aurora` (极光): 浅色背景，清新现代。
   - `DarkNight` (暗夜): 深色背景，极客风格。
+- **浏览器页面池大小 (`browser_pool_size`)**:
+  - **默认值**: `2`
+  - **说明**: 控制后台同时存在的浏览器页面数量。增大此值可提高并发处理能力，但会显著增加内存占用。建议在内存充足 (>2GB) 的服务器上适当调大 (3-5)。
 
 ```json
 "message_format": {
   "include_map": true,                // 是否在消息中附带地图图片
   "map_source": "petallight",         // 使用的地图源 (通用)
   "use_global_quake_card": true,      // 是否启用 GQ 卡片渲染
-  "global_quake_template": "Aurora"   // GQ 卡片视觉主题
+  "global_quake_template": "Aurora",  // GQ 卡片视觉主题
+  "browser_pool_size": 2              // 浏览器页面池大小 (默认2)
 }
 ```
 
