@@ -5,7 +5,30 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
-# 2026/01/30 v1.3.7
+# 2026/02/01 v1.3.8
+
+Hot Fix For v1.3.7
+
+## 🚀 What's Changed
+
+### ✨ New Features (新功能)
+
+- 增强了消息格式化器的错误检测机制，现在当缺少格式化映射时会输出明确的警告日志，而不是静默回退到基础格式 by @DBJD-CR
+- 增加了格式化器调用的异常捕获保护，确保单一格式化器出错不会导致整个推送流程中断 by @DBJD-CR
+- 增加了处理器注册表的自检逻辑，启动时会自动检查是否所有定义的数据源映射都已正确注册，避免因配置遗漏导致的功能异常 by @DBJD-CR
+
+### 🐛 Bug Fixes (修复)
+
+- 修复了 CWA 地震报告因缺少映射关系导致无法解析，回退到基础格式化的问题 by @DBJD-CR
+- 修复了在 Python 3.11 以下版本环境中因缺少 `tomllib` 标准库导致插件无法加载的问题。现在通过引入可选依赖 `tomli` 并增加兼容性逻辑来解决此问题 by @DBJD-CR
+
+---
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.3.7...v1.3.8
+
+---
+
+# 2026/01/31 v1.3.7
 
 本次更新主要适配了 Fan Studio 上游 API 服务端点变更，支持推送中国地震预警网省级网地震预警，并对台湾地区的地震预警功能进行了升级。
 
