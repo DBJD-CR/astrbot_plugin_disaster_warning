@@ -299,6 +299,7 @@ class MessagePushManager:
             DataSource.P2P_EEW.value: "jma_p2p",
             DataSource.WOLFX_JMA_EEW.value: "jma_wolfx",
             # 地震情报数据源
+            DataSource.FAN_STUDIO_CWA_REPORT.value: "cwa_fanstudio_report",
             DataSource.FAN_STUDIO_CENC.value: "cenc_fanstudio",
             DataSource.WOLFX_CENC_EQ.value: "cenc_wolfx",
             DataSource.P2P_EARTHQUAKE.value: "jma_p2p_info",
