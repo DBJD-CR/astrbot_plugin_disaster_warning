@@ -3,6 +3,8 @@
 提供灾害消息的统一格式化接口
 """
 
+from typing import Any
+
 from astrbot.api import logger
 
 from ...models.models import EarthquakeData, TsunamiData, WeatherAlarmData
@@ -51,10 +53,8 @@ def get_formatter(source_id: str):
     return MESSAGE_FORMATTERS.get(source_id, BaseMessageFormatter)
 
 
-def format_earthquake_message(
-    source_id: str, earthquake: EarthquakeData, options: dict = None
-) -> str:
-    """格式化地震消息"""
+def _safe_format_message(source_id: str, data: Any, options: dict = None) -> str:
+    """安全地格式化消息，包含错误处理和回退逻辑"""
     formatter_class = get_formatter(source_id)
 
     # 检查映射是否存在，如果不存在则记录警告
@@ -66,82 +66,45 @@ def format_earthquake_message(
 
     if hasattr(formatter_class, "format_message"):
         try:
-            return formatter_class.format_message(earthquake, options=options)
+            return formatter_class.format_message(data, options=options)
         except TypeError:
             # 如果不支持 options 参数，回退到旧调用方式
             try:
-                return formatter_class.format_message(earthquake)
+                return formatter_class.format_message(data)
             except Exception as e:
                 logger.error(
-                    f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式"
+                    f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式",
+                    exc_info=True,
                 )
         except Exception as e:
             logger.error(
-                f"[灾害预警] 格式化器 {formatter_class.__name__} 执行出错: {e}，回退到基础格式"
+                f"[灾害预警] 格式化器 {formatter_class.__name__} 执行出错: {e}，回退到基础格式",
+                exc_info=True,
             )
 
     # 回退到基础格式化
-    return BaseMessageFormatter.format_message(earthquake)
+    return BaseMessageFormatter.format_message(data)
+
+
+def format_earthquake_message(
+    source_id: str, earthquake: EarthquakeData, options: dict = None
+) -> str:
+    """格式化地震消息"""
+    return _safe_format_message(source_id, earthquake, options)
 
 
 def format_tsunami_message(
     source_id: str, tsunami: TsunamiData, options: dict = None
 ) -> str:
     """格式化海啸消息"""
-    formatter_class = get_formatter(source_id)
-
-    if source_id not in MESSAGE_FORMATTERS:
-        logger.warning(
-            f"[灾害预警] 未找到数据源 '{source_id}' 的专用格式化器，将回退到基础格式化。"
-        )
-
-    if hasattr(formatter_class, "format_message"):
-        try:
-            return formatter_class.format_message(tsunami, options=options)
-        except TypeError:
-            try:
-                return formatter_class.format_message(tsunami)
-            except Exception as e:
-                logger.error(
-                    f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式"
-                )
-        except Exception as e:
-            logger.error(
-                f"[灾害预警] 格式化器 {formatter_class.__name__} 执行出错: {e}，回退到基础格式"
-            )
-
-    # 回退到基础格式化
-    return BaseMessageFormatter.format_message(tsunami)
+    return _safe_format_message(source_id, tsunami, options)
 
 
 def format_weather_message(
     source_id: str, weather: WeatherAlarmData, options: dict = None
 ) -> str:
     """格式化气象消息"""
-    formatter_class = get_formatter(source_id)
-
-    if source_id not in MESSAGE_FORMATTERS:
-        logger.warning(
-            f"[灾害预警] 未找到数据源 '{source_id}' 的专用格式化器，将回退到基础格式化。"
-        )
-
-    if hasattr(formatter_class, "format_message"):
-        try:
-            return formatter_class.format_message(weather, options=options)
-        except TypeError:
-            try:
-                return formatter_class.format_message(weather)
-            except Exception as e:
-                logger.error(
-                    f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式"
-                )
-        except Exception as e:
-            logger.error(
-                f"[灾害预警] 格式化器 {formatter_class.__name__} 执行出错: {e}，回退到基础格式"
-            )
-
-    # 回退到基础格式化
-    return BaseMessageFormatter.format_message(weather)
+    return _safe_format_message(source_id, weather, options)
 
 
 __all__ = [
