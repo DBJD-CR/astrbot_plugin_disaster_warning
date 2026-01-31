@@ -139,7 +139,7 @@ jobs:
               '| **总体评分** | `' + score + ' / 100` |\n' +
               '| **屎山等级** | **' + status + '** |\n' +
               '| **等级描述** | ' + desc + ' |\n' +
-              '| **检测时间** | ' + new Date().toLocaleString('zh-CN') + ' |\n\n' +
+              '| **检测时间** | ' + new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) + ' |\n' +
               '### 💡 评估建议\n' +
               advice + '\n\n' +
               '### 📊 详细数据\n' +
