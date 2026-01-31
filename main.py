@@ -16,6 +16,7 @@ from astrbot.api.star import Context, Star
 
 from .core.disaster_service import get_disaster_service, stop_disaster_service
 from .core.telemetry_manager import TelemetryManager
+from .core.web_server import WebAdminServer
 from .models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
@@ -39,6 +40,7 @@ class DisasterWarningPlugin(Star):
         self._config_schema: dict[str, Any] | None = None  # JSON Schema 缓存
         self._original_exception_handler: Any = None  # asyncio 异常处理器
         self._telemetry_tasks: set[asyncio.Task[None]] = set()  # 遥测任务引用集合
+        self.web_server = None
 
     async def initialize(self):
         """初始化插件"""
@@ -100,6 +102,14 @@ class DisasterWarningPlugin(Star):
                 # 任务完成后自动从集合中移除
                 startup_task.add_done_callback(self._telemetry_tasks.discard)
                 config_task.add_done_callback(self._telemetry_tasks.discard)
+                asyncio.create_task(self.telemetry.track_startup())
+                asyncio.create_task(self.telemetry.track_config(dict(self.config)))
+            # 启动 Web 管理端
+            if self.config.get("web_admin", {}).get("enabled", False):
+                self.web_server = WebAdminServer(self.disaster_service, self.config)
+                # 注入引用以支持事件驱动的实时推送
+                self.disaster_service.web_admin_server = self.web_server
+                await self.web_server.start()
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
@@ -168,6 +178,9 @@ class DisasterWarningPlugin(Star):
                     await self.telemetry.close()
                 except Exception as te:
                     logger.debug(f"[灾害预警] 遥测会话关闭时出错（已忽略）: {te}")
+            # 停止 Web 管理端
+            if self.web_server:
+                await self.web_server.stop()
 
             logger.info("[灾害预警] 灾害预警插件已停止")
 
