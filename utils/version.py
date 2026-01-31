@@ -2,7 +2,13 @@ import os
 import re
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
 
 import astrbot
 from astrbot.api import logger
@@ -48,6 +54,10 @@ def get_astrbot_version() -> str:
         pyproject_path = astrbot_path / "pyproject.toml"
 
         if pyproject_path.exists():
+            if tomllib is None:
+                logger.warning("[灾害预警] ⚠️ 未找到 tomllib 或 tomli 模块，无法解析 pyproject.toml")
+                return "unknown"
+
             with open(pyproject_path, "rb") as f:
                 data = tomllib.load(f)
                 version_str = data.get("project", {}).get("version", "unknown")
