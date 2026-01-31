@@ -68,6 +68,15 @@ class WebSocketHandlerRegistry:
                     "usgs": ("usgs_earthquake", "usgs_fanstudio"),
                 }
 
+                # 检查映射一致性 - 开发调试用
+                # 在此检查是否所有注册的 handler_id 都能在 self.service.handlers 中找到
+                for key, (_, handler_id) in source_map.items():
+                    if handler_id not in self.service.handlers:
+                        logger.warning(
+                            f"[灾害预警] Handler ID '{handler_id}' (源: {key}) 未在服务中注册，"
+                            f"请检查 core/disaster_service.py 中的初始化。"
+                        )
+
                 # 待处理的消息列表 [(source, msg_payload)]
                 messages_to_process = []
                 msg_type = data.get("type")
