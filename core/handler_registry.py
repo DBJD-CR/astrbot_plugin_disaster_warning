@@ -70,12 +70,17 @@ class WebSocketHandlerRegistry:
 
                 # 检查映射一致性 - 开发调试用
                 # 在此检查是否所有注册的 handler_id 都能在 self.service.handlers 中找到
-                for key, (_, handler_id) in source_map.items():
-                    if handler_id not in self.service.handlers:
-                        logger.warning(
-                            f"[灾害预警] Handler ID '{handler_id}' (源: {key}) 未在服务中注册，"
-                            f"请检查 core/disaster_service.py 中的初始化。"
-                        )
+                # 为了避免在生产环境中每次调用都产生重复警告，此检查仅在 debug 模式或首次调用时执行
+                # 由于这通常是开发时配置错误，我们可以简单地将其移至 DisasterWarningService.initialize 或 _register_handlers 中执行
+                # 或者在这里添加一个标志位来确保只检查一次
+                if not hasattr(self, "_handler_map_checked"):
+                    for key, (_, handler_id) in source_map.items():
+                        if handler_id not in self.service.handlers:
+                            logger.warning(
+                                f"[灾害预警] Handler ID '{handler_id}' (源: {key}) 未在服务中注册，"
+                                f"请检查 core/disaster_service.py 中的初始化。"
+                            )
+                    self._handler_map_checked = True
 
                 # 待处理的消息列表 [(source, msg_payload)]
                 messages_to_process = []
