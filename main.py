@@ -92,8 +92,8 @@ class DisasterWarningPlugin(Star):
                 logger.debug("[灾害预警] 已设置全局异常处理器")
 
             if self.telemetry.enabled:
-                # 记录启动时间
-                self._start_time = time.time()
+                # 记录启动时间（使用单调时钟）
+                self._start_time = time.monotonic()
                 
                 # 发送启动事件和配置快照
                 startup_task = asyncio.create_task(self.telemetry.track_startup())
@@ -288,8 +288,8 @@ class DisasterWarningPlugin(Star):
                     await asyncio.sleep(heartbeat_interval)
                     continue
                 
-                # 计算运行时长
-                uptime = time.time() - self._start_time
+                # 计算运行时长（使用单调时钟）
+                uptime = time.monotonic() - self._start_time
                 
                 # 发送心跳
                 try:
