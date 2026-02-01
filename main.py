@@ -94,7 +94,7 @@ class DisasterWarningPlugin(Star):
             if self.telemetry.enabled:
                 # 记录启动时间（使用单调时钟）
                 self._start_time = time.monotonic()
-                
+
                 # 发送启动事件和配置快照
                 startup_task = asyncio.create_task(self.telemetry.track_startup())
                 config_task = asyncio.create_task(
@@ -106,7 +106,7 @@ class DisasterWarningPlugin(Star):
                 # 任务完成后自动从集合中移除
                 startup_task.add_done_callback(self._telemetry_tasks.discard)
                 config_task.add_done_callback(self._telemetry_tasks.discard)
-                
+
                 # 启动心跳定时任务
                 self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
                 logger.debug("[灾害预警] 已启动遥测心跳任务 (间隔: 12小时)")
@@ -279,7 +279,7 @@ class DisasterWarningPlugin(Star):
     async def _heartbeat_loop(self):
         """心跳循环任务 - 启动时立即发送一次，之后每12小时发送一次"""
         heartbeat_interval = 43200  # 12小时 = 43200秒
-        
+
         try:
             while True:
                 # 检查遥测是否仍然启用
@@ -287,17 +287,19 @@ class DisasterWarningPlugin(Star):
                     logger.debug("[灾害预警] 遥测已禁用，跳过心跳发送")
                     await asyncio.sleep(heartbeat_interval)
                     continue
-                
+
                 # 计算运行时长（使用单调时钟）
                 uptime = time.monotonic() - self._start_time
-                
+
                 # 发送心跳
                 try:
                     await self.telemetry.track_heartbeat(uptime_seconds=uptime)
-                    logger.debug(f"[灾害预警] 心跳数据已发送 (运行时长: {uptime:.0f}秒)")
+                    logger.debug(
+                        f"[灾害预警] 心跳数据已发送 (运行时长: {uptime:.0f}秒)"
+                    )
                 except Exception as e:
                     logger.debug(f"[灾害预警] 心跳发送失败: {e}")
-                
+
                 # 等待12小时后再发送下一次
                 await asyncio.sleep(heartbeat_interval)
         except asyncio.CancelledError:
@@ -306,7 +308,6 @@ class DisasterWarningPlugin(Star):
             raise
         except Exception as e:
             logger.error(f"[灾害预警] 心跳循环异常: {e}")
-
 
     @filter.command("灾害预警")
     async def disaster_warning_help(self, event: AstrMessageEvent):

@@ -201,7 +201,7 @@ class TelemetryManager:
 
     async def track_heartbeat(self, uptime_seconds: float = 0) -> bool:
         """上报心跳事件
-        
+
         Args:
             uptime_seconds: 运行时长(秒)
         """
