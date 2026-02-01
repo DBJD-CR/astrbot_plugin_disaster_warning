@@ -26,9 +26,6 @@ jobs:
       - name: 安装 uv
         run: pip install uv
 
-      - name: 安装依赖
-        run: uv sync
-
       - name: 执行 Ruff 格式化与修复
         id: ruff
         # 使用 || true 确保即使有错误也不立即中断，以便后续步骤生成报告
