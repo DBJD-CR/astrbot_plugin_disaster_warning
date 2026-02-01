@@ -255,12 +255,36 @@ jobs:
               '- [下载 Markdown 报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)\n\n' +
               '*由 [fuck-u-code](https://github.com/Done-0/fuck-u-code) 自动检测 · 本评论不代表人类观点*';
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            // 获取现有评论
+            const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              issue_number: context.issue.number,
             });
+            
+            // 查找机器人之前发的屎山检测报告评论
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('屎山代码检测报告')
+            );
+            
+            if (botComment) {
+              // 如果已有评论，更新它
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // 如果没有，创建新评论
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
       
       # 根据等级决定是否阻断合并（可选）
       - name: 门禁检查（可选）
