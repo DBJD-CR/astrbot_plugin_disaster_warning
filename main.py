@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import time
 import traceback
 from datetime import datetime
 from typing import Any
@@ -39,6 +40,8 @@ class DisasterWarningPlugin(Star):
         self._config_schema: dict[str, Any] | None = None  # JSON Schema 缓存
         self._original_exception_handler: Any = None  # asyncio 异常处理器
         self._telemetry_tasks: set[asyncio.Task[None]] = set()  # 遥测任务引用集合
+        self._heartbeat_task: asyncio.Task[None] | None = None  # 心跳定时任务
+        self._start_time: float = 0.0  # 插件启动时间
 
     async def initialize(self):
         """初始化插件"""
@@ -89,6 +92,9 @@ class DisasterWarningPlugin(Star):
                 logger.debug("[灾害预警] 已设置全局异常处理器")
 
             if self.telemetry.enabled:
+                # 记录启动时间
+                self._start_time = time.time()
+                
                 # 发送启动事件和配置快照
                 startup_task = asyncio.create_task(self.telemetry.track_startup())
                 config_task = asyncio.create_task(
@@ -100,6 +106,10 @@ class DisasterWarningPlugin(Star):
                 # 任务完成后自动从集合中移除
                 startup_task.add_done_callback(self._telemetry_tasks.discard)
                 config_task.add_done_callback(self._telemetry_tasks.discard)
+                
+                # 启动心跳定时任务
+                self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                logger.debug("[灾害预警] 已启动遥测心跳任务 (间隔: 12小时)")
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
@@ -132,6 +142,15 @@ class DisasterWarningPlugin(Star):
         """插件销毁时调用"""
         try:
             logger.info("[灾害预警] 正在停止灾害预警插件...")
+
+            # 取消心跳任务
+            if self._heartbeat_task:
+                self._heartbeat_task.cancel()
+                try:
+                    await self._heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+                logger.debug("[灾害预警] 已停止心跳任务")
 
             # 恢复原有异常处理器
             if self._original_exception_handler is not None:
@@ -256,6 +275,38 @@ class DisasterWarningPlugin(Star):
                 # 保存任务引用,防止被垃圾回收
                 self._telemetry_tasks.add(error_task)
                 error_task.add_done_callback(self._telemetry_tasks.discard)
+
+    async def _heartbeat_loop(self):
+        """心跳循环任务 - 启动时立即发送一次，之后每12小时发送一次"""
+        heartbeat_interval = 43200  # 12小时 = 43200秒
+        
+        try:
+            while True:
+                # 检查遥测是否仍然启用
+                if not self.telemetry or not self.telemetry.enabled:
+                    logger.debug("[灾害预警] 遥测已禁用，跳过心跳发送")
+                    await asyncio.sleep(heartbeat_interval)
+                    continue
+                
+                # 计算运行时长
+                uptime = time.time() - self._start_time
+                
+                # 发送心跳
+                try:
+                    await self.telemetry.track_heartbeat(uptime_seconds=uptime)
+                    logger.debug(f"[灾害预警] 心跳数据已发送 (运行时长: {uptime:.0f}秒)")
+                except Exception as e:
+                    logger.debug(f"[灾害预警] 心跳发送失败: {e}")
+                
+                # 等待12小时后再发送下一次
+                await asyncio.sleep(heartbeat_interval)
+        except asyncio.CancelledError:
+            # 任务被取消时正常退出
+            logger.debug("[灾害预警] 心跳任务已取消")
+            raise
+        except Exception as e:
+            logger.error(f"[灾害预警] 心跳循环异常: {e}")
+
 
     @filter.command("灾害预警")
     async def disaster_warning_help(self, event: AstrMessageEvent):
