@@ -5,6 +5,7 @@
 <p align="center">
   <img src="resources/PluginRank.svg" alt="PluginRank">
   <img src="resources/StarRank.svg" alt="StarRank">
+  <img src="resources/ShitMountain.svg" alt="ShitMountain">
 </p>
 
 <p align="center">
@@ -88,13 +89,13 @@
 >
 > 开发时长：累计 43 天（主插件部分）
 >
-> 累计工时：约 205 小时（主插件部分）
+> 累计工时：约 209 小时（主插件部分）
 >
 > 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro (With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：588,755,012
+> Tokens Used：589,905,012
 
 ## ✨ 功能特性
 
@@ -548,6 +549,7 @@
 - **白名单 (`whitelist`)**: 仅推送包含这些关键词的事件（留空则不启用白名单模式）。
   - 如果启用，请尽量多填写一些关键词，否则很有可能在关键时刻错过重要的通知。
   - 关键词填写应以 `省州市区/督道府县` 的级别填写， **请勿填写国家/地区名**，这会导致绝大部分符合推送条件的消息被过滤。
+  - 关键词填写应该尽量简短 (避免填写完整的省市名，如 `XX省XX市`，根据过滤范围直接填 `浙江`、`杭州` 即可)。
   - ✅ 正确示例（精确过滤）：“新疆”、“西双版纳州”、“大同市”、“陇西县”、“宜蘭縣”、“千葉県”、“能登半島”、“宗谷地方”、“阿拉斯加”
   - ✅ 正确示例（模糊匹配）：“省”、“州”、“市”、“县”、“県”、“区”、“地区”、“道”、“附近”、“岛”、“海”、“沖”
   - ❌ 错误示例：“中国”、“台湾”、“日本”、“美国”
