@@ -23,7 +23,7 @@ jobs:
             https://github.com/Done-0/fuck-u-code/releases/latest/download/fuck-u-code-linux-amd64
           chmod +x fuck-u-code
 
-            - name: 运行屎山分析 & 详细评分
+      - name: 运行屎山分析 & 详细评分
         id: analyze
         run: |
           ./fuck-u-code analyze --verbose --lang zh-CN --top 10 2>&1 | tee analysis.log
