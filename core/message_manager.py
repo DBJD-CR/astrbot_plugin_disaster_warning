@@ -147,7 +147,16 @@ class MessagePushManager:
 
         # 初始化浏览器管理器
         msg_config = config.get("message_format", {})
-        pool_size = msg_config.get("browser_pool_size", 2)
+        raw_pool_size = msg_config.get("browser_pool_size", 2)
+        try:
+            pool_size = int(raw_pool_size)
+        except (TypeError, ValueError):
+            # 非法配置（如非整数）时回退到默认值 2
+            pool_size = 2
+        else:
+            # 将非法的 0/负数视为无效并回退到默认值 2
+            if pool_size < 1:
+                pool_size = 2
         self.browser_manager = BrowserManager(pool_size=pool_size, telemetry=telemetry)
 
         # 启动时执行一次清理，避免开发环境下重载插件导致临时文件堆积
