@@ -74,10 +74,10 @@ class CWAEEWHandler(BaseDataHandler):
                 create_time=self._parse_datetime(
                     msg_data.get("createTime", "")
                 ),  # 某些版本可能没有 createTime
-                latitude=float(msg_data.get("latitude", 0)),
-                longitude=float(msg_data.get("longitude", 0)),
-                depth=msg_data.get("depth"),
-                magnitude=msg_data.get("magnitude"),
+                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
+                depth=self._safe_float_convert(msg_data.get("depth")),
+                magnitude=self._safe_float_convert(msg_data.get("magnitude")),
                 scale=_safe_float_convert(intensity),
                 place_name=place_name,
                 updates=msg_data.get("updates", 1),
@@ -125,10 +125,12 @@ class CWAEEWWolfxHandler(BaseDataHandler):
                 source=DataSource.WOLFX_CWA_EEW,
                 disaster_type=DisasterType.EARTHQUAKE_WARNING,
                 shock_time=self._parse_datetime(data.get("OriginTime", "")),
-                latitude=data.get("Latitude", 0),
-                longitude=data.get("Longitude", 0),
-                depth=data.get("Depth"),
-                magnitude=data.get("Magunitude") or data.get("Magnitude"),
+                latitude=self._safe_float_convert(data.get("Latitude")) or 0.0,
+                longitude=self._safe_float_convert(data.get("Longitude")) or 0.0,
+                depth=self._safe_float_convert(data.get("Depth")),
+                magnitude=self._safe_float_convert(
+                    data.get("Magunitude") or data.get("Magnitude")
+                ),
                 scale=self._parse_cwa_scale(data.get("MaxIntensity", "")),
                 place_name=data.get("HypoCenter", ""),
                 updates=data.get("ReportNum", 1),

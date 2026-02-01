@@ -499,6 +499,17 @@
           "step": 1
         }
       },
+      "browser_pool_size": {
+        "description": "浏览器页面池大小",
+        "type": "int",
+        "hint": "默认2。增大此值可提高并发处理能力（应对多条消息同时推送），但会增加内存占用。",
+        "default": 2,
+        "slider": {
+          "min": 1,
+          "max": 10,
+          "step": 1
+        }
+      },
       "detailed_jma_intensity": {
         "description": "详细显示JMA区域震度",
         "type": "bool",

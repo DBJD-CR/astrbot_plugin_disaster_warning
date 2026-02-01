@@ -45,13 +45,13 @@ class CENCEarthquakeHandler(BaseDataHandler):
                 return None
 
             # 优化USGS数据精度 - 四舍五入到1位小数
-            magnitude = msg_data.get("magnitude")
+            magnitude = self._safe_float_convert(msg_data.get("magnitude"))
             if magnitude is not None:
-                magnitude = round(float(magnitude), 1)
+                magnitude = round(magnitude, 1)
 
-            depth = msg_data.get("depth")
+            depth = self._safe_float_convert(msg_data.get("depth"))
             if depth is not None:
-                depth = round(float(depth), 1)
+                depth = round(depth, 1)
 
             earthquake = EarthquakeData(
                 id=str(msg_data.get("id", "")),
@@ -59,8 +59,8 @@ class CENCEarthquakeHandler(BaseDataHandler):
                 source=DataSource.FAN_STUDIO_CENC,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
-                latitude=float(msg_data.get("latitude", 0)),
-                longitude=float(msg_data.get("longitude", 0)),
+                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
                 depth=depth,
                 magnitude=magnitude,
                 place_name=msg_data.get("placeName", ""),
@@ -113,15 +113,11 @@ class CENCEarthquakeWolfxHandler(BaseDataHandler):
                 source=DataSource.WOLFX_CENC_EQ,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(eq_info.get("time", "")),
-                latitude=float(eq_info.get("latitude", 0)),
-                longitude=float(eq_info.get("longitude", 0)),
-                depth=float(eq_info.get("depth", 0)) if eq_info.get("depth") else None,
-                magnitude=float(eq_info.get("magnitude", 0))
-                if eq_info.get("magnitude")
-                else None,
-                intensity=float(eq_info.get("intensity", 0))
-                if eq_info.get("intensity")
-                else None,
+                latitude=self._safe_float_convert(eq_info.get("latitude")) or 0.0,
+                longitude=self._safe_float_convert(eq_info.get("longitude")) or 0.0,
+                depth=self._safe_float_convert(eq_info.get("depth")),
+                magnitude=self._safe_float_convert(eq_info.get("magnitude")),
+                intensity=self._safe_float_convert(eq_info.get("intensity")),
                 place_name=eq_info.get("location", ""),
                 info_type=eq_info.get("type", ""),
                 raw_data=data,

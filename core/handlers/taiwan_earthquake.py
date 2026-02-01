@@ -37,23 +37,16 @@ class CWAReportHandler(BaseDataHandler):
                 return None
 
             # 增强数值解析健壮性
-            try:
-                lat = float(msg_data.get("latitude") or 0)
-                lon = float(msg_data.get("longitude") or 0)
-            except (ValueError, TypeError):
-                lat = 0.0
-                lon = 0.0
-
             earthquake = EarthquakeData(
                 id=str(msg_data.get("id", "")),
                 event_id=str(msg_data.get("id", "")),  # 报告ID通常就是事件ID
                 source=DataSource.FAN_STUDIO_CWA_REPORT,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
-                latitude=lat,
-                longitude=lon,
-                depth=msg_data.get("depth"),
-                magnitude=msg_data.get("magnitude"),
+                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
+                depth=self._safe_float_convert(msg_data.get("depth")),
+                magnitude=self._safe_float_convert(msg_data.get("magnitude")),
                 place_name=msg_data.get("placeName", ""),
                 # 报告特有字段
                 image_uri=msg_data.get("imageURI"),

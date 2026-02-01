@@ -199,6 +199,20 @@ class TelemetryManager:
             },
         )
 
+    async def track_heartbeat(self, uptime_seconds: float = 0) -> bool:
+        """上报心跳事件
+
+        Args:
+            uptime_seconds: 运行时长(秒)
+        """
+        logger.debug(f"[灾害预警] 准备发送心跳: uptime_seconds={uptime_seconds}")
+        return await self.track(
+            "heartbeat",
+            {
+                "uptime_seconds": uptime_seconds,
+            },
+        )
+
     async def track_config(self, config: dict) -> bool:
         """
         上报配置快照

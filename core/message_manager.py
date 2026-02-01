@@ -146,7 +146,18 @@ class MessagePushManager:
         self.weather_filter = WeatherFilter(weather_filter_config)
 
         # 初始化浏览器管理器
-        self.browser_manager = BrowserManager(pool_size=2, telemetry=telemetry)
+        msg_config = config.get("message_format", {})
+        raw_pool_size = msg_config.get("browser_pool_size", 2)
+        try:
+            pool_size = int(raw_pool_size)
+        except (TypeError, ValueError):
+            # 非法配置（如非整数）时回退到默认值 2
+            pool_size = 2
+        else:
+            # 将非法的 0/负数视为无效并回退到默认值 2
+            if pool_size < 1:
+                pool_size = 2
+        self.browser_manager = BrowserManager(pool_size=pool_size, telemetry=telemetry)
 
         # 启动时执行一次清理，避免开发环境下重载插件导致临时文件堆积
         self.cleanup_old_records()
@@ -299,6 +310,7 @@ class MessagePushManager:
             DataSource.P2P_EEW.value: "jma_p2p",
             DataSource.WOLFX_JMA_EEW.value: "jma_wolfx",
             # 地震情报数据源
+            DataSource.FAN_STUDIO_CWA_REPORT.value: "cwa_fanstudio_report",
             DataSource.FAN_STUDIO_CENC.value: "cenc_fanstudio",
             DataSource.WOLFX_CENC_EQ.value: "cenc_wolfx",
             DataSource.P2P_EARTHQUAKE.value: "jma_p2p_info",

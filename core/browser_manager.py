@@ -31,52 +31,54 @@ class BrowserManager:
         self._page_pool: asyncio.Queue = asyncio.Queue(maxsize=pool_size)
         self._semaphore = asyncio.Semaphore(pool_size)  # 并发控制
         self._page_creation_lock = asyncio.Lock()  # 页面创建锁,防止并发创建超出池大小
+        self._init_lock = asyncio.Lock()  # 初始化锁，防止并发初始化
         self._initialized = False
         self._closed = False
         self._telemetry = telemetry
 
     async def initialize(self):
         """初始化浏览器和页面池"""
-        if self._initialized:
-            logger.debug("[灾害预警] 浏览器已初始化，跳过")
-            return
+        async with self._init_lock:
+            if self._initialized:
+                logger.debug("[灾害预警] 浏览器已初始化，跳过")
+                return
 
-        try:
-            logger.info("[灾害预警] 正在启动浏览器...")
-            start_time = time.time()
+            try:
+                logger.info("[灾害预警] 正在启动浏览器...")
+                start_time = time.time()
 
-            # 启动 Playwright
-            self._playwright = await async_playwright().start()
+                # 启动 Playwright
+                self._playwright = await async_playwright().start()
 
-            # 启动浏览器
-            self._browser = await self._playwright.chromium.launch(
-                args=["--no-sandbox", "--disable-setuid-sandbox"]
-            )
-
-            # 预创建页面对象池
-            for i in range(self.pool_size):
-                page = await self._browser.new_page(
-                    viewport={"width": 800, "height": 800}, device_scale_factor=2
+                # 启动浏览器
+                self._browser = await self._playwright.chromium.launch(
+                    args=["--no-sandbox", "--disable-setuid-sandbox"]
                 )
-                await self._page_pool.put(page)
-                logger.debug(f"[灾害预警] 页面 {i + 1}/{self.pool_size} 已创建")
 
-            elapsed = time.time() - start_time
-            self._initialized = True
-            logger.info(
-                f"[灾害预警] 浏览器启动完成，耗时 {elapsed:.2f}秒，页面池大小: {self.pool_size}"
-            )
+                # 预创建页面对象池
+                for i in range(self.pool_size):
+                    page = await self._browser.new_page(
+                        viewport={"width": 800, "height": 800}, device_scale_factor=2
+                    )
+                    await self._page_pool.put(page)
+                    logger.debug(f"[灾害预警] 页面 {i + 1}/{self.pool_size} 已创建")
 
-        except Exception as e:
-            logger.error(f"[灾害预警] 浏览器初始化失败: {e}")
-            # 上报浏览器初始化错误到遥测
-            if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(
-                    e, module="core.browser_manager.initialize"
+                elapsed = time.time() - start_time
+                self._initialized = True
+                logger.info(
+                    f"[灾害预警] 浏览器启动完成，耗时 {elapsed:.2f}秒，页面池大小: {self.pool_size}"
                 )
-            # 清理已创建的资源
-            await self._cleanup()
-            raise
+
+            except Exception as e:
+                logger.error(f"[灾害预警] 浏览器初始化失败: {e}")
+                # 上报浏览器初始化错误到遥测
+                if self._telemetry and self._telemetry.enabled:
+                    await self._telemetry.track_error(
+                        e, module="core.browser_manager.initialize"
+                    )
+                # 清理已创建的资源
+                await self._cleanup()
+                raise
 
     async def render_card(
         self,
@@ -128,7 +130,8 @@ class BrowserManager:
 
                         # 使用 file:// 协议加载，支持相对路径
                         file_url = f"file://{temp_html}"
-                        await page.goto(file_url, wait_until="networkidle")
+                        # 优化：使用 domcontentloaded 以加速加载，后续依赖 .map-ready 保证地图就绪
+                        await page.goto(file_url, wait_until="domcontentloaded")
 
                         # 等待地图渲染完成标记
                         try:
@@ -137,10 +140,11 @@ class BrowserManager:
                             )
                             logger.debug("[灾害预警] 地图渲染标记已就绪")
                         except Exception:
-                            logger.debug("[灾害预警] 未找到 .map-ready 标记")
-
-                        # 额外等待地图瓦片加载（关键！）
-                        await asyncio.sleep(0.5)
+                            logger.warning(
+                                "[灾害预警] 等待 .map-ready 标记超时，地图可能未完全加载"
+                            )
+                            # 兜底等待，确保至少能看到部分内容
+                            await asyncio.sleep(0.2)
 
                         # 等待卡片元素可见
                         try:
