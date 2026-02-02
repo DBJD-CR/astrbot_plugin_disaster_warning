@@ -22,6 +22,9 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
       - name: 确保标签颜色正确
         # 仅在非 dry-run 模式下执行，避免预览时报错或产生副作用
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry-run) }}
