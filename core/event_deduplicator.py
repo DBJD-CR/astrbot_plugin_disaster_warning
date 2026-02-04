@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from astrbot.api import logger
 
 from ..models.models import DataSource, DisasterEvent, DisasterType, EarthquakeData
+from ..utils.time_converter import TimeConverter
 
 
 class EventDeduplicator:
@@ -355,9 +356,10 @@ class EventDeduplicator:
                     pass
 
         if is_jst:
-            tz = timezone(timedelta(hours=9))
+            # 使用 TimeConverter 获取时区对象，支持 IANA 时区
+            tz = TimeConverter._get_timezone("Asia/Tokyo")
         else:
             # 默认为 UTC+8 (CST) - 适用于中国/台湾/FanStudio转换后的数据
-            tz = timezone(timedelta(hours=8))
+            tz = TimeConverter._get_timezone("Asia/Shanghai")
 
         return dt.replace(tzinfo=tz).astimezone(timezone.utc)
