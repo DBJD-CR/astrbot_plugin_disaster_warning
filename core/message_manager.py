@@ -19,11 +19,12 @@ from astrbot.api.event import MessageChain
 from astrbot.api.star import StarTools
 
 from ..models.data_source_config import (
+    get_eew_sources,
     get_intensity_based_sources,
     get_scale_based_sources,
 )
 from ..models.models import (
-    DataSource,
+    DATA_SOURCE_MAPPING,
     DisasterEvent,
     EarthquakeData,
     TsunamiData,
@@ -216,7 +217,7 @@ class MessagePushManager:
         if source_id == "global_quake":
             # Global Quake专用过滤器
             if self.global_quake_filter.should_filter(earthquake):
-                logger.info(f"[灾害预警] 事件被Global Quake过滤器过滤: {source_id}")
+                logger.info("[灾害预警] 事件被Global Quake过滤器过滤")
                 return False
         elif source_id in get_intensity_based_sources():
             # 使用烈度过滤器
@@ -231,7 +232,7 @@ class MessagePushManager:
         elif source_id == "usgs_fanstudio":
             # USGS专用过滤器
             if self.usgs_filter.should_filter(earthquake):
-                logger.info(f"[灾害预警] 事件被USGS过滤器过滤: {source_id}")
+                logger.info("[灾害预警] 事件被USGS过滤器过滤")
                 return False
 
         # 报数控制（仅EEW数据源）
@@ -300,30 +301,10 @@ class MessagePushManager:
 
     def _get_source_id(self, event: DisasterEvent) -> str:
         """获取事件的数据源ID"""
-        source_mapping = {
-            # EEW预警数据源
-            DataSource.FAN_STUDIO_CEA.value: "cea_fanstudio",
-            DataSource.WOLFX_CENC_EEW.value: "cea_wolfx",
-            DataSource.FAN_STUDIO_CWA.value: "cwa_fanstudio",
-            DataSource.WOLFX_CWA_EEW.value: "cwa_wolfx",
-            DataSource.FAN_STUDIO_JMA.value: "jma_fanstudio",
-            DataSource.P2P_EEW.value: "jma_p2p",
-            DataSource.WOLFX_JMA_EEW.value: "jma_wolfx",
-            # 地震情报数据源
-            DataSource.FAN_STUDIO_CWA_REPORT.value: "cwa_fanstudio_report",
-            DataSource.FAN_STUDIO_CENC.value: "cenc_fanstudio",
-            DataSource.WOLFX_CENC_EQ.value: "cenc_wolfx",
-            DataSource.P2P_EARTHQUAKE.value: "jma_p2p_info",
-            DataSource.WOLFX_JMA_EQ.value: "jma_wolfx_info",
-            DataSource.FAN_STUDIO_USGS.value: "usgs_fanstudio",
-            DataSource.GLOBAL_QUAKE.value: "global_quake",
-            # 气象和海啸预警数据源
-            DataSource.FAN_STUDIO_WEATHER.value: "china_weather_fanstudio",
-            DataSource.FAN_STUDIO_TSUNAMI.value: "china_tsunami_fanstudio",
-            DataSource.P2P_TSUNAMI.value: "jma_tsunami_p2p",
-        }
-
-        return source_mapping.get(event.source.value, event.source.value)
+        # 动态生成反向映射：从 DataSource 枚举值映射回简短 ID
+        # 这样只要在 models/models.py 的 DATA_SOURCE_MAPPING 中注册了，这里就会自动同步
+        reverse_mapping = {v.value: k for k, v in DATA_SOURCE_MAPPING.items()}
+        return reverse_mapping.get(event.source.value, event.source.value)
 
     async def push_event(self, event: DisasterEvent) -> bool:
         """推送事件入口"""
@@ -470,15 +451,8 @@ class MessagePushManager:
             # 6. 异步处理分离的地图瓦片 (针对 EEW 数据源的优化)
             message_format_config = self.config.get("message_format", {})
             include_map = message_format_config.get("include_map", False)
-            split_map_sources = {
-                "cea_fanstudio",
-                "cea_wolfx",
-                "cwa_fanstudio",
-                "cwa_wolfx",
-                "jma_fanstudio",
-                "jma_wolfx",
-                "jma_p2p",
-            }
+            # 动态获取所有 EEW 数据源，但排除掉使用独立卡片渲染的 global_quake
+            split_map_sources = set(get_eew_sources()) - {"global_quake"}
             if (
                 include_map
                 and source_id in split_map_sources
@@ -655,16 +629,8 @@ class MessagePushManager:
         # 3. 检查是否需要附加地图图片
         include_map = message_format_config.get("include_map", False)
 
-        # 定义需要分离发送且进行报数控制的数据源 (EEW 类型)
-        split_map_sources = {
-            "cea_fanstudio",
-            "cea_wolfx",
-            "cwa_fanstudio",
-            "cwa_wolfx",
-            "jma_fanstudio",
-            "jma_wolfx",
-            "jma_p2p",
-        }
+        # 动态获取所有 EEW 数据源，但排除掉使用独立卡片渲染的 global_quake
+        split_map_sources = set(get_eew_sources()) - {"global_quake"}
 
         if include_map and isinstance(event.data, EarthquakeData):
             # 如果是需要分离发送的数据源，则在此跳过同步附加图片，改为在 _execute_push 中后台处理
@@ -880,12 +846,33 @@ class MessagePushManager:
 
         # 清理临时图片文件
         try:
-            # 清理超过 3 小时的图片
-            expire_time = time.time() - 10800
-
             # 查找所有 PNG 文件
             pattern = os.path.join(self.temp_dir, "*.png")
-            for file_path in glob.glob(pattern):
+            files = glob.glob(pattern)
+
+            # 1. 按照修改时间排序
+            files.sort(key=os.path.getmtime)
+
+            # 2. 检查数量上限 (默认 256 张)
+            max_files = self.config.get("message_format", {}).get(
+                "max_temp_images", 256
+            )
+            if len(files) > max_files:
+                to_delete = files[: len(files) - max_files]
+                for f in to_delete:
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+                logger.info(
+                    f"[灾害预警] 临时文件过多，已清理 {len(to_delete)} 个旧文件"
+                )
+                # 更新处理后的列表
+                files = files[len(to_delete) :]
+
+            # 3. 清理超过 3 小时的图片
+            expire_time = time.time() - 10800
+            for file_path in files:
                 try:
                     if os.path.getmtime(file_path) < expire_time:
                         os.remove(file_path)
