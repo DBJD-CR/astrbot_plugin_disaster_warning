@@ -3,11 +3,11 @@
 适配数据源架构，提供更好的日志格式和过滤功能
 """
 
-import time
 import asyncio
 import hashlib
 import json
 import threading
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,7 +71,7 @@ class MessageLogger:
         self.recent_raw_logs: list[str] = []  # 新增：用于原始日志文本去重
         self.max_cache_size = 1000
         self.max_raw_log_cache = 30  # 只缓存最近30条原始日志用于去重
-        
+
         # 文件写入锁 (用于多线程/异步执行器环境)
         self._file_lock = threading.Lock()
 
@@ -250,7 +250,7 @@ class MessageLogger:
             # 添加到缓存
             # 使用字典保持插入顺序，实现 FIFO 清理 (问题 1)
             self.recent_event_hashes[event_hash] = datetime.now().timestamp()
-            
+
             if len(self.recent_event_hashes) > self.max_cache_size:
                 # 移除最旧的条目 (字典的第一个键即为最旧)
                 oldest = next(iter(self.recent_event_hashes))
@@ -1090,11 +1090,11 @@ class MessageLogger:
                 with open(self.log_file_path, "a", encoding="utf-8") as f:
                     f.write(content)
                     f.flush()  # 确保立即写入磁盘
-                
+
                 # 检查文件大小，必要时进行轮转
                 # 注意：轮转检查也包含文件操作，放在这里一起执行
                 self._check_log_rotation()
-            except (OSError, IOError) as io_err:
+            except OSError as io_err:
                 # 磁盘满或权限不足等严重错误
                 logger.error(f"[灾害预警] 写入日志文件失败 (可能磁盘已满): {io_err}")
                 # 临时禁用日志记录
@@ -1286,11 +1286,11 @@ class MessageLogger:
                         try:
                             new_file.unlink()  # 删除最旧的文件
                         except OSError:
-                            pass # 忽略删除失败
+                            pass  # 忽略删除失败
                     try:
                         old_file.rename(new_file)
                     except OSError:
-                        pass # 忽略重命名失败
+                        pass  # 忽略重命名失败
 
             # 重命名当前日志文件
             if self.log_file_path.exists():
