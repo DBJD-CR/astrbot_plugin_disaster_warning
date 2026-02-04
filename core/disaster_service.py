@@ -16,6 +16,7 @@ from astrbot.api.star import StarTools
 if TYPE_CHECKING:
     from .telemetry_manager import TelemetryManager
 
+from ..models.data_source_config import DATA_SOURCE_CONFIGS
 from ..models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
@@ -23,7 +24,6 @@ from ..models.models import (
     TsunamiData,
     WeatherAlarmData,
 )
-from ..models.data_source_config import DATA_SOURCE_CONFIGS
 from ..utils.fe_regions import load_data_async
 from ..utils.formatters import MESSAGE_FORMATTERS
 from .handler_registry import WebSocketHandlerRegistry
@@ -98,7 +98,9 @@ class DisasterWarningService:
         # 1. 检查 Handler 是否都有 Formatter
         missing_formatters = handler_ids - formatter_ids
         if missing_formatters:
-            logger.warning(f"[灾害预警] 以下数据源缺少格式化器注册: {missing_formatters}")
+            logger.warning(
+                f"[灾害预警] 以下数据源缺少格式化器注册: {missing_formatters}"
+            )
 
         # 2. 检查 Handler 是否都有 Config
         missing_configs = handler_ids - config_ids
@@ -108,7 +110,9 @@ class DisasterWarningService:
         # 3. 检查 Handler 是否都在 Mapping 中 (用于枚举转换)
         missing_mappings = handler_ids - mapping_ids
         if missing_mappings:
-            logger.warning(f"[灾害预警] 以下数据源缺少 ID-枚举 映射: {missing_mappings}")
+            logger.warning(
+                f"[灾害预警] 以下数据源缺少 ID-枚举 映射: {missing_mappings}"
+            )
 
         if not missing_formatters and not missing_configs and not missing_mappings:
             logger.debug("[灾害预警] 注册表完整性自检通过")
@@ -373,7 +377,9 @@ class DisasterWarningService:
 
                 # 启动连接任务
                 task = asyncio.create_task(
-                    _connect_with_timeout(conn_name, conn_config["url"], connection_info)
+                    _connect_with_timeout(
+                        conn_name, conn_config["url"], connection_info
+                    )
                 )
                 self.connection_tasks.append(task)
 
@@ -441,30 +447,40 @@ class DisasterWarningService:
                         # 获取中国地震台网地震列表 (添加超时保护且不覆盖旧缓存)
                         try:
                             cenc_data = await asyncio.wait_for(
-                                fetcher.fetch_json("https://api.wolfx.jp/cenc_eqlist.json"),
-                                timeout=60
+                                fetcher.fetch_json(
+                                    "https://api.wolfx.jp/cenc_eqlist.json"
+                                ),
+                                timeout=60,
                             )
                             if cenc_data:
                                 # 更新缓存
                                 self.update_earthquake_list("cenc", cenc_data)
 
                                 # 仅在启用该数据源时才解析并尝试推送
-                                if self.is_wolfx_source_enabled("china_cenc_earthquake"):
+                                if self.is_wolfx_source_enabled(
+                                    "china_cenc_earthquake"
+                                ):
                                     handler = self.handlers.get("cenc_wolfx")
                                     if handler:
-                                        event = handler.parse_message(json.dumps(cenc_data))
+                                        event = handler.parse_message(
+                                            json.dumps(cenc_data)
+                                        )
                                         if event:
                                             await self._handle_disaster_event(event)
                         except asyncio.TimeoutError:
-                            logger.warning("[灾害预警] 定时获取 CENC 地震列表超时，保留原有缓存")
+                            logger.warning(
+                                "[灾害预警] 定时获取 CENC 地震列表超时，保留原有缓存"
+                            )
                         except Exception as e:
                             logger.error(f"[灾害预警] 获取 CENC 数据出错: {e}")
 
                         # 获取日本气象厅地震列表 (添加超时保护且不覆盖旧缓存)
                         try:
                             jma_data = await asyncio.wait_for(
-                                fetcher.fetch_json("https://api.wolfx.jp/jma_eqlist.json"),
-                                timeout=60
+                                fetcher.fetch_json(
+                                    "https://api.wolfx.jp/jma_eqlist.json"
+                                ),
+                                timeout=60,
                             )
                             if jma_data:
                                 # 更新缓存
@@ -474,11 +490,15 @@ class DisasterWarningService:
                                 if self.is_wolfx_source_enabled("japan_jma_earthquake"):
                                     handler = self.handlers.get("jma_wolfx_info")
                                     if handler:
-                                        event = handler.parse_message(json.dumps(jma_data))
+                                        event = handler.parse_message(
+                                            json.dumps(jma_data)
+                                        )
                                         if event:
                                             await self._handle_disaster_event(event)
                         except asyncio.TimeoutError:
-                            logger.warning("[灾害预警] 定时获取 JMA 地震列表超时，保留原有缓存")
+                            logger.warning(
+                                "[灾害预警] 定时获取 JMA 地震列表超时，保留原有缓存"
+                            )
                         except Exception as e:
                             logger.error(f"[灾害预警] 获取 JMA 数据出错: {e}")
 
@@ -532,13 +552,13 @@ class DisasterWarningService:
             # 先写入临时文件
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(self.earthquake_lists, f, ensure_ascii=False)
-            
+
             # 原子性重命名 (在 Windows 上如果目标存在会报错，需先删除)
             if os.path.exists(self.cache_file):
                 os.replace(temp_file, self.cache_file)
             else:
                 os.rename(temp_file, self.cache_file)
-                
+
             logger.info("[灾害预警] Wolfx 地震列表缓存已保存")
         except Exception as e:
             logger.error(f"[灾害预警] 保存 Wolfx 地震列表缓存失败: {e}")
