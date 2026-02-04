@@ -7,6 +7,7 @@ FERegions - 全球地震区域中文翻译模块
 转换为 Python 适用于灾害预警插件
 """
 
+import asyncio
 import json
 import os
 
@@ -18,8 +19,14 @@ _DATA_FILE = os.path.join(
 )
 
 
+async def load_data_async():
+    """异步预加载 FE Regions 数据"""
+    # 直接复用 _load_data 的逻辑，但在线程池中运行
+    await asyncio.to_thread(_load_data)
+
+
 def _load_data():
-    """懒加载 FE Regions 数据"""
+    """懒加载 FE Regions 数据 (同步实现)"""
     global _FE_NUMBERS, _FE_NAMES
 
     if _FE_NUMBERS is not None and _FE_NAMES is not None:
@@ -33,6 +40,10 @@ def _load_data():
     except FileNotFoundError:
         # 如果数据文件不存在，使用内嵌的简化数据
         _FE_NUMBERS = [[729] * 360 for _ in range(180)]  # 默认为"未定义"
+        _FE_NAMES = ["未定义"] * 729
+    except Exception:
+        # 兜底处理
+        _FE_NUMBERS = [[729] * 360 for _ in range(180)]
         _FE_NAMES = ["未定义"] * 729
 
 
