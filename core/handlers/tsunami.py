@@ -26,19 +26,11 @@ class TsunamiHandler(BaseDataHandler):
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析中国海啸预警数据"""
         try:
-            # 获取实际数据 - 兼容多种格式
-            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            # 获取实际数据
+            msg_data = self._extract_data(data)
             if not msg_data:
                 logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
-
-            # 记录数据获取情况用于调试
-            if "Data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
-            elif "data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
-            else:
-                logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
 
             # 心跳包检测 - 在详细处理前进行快速过滤
             if self._is_heartbeat_message(msg_data):

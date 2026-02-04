@@ -3,7 +3,6 @@
 包含 CWA (中央气象署) 相关处理器
 """
 
-import re
 from typing import Any
 
 from astrbot.api import logger
@@ -14,7 +13,8 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
-from .base import BaseDataHandler, _safe_float_convert
+from ...utils.converters import ScaleConverter, safe_float_convert
+from .base import BaseDataHandler
 
 
 class CWAEEWHandler(BaseDataHandler):
@@ -26,19 +26,11 @@ class CWAEEWHandler(BaseDataHandler):
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析台湾中央气象署地震预警数据"""
         try:
-            # 获取实际数据 - 兼容多种格式
-            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            # 获取实际数据
+            msg_data = self._extract_data(data)
             if not msg_data:
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
-
-            # 记录数据获取情况用于调试
-            if "Data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
-            elif "data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
-            else:
-                logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
 
             # 检查是否为CWA地震预警数据
             # 兼容新旧字段：maxIntensity -> epiIntensity
@@ -74,11 +66,11 @@ class CWAEEWHandler(BaseDataHandler):
                 create_time=self._parse_datetime(
                     msg_data.get("createTime", "")
                 ),  # 某些版本可能没有 createTime
-                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
-                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
-                depth=self._safe_float_convert(msg_data.get("depth")),
-                magnitude=self._safe_float_convert(msg_data.get("magnitude")),
-                scale=_safe_float_convert(intensity),
+                latitude=safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=safe_float_convert(msg_data.get("longitude")) or 0.0,
+                depth=safe_float_convert(msg_data.get("depth")),
+                magnitude=safe_float_convert(msg_data.get("magnitude")),
+                scale=safe_float_convert(intensity),
                 place_name=place_name,
                 updates=msg_data.get("updates", 1),
                 is_final=msg_data.get("isFinal", False),
@@ -125,13 +117,13 @@ class CWAEEWWolfxHandler(BaseDataHandler):
                 source=DataSource.WOLFX_CWA_EEW,
                 disaster_type=DisasterType.EARTHQUAKE_WARNING,
                 shock_time=self._parse_datetime(data.get("OriginTime", "")),
-                latitude=self._safe_float_convert(data.get("Latitude")) or 0.0,
-                longitude=self._safe_float_convert(data.get("Longitude")) or 0.0,
-                depth=self._safe_float_convert(data.get("Depth")),
-                magnitude=self._safe_float_convert(
+                latitude=safe_float_convert(data.get("Latitude")) or 0.0,
+                longitude=safe_float_convert(data.get("Longitude")) or 0.0,
+                depth=safe_float_convert(data.get("Depth")),
+                magnitude=safe_float_convert(
                     data.get("Magunitude") or data.get("Magnitude")
                 ),
-                scale=self._parse_cwa_scale(data.get("MaxIntensity", "")),
+                scale=ScaleConverter.parse_jma_cwa_scale(data.get("MaxIntensity", "")),
                 place_name=data.get("HypoCenter", ""),
                 updates=data.get("ReportNum", 1),
                 is_final=data.get("isFinal", False),
@@ -151,22 +143,3 @@ class CWAEEWWolfxHandler(BaseDataHandler):
         except Exception as e:
             logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {e}")
             return None
-
-    def _parse_cwa_scale(self, scale_str: str) -> float | None:
-        """解析台湾震度"""
-        if not scale_str:
-            return None
-
-        match = re.search(r"(\d+)(弱|強)?", scale_str)
-        if match:
-            base = int(match.group(1))
-            suffix = match.group(2)
-
-            if suffix == "弱":
-                return base - 0.5
-            elif suffix == "強":
-                return base + 0.5
-            else:
-                return float(base)
-
-        return None

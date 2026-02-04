@@ -13,6 +13,7 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
+from ...utils.converters import safe_float_convert
 from .base import BaseDataHandler
 
 
@@ -25,8 +26,8 @@ class CWAReportHandler(BaseDataHandler):
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析台湾中央气象署地震报告数据"""
         try:
-            # 获取实际数据 - 兼容多种格式
-            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            # 获取实际数据
+            msg_data = self._extract_data(data)
             if not msg_data:
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
@@ -43,10 +44,10 @@ class CWAReportHandler(BaseDataHandler):
                 source=DataSource.FAN_STUDIO_CWA_REPORT,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
-                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
-                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
-                depth=self._safe_float_convert(msg_data.get("depth")),
-                magnitude=self._safe_float_convert(msg_data.get("magnitude")),
+                latitude=safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=safe_float_convert(msg_data.get("longitude")) or 0.0,
+                depth=safe_float_convert(msg_data.get("depth")),
+                magnitude=safe_float_convert(msg_data.get("magnitude")),
                 place_name=msg_data.get("placeName", ""),
                 # 报告特有字段
                 image_uri=msg_data.get("imageURI"),
