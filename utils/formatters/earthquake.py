@@ -27,6 +27,10 @@ def _format_depth(depth: float) -> str:
     return f"{depth} km"
 
 
+# 预编译正则表达式
+_INTENSITY_NUM_PATTERN = re.compile(r"(\d+(\.\d+)?)")
+
+
 def _get_intensity_emoji(value, is_eew=True, is_shindo=False) -> str:
     """
     获取烈度/震度对应的emoji
@@ -49,8 +53,8 @@ def _get_intensity_emoji(value, is_eew=True, is_shindo=False) -> str:
         num_val = None
 
         # 尝试提取数值 (支持 4.5, 5, "5.5" 等)
-        # 简单的 float 转换可能失败如果包含非数字字符，所以用正则提取第一个数字部分
-        match = re.search(r"(\d+(\.\d+)?)", val_str)
+        # 使用预编译的正则提取第一个数字部分
+        match = _INTENSITY_NUM_PATTERN.search(val_str)
         if match:
             num_val = float(match.group(1))
 
@@ -390,7 +394,7 @@ class JMAEEWFormatter(BaseMessageFormatter):
             if display_time.tzinfo is None:
                 # 假设 input 为 JST (UTC+9)
                 display_time = TimeConverter.parse_datetime(display_time).replace(
-                    tzinfo=TimeConverter.TIMEZONES["JST"]
+                    tzinfo=TimeConverter._get_timezone("Asia/Tokyo")
                 )
 
             lines.append(
@@ -612,7 +616,7 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
             display_time = earthquake.shock_time
             if display_time.tzinfo is None:
                 display_time = TimeConverter.parse_datetime(display_time).replace(
-                    tzinfo=TimeConverter.TIMEZONES["JST"]
+                    tzinfo=TimeConverter._get_timezone("Asia/Tokyo")
                 )
 
             lines.append(
