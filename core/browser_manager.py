@@ -112,21 +112,30 @@ class BrowserManager:
 
         try:
             # 并发控制 - 限制同时渲染的数量
-            async with self._semaphore:
+            try:
+                await asyncio.wait_for(self._semaphore.acquire(), timeout=20.0)
+            except asyncio.TimeoutError:
+                logger.error("[灾害预警] 等待渲染信号量超时，系统负载过高")
+                return None
+
+            try:
                 # 从池中获取页面
-                page = await self._page_pool.get()
+                try:
+                    page = await asyncio.wait_for(self._page_pool.get(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.error("[灾害预警] 从池中获取页面对象超时")
+                    return None
 
                 try:
                     # 将 HTML 保存为临时文件，以支持相对路径加载本地资源
-
                     temp_html = None
                     try:
                         # 创建临时 HTML 文件
                         with tempfile.NamedTemporaryFile(
                             mode="w", suffix=".html", delete=False, encoding="utf-8"
                         ) as f:
-                            f.write(html_content)
                             temp_html = f.name
+                            f.write(html_content)
 
                         # 使用 file:// 协议加载，支持相对路径
                         file_url = f"file://{temp_html}"
@@ -136,7 +145,7 @@ class BrowserManager:
                         # 等待地图渲染完成标记
                         try:
                             await page.wait_for_selector(
-                                ".map-ready", state="attached", timeout=3000
+                                ".map-ready", state="attached", timeout=10000
                             )
                             logger.debug("[灾害预警] 地图渲染标记已就绪")
                         except Exception:
@@ -188,6 +197,9 @@ class BrowserManager:
                     # 归还页面到池中
                     if page:
                         await self._page_pool.put(page)
+            finally:
+                # 释放信号量
+                self._semaphore.release()
 
         except Exception as e:
             logger.error(f"[灾害预警] 卡片渲染失败: {e}")
