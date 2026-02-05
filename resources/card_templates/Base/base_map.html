@@ -53,10 +53,15 @@
         });
 
         // 添加瓦片层
-        L.tileLayer(`https://tilemap.fanstudio.tech/${source}/{z}/{y}/{x}`, {
+        const tileLayer = L.tileLayer(`https://tilemap.fanstudio.tech/${source}/{z}/{y}/{x}`, {
             maxZoom: 18,
             minZoom: 0
         }).addTo(map);
+
+        // 监听瓦片加载完成事件
+        tileLayer.on('load', function() {
+            document.body.classList.add('map-ready');
+        });
 
         // 使用与 Global Quake 卡片一致的震中标记 SVG
         const svgContent = `
@@ -80,8 +85,7 @@
 
         L.marker([lat, lng], { icon: epicenterIcon }).addTo(map);
 
-        // 标记渲染完成
-        document.body.classList.add('map-ready');
+        // 移除旧的 map-ready 标记，改由 tileLayer.on('load') 触发
     </script>
 </body>
 </html>

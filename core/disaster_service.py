@@ -16,13 +16,17 @@ from astrbot.api.star import StarTools
 if TYPE_CHECKING:
     from .telemetry_manager import TelemetryManager
 
+from ..models.data_source_config import DATA_SOURCE_CONFIGS
 from ..models.models import (
+    DATA_SOURCE_MAPPING,
     DisasterEvent,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
     get_data_source_from_id,
 )
+from ..utils.fe_regions import load_data_async
+from ..utils.formatters import MESSAGE_FORMATTERS
 from .handler_registry import WebSocketHandlerRegistry
 from .handlers import DATA_HANDLERS
 from .message_logger import MessageLogger
@@ -51,12 +55,16 @@ class DisasterWarningService:
 
         # 初始化组件（传入 telemetry，但此时可能为 None）
         self.ws_manager = WebSocketManager(
-            config.get("websocket_config", {}), self.message_logger, telemetry=self._telemetry
+            config.get("websocket_config", {}),
+            self.message_logger,
+            telemetry=self._telemetry,
         )
         self.http_fetcher: HTTPDataFetcher | None = None
-        
+
         # 初始化消息管理器
-        self.message_manager = MessagePushManager(config, context, telemetry=self._telemetry)
+        self.message_manager = MessagePushManager(
+            config, context, telemetry=self._telemetry
+        )
 
         # 数据处理器
         self.handlers = {}
@@ -84,6 +92,35 @@ class DisasterWarningService:
         for source_id, handler_class in DATA_HANDLERS.items():
             self.handlers[source_id] = handler_class(self.message_logger)
 
+    def _check_registry_integrity(self):
+        """检查各注册表的一致性"""
+        handler_ids = set(DATA_HANDLERS.keys())
+        formatter_ids = set(MESSAGE_FORMATTERS.keys())
+        config_ids = set(DATA_SOURCE_CONFIGS.keys())
+        mapping_ids = set(DATA_SOURCE_MAPPING.keys())
+
+        # 1. 检查 Handler 是否都有 Formatter
+        missing_formatters = handler_ids - formatter_ids
+        if missing_formatters:
+            logger.warning(
+                f"[灾害预警] 以下数据源缺少格式化器注册: {missing_formatters}"
+            )
+
+        # 2. 检查 Handler 是否都有 Config
+        missing_configs = handler_ids - config_ids
+        if missing_configs:
+            logger.warning(f"[灾害预警] 以下数据源缺少配置定义: {missing_configs}")
+
+        # 3. 检查 Handler 是否都在 Mapping 中 (用于枚举转换)
+        missing_mappings = handler_ids - mapping_ids
+        if missing_mappings:
+            logger.warning(
+                f"[灾害预警] 以下数据源缺少 ID-枚举 映射: {missing_mappings}"
+            )
+
+        if not missing_formatters and not missing_configs and not missing_mappings:
+            logger.debug("[灾害预警] 注册表完整性自检通过")
+
     def set_telemetry(self, telemetry: Optional["TelemetryManager"]):
         """设置遥测管理器引用"""
         self._telemetry = telemetry
@@ -100,6 +137,12 @@ class DisasterWarningService:
         try:
             logger.info("[灾害预警] 正在初始化灾害预警服务...")
 
+            # 执行注册表自检
+            self._check_registry_integrity()
+
+            # 异步预加载 FE Regions 数据，防止后续同步调用阻塞事件循环
+            await load_data_async()
+
             # 初始化HTTP获取器
             self.http_fetcher = HTTPDataFetcher(self.config)
 
@@ -115,7 +158,9 @@ class DisasterWarningService:
             logger.error(f"[灾害预警] 初始化服务失败: {e}")
             # 上报初始化失败错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.disaster_service.initialize")
+                await self._telemetry.track_error(
+                    e, module="core.disaster_service.initialize"
+                )
             raise
 
     def _register_handlers(self):
@@ -142,6 +187,7 @@ class DisasterWarningService:
             fan_sub_sources = [
                 "china_earthquake_warning",
                 "taiwan_cwa_earthquake",
+                "taiwan_cwa_report",
                 "china_cenc_earthquake",
                 "usgs_earthquake",
                 "china_weather_alarm",
@@ -261,7 +307,9 @@ class DisasterWarningService:
                 self.running = False
                 # 上报启动失败错误到遥测
                 if self._telemetry and self._telemetry.enabled:
-                    await self._telemetry.track_error(e, module="core.disaster_service.start")
+                    await self._telemetry.track_error(
+                        e, module="core.disaster_service.start"
+                    )
                 raise
 
     async def stop(self):
@@ -296,12 +344,30 @@ class DisasterWarningService:
             logger.error(f"[灾害预警] 停止服务时出错: {e}")
             # 上报停止服务错误到遥测
             if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(e, module="core.disaster_service.stop")
+                await self._telemetry.track_error(
+                    e, module="core.disaster_service.stop"
+                )
 
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""
-        logger.debug(f"[灾害预警] 开始建立WebSocket连接，当前任务数: {len(self.connection_tasks)}")
-        
+        logger.debug(
+            f"[灾害预警] 开始建立WebSocket连接，当前任务数: {len(self.connection_tasks)}"
+        )
+
+        async def _connect_with_timeout(name, uri, info):
+            """带超时的连接包装器"""
+            try:
+                # 设置连接阶段的超时限制 (如 30 秒)
+                # 注意：ws_manager.connect 内部包含重连循环，这里设置的是首次连接或单次尝试的策略建议
+                # 实际上 ws_manager.connect 是长驻任务，我们通过包装来确保启动逻辑不被卡死
+                await self.ws_manager.connect(
+                    name=name,
+                    uri=uri,
+                    connection_info=info,
+                )
+            except Exception as e:
+                logger.error(f"[灾害预警] WebSocket 连接任务 {name} 异常终止: {e}")
+
         for conn_name, conn_config in self.connections.items():
             if conn_config["handler"] in ["fan_studio", "p2p", "wolfx", "global_quake"]:
                 # 使用WebSocket管理器功能，传递连接信息
@@ -313,11 +379,10 @@ class DisasterWarningService:
                     "backup_url": conn_config.get("backup_url"),  # 传递备用服务器URL
                 }
 
+                # 启动连接任务
                 task = asyncio.create_task(
-                    self.ws_manager.connect(
-                        name=conn_name,
-                        uri=conn_config["url"],
-                        connection_info=connection_info,
+                    _connect_with_timeout(
+                        conn_name, conn_config["url"], connection_info
                     )
                 )
                 self.connection_tasks.append(task)
@@ -331,8 +396,10 @@ class DisasterWarningService:
                 logger.debug(
                     f"[灾害预警] 已启动WebSocket连接任务: {conn_name} (数据源: {connection_info['data_source']}{backup_info})"
                 )
-        
-        logger.debug(f"[灾害预警] WebSocket连接建立完成，总任务数: {len(self.connection_tasks)}")
+
+        logger.debug(
+            f"[灾害预警] WebSocket连接建立完成，总任务数: {len(self.connection_tasks)}"
+        )
 
     def _get_data_source_from_connection(self, connection_name: str) -> str:
         """从连接名称获取数据源ID"""
@@ -381,41 +448,63 @@ class DisasterWarningService:
                     await asyncio.sleep(300)  # 5分钟获取一次
 
                     async with self.http_fetcher as fetcher:
-                        # 获取中国地震台网地震列表
-                        cenc_data = await fetcher.fetch_json(
-                            "https://api.wolfx.jp/cenc_eqlist.json"
-                        )
-                        if cenc_data:
-                            # HTTP 获取的数据不再写入日志，避免冗余
+                        # 获取中国地震台网地震列表 (添加超时保护且不覆盖旧缓存)
+                        try:
+                            cenc_data = await asyncio.wait_for(
+                                fetcher.fetch_json(
+                                    "https://api.wolfx.jp/cenc_eqlist.json"
+                                ),
+                                timeout=60,
+                            )
+                            if cenc_data:
+                                # 更新缓存
+                                self.update_earthquake_list("cenc", cenc_data)
 
-                            # 更新缓存
-                            self.update_earthquake_list("cenc", cenc_data)
+                                # 仅在启用该数据源时才解析并尝试推送
+                                if self.is_wolfx_source_enabled(
+                                    "china_cenc_earthquake"
+                                ):
+                                    handler = self.handlers.get("cenc_wolfx")
+                                    if handler:
+                                        event = handler.parse_message(
+                                            json.dumps(cenc_data)
+                                        )
+                                        if event:
+                                            await self._handle_disaster_event(event)
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "[灾害预警] 定时获取 CENC 地震列表超时，保留原有缓存"
+                            )
+                        except Exception as e:
+                            logger.error(f"[灾害预警] 获取 CENC 数据出错: {e}")
 
-                            # 仅在启用该数据源时才解析并尝试推送
-                            if self.is_wolfx_source_enabled("china_cenc_earthquake"):
-                                handler = self.handlers.get("cenc_wolfx")
-                                if handler:
-                                    event = handler.parse_message(json.dumps(cenc_data))
-                                    if event:
-                                        await self._handle_disaster_event(event)
+                        # 获取日本气象厅地震列表 (添加超时保护且不覆盖旧缓存)
+                        try:
+                            jma_data = await asyncio.wait_for(
+                                fetcher.fetch_json(
+                                    "https://api.wolfx.jp/jma_eqlist.json"
+                                ),
+                                timeout=60,
+                            )
+                            if jma_data:
+                                # 更新缓存
+                                self.update_earthquake_list("jma", jma_data)
 
-                        # 获取日本气象厅地震列表
-                        jma_data = await fetcher.fetch_json(
-                            "https://api.wolfx.jp/jma_eqlist.json"
-                        )
-                        if jma_data:
-                            # HTTP 获取的数据不再写入日志，避免冗余
-
-                            # 更新缓存
-                            self.update_earthquake_list("jma", jma_data)
-
-                            # 仅在启用该数据源时才解析并尝试推送
-                            if self.is_wolfx_source_enabled("japan_jma_earthquake"):
-                                handler = self.handlers.get("jma_wolfx_info")
-                                if handler:
-                                    event = handler.parse_message(json.dumps(jma_data))
-                                    if event:
-                                        await self._handle_disaster_event(event)
+                                # 仅在启用该数据源时才解析并尝试推送
+                                if self.is_wolfx_source_enabled("japan_jma_earthquake"):
+                                    handler = self.handlers.get("jma_wolfx_info")
+                                    if handler:
+                                        event = handler.parse_message(
+                                            json.dumps(jma_data)
+                                        )
+                                        if event:
+                                            await self._handle_disaster_event(event)
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "[灾害预警] 定时获取 JMA 地震列表超时，保留原有缓存"
+                            )
+                        except Exception as e:
+                            logger.error(f"[灾害预警] 获取 JMA 数据出错: {e}")
 
                 except Exception as e:
                     logger.error(f"[灾害预警] 定时HTTP数据获取失败: {e}")
@@ -459,15 +548,29 @@ class DisasterWarningService:
 
     def _save_earthquake_lists_cache(self):
         """保存地震列表缓存到文件"""
+        temp_file = self.cache_file + ".tmp"
         try:
             if not os.path.exists(self.storage_dir):
                 os.makedirs(self.storage_dir, exist_ok=True)
 
-            with open(self.cache_file, "w", encoding="utf-8") as f:
+            # 先写入临时文件
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(self.earthquake_lists, f, ensure_ascii=False)
+
+            # 原子性重命名 (在 Windows 上如果目标存在会报错，需先删除)
+            if os.path.exists(self.cache_file):
+                os.replace(temp_file, self.cache_file)
+            else:
+                os.rename(temp_file, self.cache_file)
+
             logger.info("[灾害预警] Wolfx 地震列表缓存已保存")
         except Exception as e:
             logger.error(f"[灾害预警] 保存 Wolfx 地震列表缓存失败: {e}")
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
 
     def get_formatted_list_data(self, source_type: str, count: int) -> list[dict]:
         """获取格式化后的地震列表数据（用于卡片渲染）"""
@@ -498,11 +601,60 @@ class DisasterWarningService:
             magnitude = item.get("magnitude", "0.0")
             depth = item.get("depth", "0")
 
-            # 统一深度格式
-            if isinstance(depth, (int, float)):
-                depth = f"{depth}km"
-            elif isinstance(depth, str) and not depth.endswith("km"):
-                depth = f"{depth}km"
+            # 解析深度数值
+            depth_val = -1.0
+            try:
+                if isinstance(depth, (int, float)):
+                    depth_val = float(depth)
+                elif isinstance(depth, str):
+                    clean_depth = depth.lower().replace("km", "").strip()
+                    if clean_depth:
+                        depth_val = float(clean_depth)
+            except Exception:
+                depth_val = -1.0
+
+            # 深度显示逻辑
+            depth_label = "深度"
+            depth_value_str = str(depth).replace("km", "").strip()
+            depth_unit = "km"
+
+            if source_type == "jma":
+                depth_label = "深さ"
+                if depth_val == 0.0:
+                    depth_value_str = "ごく浅い"
+                    depth_unit = ""
+                    depth = "ごく浅い"
+                else:
+                    if depth_val >= 0:
+                        formatted_val = (
+                            f"{int(depth_val)}"
+                            if depth_val.is_integer()
+                            else f"{depth_val}"
+                        )
+                        depth = f"{formatted_val} km"
+                        depth_value_str = formatted_val
+                    else:
+                        clean_d = str(depth).replace("km", "").strip()
+                        depth = f"{clean_d} km"
+            else:
+                # cenc
+                depth_label = "深度"
+                if depth_val == 0.0:
+                    depth_value_str = "极浅"
+                    depth_unit = ""
+                    depth = "极浅"
+                else:
+                    if depth_val >= 0:
+                        formatted_val = (
+                            f"{int(depth_val)}"
+                            if depth_val.is_integer()
+                            else f"{depth_val}"
+                        )
+                        depth = f"{formatted_val} km"
+                        depth_value_str = formatted_val
+                    else:
+                        clean_d = str(depth).replace("km", "").strip()
+                        depth = f"{clean_d} km"
 
             intensity_display = "-"
             intensity_class = "int-unknown"
@@ -586,6 +738,9 @@ class DisasterWarningService:
                 "time": time_str,
                 "magnitude": magnitude,
                 "depth": depth,
+                "depth_label": depth_label,
+                "depth_value": depth_value_str,
+                "depth_unit": depth_unit,
                 "intensity_display": intensity_display,
                 "intensity_class": intensity_class,
                 "raw": item,  # 保留原始数据用于文本模式

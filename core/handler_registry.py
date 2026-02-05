@@ -61,10 +61,26 @@ class WebSocketHandlerRegistry:
                     "tsunami": ("china_tsunami", "china_tsunami_fanstudio"),
                     "cenc": ("china_cenc_earthquake", "cenc_fanstudio"),
                     "cea": ("china_earthquake_warning", "cea_fanstudio"),
+                    "cea-pr": ("china_earthquake_warning", "cea_pr_fanstudio"),
                     "jma": ("japan_jma_eew", "jma_fanstudio"),
-                    "cwa": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
+                    "cwa": ("taiwan_cwa_report", "cwa_fanstudio_report"),
+                    "cwa-eew": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
                     "usgs": ("usgs_earthquake", "usgs_fanstudio"),
                 }
+
+                # 检查映射一致性 - 开发调试用
+                # 在此检查是否所有注册的 handler_id 都能在 self.service.handlers 中找到
+                # 为了避免在生产环境中每次调用都产生重复警告，此检查仅在 debug 模式或首次调用时执行
+                # 由于这通常是开发时配置错误，我们可以简单地将其移至 DisasterWarningService.initialize 或 _register_handlers 中执行
+                # 或者在这里添加一个标志位来确保只检查一次
+                if not hasattr(self, "_handler_map_checked"):
+                    for key, (_, handler_id) in source_map.items():
+                        if handler_id not in self.service.handlers:
+                            logger.warning(
+                                f"[灾害预警] Handler ID '{handler_id}' (源: {key}) 未在服务中注册，"
+                                f"请检查 core/disaster_service.py 中的初始化。"
+                            )
+                    self._handler_map_checked = True
 
                 # 待处理的消息列表 [(source, msg_payload)]
                 messages_to_process = []
@@ -116,19 +132,32 @@ class WebSocketHandlerRegistry:
                             and isinstance(msg_data.get("epiIntensity"), str)
                         ):
                             detected_source = "jma"
+                        elif "imageURI" in msg_data and "shockTime" in msg_data:
+                            detected_source = "cwa"
+                        elif (
+                            ("epiIntensity" in msg_data or "depth" in msg_data)
+                            and "shockTime" in msg_data
+                            and "updates" in msg_data
+                            and "locationDesc" in msg_data
+                        ):
+                            detected_source = "cwa-eew"
                         elif (
                             "epiIntensity" in msg_data
                             and "createTime" in msg_data
                             and "shockTime" in msg_data
                             and "infoTypeName" not in msg_data
                         ):
-                            detected_source = "cwa"
+                            # 旧版特征兼容 (如果 cwa-eew 不匹配)
+                            detected_source = "cwa-eew"
                         elif (
                             "epiIntensity" in msg_data
                             and "eventId" in msg_data
                             and "updates" in msg_data
                         ):
-                            detected_source = "cea"
+                            if "province" in msg_data:
+                                detected_source = "cea-pr"
+                            else:
+                                detected_source = "cea"
                         elif "url" in msg_data and "usgs.gov" in msg_data.get(
                             "url", ""
                         ):

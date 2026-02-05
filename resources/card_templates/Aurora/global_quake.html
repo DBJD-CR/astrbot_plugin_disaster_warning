@@ -374,10 +374,16 @@
         });
 
         // 添加 PetalMap 瓦片层
-        L.tileLayer('https://tilemap.fanstudio.tech/petallight/{z}/{y}/{x}', {
+        const tileLayer = L.tileLayer('https://tilemap.fanstudio.tech/petallight/{z}/{y}/{x}', {
             maxZoom: 18,
             minZoom: 1
         }).addTo(map);
+
+        // 监听瓦片加载完成事件
+        tileLayer.on('load', function() {
+            document.body.classList.add('map-ready');
+            console.log("Tiles Loaded");
+        });
 
         // 创建震中标记（SVG）
         // 转换用户提供的 D3 逻辑为 SVG 字符串
@@ -404,9 +410,9 @@
         L.marker([lat, lng], { icon: epicenterIcon })
             .addTo(map);
 
-        // 标记渲染完成
-        document.body.classList.add('map-ready');
-        console.log("Map Render Complete");
+        // 标记渲染完成 - 移除旧的直接标记，改由瓦片加载事件触发
+        // document.body.classList.add('map-ready');
+        console.log("Map Init Complete");
     </script>
 </body>
 

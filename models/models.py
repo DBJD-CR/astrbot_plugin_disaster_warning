@@ -62,7 +62,9 @@ class DataSource(Enum):
     # FAN Studio 数据源
     FAN_STUDIO_CENC = "fan_studio_cenc"  # 中国地震台网
     FAN_STUDIO_CEA = "fan_studio_cea"  # 中国地震预警网
-    FAN_STUDIO_CWA = "fan_studio_cwa"  # 台湾中央气象署
+    FAN_STUDIO_CEA_PR = "fan_studio_cea_pr"  # 中国地震预警网(省级)
+    FAN_STUDIO_CWA = "fan_studio_cwa"  # 台湾中央气象署(预警)
+    FAN_STUDIO_CWA_REPORT = "fan_studio_cwa_report"  # 台湾中央气象署(报告)
     FAN_STUDIO_USGS = "fan_studio_usgs"  # USGS
     FAN_STUDIO_JMA = "fan_studio_jma"  # 日本气象厅地震预警
     FAN_STUDIO_WEATHER = "fan_studio_weather"  # 中国气象局气象预警
@@ -88,8 +90,10 @@ class DataSource(Enum):
 DATA_SOURCE_MAPPING = {
     # EEW预警数据源
     "cea_fanstudio": DataSource.FAN_STUDIO_CEA,
+    "cea_pr_fanstudio": DataSource.FAN_STUDIO_CEA_PR,
     "cea_wolfx": DataSource.WOLFX_CENC_EEW,
     "cwa_fanstudio": DataSource.FAN_STUDIO_CWA,
+    "cwa_fanstudio_report": DataSource.FAN_STUDIO_CWA_REPORT,
     "cwa_wolfx": DataSource.WOLFX_CWA_EEW,
     "jma_fanstudio": DataSource.FAN_STUDIO_JMA,
     "jma_p2p": DataSource.P2P_EEW,
@@ -152,6 +156,10 @@ class EarthquakeData:
     info_type: str = ""  # 测定类型：自动/正式等
     domestic_tsunami: str | None = None
     foreign_tsunami: str | None = None
+
+    # 媒体资源
+    image_uri: str | None = None  # 地震报告图片
+    shakemap_uri: str | None = None  # 等震度图
 
     # 时间信息（用于不同数据源）
     update_time: datetime | None = None  # 更新时间（USGS等数据源）
