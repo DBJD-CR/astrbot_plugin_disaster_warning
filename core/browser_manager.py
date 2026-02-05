@@ -110,10 +110,12 @@ class BrowserManager:
         page: Page | None = None
         start_time = time.time()
 
+        acquired_semaphore = False
         try:
             # 并发控制 - 限制同时渲染的数量
             try:
                 await asyncio.wait_for(self._semaphore.acquire(), timeout=20.0)
+                acquired_semaphore = True
             except asyncio.TimeoutError:
                 logger.error("[灾害预警] 等待渲染信号量超时，系统负载过高")
                 return None
@@ -199,7 +201,8 @@ class BrowserManager:
                         await self._page_pool.put(page)
             finally:
                 # 释放信号量
-                self._semaphore.release()
+                if acquired_semaphore:
+                    self._semaphore.release()
 
         except Exception as e:
             logger.error(f"[灾害预警] 卡片渲染失败: {e}")
