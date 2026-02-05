@@ -14,6 +14,7 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
+from ...utils.converters import ScaleConverter, safe_float_convert
 from .base import BaseDataHandler
 
 
@@ -67,7 +68,7 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             issue_type = data.get("issue", {}).get("type", "")
 
             # 震级解析
-            magnitude = self._safe_float_convert(magnitude_raw)
+            magnitude = safe_float_convert(magnitude_raw)
             if magnitude == -1:
                 magnitude = None
 
@@ -78,8 +79,8 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
                 return None
 
             # 经纬度解析
-            lat = self._safe_float_convert(latitude)
-            lon = self._safe_float_convert(longitude)
+            lat = safe_float_convert(latitude)
+            lon = safe_float_convert(longitude)
 
             # P2P API: -200 为位置信息缺失
             if lat == -200:
@@ -96,14 +97,14 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             # 震度转换
             max_scale_raw = earthquake_info.get("maxScale", -1)
             scale = (
-                self._convert_p2p_scale_to_standard(max_scale_raw)
+                ScaleConverter.convert_p2p_scale(max_scale_raw)
                 if max_scale_raw != -1
                 else None
             )
 
             # 深度解析
             depth_raw = hypocenter.get("depth")
-            depth = self._safe_float_convert(depth_raw)
+            depth = safe_float_convert(depth_raw)
 
             # 时间解析
             time_raw = earthquake_info.get("time", "")
@@ -154,29 +155,6 @@ class JMAEarthquakeP2PHandler(BaseDataHandler):
             logger.error(f"[灾害预警] {self.source_id} 解析地震情報失败: {e}")
             return None
 
-    def _convert_p2p_scale_to_standard(self, p2p_scale: int) -> float | None:
-        """将P2P震度值转换为标准震度 - 补充完整枚举值"""
-        scale_mapping = {
-            -1: None,  # 震度情報不存在
-            0: 0.0,  # 震度0
-            10: 1.0,  # 震度1
-            20: 2.0,  # 震度2
-            30: 3.0,  # 震度3
-            40: 4.0,  # 震度4
-            45: 4.5,  # 震度5弱
-            46: 4.6,  # 震度5弱以上と推定されるが震度情報を入手していない（推测震度为5弱以上，但尚未获取震级信息）
-            50: 5.0,  # 震度5強
-            55: 5.5,  # 震度6弱
-            60: 6.0,  # 震度6強
-            70: 7.0,  # 震度7
-        }
-
-        if p2p_scale not in scale_mapping:
-            logger.warning(f"[灾害预警] {self.source_id} 未知的P2P震度值: {p2p_scale}")
-            return None
-
-        return scale_mapping.get(p2p_scale)
-
 
 class JMAEarthquakeWolfxHandler(BaseDataHandler):
     """日本气象厅地震情报处理器 - Wolfx"""
@@ -212,11 +190,11 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
                     except (ValueError, TypeError):
                         depth = None
                 else:
-                    depth = self._safe_float_convert(depth_raw)
+                    depth = safe_float_convert(depth_raw)
 
             # 修复震级字段格式
             magnitude_raw = eq_info.get("magnitude")
-            magnitude = self._safe_float_convert(magnitude_raw)
+            magnitude = safe_float_convert(magnitude_raw)
 
             # 获取发报报头 (Title) 作为 info_type
             # 示例: "震源・震度情報", "各地の震度に関する情報" 等
@@ -228,11 +206,11 @@ class JMAEarthquakeWolfxHandler(BaseDataHandler):
                 source=DataSource.WOLFX_JMA_EQ,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(eq_info.get("time", "")),
-                latitude=self._safe_float_convert(eq_info.get("latitude")),
-                longitude=self._safe_float_convert(eq_info.get("longitude")),
+                latitude=safe_float_convert(eq_info.get("latitude")),
+                longitude=safe_float_convert(eq_info.get("longitude")),
                 depth=depth,
                 magnitude=magnitude,
-                scale=self._parse_jma_scale(eq_info.get("shindo", "")),
+                scale=ScaleConverter.parse_jma_cwa_scale(eq_info.get("shindo", "")),
                 place_name=eq_info.get("location", ""),
                 info_type=info_type,  # 填充 info_type 字段
                 domestic_tsunami=eq_info.get(

@@ -4,7 +4,6 @@
 """
 
 import json
-import re
 import time
 import traceback
 from datetime import datetime
@@ -17,20 +16,6 @@ from ...models.models import (
     DisasterEvent,
 )
 from ...utils.time_converter import TimeConverter
-
-
-def _safe_float_convert(value) -> float | None:
-    """安全地将值转换为浮点数"""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except (ValueError, TypeError):
-            return None
-    return None
 
 
 class BaseDataHandler:
@@ -66,6 +51,21 @@ class BaseDataHandler:
             logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {e}")
             logger.error(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
             return None
+
+    def _extract_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """提取实际数据 - 兼容多种格式"""
+        # 优先检查 Data (Fan Studio 风格)
+        if "Data" in data:
+            logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
+            return data["Data"] or {}
+        # 其次检查 data (通用风格)
+        elif "data" in data:
+            logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
+            return data["data"] or {}
+        # 最后使用整个消息
+        else:
+            logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
+            return data
 
     def _is_heartbeat_message(self, msg_data: dict[str, Any]) -> bool:
         """检测是否为心跳包或无效数据，msg_data 是提取后的实际数据。"""
@@ -146,27 +146,3 @@ class BaseDataHandler:
         if dt is None and time_str:
             logger.warning(f"[灾害预警] 时间解析失败: '{time_str}'")
         return dt
-
-    def _safe_float_convert(self, value) -> float | None:
-        """安全地将值转换为浮点数"""
-        return _safe_float_convert(value)
-
-    def _parse_jma_scale(self, scale_str: str) -> float | None:
-        """解析日本震度字符串 (例如 '5-', '5+', '5弱', '5強')"""
-        if not scale_str:
-            return None
-
-        # 支持 5+, 5-, 5弱, 5強 等多种格式
-        match = re.search(r"(\d+)(弱|強|\+|\-)?", scale_str)
-        if match:
-            base = int(match.group(1))
-            suffix = match.group(2)
-
-            if suffix in ["弱", "-"]:
-                return base - 0.5
-            elif suffix in ["強", "+"]:
-                return base + 0.5
-            else:
-                return float(base)
-
-        return None

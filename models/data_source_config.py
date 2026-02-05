@@ -21,6 +21,7 @@ class EEWDataSource(Enum):
 
     # 中国地震预警网
     CEA_FANSTUDIO = "cea_fanstudio"
+    CEA_PR_FANSTUDIO = "cea_pr_fanstudio"
     CEA_WOLFX = "cea_wolfx"
 
     # 台湾中央气象署
@@ -94,6 +95,17 @@ DATA_SOURCE_CONFIGS: dict[str, DataSourceConfig] = {
         source_type=DataSourceType.EEW_WARNING,
         display_name="中国地震预警网",
         description="中国地震预警网（CEA）- FAN Studio WebSocket",
+        supports_report_count=True,
+        supports_final_report=False,
+        uses_intensity=True,
+        uses_scale=False,
+        priority=1,
+    ),
+    EEWDataSource.CEA_PR_FANSTUDIO.value: DataSourceConfig(
+        source_id=EEWDataSource.CEA_PR_FANSTUDIO.value,
+        source_type=DataSourceType.EEW_WARNING,
+        display_name="中国地震预警网(省级)",
+        description="中国地震预警网（CEA）省级 - FAN Studio WebSocket",
         supports_report_count=True,
         supports_final_report=False,
         uses_intensity=True,

@@ -56,8 +56,15 @@ class WebSocketManager:
         # 确保 session 存在
         if not self.session or self.session.closed:
             logger.warning(f"[灾害预警] WebSocket会话未就绪，正在重新初始化: {name}")
-            # 使用默认配置初始化，实际应该在 start 中完成
-            self.session = aiohttp.ClientSession()
+            if self.session and not self.session.closed:
+                try:
+                    await self.session.close()
+                except Exception:
+                    pass
+            # 复用 http_timeout 配置
+            timeout_val = self.config.get("http_timeout", 30)
+            timeout = aiohttp.ClientTimeout(total=timeout_val)
+            self.session = aiohttp.ClientSession(timeout=timeout)
 
         try:
             # 记录连接信息
@@ -80,11 +87,12 @@ class WebSocketManager:
                 self.connection_retry_counts[name] = 0
 
             # aiohttp ws_connect 配置
+            conn_timeout = self.config.get("connection_timeout", 30)
             connect_kwargs = {
                 "url": uri,
                 "headers": headers or {},
                 "heartbeat": self.config.get("heartbeat_interval", 60),
-                "timeout": self.config.get("connection_timeout", 10),
+                "timeout": conn_timeout,  # aiohttp 内部握手超时
                 "max_msg_size": self.config.get("max_message_size", 2**20),  # 1MB默认
             }
 
@@ -92,7 +100,16 @@ class WebSocketManager:
             if self.config.get("ssl_verify", True) is False:
                 connect_kwargs["ssl"] = False
 
-            async with self.session.ws_connect(**connect_kwargs) as websocket:
+            # 显式使用 wait_for 包裹连接过程，确保不被卡死
+            # 注意：ws_connect 返回的是一个 ClientWebSocketResponse，它是一个异步上下文管理器
+            # 但 wait_for 返回的是 ws_connect 的结果（即 ClientWebSocketResponse 对象）
+            # 所以我们需要先获取 websocket 对象，然后再使用 async with 管理它
+            websocket = await asyncio.wait_for(
+                self.session.ws_connect(**connect_kwargs),
+                timeout=conn_timeout + 5,  # 略大于内部超时
+            )
+
+            async with websocket:
                 self.connections[name] = websocket
                 self.connection_info[name]["established_time"] = (
                     asyncio.get_event_loop().time()
@@ -325,8 +342,14 @@ class WebSocketManager:
             headers: 可选的HTTP头
             connection_info: 从 _handle_connection_error 传递的连接元数据
         """
+        # 限制并发重连任务，防止极端情况下的协程爆炸 (问题 9)
         if name in self.reconnect_tasks:
-            self.reconnect_tasks[name].cancel()
+            existing_task = self.reconnect_tasks[name]
+            if not existing_task.done():
+                logger.debug(f"[灾害预警] {name} 已有正在运行的重连任务，跳过重复创建")
+                return
+            # 如果已完成，则清理掉
+            self.reconnect_tasks.pop(name)
 
         async def reconnect():
             # 获取重连配置

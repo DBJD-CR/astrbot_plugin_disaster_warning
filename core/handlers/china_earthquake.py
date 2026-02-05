@@ -13,6 +13,7 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
+from ...utils.converters import safe_float_convert
 from .base import BaseDataHandler
 
 
@@ -25,19 +26,11 @@ class CENCEarthquakeHandler(BaseDataHandler):
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析中国地震台网数据"""
         try:
-            # 获取实际数据 - 兼容多种格式
-            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            # 获取实际数据
+            msg_data = self._extract_data(data)
             if not msg_data:
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
-
-            # 记录数据获取情况用于调试
-            if "Data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
-            elif "data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
-            else:
-                logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
 
             # 检查是否为CENC地震测定数据
             if "infoTypeName" not in msg_data or "eventId" not in msg_data:
@@ -45,11 +38,11 @@ class CENCEarthquakeHandler(BaseDataHandler):
                 return None
 
             # 优化USGS数据精度 - 四舍五入到1位小数
-            magnitude = self._safe_float_convert(msg_data.get("magnitude"))
+            magnitude = safe_float_convert(msg_data.get("magnitude"))
             if magnitude is not None:
                 magnitude = round(magnitude, 1)
 
-            depth = self._safe_float_convert(msg_data.get("depth"))
+            depth = safe_float_convert(msg_data.get("depth"))
             if depth is not None:
                 depth = round(depth, 1)
 
@@ -59,8 +52,8 @@ class CENCEarthquakeHandler(BaseDataHandler):
                 source=DataSource.FAN_STUDIO_CENC,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
-                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
-                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
+                latitude=safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=safe_float_convert(msg_data.get("longitude")) or 0.0,
                 depth=depth,
                 magnitude=magnitude,
                 place_name=msg_data.get("placeName", ""),
@@ -113,11 +106,11 @@ class CENCEarthquakeWolfxHandler(BaseDataHandler):
                 source=DataSource.WOLFX_CENC_EQ,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(eq_info.get("time", "")),
-                latitude=self._safe_float_convert(eq_info.get("latitude")) or 0.0,
-                longitude=self._safe_float_convert(eq_info.get("longitude")) or 0.0,
-                depth=self._safe_float_convert(eq_info.get("depth")),
-                magnitude=self._safe_float_convert(eq_info.get("magnitude")),
-                intensity=self._safe_float_convert(eq_info.get("intensity")),
+                latitude=safe_float_convert(eq_info.get("latitude")) or 0.0,
+                longitude=safe_float_convert(eq_info.get("longitude")) or 0.0,
+                depth=safe_float_convert(eq_info.get("depth")),
+                magnitude=safe_float_convert(eq_info.get("magnitude")),
+                intensity=safe_float_convert(eq_info.get("intensity")),
                 place_name=eq_info.get("location", ""),
                 info_type=eq_info.get("type", ""),
                 raw_data=data,

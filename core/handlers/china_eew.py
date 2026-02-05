@@ -13,6 +13,7 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
+from ...utils.converters import safe_float_convert
 from .base import BaseDataHandler
 
 
@@ -25,19 +26,11 @@ class CEAEEWHandler(BaseDataHandler):
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析中国地震预警网数据"""
         try:
-            # 获取实际数据 - FAN Studio使用大写D的Data字段，如果没有则使用整个数据
-            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            # 获取实际数据
+            msg_data = self._extract_data(data)
             if not msg_data:
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
-
-            # 记录数据获取情况用于调试
-            if "Data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
-            elif "data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
-            else:
-                logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
 
             # 检查是否为地震预警数据
             if "epiIntensity" not in msg_data:
@@ -55,10 +48,10 @@ class CEAEEWHandler(BaseDataHandler):
                 source=source_enum,
                 disaster_type=DisasterType.EARTHQUAKE_WARNING,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
-                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
-                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
-                depth=self._safe_float_convert(msg_data.get("depth")),
-                magnitude=self._safe_float_convert(msg_data.get("magnitude")),
+                latitude=safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=safe_float_convert(msg_data.get("longitude")) or 0.0,
+                depth=safe_float_convert(msg_data.get("depth")),
+                magnitude=safe_float_convert(msg_data.get("magnitude")),
                 intensity=msg_data.get("epiIntensity"),
                 place_name=msg_data.get("placeName", ""),
                 province=msg_data.get("province"),
@@ -109,11 +102,11 @@ class CEAEEWWolfxHandler(BaseDataHandler):
                 source=DataSource.WOLFX_CENC_EEW,
                 disaster_type=DisasterType.EARTHQUAKE_WARNING,
                 shock_time=self._parse_datetime(data.get("OriginTime", "")),
-                latitude=self._safe_float_convert(data.get("Latitude")) or 0.0,
-                longitude=self._safe_float_convert(data.get("Longitude")) or 0.0,
-                depth=self._safe_float_convert(data.get("Depth")),
-                magnitude=self._safe_float_convert(data.get("Magnitude")),
-                intensity=self._safe_float_convert(data.get("MaxIntensity")),
+                latitude=safe_float_convert(data.get("Latitude")) or 0.0,
+                longitude=safe_float_convert(data.get("Longitude")) or 0.0,
+                depth=safe_float_convert(data.get("Depth")),
+                magnitude=safe_float_convert(data.get("Magnitude")),
+                intensity=safe_float_convert(data.get("MaxIntensity")),
                 place_name=data.get("HypoCenter", ""),
                 updates=data.get("ReportNum", 1),
                 is_final=data.get("isFinal", False),

@@ -26,6 +26,7 @@ from .weather import WeatherFormatter
 MESSAGE_FORMATTERS = {
     # EEW预警格式化器
     "cea_fanstudio": CEAEEWFormatter,
+    "cea_pr_fanstudio": CEAEEWFormatter,
     "cea_wolfx": CEAEEWFormatter,
     "cwa_fanstudio": CWAEEWFormatter,
     "cwa_fanstudio_report": CWAReportFormatter,

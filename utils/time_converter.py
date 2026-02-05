@@ -31,6 +31,9 @@ class TimeConverter:
     # 这是为了解决 type object 'TimeConverter' has no attribute 'TIMEZONES' 错误
     TIMEZONES = TIMEZONES
 
+    # 时区缓存
+    _timezone_cache = {}
+
     @staticmethod
     def parse_datetime(
         time_input: str | int | float | datetime | None,
@@ -111,25 +114,36 @@ class TimeConverter:
         if tz_str in TIMEZONES:
             return TIMEZONES[tz_str]
 
+        # 检查缓存
+        if tz_str in TimeConverter._timezone_cache:
+            return TimeConverter._timezone_cache[tz_str]
+
+        tz_obj = None
+
         # 2. 尝试解析 UTC+N / UTC-N 格式
         if tz_str.startswith("UTC"):
             try:
                 # 提取偏移量，例如 UTC+8 -> +8, UTC-5 -> -5
                 offset_str = tz_str[3:]
                 offset_hours = float(offset_str)
-                return timezone(timedelta(hours=offset_hours))
+                tz_obj = timezone(timedelta(hours=offset_hours))
             except ValueError:
                 pass
 
         # 3. 尝试 IANA 时区 (如 "Asia/Shanghai")
-        if ZoneInfo:
+        if tz_obj is None and ZoneInfo:
             try:
-                return ZoneInfo(tz_str)
+                tz_obj = ZoneInfo(tz_str)
             except Exception:
                 pass
 
         # 默认返回 UTC+8
-        return TIMEZONES["UTC+8"]
+        if tz_obj is None:
+            tz_obj = TIMEZONES["UTC+8"]
+
+        # 存入缓存
+        TimeConverter._timezone_cache[tz_str] = tz_obj
+        return tz_obj
 
     @staticmethod
     def convert_timezone(dt: datetime, target_tz_str: str = "UTC+8") -> datetime:

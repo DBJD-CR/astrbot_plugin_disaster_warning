@@ -14,6 +14,7 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
+from ...utils.converters import ScaleConverter, safe_float_convert
 from .base import BaseDataHandler
 
 
@@ -26,19 +27,11 @@ class JMAEEWFanStudioHandler(BaseDataHandler):
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析FAN Studio日本气象厅地震预警数据"""
         try:
-            # 获取实际数据 - FAN Studio使用大写D的Data字段
-            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            # 获取实际数据
+            msg_data = self._extract_data(data)
             if not msg_data:
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
-
-            # 记录数据获取情况用于调试
-            if "Data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
-            elif "data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
-            else:
-                logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
 
             # 检查是否为地震预警数据 - JMA数据也有epiIntensity字段
             if "epiIntensity" not in msg_data and "infoTypeName" not in msg_data:
@@ -56,11 +49,13 @@ class JMAEEWFanStudioHandler(BaseDataHandler):
                 source=DataSource.FAN_STUDIO_JMA,
                 disaster_type=DisasterType.EARTHQUAKE_WARNING,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
-                latitude=self._safe_float_convert(msg_data.get("latitude")) or 0.0,
-                longitude=self._safe_float_convert(msg_data.get("longitude")) or 0.0,
-                depth=self._safe_float_convert(msg_data.get("depth")),
-                magnitude=self._safe_float_convert(msg_data.get("magnitude")),
-                scale=self._parse_jma_scale(msg_data.get("epiIntensity", "")),
+                latitude=safe_float_convert(msg_data.get("latitude")) or 0.0,
+                longitude=safe_float_convert(msg_data.get("longitude")) or 0.0,
+                depth=safe_float_convert(msg_data.get("depth")),
+                magnitude=safe_float_convert(msg_data.get("magnitude")),
+                scale=ScaleConverter.parse_jma_cwa_scale(
+                    msg_data.get("epiIntensity", "")
+                ),
                 place_name=msg_data.get("placeName", ""),
                 updates=msg_data.get("updates", 1),
                 is_final=msg_data.get("final", False),
@@ -151,7 +146,7 @@ class JMAEEWP2PHandler(BaseDataHandler):
                     )
 
             scale = (
-                self._convert_p2p_scale_to_standard(max_scale_raw)
+                ScaleConverter.convert_p2p_scale(max_scale_raw)
                 if max_scale_raw != -1
                 else None
             )
@@ -234,21 +229,6 @@ class JMAEEWP2PHandler(BaseDataHandler):
             logger.error(f"[灾害预警] {self.source_id} 解析EEW数据失败: {e}")
             return None
 
-    def _convert_p2p_scale_to_standard(self, p2p_scale: int) -> float | None:
-        """将P2P震度值转换为标准震度"""
-        scale_mapping = {
-            10: 1.0,  # 震度1
-            20: 2.0,  # 震度2
-            30: 3.0,  # 震度3
-            40: 4.0,  # 震度4
-            45: 4.5,  # 震度5弱
-            50: 5.0,  # 震度5強
-            55: 5.5,  # 震度6弱
-            60: 6.0,  # 震度6強
-            70: 7.0,  # 震度7
-        }
-        return scale_mapping.get(p2p_scale)
-
 
 class JMAEEWWolfxHandler(BaseDataHandler):
     """日本气象厅紧急地震速报处理器 - Wolfx"""
@@ -270,14 +250,14 @@ class JMAEEWWolfxHandler(BaseDataHandler):
                 source=DataSource.WOLFX_JMA_EEW,
                 disaster_type=DisasterType.EARTHQUAKE_WARNING,
                 shock_time=self._parse_datetime(data.get("OriginTime", "")),
-                latitude=self._safe_float_convert(data.get("Latitude")) or 0.0,
-                longitude=self._safe_float_convert(data.get("Longitude")) or 0.0,
-                depth=self._safe_float_convert(data.get("Depth")),
-                magnitude=self._safe_float_convert(
+                latitude=safe_float_convert(data.get("Latitude")) or 0.0,
+                longitude=safe_float_convert(data.get("Longitude")) or 0.0,
+                depth=safe_float_convert(data.get("Depth")),
+                magnitude=safe_float_convert(
                     data.get("Magunitude") or data.get("Magnitude")
                 ),
                 place_name=data.get("Hypocenter", ""),
-                scale=self._parse_jma_scale(data.get("MaxIntensity", "")),
+                scale=ScaleConverter.parse_jma_cwa_scale(data.get("MaxIntensity", "")),
                 updates=data.get("Serial", 1),
                 is_final=data.get("isFinal", False),
                 is_cancel=data.get("isCancel", False),

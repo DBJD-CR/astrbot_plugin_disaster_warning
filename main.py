@@ -115,7 +115,13 @@ class DisasterWarningPlugin(Star):
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
             # 上报初始化失败错误到遥测
             if hasattr(self, "telemetry") and self.telemetry and self.telemetry.enabled:
-                await self.telemetry.track_error(e, module="main.initialize")
+                try:
+                    await self.telemetry.track_error(e, module="main.initialize")
+                except Exception:
+                    pass
+
+            # 发生异常时，确保清理已启动的任务和资源，防止任务泄露
+            await self.terminate()
             raise
 
     async def _cleanup_telemetry_tasks(self) -> None:

@@ -5,7 +5,7 @@
 新模块已完全替代 data_handlers.py
 """
 
-from .base import BaseDataHandler, _safe_float_convert
+from .base import BaseDataHandler
 from .china_earthquake import CENCEarthquakeHandler, CENCEarthquakeWolfxHandler
 from .china_eew import CEAEEWHandler, CEAEEWPRHandler, CEAEEWWolfxHandler
 from .global_sources import GlobalQuakeHandler, USGSEarthquakeHandler
@@ -45,7 +45,6 @@ DATA_HANDLERS = {
 __all__ = [
     # 基类
     "BaseDataHandler",
-    "_safe_float_convert",
     # 各种处理器
     "CEAEEWHandler",
     "CEAEEWPRHandler",
