@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="250" height="54" viewBox="0 0 250 54">
+  <defs>
+    <style type="text/css">
+      .text-bold { font-family: 'Helvetica Bold', Helvetica, Arial, sans-serif; font-weight: bold; }
+      .text-regular { font-family: Helvetica, Arial, sans-serif; }
+      .emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; }
+    </style>
+  </defs>
+  
+  <!-- 背景卡片 -->
+  <rect x="0.5" y="0.5" width="249" height="53" rx="10" fill="#FFFFFF" stroke="#E0C9A6" stroke-width="1"/>
+  
+  <!-- 装饰图标 (Emoji) -->
+  <text x="28" y="38" font-size="30" class="emoji" text-anchor="middle">💩</text>
+
+  <!-- 品牌文字 -->
+  <g fill="#5D4037" class="text-bold">
+    <text x="53" y="21" font-size="9">CODE SMELL BY</text>
+    <text x="52" y="41" font-size="21">Fuck-U-Code</text>
+  </g>
+
+  <!-- 分数指示器 -->
+  <g transform="translate(185, 13)" fill="#5D4037">
+    <text x="35" y="10" font-size="9" class="text-regular" text-anchor="middle">SCORE</text>
+    <text x="35" y="28" font-size="18" class="text-bold" text-anchor="middle">43.46</text>
+  </g>
+</svg>

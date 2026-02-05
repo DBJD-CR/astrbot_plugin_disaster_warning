@@ -15,28 +15,13 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
+from ...utils.converters import ScaleConverter, safe_float_convert
 from ...utils.fe_regions import translate_place_name
 from .base import BaseDataHandler
 
 
 class GlobalQuakeHandler(BaseDataHandler):
     """Global Quake处理器 - 适配新的WebSocket JSON消息格式"""
-
-    # 罗马数字到阿拉伯数字的映射
-    ROMAN_TO_INT = {
-        "I": 1,
-        "II": 2,
-        "III": 3,
-        "IV": 4,
-        "V": 5,
-        "VI": 6,
-        "VII": 7,
-        "VIII": 8,
-        "IX": 9,
-        "X": 10,
-        "XI": 11,
-        "XII": 12,
-    }
 
     def __init__(self, message_logger=None):
         super().__init__("global_quake", message_logger)
@@ -70,9 +55,9 @@ class GlobalQuakeHandler(BaseDataHandler):
         """解析地震数据 - 适配新的GlobalQuake Monitor格式"""
         try:
             # 获取实际地震数据
-            eq_data = data.get("data", {})
+            eq_data = self._extract_data(data)
             if not eq_data:
-                logger.warning(f"[灾害预警] {self.source_id} 消息中没有data字段")
+                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 解析震源时间
@@ -87,10 +72,8 @@ class GlobalQuakeHandler(BaseDataHandler):
                 )
 
             # 解析烈度（从罗马数字转换）
-            intensity = None
             intensity_str = eq_data.get("intensity", "")
-            if intensity_str and intensity_str in self.ROMAN_TO_INT:
-                intensity = float(self.ROMAN_TO_INT[intensity_str])
+            intensity = ScaleConverter.convert_roman_intensity(intensity_str)
 
             # 获取坐标
             latitude = eq_data.get("latitude", 0)
@@ -98,22 +81,14 @@ class GlobalQuakeHandler(BaseDataHandler):
 
             # 格式化震级和深度 - 保留1位小数，与其他数据源保持一致
             magnitude_raw = eq_data.get("magnitude")
-            if magnitude_raw is not None:
-                try:
-                    magnitude = round(float(magnitude_raw), 1)
-                except (ValueError, TypeError):
-                    magnitude = None
-            else:
-                magnitude = None
+            magnitude = safe_float_convert(magnitude_raw)
+            if magnitude is not None:
+                magnitude = round(magnitude, 1)
 
             depth_raw = eq_data.get("depth")
-            if depth_raw is not None:
-                try:
-                    depth = round(float(depth_raw), 1)
-                except (ValueError, TypeError):
-                    depth = None
-            else:
-                depth = None
+            depth = safe_float_convert(depth_raw)
+            if depth is not None:
+                depth = round(depth, 1)
 
             # 翻译地名（使用FE Regions，类似USGS处理）
             original_region = eq_data.get("region", "未知地点")
@@ -179,19 +154,11 @@ class USGSEarthquakeHandler(BaseDataHandler):
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
         """解析USGS地震数据"""
         try:
-            # 获取实际数据 - 兼容多种格式
-            msg_data = data.get("Data", {}) or data.get("data", {}) or data
+            # 获取实际数据
+            msg_data = self._extract_data(data)
             if not msg_data:
                 logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
-
-            # 记录数据获取情况用于调试
-            if "Data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用Data字段获取数据")
-            elif "data" in data:
-                logger.debug(f"[灾害预警] {self.source_id} 使用data字段获取数据")
-            else:
-                logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
 
             # 心跳包检测 - 在详细处理前进行快速过滤
             if self._is_heartbeat_message(msg_data):
@@ -223,27 +190,19 @@ class USGSEarthquakeHandler(BaseDataHandler):
                 return data.get(field_name) or data.get(field_name.capitalize())
 
             magnitude_raw = get_field(msg_data, "magnitude")
-            if magnitude_raw is not None:
-                try:
-                    magnitude = round(float(magnitude_raw), 1)
-                except (ValueError, TypeError):
-                    magnitude = None
-            else:
-                magnitude = None
+            magnitude = safe_float_convert(magnitude_raw)
+            if magnitude is not None:
+                magnitude = round(magnitude, 1)
 
             depth_raw = get_field(msg_data, "depth")
-            if depth_raw is not None:
-                try:
-                    depth = round(float(depth_raw), 1)
-                except (ValueError, TypeError):
-                    depth = None
-            else:
-                depth = None
+            depth = safe_float_convert(depth_raw)
+            if depth is not None:
+                depth = round(depth, 1)
 
             # 验证关键字段 - 如果缺少关键信息，不创建地震对象
             usgs_id = get_field(msg_data, "id") or ""
-            usgs_latitude = float(get_field(msg_data, "latitude") or 0)
-            usgs_longitude = float(get_field(msg_data, "longitude") or 0)
+            usgs_latitude = safe_float_convert(get_field(msg_data, "latitude")) or 0.0
+            usgs_longitude = safe_float_convert(get_field(msg_data, "longitude")) or 0.0
             usgs_place_name_en = get_field(msg_data, "placeName") or ""
 
             if not usgs_id:

@@ -3,8 +3,11 @@
 适配数据源架构，提供更好的日志格式和过滤功能
 """
 
+import asyncio
 import hashlib
 import json
+import threading
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,10 +66,14 @@ class MessageLogger:
         self.start_time = datetime.now(timezone.utc)
 
         # 用于去重的缓存
-        self.recent_event_hashes: set[str] = set()
+        # 使用字典代替集合以支持有序删除 (FIFO/LRU)，防止无限增长
+        self.recent_event_hashes: dict[str, float] = {}
         self.recent_raw_logs: list[str] = []  # 新增：用于原始日志文本去重
         self.max_cache_size = 1000
         self.max_raw_log_cache = 30  # 只缓存最近30条原始日志用于去重
+
+        # 文件写入锁 (用于多线程/异步执行器环境)
+        self._file_lock = threading.Lock()
 
         # 日志过滤统计
         self.filter_stats = {
@@ -240,13 +247,15 @@ class MessageLogger:
             if event_hash in self.recent_event_hashes:
                 return True
 
-            # 添加到缓存（LRU风格）
-            if len(self.recent_event_hashes) >= self.max_cache_size:
-                # 移除最旧的条目（简单实现）
-                oldest = next(iter(self.recent_event_hashes))
-                self.recent_event_hashes.remove(oldest)
+            # 添加到缓存
+            # 使用字典保持插入顺序，实现 FIFO 清理 (问题 1)
+            self.recent_event_hashes[event_hash] = datetime.now().timestamp()
 
-            self.recent_event_hashes.add(event_hash)
+            if len(self.recent_event_hashes) > self.max_cache_size:
+                # 移除最旧的条目 (字典的第一个键即为最旧)
+                oldest = next(iter(self.recent_event_hashes))
+                self.recent_event_hashes.pop(oldest)
+
             return False
 
         except Exception as e:
@@ -969,6 +978,36 @@ class MessageLogger:
             return
 
         try:
+            # 特殊处理 Wolfx 的地震列表数据 (eqlist)
+            # 避免记录巨大的 JSON 列表，转为记录摘要
+            parsed_data = None
+
+            if isinstance(raw_data, dict):
+                parsed_data = raw_data
+            elif isinstance(raw_data, str) and len(raw_data) > 10:
+                # 简单预检查以提高性能，避免对每条消息都做 json.loads
+                if '"type"' in raw_data[:200] or "'type'" in raw_data[:200]:
+                    try:
+                        parsed_data = json.loads(raw_data)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            if parsed_data and isinstance(parsed_data, dict):
+                msg_type = parsed_data.get("type", "")
+                # 兼容 Wolfx 的标准类型和可能的前缀变体
+                if msg_type in [
+                    "jma_eqlist",
+                    "cenc_eqlist",
+                    "wolfx_jma_eqlist",
+                    "wolfx_cenc_eqlist",
+                ]:
+                    self.log_earthquake_list_summary(
+                        source=source,
+                        earthquake_list=parsed_data,
+                        url=connection_info.get("url") if connection_info else None,
+                    )
+                    return
+
             # 检查是否应该过滤该消息
             filter_reason = self._should_filter_message(raw_data, source)
             if filter_reason:
@@ -1028,13 +1067,13 @@ class MessageLogger:
             # 确保目录存在
             self.log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 写入日志文件
-            with open(self.log_file_path, "a", encoding="utf-8") as f:
-                f.write(log_content)
-                f.flush()  # 确保立即写入磁盘
-
-            # 检查文件大小，必要时进行轮转
-            self._check_log_rotation()
+            # 异步写入日志文件
+            try:
+                loop = asyncio.get_running_loop()
+                loop.run_in_executor(None, self._write_log_to_file_sync, log_content)
+            except RuntimeError:
+                # 如果没有运行中的事件循环（如同步上下文），则同步写入
+                self._write_log_to_file_sync(log_content)
 
         except Exception as e:
             logger.error(f"[灾害预警] 记录原始消息失败: {e}")
@@ -1043,6 +1082,23 @@ class MessageLogger:
             )
             # 记录异常堆栈
             logger.error(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
+
+    def _write_log_to_file_sync(self, content: str):
+        """同步写入日志文件（在线程池中运行）"""
+        with self._file_lock:
+            try:
+                with open(self.log_file_path, "a", encoding="utf-8") as f:
+                    f.write(content)
+                    f.flush()  # 确保立即写入磁盘
+
+                # 检查文件大小，必要时进行轮转
+                # 注意：轮转检查也包含文件操作，放在这里一起执行
+                self._check_log_rotation()
+            except OSError as io_err:
+                # 磁盘满或权限不足等严重错误
+                logger.error(f"[灾害预警] 写入日志文件失败 (可能磁盘已满): {io_err}")
+                # 临时禁用日志记录
+                self.enabled = False
 
     def log_websocket_message(
         self, connection_name: str, message: str, url: str | None = None
@@ -1090,6 +1146,12 @@ class MessageLogger:
             max_items: 只记录前多少条事件，默认为配置值
         """
         if not self.enabled:
+            return
+
+        # 针对 Wolfx 数据源的特殊逻辑：HTTP获取的数据完全不写入日志
+        if source == "http_response" or "http" in source.lower():
+            return
+        if url and (url.startswith("http://") or url.startswith("https://")):
             return
 
         # 使用配置值作为默认值
@@ -1196,8 +1258,24 @@ class MessageLogger:
             logger.error(f"[灾害预警] 日志轮转检查失败: {e}")
 
     def _rotate_logs(self):
-        """轮转日志文件"""
+        """轮转日志文件，使用文件锁保护轮转操作"""
+        # 简单的文件锁机制：创建一个 .lock 文件
+        lock_file = self.log_file_path.with_suffix(".lock")
+        if lock_file.exists():
+            # 检查锁文件是否过期 (例如超过 10 秒)
+            try:
+                if time.time() - lock_file.stat().st_mtime > 10:
+                    lock_file.unlink()
+                else:
+                    logger.debug("[灾害预警] 日志轮转正在进行中，跳过")
+                    return
+            except Exception:
+                return
+
         try:
+            # 创建锁文件
+            lock_file.touch()
+
             # 关闭当前日志文件
             for i in range(self.max_files - 1, 0, -1):
                 old_file = self.log_file_path.with_suffix(f".log.{i}")
@@ -1205,20 +1283,38 @@ class MessageLogger:
 
                 if old_file.exists():
                     if new_file.exists():
-                        new_file.unlink()  # 删除最旧的文件
-                    old_file.rename(new_file)
+                        try:
+                            new_file.unlink()  # 删除最旧的文件
+                        except OSError:
+                            pass  # 忽略删除失败
+                    try:
+                        old_file.rename(new_file)
+                    except OSError:
+                        pass  # 忽略重命名失败
 
             # 重命名当前日志文件
             if self.log_file_path.exists():
                 backup_file = self.log_file_path.with_suffix(".log.1")
                 if backup_file.exists():
-                    backup_file.unlink()
-                self.log_file_path.rename(backup_file)
-
-            logger.info(f"[灾害预警] 日志文件已轮转，备份文件: {backup_file}")
+                    try:
+                        backup_file.unlink()
+                    except OSError:
+                        pass
+                try:
+                    self.log_file_path.rename(backup_file)
+                    logger.info(f"[灾害预警] 日志文件已轮转，备份文件: {backup_file}")
+                except OSError as e:
+                    logger.error(f"[灾害预警] 重命名主日志文件失败: {e}")
 
         except Exception as e:
             logger.error(f"[灾害预警] 日志轮转失败: {e}")
+        finally:
+            # 释放锁
+            if lock_file.exists():
+                try:
+                    lock_file.unlink()
+                except Exception:
+                    pass
 
     def get_log_summary(self) -> dict[str, Any]:
         """获取日志统计信息（支持新可读性格式）"""

@@ -46,7 +46,13 @@
             "description": "台湾中央气象署：强震即时警报",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收台湾中央气象署强震即时警报"
+            "hint": "通过FAN Studio WebSocket接收台湾中央气象署强震即时警报(EEW)"
+          },
+          "taiwan_cwa_report": {
+            "description": "台湾中央气象署：地震报告",
+            "type": "bool",
+            "default": true,
+            "hint": "通过FAN Studio WebSocket接收台湾中央气象署地震报告"
           },
           "china_cenc_earthquake": {
             "description": "中国地震台网（CENC）：地震测定",
@@ -275,7 +281,7 @@
         "whitelist": {
           "description": "白名单关键词",
           "type": "list",
-          "hint": "如果设置了白名单，只有包含这些关键词的地震信息才会被推送。留空则不启用白名单模式。如果启用，请尽量多填写一些关键词，否则很有可能在关键时刻错过重要的通知",
+          "hint": "如果设置了白名单，只有包含这些关键词的地震信息才会被推送。留空则不启用白名单模式。关键词填写应以 省州市区/督道府县 的级别填写，请勿填写国家/地区名",
           "default": []
         }
       }
@@ -490,6 +496,17 @@
         "slider": {
           "min": 0,
           "max": 18,
+          "step": 1
+        }
+      },
+      "browser_pool_size": {
+        "description": "浏览器页面池大小",
+        "type": "int",
+        "hint": "默认2。增大此值可提高并发处理能力（应对多条消息同时推送），但会增加内存占用。",
+        "default": 2,
+        "slider": {
+          "min": 1,
+          "max": 10,
           "step": 1
         }
       },

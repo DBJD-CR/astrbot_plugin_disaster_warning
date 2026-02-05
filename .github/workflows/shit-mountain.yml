@@ -1,0 +1,297 @@
+name: 💩 屎山代码检测
+
+on:
+  push:
+    branches: [ main, master, dev/* ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  shit-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 下载 fuck-u-code
+        run: |
+          curl -L -o fuck-u-code \
+            https://github.com/Done-0/fuck-u-code/releases/latest/download/fuck-u-code-linux-amd64
+          chmod +x fuck-u-code
+
+      - name: 运行屎山分析 & 详细评分
+        id: analyze
+        run: |
+          ./fuck-u-code analyze --verbose --lang zh-CN --top 10 2>&1 | tee analysis.log
+          
+          SCORE=$(grep -oP "总体评分:\s*\K[0-9.]+" analysis.log | head -1)
+          if [ -z "$SCORE" ]; then SCORE="0"; fi
+          
+          echo "原始分数: $SCORE"
+          
+          # 11档精细等级（对标源码 QualityLevels）
+          EMOJI=""
+          STATUS=""
+          COLOR=""
+          DESC=""
+          ADVICE=""  # 新增：具体建议
+          ALLOW_MERGE="true"
+          
+          if (( $(echo "$SCORE < 5" | bc -l) )); then
+            EMOJI="🌱"
+            STATUS="清洁级"
+            COLOR="brightgreen"
+            DESC="代码洁癖者的朝圣地，可以直接拿去当教材"
+            ADVICE="完美！继续保持，甚至可以写篇博客炫耀一下"
+            ALLOW_MERGE="true"
+            echo "✨ 检测结果：清洁级 - 这是艺术品，不是代码"
+            
+          elif (( $(echo "$SCORE < 15" | bc -l) )); then
+            EMOJI="🌸"
+            STATUS="微臭级"
+            COLOR="green"
+            DESC="略有异味，但开窗通风就散了，属于可接受范围"
+            ADVICE="轻微瑕疵，顺手重构一下即可"
+            ALLOW_MERGE="true"
+            echo "🌸 检测结果：微臭级 - 空气清新，略有花香"
+            
+          elif (( $(echo "$SCORE < 25" | bc -l) )); then
+            EMOJI="😐"
+            STATUS="中等混乱"
+            COLOR="yellowgreen"
+            DESC="代码到了青春期，有点叛逆，但还能管教"
+            ADVICE="建议适当整理，别让混乱积累"
+            ALLOW_MERGE="true"
+            echo "😐 检测结果：中等混乱 - 青春期的代码，需要适当管教"
+            
+          elif (( $(echo "$SCORE < 40" | bc -l) )); then
+            EMOJI="😷"
+            STATUS="糟糕级"
+            COLOR="yellow"
+            DESC="需要戴口罩维护了，混乱度开始影响阅读体验"
+            ADVICE="⚠️ 注意：建议近期安排重构计划，别让债务累积"
+            ALLOW_MERGE="true"
+            echo "😷 检测结果：糟糕级 - 建议戴口罩阅读"
+            
+          elif (( $(echo "$SCORE < 55" | bc -l) )); then
+            # 你们在的这个档位，再细分3个子档
+            if (( $(echo "$SCORE < 45" | bc -l) )); then
+              SUB="轻度"
+              DESC="屎山刚开始发酵，臭味初显，但还能抢救"
+            elif (( $(echo "$SCORE < 50" | bc -l) )); then
+              SUB="中度"  
+              DESC="屎山已经形成，开窗也救不了，建议谨慎维护"
+            else
+              SUB="重度"
+              DESC="屎山重度污染，维护难度陡增，重构迫在眉睫"
+            fi
+            
+            EMOJI="💩"
+            STATUS="${SUB}屎山级"
+            COLOR="orange"
+            ADVICE="💡 **重点优化建议**：\n1. 优先拆分循环复杂度 >15 的函数\n2. 给0注释的函数补文档\n3. 考虑模块拆分，别让文件超过500行"
+            ALLOW_MERGE="true"
+            echo "💩 检测结果：${SUB}屎山级(40-54分档) - 代码开始散发不可描述的气味"
+            
+          elif (( $(echo "$SCORE < 65" | bc -l) )); then
+            EMOJI="🤕"
+            STATUS="灾难级"
+            COLOR="red"
+            DESC="维护困难，每次改动都可能引发蝴蝶效应"
+            ADVICE="🚨 **警告**：建议暂停功能开发，先还债\n- 重点关注循环复杂度 >20 的函数\n- 考虑重写部分核心逻辑"
+            ALLOW_MERGE="false"
+            echo "::warning::🤕 检测结果：灾难级 - 维护像打副本，建议重构"
+            
+          elif (( $(echo "$SCORE < 75" | bc -l) )); then
+            EMOJI="☣️"
+            STATUS="严重灾难"
+            COLOR="#DC143C"  # 猩红色
+            DESC="难以维护，代码已成遗迹，只有考古学家能看懂"
+            ADVICE="☣️ **严重警告**：建议大幅重构或重写\n- 当前代码已产生高额技术债务\n- 新功能开发效率将极低"
+            ALLOW_MERGE="false"
+            echo "::warning::☣️ 检测结果：严重灾难级 - 代码已成遗迹"
+            
+          elif (( $(echo "$SCORE < 85" | bc -l) )); then
+            EMOJI="🧟"
+            STATUS="非常糟糕"
+            COLOR="#8B0000"  # 深红
+            DESC="接近不可救药，每次提交都是一次冒险"
+            ADVICE="💀 **危险**：建议立即停止功能开发，全面重构\n- 考虑使用设计模式解耦\n- 建立完整的单元测试后再重构"
+            ALLOW_MERGE="false"
+            echo "::error::🧟 检测结果：非常糟糕级 - 代码像僵尸，死而不僵"
+            
+          elif (( $(echo "$SCORE < 95" | bc -l) )); then
+            EMOJI="☢️"
+            STATUS="极端灾难"
+            COLOR="purple"
+            DESC="完全失控，建议重写而非重构"
+            ADVICE="☢️ **极度危险**：建议废弃当前实现，重写比修复更划算"
+            ALLOW_MERGE="false"
+            echo "::error::☢️ 检测结果：极端灾难级 - 建议放弃治疗"
+            
+          elif (( $(echo "$SCORE < 100" | bc -l) )); then
+            EMOJI="🪦"
+            STATUS="废弃级"
+            COLOR="#4B0082"  # 靛紫
+            DESC="已废弃代码，仅供参观警示后人"
+            ADVICE="🪦 **墓志铭级**：这段代码已经死了，建议立个墓碑然后重写"
+            ALLOW_MERGE="false"
+            echo "::error::🪦 检测结果：废弃级 - 建议直接删库"
+            
+          else  # 满分100
+            EMOJI="👑💩"
+            STATUS="终极灾难"
+            COLOR="black"
+            DESC="烂到极致，已超越人类理解范畴，建议申请文化遗产保护"
+            ADVICE="👑💩 **神级屎山**：建议截图留念，做成明信片警示后人，然后删库跑路"
+            ALLOW_MERGE="false"
+            echo "::error::👑💩 检测结果：终极灾难级 - 这是艺术品，建议送博物馆"
+          fi
+          
+          # 输出到环境
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "emoji=$EMOJI" >> $GITHUB_OUTPUT
+          echo "color=$COLOR" >> $GITHUB_OUTPUT
+          echo "desc=$DESC" >> $GITHUB_OUTPUT
+          echo "advice=$ADVICE" >> $GITHUB_OUTPUT
+          echo "allow_merge=$ALLOW_MERGE" >> $GITHUB_OUTPUT
+          
+          # 生成带详细建议的摘要
+          echo "### $EMOJI 屎山检测摘要（11档精细版）" >> $GITHUB_STEP_SUMMARY
+          echo "| 指标 | 数值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **总体评分** | $SCORE / 100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **屎山等级** | $STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **等级描述** | $DESC |" >> $GITHUB_STEP_SUMMARY
+          echo "| **合并建议** | $([ "$ALLOW_MERGE" == "true" ] && echo "✅ 允许" || echo "❌ 禁止") |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**💡 优化建议**" >> $GITHUB_STEP_SUMMARY
+          echo "$ADVICE" >> $GITHUB_STEP_SUMMARY
+      
+      # 在 PR 评论里显示详细等级
+      - name: PR 评论（氛围版）
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const score = parseFloat('${{ steps.analyze.outputs.score }}');
+            const status = '${{ steps.analyze.outputs.status }}';
+            const emoji = '${{ steps.analyze.outputs.emoji }}';
+            const desc = '${{ steps.analyze.outputs.desc }}';
+            const allowMerge = '${{ steps.analyze.outputs.allow_merge }}';
+            
+            // 整体氛围评价（不针对具体代码，只谈感觉）
+            let vibe = '';
+            let nextMove = '';
+            
+            if (score < 5) {
+              vibe = '这代码优雅得像首诗，>Reviewer 可以安心喝茶了。';
+              nextMove = '继续保持，甚至可以申请当开源项目范本。';
+            } else if (score < 15) {
+              vibe = '代码有点小脾气，但还在可控范围内。';
+              nextMove = '顺手修修风格问题，不着急。';
+            } else if (score < 25) {
+              vibe = '代码开始有自己的想法了，需要适当管教。';
+              nextMove = '建议下次迭代时顺便理理逻辑。';
+            } else if (score < 40) {
+              vibe = '读起来需要一点勇气，但还没到劝退地步。';
+              nextMove = '建议安排个技术债务清理日。';
+            } else if (score < 55) {
+              // 屎山级细分氛围
+              if (score < 45) {
+                vibe = '能跑，但别问为什么能跑。问就是玄学。';
+                nextMove = '建议趁还没成为名胜古迹之前优化一下。';
+              } else if (score < 50) {
+                vibe = '开窗已经没用了，建议佩戴心理防毒面具。';
+                nextMove = '重构计划该提上日程了，否则下一个接手的人会想找你聊天。';
+              } else {
+                vibe = '这代码有它自己的坚持，建议别惹它生气。';
+                nextMove = '做功能前先祈祷，改一行测试十遍。';
+              }
+            } else if (score < 65) {
+              vibe = '维护这段代码需要额外的心理建设。';
+              nextMove = '考虑一下：重构 vs 重写 vs 辞职。';
+            } else if (score < 75) {
+              vibe = '代码已成遗迹，建议请考古学家来维护。';
+              nextMove = '别想着优化了，能不动就不动，活着最重要。';
+            } else if (score < 85) {
+              vibe = '每次提交都是一场冒险，建议购买保险。';
+              nextMove = '建议把这段代码供起来，重写比修复划算。';
+            } else if (score < 95) {
+              vibe = '这不是代码，这是行为艺术。';
+              nextMove = '建议截图留念，然后考虑重新投胎（或者重写）。';
+            } else if (score < 100) {
+              vibe = '这段代码已经死了，只是还没埋。';
+              nextMove = '立个墓碑，写上前人教训，然后 rm -rf。';
+            } else {
+              vibe = '登峰造极，史无前例，建议申遗。';
+              nextMove = '删库跑路是最佳选择，或者转行卖煎饼。';
+            }
+            
+            const mergeBadge = allowMerge === 'true' 
+              ? '![允许合并](https://img.shields.io/badge/合并建议-允许-brightgreen)'
+              : '![禁止合并](https://img.shields.io/badge/合并建议-禁止-red)';
+            
+            const body = '## ' + emoji + ' 屎山代码检测报告 ' + mergeBadge + '\n\n' +
+              '🎯 **本次检测概览**\n\n' +
+              '> 「' + desc + '」\n\n' +
+              '| 维度 | 数据 |\n' +
+              '|:------|:------|\n' +
+              '| **屎山指数** | `' + score.toFixed(2) + ' / 100` |\n' +
+              '| **屎山等级** | **' + status + '** |\n' +
+              '| **检测时间** | ' + new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) + ' |\n\n' +
+              '### 🎭 整体印象\n' +
+              vibe + '\n\n' +
+              '### 🧭 下一步\n' +
+              nextMove + '\n\n' +
+              '---\n\n' +
+              '**📥 详细数据**\n' +
+              '- [查看完整分析报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n' +
+              '- [下载 Markdown 报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)\n\n' +
+              '*由 [fuck-u-code](https://github.com/Done-0/fuck-u-code) 自动检测 · 本评论不代表人类观点*';
+
+            // 获取现有评论
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            // 查找机器人之前发的屎山检测报告评论
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('屎山代码检测报告')
+            );
+            
+            if (botComment) {
+              // 如果已有评论，更新它
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // 如果没有，创建新评论
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+      
+      # 根据等级决定是否阻断合并（可选）
+      - name: 门禁检查（可选）
+        if: steps.analyze.outputs.allow_merge != 'true'
+        run: |
+          echo "❌ 屎山指数 ${{ steps.analyze.outputs.score }} 已达到「${{ steps.analyze.outputs.status }}」级别"
+          echo "   ${{ steps.analyze.outputs.desc }}"
+          echo "::error::代码质量未达标，建议重构后再合并"
+          # 需要阻断就取消下面这行的注释：
+          # exit 1
