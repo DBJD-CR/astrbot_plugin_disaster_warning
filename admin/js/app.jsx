@@ -1,4 +1,4 @@
-const { ThemeProvider, createTheme, CssBaseline, Box, Container, Button, Card, CardContent } = MaterialUI;
+const { ThemeProvider, createTheme, CssBaseline, Box, Container, Button, Card, CardContent, Dialog, DialogTitle, DialogContent } = MaterialUI;
 const { useState, useMemo } = React;
 
 function App() {

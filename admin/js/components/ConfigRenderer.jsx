@@ -33,7 +33,6 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
         onChange(newValue);
     };
 
-    const api = useApi();
     const icon = CONFIG_ICONS[fieldKey] || '⚙️';
 
     // 对象类型 (后端使用 'object' + 'items')
@@ -265,7 +264,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
                     rows={3}
                     size="small"
                     value={Array.isArray(localValue) ? localValue.join('\n') : ''}
-                    onChange={(e) => handleChange(e.target.value.split('\n').filter(s => s.trim()))}
+                    onChange={(e) => handleChange(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
                     placeholder="每行一项"
                     variant="outlined"
                     sx={{

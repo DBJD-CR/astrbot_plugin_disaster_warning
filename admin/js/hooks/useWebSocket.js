@@ -14,6 +14,14 @@ function useWebSocket() {
         if (msg.type === 'full_update' || msg.type === 'update' || msg.type === 'event') {
             const data = msg.data;
 
+            // 如果消息没有携带 data,提前返回(例如仅包含 new_event 的 event 消息)
+            if (!data) {
+                if (msg.type === 'event' && msg.new_event) {
+                    console.log('[WS] 收到新事件:', msg.new_event);
+                }
+                return;
+            }
+
             // 更新状态
             if (data.status) {
                 const statusUpdate = {
