@@ -1,40 +1,71 @@
-const { AppBar, Toolbar, Typography, IconButton, Box } = MaterialUI;
+const { Box, Typography, IconButton, Chip } = MaterialUI;
 
-function Header({ onOpenSettings }) {
+function Header({ compact }) {
     const { state, dispatch } = useAppContext();
 
     const toggleTheme = () => {
         dispatch({ type: 'TOGGLE_THEME' });
     };
 
+    const viewTitles = {
+        'status': '运行状态',
+        'events': '事件列表',
+        'stats': '数据统计',
+        'config': '配置管理'
+    };
+
     return (
-        <AppBar position="static" color="default" elevation={1}>
-            <Toolbar>
-                <Typography variant="h6" sx={{ flexGrow: 1, ml: 1.5 }}>
-                    灾害预警管理端
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box
-                            sx={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                bgcolor: state.wsConnected ? 'success.main' : 'error.main'
-                            }}
-                        />
-                        <Typography variant="body2">
-                            {state.wsConnected ? '实时监控中' : '连接断开'}
-                        </Typography>
-                    </Box>
-                    <IconButton onClick={toggleTheme} title="切换主题">
-                        🌓
-                    </IconButton>
-                    <IconButton onClick={onOpenSettings} title="设置">
-                        ⚙️
-                    </IconButton>
-                </Box>
-            </Toolbar>
-        </AppBar>
+        <div className="top-bar">
+            <Typography variant="h5" sx={{ 
+                fontWeight: 700,
+                color: 'text.primary',
+                letterSpacing: '-0.5px'
+            }}>
+                {viewTitles[window.currentView] || '运行状态'}
+            </Typography>
+            
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    padding: '6px 16px',
+                    background: state.wsConnected ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)',
+                    borderRadius: '12px',
+                    border: `1px solid ${state.wsConnected ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`
+                }}>
+                    <div style={{ 
+                        width: '8px', 
+                        height: '8px', 
+                        borderRadius: '50%', 
+                        background: state.wsConnected ? '#4CAF50' : '#F44336',
+                        boxShadow: `0 0 8px ${state.wsConnected ? '#4CAF50' : '#F44336'}`
+                    }}></div>
+                    <Typography variant="body2" sx={{ 
+                        fontWeight: 600, 
+                        color: state.wsConnected ? '#4CAF50' : '#F44336',
+                        fontSize: '13px'
+                    }}>
+                        {state.wsConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                    </Typography>
+                </div>
+                
+                <IconButton 
+                    onClick={toggleTheme}
+                    sx={{
+                        width: 44,
+                        height: 44,
+                        background: 'var(--md-sys-color-surface)',
+                        border: '1px solid var(--glass-border)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                        '&:hover': { background: 'var(--md-sys-color-surface-variant)' }
+                    }}
+                >
+                    <span style={{ fontSize: '18px' }}>
+                        {state.theme === 'dark' ? '🌞' : '🌙'}
+                    </span>
+                </IconButton>
+            </Box>
+        </div>
     );
 }

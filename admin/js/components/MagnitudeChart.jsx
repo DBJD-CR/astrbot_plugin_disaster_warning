@@ -1,4 +1,4 @@
-const { Box, Typography, Card, CardContent } = MaterialUI;
+const { Box, Typography } = MaterialUI;
 const { useMemo } = React;
 
 function MagnitudeChart() {
@@ -24,54 +24,33 @@ function MagnitudeChart() {
 
     if (Object.keys(magnitudeDistribution).length === 0) {
         return (
-            <Box sx={{ my: 2 }}>
-                <Typography variant="h6" gutterBottom>📈 震级分布</Typography>
-                <Card>
-                    <CardContent>
-                        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 5 }}>
-                            加载中...
-                        </Typography>
-                    </CardContent>
-                </Card>
-            </Box>
+            <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
+                <Typography variant="body2" sx={{ opacity: 0.5 }}>统计数据加载中...</Typography>
+            </div>
         );
     }
 
     return (
-        <Box sx={{ my: 2 }}>
-            <Typography variant="h6" gutterBottom>📈 震级分布</Typography>
-            <Card>
-                <CardContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                        {chartData.map((item, index) => (
-                            <Box key={index}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                    <Typography variant="caption" color="text.secondary">
-                                        {item.label}
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                                        {item.value}
-                                    </Typography>
-                                </Box>
-                                <Box sx={{
-                                    width: '100%',
-                                    height: 8,
-                                    bgcolor: 'divider',
-                                    borderRadius: 1,
-                                    overflow: 'hidden'
-                                }}>
-                                    <Box sx={{
-                                        width: `${item.percentage}%`,
-                                        height: '100%',
-                                        bgcolor: 'primary.main',
-                                        transition: 'width 0.3s ease'
-                                    }} />
-                                </Box>
-                            </Box>
-                        ))}
-                    </Box>
-                </CardContent>
-            </Card>
-        </Box>
+        <div className="card">
+            <div className="chart-card-header">
+                <span style={{ fontSize: '20px' }}>📈</span>
+                <Typography variant="h6">震级分布统计</Typography>
+            </div>
+
+            <div className="mag-stats-container">
+                {chartData.map((item, index) => (
+                    <div key={index} className="mag-row">
+                        <div className="mag-label">{item.label}</div>
+                        <div className="mag-bar-container">
+                            <div 
+                                className="mag-bar" 
+                                style={{ width: `${item.percentage}%` }}
+                            ></div>
+                        </div>
+                        <div className="mag-value">{item.value}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }
