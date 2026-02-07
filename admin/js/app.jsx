@@ -126,24 +126,6 @@ function App() {
                 letterSpacing: '0.03333em',
             }
         },
-        shadows: [
-            'none',
-            state.theme === 'dark'
-                ? '0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)'
-                : '0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)',
-            state.theme === 'dark'
-                ? '0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)'
-                : '0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)',
-            state.theme === 'dark'
-                ? '0px 4px 8px 3px rgba(0, 0, 0, 0.15), 0px 1px 3px 0px rgba(0, 0, 0, 0.30)'
-                : '0px 4px 8px 3px rgba(0, 0, 0, 0.15), 0px 1px 3px 0px rgba(0, 0, 0, 0.30)',
-            state.theme === 'dark'
-                ? '0px 6px 10px 4px rgba(0, 0, 0, 0.15), 0px 2px 3px 0px rgba(0, 0, 0, 0.30)'
-                : '0px 6px 10px 4px rgba(0, 0, 0, 0.15), 0px 2px 3px 0px rgba(0, 0, 0, 0.30)',
-            state.theme === 'dark'
-                ? '0px 8px 12px 6px rgba(0, 0, 0, 0.15), 0px 4px 4px 0px rgba(0, 0, 0, 0.30)'
-                : '0px 8px 12px 6px rgba(0, 0, 0, 0.15), 0px 4px 4px 0px rgba(0, 0, 0, 0.30)',
-        ],
         components: {
             MuiCssBaseline: {
                 styleOverrides: {
@@ -154,14 +136,11 @@ function App() {
             },
             MuiCard: {
                 defaultProps: {
-                    elevation: 1,
+                    elevation: 0,
                 },
                 styleOverrides: {
                     root: {
-                        backgroundColor: state.theme === 'dark' ? '#211F26' : '#F7F2FA',
-                        backgroundImage: state.theme === 'dark' 
-                            ? 'linear-gradient(rgba(208, 188, 255, 0.05), rgba(208, 188, 255, 0.05))'
-                            : 'linear-gradient(rgba(103, 80, 164, 0.05), rgba(103, 80, 164, 0.05))',
+                        backgroundColor: 'transparent',
                         borderRadius: 16,
                         border: 'none',
                     }
@@ -169,7 +148,7 @@ function App() {
             },
             MuiButton: {
                 defaultProps: {
-                    disableElevation: false,
+                    disableElevation: true,
                 },
                 styleOverrides: {
                     root: {
@@ -179,21 +158,16 @@ function App() {
                         paddingTop: 10,
                         paddingBottom: 10,
                         textTransform: 'none',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         fontSize: '0.875rem',
                         letterSpacing: '0.02857em',
                     },
                     contained: {
                         backgroundColor: state.theme === 'dark' ? '#D0BCFF' : '#6750A4',
                         color: state.theme === 'dark' ? '#371E73' : '#FFFFFF',
-                        boxShadow: state.theme === 'dark'
-                            ? '0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)'
-                            : '0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)',
                         '&:hover': {
                             backgroundColor: state.theme === 'dark' ? '#E8DDFF' : '#7F67BE',
-                            boxShadow: state.theme === 'dark'
-                                ? '0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)'
-                                : '0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30)',
+                            boxShadow: '0 4px 12px rgba(103, 80, 164, 0.2)',
                         }
                     },
                     outlined: {
@@ -215,6 +189,7 @@ function App() {
                 styleOverrides: {
                     root: {
                         borderRadius: 100,
+                        margin: '0 8px',
                         '&.Mui-selected': {
                             backgroundColor: state.theme === 'dark' 
                                 ? 'rgba(208, 188, 255, 0.12)' 
@@ -238,7 +213,7 @@ function App() {
                 styleOverrides: {
                     root: {
                         borderRadius: 8,
-                        fontWeight: 500,
+                        fontWeight: 600,
                         border: 'none',
                     },
                     colorSuccess: {
@@ -258,9 +233,7 @@ function App() {
                 styleOverrides: {
                     root: {
                         backgroundColor: state.theme === 'dark' ? '#211F26' : '#F7F2FA',
-                        backgroundImage: state.theme === 'dark' 
-                            ? 'linear-gradient(rgba(208, 188, 255, 0.05), rgba(208, 188, 255, 0.05))'
-                            : 'linear-gradient(rgba(103, 80, 164, 0.05), rgba(103, 80, 164, 0.05))',
+                        backgroundImage: 'none',
                         border: 'none',
                     }
                 }
@@ -274,9 +247,6 @@ function App() {
             }
         }
     }), [state.theme]);
-
-    // 保存当前视图到全局，供Header使用
-    window.currentView = currentView;
 
     const renderView = () => {
         switch (currentView) {
@@ -302,7 +272,7 @@ function App() {
 
                 {/* 主内容区 */}
                 <div className="main-wrapper">
-                    <Header />
+                    <Header currentView={currentView} />
 
                     <div className="main-content">
                         {renderView()}

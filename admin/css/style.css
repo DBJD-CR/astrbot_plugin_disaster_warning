@@ -13,6 +13,7 @@
 
     --md-sys-color-surface: rgba(255, 255, 255, 0.8);
     --md-sys-color-on-surface: #1C1B1F;
+    --md-sys-color-on-surface-variant: #49454F;
     --md-sys-color-surface-variant: #E7E0EC;
     
     --md-sys-color-background: #FEF7FF;
@@ -37,6 +38,7 @@ body.dark-theme {
 
     --md-sys-color-surface: rgba(28, 27, 31, 0.8);
     --md-sys-color-on-surface: #E6E1E5;
+    --md-sys-color-on-surface-variant: #CAC4D0;
     --md-sys-color-surface-variant: #49454F;
 
     --md-sys-color-background: #141218;

@@ -1,6 +1,6 @@
 const { Box, Typography, IconButton, Chip } = MaterialUI;
 
-function Header({ compact }) {
+function Header({ currentView }) {
     const { state, dispatch } = useAppContext();
 
     const toggleTheme = () => {
@@ -17,11 +17,11 @@ function Header({ compact }) {
     return (
         <div className="top-bar">
             <Typography variant="h5" sx={{ 
-                fontWeight: 700,
+                fontWeight: 800,
                 color: 'text.primary',
                 letterSpacing: '-0.5px'
             }}>
-                {viewTitles[window.currentView] || '运行状态'}
+                {viewTitles[currentView] || '运行状态'}
             </Typography>
             
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
