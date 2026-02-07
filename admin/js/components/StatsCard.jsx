@@ -1,45 +1,53 @@
-const { Card, CardContent, Typography, Box, Divider } = MaterialUI;
+const { Box, Typography } = MaterialUI;
 
 function StatsCard() {
     const { state } = useAppContext();
     const { stats } = state;
 
     return (
-        <Card>
-            <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <span style={{ fontSize: '24px' }}>📊</span>
-                    <Typography variant="h6">事件统计</Typography>
-                </Box>
+        <div className="card">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                <div style={{ 
+                    width: '40px', 
+                    height: '40px', 
+                    borderRadius: '10px', 
+                    background: 'rgba(139, 92, 246, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px'
+                }}>📊</div>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>事件统计</Typography>
+            </Box>
 
-                <Typography variant="h3" color="primary" sx={{ fontWeight: 400 }}>
+            <Box sx={{ py: 1 }}>
+                <Typography variant="h2" sx={{ 
+                    fontWeight: 800, 
+                    color: 'var(--md-sys-color-primary)',
+                    lineHeight: 1,
+                    letterSpacing: '-2px'
+                }}>
                     {stats.totalEvents}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                    总事件数
+                <Typography variant="body2" sx={{ opacity: 0.6, fontWeight: 600, mt: 1, ml: 0.5 }}>
+                    TOTAL EVENTS
                 </Typography>
+            </Box>
 
-                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <span style={{ fontSize: '14px' }}>🌍</span>
-                        <Typography variant="caption">
-                            <strong>{stats.earthquakeCount}</strong> 地震
-                        </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <span style={{ fontSize: '14px' }}>🌊</span>
-                        <Typography variant="caption">
-                            <strong>{stats.tsunamiCount}</strong> 海啸
-                        </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <span style={{ fontSize: '14px' }}>☁️</span>
-                        <Typography variant="caption">
-                            <strong>{stats.weatherCount}</strong> 气象
-                        </Typography>
-                    </Box>
+            <Box sx={{ display: 'flex', gap: 2, mt: 3, pt: 2, borderTop: '1px solid var(--md-sys-color-outline-variant)' }}>
+                <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>{stats.earthquakeCount}</Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 600 }}>EARTHQUAKE</Typography>
                 </Box>
-            </CardContent>
-        </Card>
+                <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>{stats.tsunamiCount}</Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 600 }}>TSUNAMI</Typography>
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>{stats.weatherCount}</Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 600 }}>WEATHER</Typography>
+                </Box>
+            </Box>
+        </div>
     );
 }

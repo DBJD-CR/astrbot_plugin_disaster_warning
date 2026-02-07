@@ -1,4 +1,4 @@
-const { Box, Typography, Paper } = MaterialUI;
+const { Box, Typography } = MaterialUI;
 const { useMemo } = React;
 
 function ConnectionsGrid() {
@@ -11,50 +11,36 @@ function ConnectionsGrid() {
 
     if (sortedConnections.length === 0) {
         return (
-            <Box sx={{ my: 2 }}>
-                <Typography variant="h6" gutterBottom>📡 数据源连接状态</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-                    暂无连接
-                </Typography>
-            </Box>
+            <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
+                <Typography variant="body1" sx={{ opacity: 0.5 }}>暂无活跃的数据源连接</Typography>
+            </div>
         );
     }
 
     return (
-        <Box sx={{ my: 2 }}>
-            <Typography variant="h6" gutterBottom>📡 数据源连接状态</Typography>
-            <Box sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                gap: 1.5
-            }}>
-                {sortedConnections.map(([name, info]) => (
-                    <Paper
-                        key={name}
-                        sx={{
-                            p: 1.5,
-                            border: 1,
-                            borderColor: info.connected ? 'success.main' : 'divider',
-                            bgcolor: info.connected ? 'rgba(76, 175, 80, 0.05)' : 'background.paper',
-                            opacity: info.connected ? 1 : 0.75
-                        }}
-                    >
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+        <div className="connections-grid">
+            {sortedConnections.map(([name, info]) => (
+                <div key={name} className={`connection-item ${info.connected ? 'connected' : 'disconnected'}`}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                        <Typography className="conn-name" sx={{ fontWeight: 700 }}>
                             {name}
                         </Typography>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
-                            <Typography variant="caption" color={info.connected ? 'success.main' : 'error.main'}>
-                                {info.connected ? '✅ 在线' : '❌ 离线'}
-                            </Typography>
-                            {info.retry_count > 0 && (
-                                <Typography variant="caption" color="text.secondary">
-                                    重试: {info.retry_count}
-                                </Typography>
-                            )}
-                        </Box>
-                    </Paper>
-                ))}
-            </Box>
-        </Box>
+                        <div style={{ 
+                            width: '8px', 
+                            height: '8px', 
+                            borderRadius: '50%', 
+                            background: info.connected ? '#4CAF50' : '#F44336',
+                            boxShadow: `0 0 6px ${info.connected ? '#4CAF50' : '#F44336'}`
+                        }}></div>
+                    </Box>
+                    <div className="conn-status">
+                        <span>{info.connected ? 'ONLINE' : 'OFFLINE'}</span>
+                        {info.retry_count > 0 && (
+                            <span style={{ opacity: 0.6 }}>Retries: {info.retry_count}</span>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
     );
 }
