@@ -1328,6 +1328,12 @@ class MessageLogger:
             date_range = {"start": None, "end": None}
             file_size_mb = self.log_file_path.stat().st_size / (1024 * 1024)
 
+            # 检查是否有轮转的旧日志文件并计算总大小
+            for i in range(1, self.max_files + 1):
+                old_file = self.log_file_path.with_suffix(f".log.{i}")
+                if old_file.exists():
+                    file_size_mb += old_file.stat().st_size / (1024 * 1024)
+
             # 读取文件内容
             with open(self.log_file_path, encoding="utf-8") as f:
                 content = f.read()
