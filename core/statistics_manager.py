@@ -94,26 +94,128 @@ class StatisticsManager:
                     self._record_weather_stats(event.data)
 
             # 3. 更新最近记录
-            push_record = {
-                "timestamp": current_time,
-                "event_id": event.id,
-                "type": event.disaster_type.value,
-                "source": source_id,
-                "description": self._get_event_description(event),
-            }
-            
-            # 为地震事件添加坐标和震级信息（用于3D地球可视化）
-            if isinstance(event.data, EarthquakeData):
-                push_record["latitude"] = event.data.latitude
-                push_record["longitude"] = event.data.longitude
-                push_record["magnitude"] = event.data.magnitude
-                push_record["time"] = event.data.shock_time.isoformat() if event.data.shock_time else None
-            elif isinstance(event.data, WeatherAlarmData):
-                push_record["time"] = event.data.issue_time.isoformat() if event.data.issue_time else None
-            elif isinstance(event.data, TsunamiData):
-                push_record["time"] = event.data.issue_time.isoformat() if event.data.issue_time else None
+            # 智能合并逻辑：针对同一数据源的同一地震事件（通过 event_id 标识），合并更新记录
+            # 适用于所有地震类型（预警和情报），只要数据源支持多次更新
+            is_merged = False
 
-            self.stats["recent_pushes"].insert(0, push_record)
+            if isinstance(event.data, EarthquakeData):
+                # 获取真实的物理事件ID (优先使用 data.event_id，它是跨报文的唯一标识)
+                real_event_id = event.data.event_id
+
+                if real_event_id:
+                    for i, record in enumerate(self.stats["recent_pushes"]):
+                        # 严格检查：必须是同源 且 同一物理事件ID
+                        # 注意：record.get("real_event_id") 是新字段，旧记录可能没有，回退检查 event_id
+                        rec_source = record.get("source")
+                        rec_real_id = record.get("real_event_id")
+                        rec_legacy_id = record.get("event_id")
+
+                        if rec_source == source_id:
+                            # 匹配逻辑：优先匹配 real_event_id，其次尝试匹配 legacy_id
+                            is_match = False
+                            if rec_real_id and rec_real_id == real_event_id:
+                                is_match = True
+                            elif not rec_real_id and rec_legacy_id == real_event_id:
+                                # 兼容旧记录：如果旧记录没有 real_event_id，但其 event_id 恰好等于当前的 real_event_id
+                                is_match = True
+
+                            # 匹配逻辑：优先匹配 real_event_id，其次尝试匹配 legacy_id
+                            # 新增：尝试匹配 unique_id (指纹)，解决 CWA Report 等数据源 event_id 不稳定的问题
+                            is_match = False
+                            rec_unique_id = record.get("unique_id")
+
+                            if rec_real_id and rec_real_id == real_event_id:
+                                is_match = True
+                            elif not rec_real_id and rec_legacy_id == real_event_id:
+                                # 兼容旧记录：如果旧记录没有 real_event_id，但其 event_id 恰好等于当前的 real_event_id
+                                is_match = True
+                            elif rec_unique_id and rec_unique_id == event_unique_id:
+                                # 指纹匹配：物理属性（时间地点震级）相同，视为同一事件
+                                is_match = True
+
+                            if is_match:
+                                # 1. 保存旧记录到 history (防止历史信息丢失)
+                                old_record = record.copy()
+                                # 移除 history 字段避免嵌套递归
+                                if "history" in old_record:
+                                    del old_record["history"]
+
+                                # 初始化或获取 history 列表
+                                if "history" not in record:
+                                    record["history"] = []
+
+                                # 插入旧记录到 history 顶部
+                                record["history"].insert(0, old_record)
+                                # 限制 history 长度 (例如 50)
+                                if len(record["history"]) > 50:
+                                    record["history"] = record["history"][:50]
+
+                                # 2. 更新当前记录
+                                record["timestamp"] = current_time
+                                record["event_id"] = event.id  # 更新为最新报文的ID
+                                record["real_event_id"] = (
+                                    real_event_id  # 确保设置 real_event_id
+                                )
+                                record["unique_id"] = event_unique_id  # 更新指纹
+                                record["description"] = self._get_event_description(
+                                    event
+                                )
+                                record["latitude"] = event.data.latitude
+                                record["longitude"] = event.data.longitude
+                                record["magnitude"] = event.data.magnitude
+                                record["time"] = (
+                                    event.data.shock_time.isoformat()
+                                    if event.data.shock_time
+                                    else None
+                                )
+
+                                # 记录更新次数
+                                record["update_count"] = (
+                                    record.get("update_count", 1) + 1
+                                )
+
+                                # 3. 将更新后的记录移动到列表顶部
+                                updated_record = self.stats["recent_pushes"].pop(i)
+                                self.stats["recent_pushes"].insert(0, updated_record)
+                                is_merged = True
+                                break
+
+            if not is_merged:
+                push_record = {
+                    "timestamp": current_time,
+                    "event_id": event.id,
+                    "type": event.disaster_type.value,
+                    "source": source_id,
+                    "description": self._get_event_description(event),
+                    "unique_id": event_unique_id,  # 记录唯一指纹
+                    "update_count": 1,
+                }
+
+                # 为地震事件添加坐标和震级信息
+                if isinstance(event.data, EarthquakeData):
+                    push_record["latitude"] = event.data.latitude
+                    push_record["longitude"] = event.data.longitude
+                    push_record["magnitude"] = event.data.magnitude
+                    push_record["time"] = (
+                        event.data.shock_time.isoformat()
+                        if event.data.shock_time
+                        else None
+                    )
+                    push_record["real_event_id"] = event.data.event_id  # 记录物理事件ID
+                elif isinstance(event.data, WeatherAlarmData):
+                    push_record["time"] = (
+                        event.data.issue_time.isoformat()
+                        if event.data.issue_time
+                        else None
+                    )
+                elif isinstance(event.data, TsunamiData):
+                    push_record["time"] = (
+                        event.data.issue_time.isoformat()
+                        if event.data.issue_time
+                        else None
+                    )
+
+                self.stats["recent_pushes"].insert(0, push_record)
 
             # 保持最近记录数量限制
             if len(self.stats["recent_pushes"]) > 100:
