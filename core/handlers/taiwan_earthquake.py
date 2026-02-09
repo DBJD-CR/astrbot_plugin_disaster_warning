@@ -42,6 +42,7 @@ class CWAReportHandler(BaseDataHandler):
                 id=str(msg_data.get("id", "")),
                 event_id=str(msg_data.get("id", "")),  # 报告ID通常就是事件ID
                 source=DataSource.FAN_STUDIO_CWA_REPORT,
+                source_id="cwa_fanstudio_report",
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(msg_data.get("shockTime", "")),
                 latitude=safe_float_convert(msg_data.get("latitude")) or 0.0,
