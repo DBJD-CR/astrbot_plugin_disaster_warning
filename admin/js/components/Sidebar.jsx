@@ -1,6 +1,17 @@
 const { Box, Typography } = MaterialUI;
 
+/**
+ * 侧边栏导航组件
+ * 提供应用的主要导航功能，包括状态概览、事件列表、统计信息和配置管理
+ *
+ * @param {Object} props
+ * @param {string} props.currentView - 当前选中的视图ID
+ * @param {Function} props.onViewChange - 视图切换回调函数
+ */
 function Sidebar({ currentView, onViewChange }) {
+    const { state } = useAppContext();
+    const { version } = state.status;
+
     const menuItems = [
         { id: 'status', label: '运行状态', icon: '📊' },
         { id: 'events', label: '事件列表', icon: '🔔' },
@@ -10,20 +21,20 @@ function Sidebar({ currentView, onViewChange }) {
 
     return (
         <div className="sidebar">
-            {/* Logo */}
+            {/* Logo 图标 */}
             <div className="sidebar-header">
-                <div className="sidebar-logo">⚠️</div>
+                <img src="/logo.png" alt="Logo" className="sidebar-logo-img" />
                 <div>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: '-0.5px' }}>
                         灾害预警
                     </Typography>
-                    <Typography variant="caption" sx={{ opacity: 0.6 }}>
+                    <Typography variant="caption" sx={{ opacity: 0.6, display: 'block', mt: 0.5 }}>
                         Admin Console
                     </Typography>
                 </div>
             </div>
 
-            {/* Navigation Menu */}
+            {/* 导航菜单 */}
             <Box sx={{ flex: 1, mt: 4 }}>
                 {menuItems.map((item) => (
                     <div 
@@ -39,15 +50,67 @@ function Sidebar({ currentView, onViewChange }) {
                 ))}
             </Box>
 
-            {/* Footer */}
-            <Box sx={{ p: 1, opacity: 0.5 }}>
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                    AstrBot Plugin v1.2.0
-                </Typography>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4CAF50' }}></div>
-                    <Typography variant="caption">System Ready</Typography>
+            {/* 底部信息栏 */}
+            <Box sx={{ px: 2, pt: 0, pb: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4CAF50' }}></div>
+                    <Typography variant="caption" sx={{ fontWeight: 600, opacity: 0.6 }}>系统就绪</Typography>
                 </div>
+                
+                <a
+                    href="https://github.com/DBJD-CR/astrbot_plugin_disaster_warning"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="github-btn"
+                    style={{ textDecoration: 'none' }}
+                >
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '12px',
+                        background: 'rgba(0, 0, 0, 0.03)',
+                        borderRadius: '12px',
+                        transition: 'all 0.2s ease',
+                        border: '1px solid rgba(0, 0, 0, 0.06)',
+                        cursor: 'pointer'
+                    }}>
+                        {/* GitHub Logo - 使用黑色 */}
+                        <svg height="28" width="28" viewBox="0 0 16 16" fill="#000000" style={{ flexShrink: 0 }}>
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                        </svg>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'hidden' }}>
+                            {/* 第一行: 作者与仓库信息 */}
+                            <Typography variant="caption" sx={{
+                                fontWeight: 700,
+                                color: 'text.primary',
+                                fontSize: '0.75rem',
+                                lineHeight: 1.2,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: 'block',
+                                maxWidth: '170px'
+                            }}>
+                                @DBJD-CR & Aloys233
+                            </Typography>
+                            
+                            {/* 第二行: 插件名称 + 版本号 */}
+                            <Typography variant="caption" sx={{
+                                display: 'block',
+                                opacity: 0.6,
+                                lineHeight: 1.2,
+                                fontSize: '0.7rem'
+                            }}>
+                                🔧 (灾害预警) {version || '...'}
+                            </Typography>
+                        </div>
+                    </div>
+                </a>
+                <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, opacity: 0.7, fontSize: '14px', fontWeight: 500 }}>
+                    点个 Star 吧~ ⭐
+                </Typography>
             </Box>
         </div>
     );
