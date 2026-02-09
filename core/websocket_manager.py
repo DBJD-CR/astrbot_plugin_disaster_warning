@@ -31,7 +31,7 @@ class WebSocketManager:
         self.running = False
         self.session: aiohttp.ClientSession | None = None
         self.heartbeat_tasks: dict[str, asyncio.Task] = {}  # 心跳任务
-        self.last_heartbeat_time: dict[str, float] = {}  #最后心跳时间
+        self.last_heartbeat_time: dict[str, float] = {}  # 最后心跳时间
 
     def register_handler(self, connection_name: str, handler: Callable):
         """注册消息处理器"""
@@ -123,14 +123,18 @@ class WebSocketManager:
                 self.last_heartbeat_time[name] = asyncio.get_event_loop().time()
 
                 # 启动心跳任务
-                self.heartbeat_tasks[name] = asyncio.create_task(self._heartbeat_loop(name, websocket))
+                self.heartbeat_tasks[name] = asyncio.create_task(
+                    self._heartbeat_loop(name, websocket)
+                )
 
                 try:
                     # 处理消息 - aiohttp 风格
                     async for msg in websocket:
                         if msg.type == WSMsgType.TEXT:
                             message = msg.data
-                            self.last_heartbeat_time[name] = asyncio.get_event_loop().time()  # 更新心跳时间
+                            self.last_heartbeat_time[name] = (
+                                asyncio.get_event_loop().time()
+                            )  # 更新心跳时间
                             try:
                                 # 记录原始消息
                                 if self.message_logger:
@@ -167,12 +171,16 @@ class WebSocketManager:
                                 f"[灾害预警] WebSocket连接已关闭: {name}, code={websocket.close_code}"
                             )
                             break
-                        
+
                         elif msg.type == WSMsgType.PING:
-                            self.last_heartbeat_time[name] = asyncio.get_event_loop().time()
-                        
+                            self.last_heartbeat_time[name] = (
+                                asyncio.get_event_loop().time()
+                            )
+
                         elif msg.type == WSMsgType.PONG:
-                            self.last_heartbeat_time[name] = asyncio.get_event_loop().time()
+                            self.last_heartbeat_time[name] = (
+                                asyncio.get_event_loop().time()
+                            )
 
                     # 精细化处理 WebSocket 关闭代码
                     if websocket.close_code is not None:
@@ -281,7 +289,7 @@ class WebSocketManager:
         if name in self.heartbeat_tasks:
             self.heartbeat_tasks[name].cancel()
             self.heartbeat_tasks.pop(name, None)
-            
+
         # 获取连接信息（不移除，保持在列表中显示为离线状态）
         connection_info = self.connection_info.get(name, {})
 
@@ -494,11 +502,11 @@ class WebSocketManager:
                 await asyncio.sleep(interval)
                 if websocket.closed:
                     break
-                
+
                 # 检查上次收到消息的时间
                 last_time = self.last_heartbeat_time.get(name, 0)
                 current_time = asyncio.get_event_loop().time()
-                
+
                 # 如果超过 2 倍心跳间隔没有收到任何消息（包括Pong），主动发送 Ping
                 if current_time - last_time > interval * 2:
                     try:
@@ -562,7 +570,6 @@ class WebSocketManager:
                 }
             )
 
-            
         # 添加最后心跳时间
         if name in self.last_heartbeat_time:
             status["last_active"] = self.last_heartbeat_time[name]
