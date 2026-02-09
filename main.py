@@ -119,7 +119,6 @@ class DisasterWarningPlugin(Star):
                 self.disaster_service.web_admin_server = self.web_server
                 await self.web_server.start()
 
-
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
             # 上报初始化失败错误到遥测
@@ -713,6 +712,7 @@ class DisasterWarningPlugin(Star):
         source_names = {
             "fan_studio": {
                 "china_earthquake_warning": "中国地震网地震预警",
+                "china_earthquake_warning_provincial": "中国地震网地震预警 (省级)",
                 "taiwan_cwa_earthquake": "台湾中央气象署强震即时警报",
                 "taiwan_cwa_report": "台湾中央气象署地震报告",
                 "china_cenc_earthquake": "中国地震台网地震测定",

@@ -95,8 +95,10 @@ class ReportCountController:
         # 将DataSource映射到我们的source_id
         source_mapping = {
             DataSource.FAN_STUDIO_CEA.value: "cea_fanstudio",
+            DataSource.FAN_STUDIO_CEA_PR.value: "cea_pr_fanstudio",
             DataSource.WOLFX_CENC_EEW.value: "cea_wolfx",
             DataSource.FAN_STUDIO_CWA.value: "cwa_fanstudio",
+            DataSource.FAN_STUDIO_CWA_REPORT.value: "cwa_fanstudio_report",
             DataSource.WOLFX_CWA_EEW.value: "cwa_wolfx",
             DataSource.FAN_STUDIO_JMA.value: "jma_fanstudio",
             DataSource.P2P_EEW.value: "jma_p2p",
