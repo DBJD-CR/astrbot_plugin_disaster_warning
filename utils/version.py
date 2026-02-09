@@ -35,8 +35,10 @@ def get_plugin_version() -> str:
                     match = re.match(r"^\s*version:\s*([^#\n]+)", line)
                     if match:
                         return match.group(1).strip()
-    except Exception:
-        pass
+        else:
+            logger.debug(f"[灾害预警] metadata.yaml 未找到: {metadata_path}")
+    except Exception as e:
+        logger.error(f"[灾害预警] 获取插件版本失败: {e}")
 
     return "unknown"
 
