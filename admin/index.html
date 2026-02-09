@@ -11,20 +11,20 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Custom CSS -->
+    <!-- 自定义 CSS -->
     <link rel="stylesheet" href="css/style.css">
 
-    <!-- React 18 (Production) -->
+    <!-- React 18 (生产环境) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-    <!-- Babel Standalone (用于浏览器编译JSX) -->
+    <!-- Babel Standalone (用于浏览器实时编译 JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Material UI -->
+    <!-- Material UI 组件库 -->
     <script src="https://unpkg.com/@mui/material@5/umd/material-ui.production.min.js"></script>
 
-    <!-- Emotion (MUI的CSS-in-JS依赖) -->
+    <!-- Emotion (Material UI 的 CSS-in-JS 依赖) -->
     <script src="https://unpkg.com/@emotion/react@11/dist/emotion-react.umd.min.js"></script>
     <script src="https://unpkg.com/@emotion/styled@11/dist/emotion-styled.umd.min.js"></script>
 </head>
@@ -33,7 +33,7 @@
     <div id="root"></div>
 
     <!-- 工具函数 -->
-    <script type="text/babel" src="js/utils/formatters.js"></script>
+    <script src="js/utils/formatters.js"></script>
 
     <!-- Context -->
     <script type="text/babel" src="js/context/AppContext.jsx"></script>
@@ -42,7 +42,7 @@
     <script type="text/babel" src="js/hooks/useWebSocket.js"></script>
     <script type="text/babel" src="js/hooks/useApi.js"></script>
 
-    <!-- Components -->
+    <!-- 组件 (Components) -->
     <script type="text/babel" src="js/components/Header.jsx"></script>
     <script type="text/babel" src="js/components/Sidebar.jsx"></script>
     <script type="text/babel" src="js/components/StatusCard.jsx"></script>
@@ -53,13 +53,13 @@
     <script type="text/babel" src="js/components/ConfigRenderer.jsx"></script>
     <script type="text/babel" src="js/components/SimulationModal.jsx"></script>
 
-    <!-- Views -->
+    <!-- 视图 (Views) -->
     <script type="text/babel" src="js/views/StatusView.jsx"></script>
     <script type="text/babel" src="js/views/EventsView.jsx"></script>
     <script type="text/babel" src="js/views/StatsView.jsx"></script>
     <script type="text/babel" src="js/views/ConfigView.jsx"></script>
 
-    <!-- Main App -->
+    <!-- 主入口 -->
     <script type="text/babel" src="js/app.jsx"></script>
 </body>
 

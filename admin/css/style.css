@@ -1,6 +1,6 @@
-/* Material Design 3 - Disaster Warning Theme (Enhanced Harmony) */
+/* Material Design 3 - 灾害预警主题 (增强和谐感) */
 :root {
-    /* --- MD3 Color Tokens (Purple Seed) --- */
+    /* --- MD3 颜色令牌 (紫色种子) --- */
     --md-sys-color-primary: #6750A4;
     --md-sys-color-on-primary: #FFFFFF;
     --md-sys-color-primary-container: #EADDFF;
@@ -23,7 +23,7 @@
     --glass-border: rgba(103, 80, 164, 0.15);
     --glass-shadow: 0 4px 20px 0 rgba(103, 80, 164, 0.08);
 
-    /* --- Shape --- */
+    /* --- 形状 --- */
     --radius-sm: 8px;
     --radius-md: 12px;
     --radius-lg: 20px;
@@ -49,7 +49,7 @@ body.dark-theme {
     --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
 
-/* Base Styles */
+/* 基础样式 */
 * {
     box-sizing: border-box;
     margin: 0;
@@ -69,7 +69,7 @@ body {
     transition: background 0.3s, color 0.3s;
 }
 
-/* Glass Effect */
+/* 磨砂玻璃效果 */
 .glass {
     background: var(--glass-bg);
     backdrop-filter: blur(16px);
@@ -78,14 +78,14 @@ body {
     box-shadow: var(--glass-shadow);
 }
 
-/* Layout */
+/* 布局 */
 .app {
     display: flex;
     height: 100vh;
     overflow: hidden;
 }
 
-/* Sidebar (Left Navigation) */
+/* 侧边栏 (左侧导航) */
 .sidebar {
     width: 280px;
     height: 100%;
@@ -105,17 +105,12 @@ body {
     gap: 12px;
 }
 
-.sidebar-logo {
-    width: 36px;
-    height: 36px;
-    background: var(--md-sys-color-primary);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--md-sys-color-on-primary);
-    font-size: 20px;
+.sidebar-logo-img {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
     box-shadow: 0 4px 12px rgba(103, 80, 164, 0.2);
+    object-fit: contain;
 }
 
 .nav-item {
@@ -143,7 +138,7 @@ body {
     font-weight: 600;
 }
 
-/* Main Content Area */
+/* 主内容区域 */
 .main-wrapper {
     flex: 1;
     display: flex;
@@ -166,7 +161,7 @@ body {
     padding: 0 40px 40px;
 }
 
-/* Dashboard Cards (Bento Style) */
+/* 仪表盘卡片 (Bento 风格) */
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
@@ -187,12 +182,12 @@ body {
     box-shadow: 0 12px 30px 0 rgba(103, 80, 164, 0.12);
 }
 
-/* Bento Spans */
+/* Bento 跨列 */
 .span-4 { grid-column: span 4; }
 .span-8 { grid-column: span 8; }
 .span-12 { grid-column: span 12; }
 
-/* Status Badge */
+/* 状态徽章 */
 .badge {
     padding: 4px 12px;
     border-radius: 99px;
@@ -203,7 +198,7 @@ body {
 .badge-success { background: #dcfce7; color: #166534; }
 .badge-error { background: #fee2e2; color: #991b1b; }
 
-/* Existing components adaptation... */
+/* 现有组件适配... */
 .events-list { display: flex; flex-direction: column; gap: 12px; }
 
 .event-card {
@@ -233,7 +228,7 @@ body {
     color: white;
 }
 
-/* Buttons */
+/* 按钮 */
 .btn {
     padding: 10px 20px;
     border-radius: 12px;
@@ -254,7 +249,7 @@ body {
     box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
 }
 
-/* Modal Styling */
+/* 模态框样式 */
 .modal-overlay {
     position: fixed;
     inset: 0;
@@ -278,7 +273,7 @@ body {
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* Scrollbar */
+/* 滚动条 */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -287,10 +282,10 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--md-sys-color-secondary); }
 
-/* Connections Grid */
+/* 连接网格 */
 .connections-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 16px;
     width: 100%;
 }
@@ -348,7 +343,7 @@ body.dark-theme .connection-item.disconnected {
     color: #F44336;
 }
 
-/* Filter Buttons (MD3 Chips) */
+/* 筛选按钮 (MD3 Chips) */
 .filter-group {
     display: flex;
     gap: 12px;
@@ -383,8 +378,8 @@ body.dark-theme .connection-item.disconnected {
     box-shadow: 0 2px 6px rgba(103, 80, 164, 0.1);
 }
 
-/* Event List & Cards */
-.events-list { 
+/* 事件列表和卡片 */
+.events-list {
     display: flex; 
     flex-direction: column; 
     gap: 16px; 
@@ -414,7 +409,7 @@ body.dark-theme .connection-item.disconnected {
     box-shadow: 0 2px 10px rgba(0,0,0,0.04);
 }
 
-/* Container Colors for Badges */
+/* 徽章容器颜色 */
 .badge-earthquake { background: #F3E5F5; color: #7B1FA2; }
 .badge-tsunami { background: #E1F5FE; color: #0288D1; }
 .badge-weather { background: #FFF3E0; color: #F57C00; }
@@ -430,7 +425,7 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     transform: translateX(6px);
 }
 
-/* Magnitude Chart (MD3 Style) */
+/* 震级图表 (MD3 风格) */
 .mag-stats-container {
     display: flex;
     flex-direction: column;
@@ -440,7 +435,7 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
 
 .mag-row {
     display: grid;
-    grid-template-columns: 80px 1fr 60px;
+    grid-template-columns: 110px 1fr 60px;
     align-items: center;
     gap: 16px;
 }
