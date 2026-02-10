@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import os
 import re
@@ -15,6 +16,7 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
+from .core.config_validator import ConfigValidator
 from .core.disaster_service import get_disaster_service, stop_disaster_service
 from .core.telemetry_manager import TelemetryManager
 from .core.web_server import WebAdminServer
@@ -62,6 +64,26 @@ class DisasterWarningPlugin(Star):
                     logger.info(
                         f"[灾害预警] 已自动同步全局管理员到插件配置: {global_admins}"
                     )
+
+            # 执行配置校验与修正
+            try:
+                # 使用深拷贝进行校验，以便检测变化
+                config_copy = copy.deepcopy(dict(self.config))
+                validated_config = ConfigValidator.validate(config_copy)
+
+                # 更新配置对象
+                config_changed = False
+                for key, value in validated_config.items():
+                    # 比较内容是否发生变化
+                    if self.config.get(key) != value:
+                        self.config[key] = value
+                        config_changed = True
+
+                if config_changed:
+                    self.config.save_config()
+                    logger.info("[灾害预警] 配置已自动修正并保存")
+            except Exception as e:
+                logger.error(f"[灾害预警] 配置校验失败: {e}")
 
             # 检查插件是否启用
             if not self.config.get("enabled", True):
