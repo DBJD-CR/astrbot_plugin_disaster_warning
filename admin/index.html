@@ -3,30 +3,31 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>灾害预警管理端</title>
 
     <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="fonts/outfit.css" rel="stylesheet">
 
     <!-- 自定义 CSS -->
     <link rel="stylesheet" href="css/style.css">
 
     <!-- React 18 (生产环境) -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="lib/react.production.min.js"></script>
+    <script crossorigin src="lib/react-dom.production.min.js"></script>
 
     <!-- Babel Standalone (用于浏览器实时编译 JSX) -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="lib/babel.min.js"></script>
 
     <!-- Material UI 组件库 -->
-    <script src="https://unpkg.com/@mui/material@5/umd/material-ui.production.min.js"></script>
+    <script src="lib/material-ui.production.min.js"></script>
 
     <!-- Emotion (Material UI 的 CSS-in-JS 依赖) -->
-    <script src="https://unpkg.com/@emotion/react@11/dist/emotion-react.umd.min.js"></script>
-    <script src="https://unpkg.com/@emotion/styled@11/dist/emotion-styled.umd.min.js"></script>
+    <script src="lib/emotion-react.umd.min.js"></script>
+    <script src="lib/emotion-styled.umd.min.js"></script>
 </head>
 
 <body>
@@ -48,6 +49,8 @@
     <script type="text/babel" src="js/components/StatusCard.jsx"></script>
     <script type="text/babel" src="js/components/StatsCard.jsx"></script>
     <script type="text/babel" src="js/components/ConnectionsGrid.jsx"></script>
+    <script type="text/babel" src="js/components/NewsTicker.jsx"></script>
+    <script type="text/babel" src="js/components/HorizontalTimeline.jsx"></script>
     <script type="text/babel" src="js/components/MagnitudeChart.jsx"></script>
     <script type="text/babel" src="js/components/TrendChart.jsx"></script>
     <script type="text/babel" src="js/components/CalendarHeatmap.jsx"></script>

@@ -8,6 +8,11 @@ function StatusView({ onOpenSimulation }) {
     return (
         <Box>
             <div className="dashboard-grid">
+                {/* 顶部跑马灯 */}
+                <div className="span-12">
+                    <NewsTicker />
+                </div>
+
                 <div className="span-4">
                     <StatusCard />
                 </div>
@@ -43,6 +48,11 @@ function StatusView({ onOpenSimulation }) {
                             </button>
                         </Box>
                     </div>
+                </div>
+
+                {/* 重大事件时间轴 */}
+                <div className="span-12">
+                    <HorizontalTimeline />
                 </div>
 
                 <div className="span-12" style={{ marginTop: '12px' }}>

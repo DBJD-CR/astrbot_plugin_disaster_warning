@@ -56,6 +56,13 @@ body.dark-theme {
     padding: 0;
 }
 
+/* 移动端触摸优化 */
+html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+}
+
 body {
     background-color: var(--md-sys-color-background);
     background-image: 
@@ -67,6 +74,7 @@ body {
     font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     min-height: 100vh;
     transition: background 0.3s, color 0.3s;
+    overflow-x: hidden;
 }
 
 /* 磨砂玻璃效果 */
@@ -274,13 +282,37 @@ body {
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* 滚动条 */
-::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
     background: var(--md-sys-color-secondary-container);
     border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--md-sys-color-secondary); }
+
+/* 移动端滚动优化 */
+.sidebar > div:nth-child(2),
+.main-content {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+}
+
+/* 按钮点击反馈 */
+.nav-item,
+.btn,
+.btn-filter,
+.event-card,
+.connection-item {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+.nav-item:active,
+.btn:active,
+.btn-filter:active {
+    opacity: 0.7;
+    transition: opacity 0.1s;
+}
 
 /* 连接网格 */
 .connections-grid {
@@ -478,4 +510,442 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
 .chart-card-header h6 {
     font-weight: 800;
     letter-spacing: -0.5px;
+}
+
+/* ========== 响应式设计 ========== */
+
+/* 平板设备 (768px - 1024px) */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 240px;
+    }
+
+    .top-bar {
+        padding: 0 24px;
+    }
+
+    .main-content {
+        padding: 0 24px 24px;
+    }
+
+    .dashboard-grid {
+        gap: 16px;
+        grid-template-columns: repeat(6, 1fr);
+    }
+    
+    .span-4 { grid-column: span 3; }
+    .span-8 { grid-column: span 6; }
+    .span-12 { grid-column: span 6; }
+
+    .connections-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .card {
+        padding: 20px;
+    }
+}
+
+/* 移动设备 (最大 768px) */
+@media (max-width: 768px) {
+    /* 整体布局 */
+    .app {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+    }
+
+    /* 侧边栏改为顶部导航 */
+    .sidebar {
+        width: 100%;
+        height: auto;
+        padding: 12px 16px;
+        border-right: none;
+        border-bottom: 1px solid var(--glass-border);
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .sidebar-header {
+        padding: 0;
+        flex-direction: row;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .sidebar-logo-img {
+        width: 40px;
+        height: 40px;
+    }
+
+    /* 导航菜单横向滚动 */
+    .sidebar > div:nth-child(2) {
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        margin: 0 !important;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    .nav-item {
+        white-space: nowrap;
+        padding: 10px 16px;
+        margin-bottom: 0;
+        flex-shrink: 0;
+        font-size: 14px;
+    }
+
+    /* 隐藏底部信息栏在移动端 */
+    .sidebar > div:nth-child(3) {
+        display: none;
+    }
+
+    /* 顶部栏 */
+    .top-bar {
+        height: auto;
+        min-height: 60px;
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .top-bar > h5 {
+        font-size: 1.25rem;
+    }
+
+    .top-bar > div {
+        gap: 12px;
+    }
+
+    /* 主内容区 */
+    .main-wrapper {
+        flex: 1;
+        overflow: visible;
+    }
+
+    .main-content {
+        padding: 16px;
+        overflow-y: visible;
+        height: auto;
+    }
+
+    /* 网格布局 */
+    .dashboard-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px;
+    }
+
+    .span-4, .span-8, .span-12 {
+        grid-column: span 1 !important;
+    }
+
+    .connections-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    /* 卡片 */
+    .card {
+        padding: 16px;
+        border-radius: var(--radius-md);
+    }
+
+    .card:hover {
+        transform: none;
+    }
+
+    /* 事件卡片 */
+    .event-card {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+    }
+
+    .event-card:hover {
+        transform: none;
+    }
+
+    .mag-badge {
+        width: 48px;
+        height: 48px;
+        font-size: 16px;
+    }
+
+    /* 震级图表 */
+    .mag-row {
+        grid-template-columns: 70px 1fr 50px;
+        gap: 10px;
+    }
+
+    .mag-label {
+        font-size: 13px;
+    }
+
+    .mag-bar-container {
+        height: 24px;
+    }
+
+    .mag-value {
+        font-size: 13px;
+    }
+
+    /* 筛选按钮 */
+    .filter-group {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .btn-filter {
+        padding: 6px 14px;
+        font-size: 13px;
+    }
+
+    /* 模态框 */
+    .modal-container {
+        width: calc(100% - 32px);
+        max-width: none;
+        padding: 20px;
+        margin: 16px;
+    }
+
+    /* 连接项 */
+    .connection-item {
+        padding: 16px;
+    }
+
+    .connection-item:hover {
+        transform: none;
+    }
+}
+
+/* 小屏幕移动设备 (最大 480px) */
+@media (max-width: 480px) {
+    .sidebar {
+        padding: 10px 12px;
+    }
+
+    .sidebar-header {
+        gap: 8px;
+    }
+
+    .sidebar-logo-img {
+        width: 36px;
+        height: 36px;
+    }
+
+    .sidebar-header h6 {
+        font-size: 1.1rem;
+    }
+
+    .sidebar-header .MuiTypography-caption {
+        font-size: 0.7rem;
+    }
+
+    .nav-item {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .nav-item span {
+        font-size: 16px !important;
+    }
+
+    .top-bar {
+        padding: 10px 12px;
+        min-height: 56px;
+    }
+
+    .top-bar > h5 {
+        font-size: 1.1rem;
+    }
+
+    .top-bar > div > div {
+        padding: 5px 12px;
+    }
+
+    .top-bar button {
+        width: 40px !important;
+        height: 40px !important;
+    }
+
+    .main-content {
+        padding: 12px;
+    }
+
+    .card {
+        padding: 14px;
+    }
+
+    .event-card {
+        padding: 14px;
+        gap: 10px;
+    }
+
+    .mag-badge {
+        width: 44px;
+        height: 44px;
+        font-size: 15px;
+    }
+
+    .connection-item {
+        padding: 12px;
+    }
+
+    .conn-name {
+        font-size: 14px;
+    }
+
+    .conn-status {
+        font-size: 11px;
+    }
+
+    .mag-row {
+        grid-template-columns: 65px 1fr 45px;
+        gap: 8px;
+    }
+
+    .mag-label {
+        font-size: 12px;
+    }
+
+    .mag-bar-container {
+        height: 20px;
+    }
+
+    .mag-value {
+        font-size: 12px;
+    }
+
+    .btn {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .btn-filter {
+        padding: 5px 12px;
+        font-size: 12px;
+    }
+
+    .modal-container {
+        padding: 16px;
+        margin: 12px;
+        width: calc(100% - 24px);
+    }
+
+    /* 统计卡片 */
+    .chart-card-header {
+        margin-bottom: 20px;
+    }
+
+    .chart-card-header h6 {
+        font-size: 1rem;
+    }
+}
+
+/* 超小屏幕 (最大 360px) */
+@media (max-width: 360px) {
+    .sidebar {
+        padding: 8px 10px;
+    }
+
+    .sidebar-logo-img {
+        width: 32px;
+        height: 32px;
+    }
+
+    .nav-item {
+        padding: 7px 12px;
+        font-size: 12px;
+    }
+
+    .top-bar {
+        padding: 8px 10px;
+    }
+
+    .main-content {
+        padding: 10px;
+    }
+
+    .card {
+        padding: 12px;
+    }
+
+    .event-card {
+        padding: 12px;
+    }
+}
+
+/* 横屏模式优化 */
+@media (max-height: 600px) and (orientation: landscape) {
+    .app {
+        flex-direction: row;
+    }
+
+    .sidebar {
+        width: 220px;
+        height: 100vh;
+        border-right: 1px solid var(--glass-border);
+        border-bottom: none;
+        padding: 16px 12px;
+    }
+
+    .sidebar-header {
+        flex-direction: column;
+        padding-bottom: 16px;
+    }
+
+    .sidebar > div:nth-child(2) {
+        flex-direction: column;
+        overflow-x: visible;
+        overflow-y: auto;
+    }
+
+    .sidebar > div:nth-child(3) {
+        display: block;
+    }
+
+    .nav-item {
+        margin-bottom: 4px;
+    }
+
+    .top-bar {
+        height: 56px;
+        padding: 0 16px;
+    }
+
+    .card {
+        padding: 14px;
+    }
+}
+
+/* 打印样式 */
+@media print {
+    .sidebar {
+        display: none !important;
+    }
+
+    .top-bar {
+        display: none !important;
+    }
+
+    .main-content {
+        padding: 0 !important;
+    }
+
+    .card {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+        break-inside: avoid;
+    }
+
+    .event-card:hover {
+        transform: none !important;
+    }
 }

@@ -85,7 +85,7 @@ function ConnectionsGrid() {
                     <div className="conn-status">
                         <span>{conn.connected ? '在线' : '离线'}</span>
                         {conn.retry_count > 0 && (
-                            <span style={{ opacity: 0.6 }}>重试: {conn.retry_count}</span>
+                            <span style={{ opacity: 0.6, marginLeft: '8px' }}>重试: {conn.retry_count}</span>
                         )}
                     </div>
 
