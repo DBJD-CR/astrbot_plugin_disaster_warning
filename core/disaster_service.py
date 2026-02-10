@@ -741,6 +741,7 @@ class DisasterWarningService:
                 "depth_label": depth_label,
                 "depth_value": depth_value_str,
                 "depth_unit": depth_unit,
+                "is_text_depth": (depth_val == 0.0),
                 "intensity_display": intensity_display,
                 "intensity_class": intensity_class,
                 "raw": item,  # 保留原始数据用于文本模式
