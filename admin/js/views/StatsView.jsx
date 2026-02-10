@@ -310,6 +310,14 @@ function StatsView() {
                     </div>
                 </div>
 
+                {/* 时间维度统计：趋势图和热力图 */}
+                <div className="span-8">
+                    <TrendChart style={{ height: '100%' }} />
+                </div>
+                <div className="span-4">
+                    <CalendarHeatmap style={{ height: '100%' }} />
+                </div>
+
                 {/* 第二行：三个 Top 榜单 (地震地区、气象类型、数据源) */}
                 <div className="span-4">
                     {renderTopListCard("国内地震高发地 (TOP 10)", "📍", eqRegions, "#FF9800")}

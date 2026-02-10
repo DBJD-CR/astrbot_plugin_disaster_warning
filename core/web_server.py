@@ -319,6 +319,64 @@ class WebAdminServer:
                 logger.error(f"[灾害预警] 获取地震数据失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.get("/api/trend")
+        async def get_trend(hours: int = 24):
+            """获取预警趋势数据"""
+            try:
+                if (
+                    not self.disaster_service
+                    or not self.disaster_service.statistics_manager
+                ):
+                    return JSONResponse(
+                        {"error": "统计管理器未初始化"}, status_code=503
+                    )
+
+                # 限制范围：24小时或168小时(7天)
+                if hours not in [24, 168]:
+                    hours = 24
+
+                trend_data = self.disaster_service.statistics_manager.get_trend_data(
+                    hours
+                )
+                return {
+                    "data": trend_data,
+                    "hours": hours,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 获取趋势数据失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/heatmap")
+        async def get_heatmap(days: int = 180):
+            """获取日历热力图数据"""
+            try:
+                if (
+                    not self.disaster_service
+                    or not self.disaster_service.statistics_manager
+                ):
+                    return JSONResponse(
+                        {"error": "统计管理器未初始化"}, status_code=503
+                    )
+
+                # 限制范围：90-180天
+                if days < 90:
+                    days = 90
+                elif days > 180:
+                    days = 180
+
+                heatmap_data = self.disaster_service.statistics_manager.get_heatmap_data(
+                    days
+                )
+                return {
+                    "data": heatmap_data,
+                    "days": days,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 获取热力图数据失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.post("/api/test-push")
         async def test_push(
             target_session: str = None, disaster_type: str = "earthquake"

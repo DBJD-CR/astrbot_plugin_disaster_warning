@@ -45,6 +45,8 @@ class StatisticsManager:
             },
             "recent_pushes": [],  # 最近推送记录详情，用于展示
             "recent_event_ids": [],  # 最近处理的事件ID列表，用于重启后去重
+            "hourly_counts": defaultdict(int),  # 小时级别统计，用于趋势图
+            "daily_counts": defaultdict(int),  # 日级别统计，用于热力图
         }
 
         # 运行时去重集合
@@ -92,6 +94,9 @@ class StatisticsManager:
                     self._record_earthquake_stats(event.data)
                 elif isinstance(event.data, WeatherAlarmData):
                     self._record_weather_stats(event.data)
+                
+                # 3. 时间序列统计 (仅统计独立事件)
+                self._record_time_series(event)
 
             # 3. 更新最近记录
             # 智能合并逻辑：针对同一数据源的同一地震事件（通过 event_id 标识），合并更新记录
@@ -338,6 +343,28 @@ class StatisticsManager:
         region = self._extract_region(headline)
         self.stats["weather_stats"]["by_region"][region] += 1
 
+    def _record_time_series(self, event: DisasterEvent):
+        """记录时间序列统计"""
+        from datetime import datetime, timezone
+        
+        # 使用事件时间或当前时间
+        event_time = None
+        if isinstance(event.data, EarthquakeData):
+            event_time = event.data.shock_time
+        elif isinstance(event.data, (WeatherAlarmData, TsunamiData)):
+            event_time = event.data.issue_time
+        
+        if not event_time:
+            event_time = datetime.now(timezone.utc)
+        
+        # 小时级别的key (用于24小时/7天趋势图)
+        hour_key = event_time.strftime("%Y-%m-%d %H:00")
+        self.stats["hourly_counts"][hour_key] += 1
+        
+        # 日级别的key (用于日历热力图)
+        day_key = event_time.strftime("%Y-%m-%d")
+        self.stats["daily_counts"][day_key] += 1
+    
     def _extract_region(self, text: str, strict: bool = False) -> str | None:
         """从文本中提取地区（省份）信息"""
         if not text:
@@ -417,6 +444,8 @@ class StatisticsManager:
                 },
                 "recent_pushes": [],
                 "recent_event_ids": [],
+                "hourly_counts": defaultdict(int),
+                "daily_counts": defaultdict(int),
             }
             # 清空内存中的去重集合
             self._recorded_event_ids.clear()
@@ -582,3 +611,53 @@ class StatisticsManager:
             text.append(f"{source}: {count}")
 
         return "\n".join(text)
+    
+    def get_trend_data(self, hours: int = 24) -> list[dict[str, Any]]:
+        """获取趋势数据（最近N小时）"""
+        from datetime import datetime, timedelta, timezone
+        
+        result = []
+        now = datetime.now(timezone.utc)
+        tz_beijing = timezone(timedelta(hours=8))
+        
+        for i in range(hours):
+            time_point = now - timedelta(hours=hours - i - 1)
+            # 统计键名仍使用 UTC (保持与存储一致)
+            hour_key_utc = time_point.strftime("%Y-%m-%d %H:00")
+            
+            # 展示时间转换为 UTC+8
+            time_point_beijing = time_point.astimezone(tz_beijing)
+            display_time = time_point_beijing.strftime("%m-%d %H:00")
+            
+            count = self.stats["hourly_counts"].get(hour_key_utc, 0)
+            result.append({
+                "time": display_time,
+                "count": count
+            })
+        
+        return result
+    
+    def get_heatmap_data(self, days: int = 180) -> list[dict[str, Any]]:
+        """获取日历热力图数据（最近N天）"""
+        from datetime import datetime, timedelta, timezone
+        
+        result = []
+        now = datetime.now(timezone.utc)
+        tz_beijing = timezone(timedelta(hours=8))
+        
+        for i in range(days):
+            date_point = now - timedelta(days=days - i - 1)
+            # 统计键名使用 UTC 日期 (保持与存储一致)
+            day_key_utc = date_point.strftime("%Y-%m-%d")
+            
+            # 获取该点对应的北京时间日期
+            date_point_beijing = date_point.astimezone(tz_beijing)
+            display_date = date_point_beijing.strftime("%Y-%m-%d")
+            
+            count = self.stats["daily_counts"].get(day_key_utc, 0)
+            result.append({
+                "date": display_date,
+                "count": count
+            })
+        
+        return result

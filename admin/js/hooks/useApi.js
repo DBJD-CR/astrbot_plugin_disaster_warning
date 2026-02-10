@@ -36,6 +36,9 @@ function useApi() {
 
     const getGeoLocation = async () => fetchData('/geolocate');
 
+    const getTrend = (hours = 24) => fetchData(`/trend?hours=${hours}`);
+    const getHeatmap = (days = 180) => fetchData(`/heatmap?days=${days}`);
+
     return {
         getStatus,
         getStatistics,
@@ -45,6 +48,8 @@ function useApi() {
         updateConfig,
         sendSimulation,
         getSimulationParams,
-        getGeoLocation
+        getGeoLocation,
+        getTrend,
+        getHeatmap
     };
 }
