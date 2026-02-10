@@ -1328,25 +1328,35 @@ class MessageLogger:
             date_range = {"start": None, "end": None}
             file_size_mb = self.log_file_path.stat().st_size / (1024 * 1024)
 
-            # 检查是否有轮转的旧日志文件并计算总大小
+            # 检查是否有轮转的旧日志文件并计算总大小和条目数
             for i in range(1, self.max_files + 1):
                 old_file = self.log_file_path.with_suffix(f".log.{i}")
                 if old_file.exists():
                     file_size_mb += old_file.stat().st_size / (1024 * 1024)
+                    # 统计旧日志文件中的条目
+                    try:
+                        with open(old_file, encoding="utf-8") as f:
+                            old_content = f.read()
+                            # 直接统计时间戳标记出现的次数，避免 split 分割符带来的重复计算问题
+                            entry_count += old_content.count("🕐 日志写入时间:")
+                    except Exception as e:
+                        logger.debug(f"[灾害预警] 读取旧日志文件 {old_file} 失败: {e}")
 
-            # 读取文件内容
+            # 读取当前日志文件内容
             with open(self.log_file_path, encoding="utf-8") as f:
                 content = f.read()
 
-            # 按分隔符分割条目
-            entries = content.split(f"\n{'=' * 35}\n")
+            # 统计当前日志文件中的条目
+            entry_count += content.count("🕐 日志写入时间:")
 
+            # 按分隔符分割条目 (仅用于提取最近的日志详情，不用于计数)
+            entries = content.split(f"\n{'=' * 35}\n")
+            
+            # 重新遍历 entries 仅为了提取 date_range 和 sources，不进行计数
             for entry in entries:
                 entry = entry.strip()
                 if not entry or not entry.startswith("🕐 日志写入时间:"):
                     continue
-
-                entry_count += 1
 
                 try:
                     # 提取基本信息
