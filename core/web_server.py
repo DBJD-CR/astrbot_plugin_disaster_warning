@@ -13,6 +13,7 @@ from astrbot.api import logger
 
 from ..utils.geolocation import close_geoip_session, fetch_location_from_ip
 from ..utils.version import get_plugin_version
+from .config_validator import ConfigValidator
 
 try:
     import uvicorn
@@ -663,6 +664,9 @@ class WebAdminServer:
         async def update_full_config(config_data: dict[str, Any]):
             """更新完整配置"""
             try:
+                # 1. 创建当前配置的副本 (转换为普通 dict)
+                current_config_dict = dict(self.config)
+
                 # 定义递归更新函数
                 def deep_update(target, updates):
                     for k, v in updates.items():
@@ -675,15 +679,22 @@ class WebAdminServer:
                         else:
                             target[k] = v
 
-                # 递归更新 Config 对象
-                deep_update(self.config, config_data)
+                # 2. 应用更新到副本
+                deep_update(current_config_dict, config_data)
 
-                # 保存配置
-                # 假设 AstrBotConfig 有 save_config 方法，参考 main.py 的 usage
+                # 3. 执行校验
+                validated_config = ConfigValidator.validate(current_config_dict)
+
+                # 4. 将校验后的配置回写到 self.config
+                # 注意：self.config 是 AstrBotConfig 对象，我们需要逐项更新
+                for key, value in validated_config.items():
+                    self.config[key] = value
+
+                # 5. 保存配置
                 if hasattr(self.config, "save_config"):
                     self.config.save_config()
 
-                return {"success": True, "message": "配置已保存"}
+                return {"success": True, "message": "配置已校验并保存"}
             except Exception as e:
                 logger.error(f"[灾害预警] 保存配置失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)

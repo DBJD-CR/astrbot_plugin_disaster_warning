@@ -1,6 +1,19 @@
 const { Box, TextField, Switch, FormControlLabel, Typography, Button, Accordion, AccordionSummary, AccordionDetails, Divider, Paper, Chip } = MaterialUI;
 const { useState, useEffect } = React;
 
+// 辅助函数：获取所有可展开的路径
+const getAllExpandablePaths = (schema, prefix = '') => {
+    let paths = [];
+    Object.entries(schema).forEach(([key, value]) => {
+        const currentPath = prefix ? `${prefix}.${key}` : key;
+        if (value.type === 'object' && value.items) {
+            paths.push(currentPath);
+            paths = paths.concat(getAllExpandablePaths(value.items, currentPath));
+        }
+    });
+    return paths;
+};
+
 // 为不同配置类型定义图标
 const CONFIG_ICONS = {
     enabled: '🔌',
@@ -30,8 +43,11 @@ const CONFIG_ICONS = {
  * @param {any} props.value - 当前值
  * @param {Function} props.onChange - 值变更回调
  * @param {number} props.depth - 嵌套深度 (用于缩进和样式)
+ * @param {string} props.path - 当前字段路径
+ * @param {Array} props.expandedKeys - 已展开的路径列表
+ * @param {Function} props.onToggleExpand - 切换展开状态的回调
  */
-function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
+function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', expandedKeys = [], onToggleExpand = () => {} }) {
     const [localValue, setLocalValue] = useState(value);
 
     useEffect(() => {
@@ -44,9 +60,12 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
     };
 
     const icon = CONFIG_ICONS[fieldKey] || '⚙️';
+    const currentPath = path ? `${path}.${fieldKey}` : fieldKey;
 
     // 对象类型 (后端使用 'object' + 'items')
     if (schema.type === 'object' && schema.items) {
+        const isExpanded = expandedKeys.includes(currentPath);
+
         return (
             <Paper
                 elevation={depth === 0 ? 2 : 0}
@@ -64,7 +83,8 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
                 }}
             >
                 <Accordion
-                    defaultExpanded={false}
+                    expanded={isExpanded}
+                    onChange={() => onToggleExpand(currentPath)}
                     elevation={0}
                     sx={{
                         '&:before': { display: 'none' },
@@ -123,7 +143,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
                             )}
                             {depth > 0 && (
                                 <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600, mr: 0.5 }}>
-                                    可展开 →
+                                    {isExpanded ? '收起' : '展开'}
                                 </Typography>
                             )}
                         </Box>
@@ -138,6 +158,9 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
                                     value={localValue?.[key]}
                                     onChange={(newValue) => handleChange({ ...localValue, [key]: newValue })}
                                     depth={depth + 1}
+                                    path={currentPath}
+                                    expandedKeys={expandedKeys}
+                                    onToggleExpand={onToggleExpand}
                                 />
                             ))}
                         </Box>
@@ -166,6 +189,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
                 }}
             >
                 <FormControlLabel
+                    labelPlacement="start"
                     control={
                         <Switch
                             checked={localValue !== undefined ? localValue : (schema.default || false)}
@@ -274,7 +298,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
                     rows={3}
                     size="small"
                     value={Array.isArray(localValue) ? localValue.join('\n') : ''}
-                    onChange={(e) => handleChange(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
+                    onChange={(e) => handleChange(e.target.value.split('\n'))}
                     placeholder="每行一项"
                     variant="outlined"
                     sx={{
@@ -368,6 +392,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0 }) {
 function ConfigRenderer() {
     const [schema, setSchema] = useState(null);
     const [config, setConfig] = useState(null);
+    const [expandedKeys, setExpandedKeys] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const api = useApi();
@@ -375,6 +400,20 @@ function ConfigRenderer() {
     useEffect(() => {
         loadConfig();
     }, []);
+
+    // 自动保存草稿
+    useEffect(() => {
+        if (config) {
+            localStorage.setItem('astrbot_plugin_dw_draft_config', JSON.stringify(config));
+        }
+    }, [config]);
+
+    // 自动保存展开状态
+    useEffect(() => {
+        if (schema) { // 确保 schema 加载后再保存，避免初始化时的空状态覆盖
+            localStorage.setItem('astrbot_plugin_dw_expanded_keys', JSON.stringify(expandedKeys));
+        }
+    }, [expandedKeys, schema]);
 
     const loadConfig = async () => {
         try {
@@ -384,8 +423,40 @@ function ConfigRenderer() {
             ]);
             console.log('[ConfigRenderer] Schema:', schemaData);
             console.log('[ConfigRenderer] Config:', configData);
+
+            // 1. 处理配置记忆 (草稿)
+            const draftConfigStr = localStorage.getItem('astrbot_plugin_dw_draft_config');
+            let finalConfig = configData;
+            if (draftConfigStr) {
+                try {
+                    const draftConfig = JSON.parse(draftConfigStr);
+                    // 简单校验：如果草稿是对象且不为空，则使用草稿
+                    if (draftConfig && typeof draftConfig === 'object') {
+                        finalConfig = draftConfig;
+                        console.log('已恢复本地草稿配置');
+                    }
+                } catch (e) {
+                    console.error('解析草稿配置失败', e);
+                }
+            }
+
+            // 2. 处理展开状态记忆
+            const cachedExpandedStr = localStorage.getItem('astrbot_plugin_dw_expanded_keys');
+            let finalExpandedKeys = [];
+            if (cachedExpandedStr) {
+                try {
+                    finalExpandedKeys = JSON.parse(cachedExpandedStr);
+                } catch (e) {
+                    console.error('解析展开状态失败', e);
+                }
+            } else {
+                // 默认全展开
+                finalExpandedKeys = getAllExpandablePaths(schemaData);
+            }
+
             setSchema(schemaData);
-            setConfig(configData);
+            setConfig(finalConfig);
+            setExpandedKeys(finalExpandedKeys);
         } catch (e) {
             console.error('加载配置失败', e);
             alert('加载配置失败,请检查控制台');
@@ -394,10 +465,51 @@ function ConfigRenderer() {
         }
     };
 
+    const handleToggleExpand = (path) => {
+        setExpandedKeys(prev => {
+            if (prev.includes(path)) {
+                return prev.filter(p => p !== path);
+            } else {
+                return [...prev, path];
+            }
+        });
+    };
+
+    const handleToggleAll = () => {
+        if (expandedKeys.length > 0) {
+            setExpandedKeys([]); // 全部收起
+        } else {
+            setExpandedKeys(getAllExpandablePaths(schema)); // 全部展开
+        }
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
-            await api.updateConfig(config);
+            // 递归清理配置数据：去除数组中的空项和首尾空格
+            const cleanConfig = (obj) => {
+                if (Array.isArray(obj)) {
+                    return obj
+                        .map(item => typeof item === 'string' ? item.trim() : item)
+                        .filter(item => item !== '');
+                }
+                if (obj && typeof obj === 'object') {
+                    const newObj = {};
+                    for (const key in obj) {
+                        newObj[key] = cleanConfig(obj[key]);
+                    }
+                    return newObj;
+                }
+                return obj;
+            };
+
+            const cleanedConfig = cleanConfig(config);
+            await api.updateConfig(cleanedConfig);
+            setConfig(cleanedConfig); // 更新界面显示为清理后的数据
+            
+            // 保存成功后，更新草稿为已清理的配置（或者清除草稿？为了防止意外，保留最新状态比较好）
+            localStorage.setItem('astrbot_plugin_dw_draft_config', JSON.stringify(cleanedConfig));
+            
             alert('✅ 配置已保存');
         } catch (e) {
             console.error('保存配置失败', e);
@@ -426,13 +538,13 @@ function ConfigRenderer() {
     }
 
     return (
-        <Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             {/* 配置项列表 */}
             <Box sx={{
-                maxHeight: '65vh',
+                flex: 1,
                 overflowY: 'auto',
-                px: 1.5,
-                py: 0.5,
+                px: 3,
+                py: 2,
                 '&::-webkit-scrollbar': {
                     width: '6px',
                 },
@@ -448,42 +560,84 @@ function ConfigRenderer() {
                     }
                 }
             }}>
-                {Object.entries(schema).map(([key, subSchema]) => (
-                    <ConfigField
-                        key={key}
-                        fieldKey={key}
-                        schema={subSchema}
-                        value={config[key]}
-                        onChange={(newValue) => setConfig({ ...config, [key]: newValue })}
-                    />
-                ))}
+                <Box sx={{
+                    columnCount: { xs: 1, lg: 2 },
+                    columnGap: 2,
+                    '& > *': {
+                        breakInside: 'avoid',
+                        marginBottom: 2
+                    }
+                }}>
+                    {Object.entries(schema).map(([key, subSchema]) => (
+                        <Box key={key} sx={{ display: 'inline-block', width: '100%' }}>
+                            <ConfigField
+                                fieldKey={key}
+                                schema={subSchema}
+                                value={config[key]}
+                                onChange={(newValue) => setConfig({ ...config, [key]: newValue })}
+                                path=""
+                                expandedKeys={expandedKeys}
+                                onToggleExpand={handleToggleExpand}
+                            />
+                        </Box>
+                    ))}
+                </Box>
             </Box>
 
             {/* 底部操作栏 */}
             <Box sx={{
-                position: 'sticky',
-                bottom: 0,
-                bgcolor: 'background.paper',
-                borderTop: 2,
-                borderColor: 'primary.main',
-                mt: 1.5,
-                px: 2.5,
+                flexShrink: 0,
+                bgcolor: 'rgba(255, 255, 255, 0.9)',
+                backdropFilter: 'blur(8px)',
+                borderTop: '1px solid',
+                borderColor: 'divider',
+                px: 3,
                 py: 2,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.08)'
+                boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.05)',
+                zIndex: 10
             }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                    {Object.keys(schema).length} 个配置组
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                        {Object.keys(schema).length} 个配置组
+                    </Typography>
+                    <Button
+                        onClick={handleToggleAll}
+                        size="small"
+                        variant="text"
+                        sx={{ minWidth: 'auto', px: 1 }}
+                    >
+                        {expandedKeys.length > 0 ? '全部收起' : '全部展开'}
+                    </Button>
+                </Box>
                 <Box sx={{ display: 'flex', gap: 1.5 }}>
                     <Button
-                        onClick={loadConfig}
+                        onClick={() => {
+                            if (confirm('⚠️ 确定要恢复出厂设置吗？\n\n这将覆盖当前所有配置项为默认值（需要点击“保存配置”才能生效）。')) {
+                                const generateDefaults = (s) => {
+                                    const c = {};
+                                    Object.entries(s).forEach(([k, v]) => {
+                                        if (v.type === 'object' && v.items) {
+                                            c[k] = generateDefaults(v.items);
+                                        } else {
+                                            c[k] = v.default !== undefined ? v.default : null;
+                                        }
+                                    });
+                                    return c;
+                                };
+                                
+                                const defaults = generateDefaults(schema);
+                                setConfig(defaults);
+                                localStorage.removeItem('astrbot_plugin_dw_draft_config');
+                            }
+                        }}
                         disabled={saving}
                         variant="outlined"
+                        color="error"
                         size="medium"
-                        startIcon={<span>🔄</span>}
+                        startIcon={<span>🗑️</span>}
                         sx={{
                             minWidth: 100,
                             borderRadius: 2,
@@ -492,7 +646,28 @@ function ConfigRenderer() {
                             '&:hover': { borderWidth: 1.5 }
                         }}
                     >
-                        重置
+                        恢复默认
+                    </Button>
+                    <Button
+                        onClick={() => {
+                            if (confirm('确定要撤销所有未保存的更改吗？\n\n这将重新加载服务器上已保存的配置。')) {
+                                localStorage.removeItem('astrbot_plugin_dw_draft_config');
+                                loadConfig();
+                            }
+                        }}
+                        disabled={saving}
+                        variant="outlined"
+                        size="medium"
+                        startIcon={<span>↩️</span>}
+                        sx={{
+                            minWidth: 100,
+                            borderRadius: 2,
+                            borderWidth: 1.5,
+                            fontSize: '0.875rem',
+                            '&:hover': { borderWidth: 1.5 }
+                        }}
+                    >
+                        撤销更改
                     </Button>
                     <Button
                         variant="contained"

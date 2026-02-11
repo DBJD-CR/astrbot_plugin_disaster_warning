@@ -124,7 +124,7 @@
 
 ### 🔁 事件去重功能
 
-插件具备基础的事件去重功能，防止同一地震事件被同一个数据源重复推送。
+插件具备基础的事件去重功能，并优先基于事件 ID 进行去重。此外在缺少事件 ID 的情况下，也有一套基础去重规则，防止同一地震事件被同一个数据源重复推送。
 
 **基础去重规则**：
 
@@ -905,13 +905,25 @@ AstrBot/
    └─ plugins/
       └─ astrbot_plugin_disaster_warning/
          ├─ __init__.py                    # Python 包初始化文件，支持相对导入
-         ├─ _conf_schema.json              # WebUI 配置界面 schema 定义
+         ├─ _conf_schema.json              # AstrBot WebUI 配置界面 schema 定义
+         ├─ CHANGELOG.md                   # 插件更新日志，适用于 AstrBot v4.11.2+
+         ├─ CONTRIBUTING.md                # 本插件的贡献指南
          ├─ main.py                        # 插件主入口文件，包含命令处理
          ├─ metadata.yaml                  # 插件元数据信息
          ├─ README.md                      # 插件说明文档
          ├─ requirements.txt               # 插件依赖列表
          ├─ logo.png                       # 插件 Logo，适用于 AstrBot v4.5.0+
          ├─ LICENSE                        # 许可证文件
+         ├─ admin/                         # Web 管理端前端资源
+         │   ├─ index.html                 # 管理端入口
+         │   ├─ css/                       # 样式文件目录
+         │   └─ js/                        # 前端逻辑脚本目录
+         │       ├─ app.jsx                # React 应用入口
+         │       ├─ components/            # UI 组件 (图表、卡片、模态框等)
+         │       ├─ context/               # 全局状态管理
+         │       ├─ hooks/                 # 自定义 React Hooks
+         │       ├─ utils/                 # 前端工具函数
+         │       └─ views/                 # 页面视图组件
          ├─ core/                          # 核心模块目录
          │   ├─ __init__.py
          │   ├─ disaster_service.py        # 核心灾害预警服务
@@ -924,6 +936,7 @@ AstrBot/
          │   ├─ message_logger.py          # 原始消息记录器
          │   ├─ telemetry_manager.py       # 匿名遥测管理器
          │   ├─ statistics_manager.py      # 统计数据持久化管理器
+         │   ├─ web_server.py              # Web 管理服务器 (FastAPI)
          │   ├─ handlers/                  # 数据处理器目录
          │   │   ├─ __init__.py
          │   │   ├─ base.py                # 基础处理器类
@@ -950,6 +963,7 @@ AstrBot/
          │   ├─ __init__.py
          │   ├─ converters.py              # 数据类型转换工具
          │   ├─ fe_regions.py              # FE地震区划中文翻译
+         │   ├─ geolocation.py             # IP 地理定位工具
          │   ├─ time_converter.py          # 时间格式转换工具
          │   ├─ version.py                 # 获取插件版本号的工具
          │   └─ formatters/                # 消息格式化器目录

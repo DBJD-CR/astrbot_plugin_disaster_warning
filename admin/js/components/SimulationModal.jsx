@@ -32,6 +32,16 @@ function SimulationModal({ open, onClose }) {
         }
     }, [open]);
 
+    // 当测试格式改变时，自动更新数据源字段
+    useEffect(() => {
+        if (testType) {
+            setCustomParams(prev => ({
+                ...prev,
+                source: testType
+            }));
+        }
+    }, [testType]);
+
     // 加载后端支持的模拟参数配置（灾害类型、测试格式等）
     const loadParams = async () => {
         try {
@@ -93,7 +103,13 @@ function SimulationModal({ open, onClose }) {
     const getTestTypeOptions = () => {
         if (!params || !disasterType) return [];
         const typeData = params.disaster_types[disasterType];
-        return Object.keys(typeData?.test_formats || {});
+        // 修复：后端返回的是 formats 数组，不是 test_formats 对象
+        return typeData?.formats || [];
+    };
+
+    const getTargetSessionOptions = () => {
+        if (!params || !params.target_sessions) return [];
+        return params.target_sessions;
     };
 
     return (
@@ -102,15 +118,25 @@ function SimulationModal({ open, onClose }) {
             <DialogContent>
                 <Box sx={{ py: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {/* 目标会话 */}
-                    <TextField
-                        fullWidth
-                        label="目标会话"
-                        placeholder="留空发送到第一个配置的会话"
-                        value={targetGroup}
-                        onChange={(e) => setTargetGroup(e.target.value)}
-                        size="small"
-                        helperText="可选,指定要发送到的会话"
-                    />
+                    <FormControl fullWidth size="small">
+                        <InputLabel shrink>目标会话</InputLabel>
+                        <Select
+                            value={targetGroup}
+                            label="目标会话"
+                            onChange={(e) => setTargetGroup(e.target.value)}
+                            displayEmpty
+                            notched
+                        >
+                            <MenuItem value="">
+                                <em>默认 (第一个配置的会话)</em>
+                            </MenuItem>
+                            {getTargetSessionOptions().map((session, index) => (
+                                <MenuItem key={index} value={session}>
+                                    {session}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
 
                     <Divider />
 
@@ -138,14 +164,16 @@ function SimulationModal({ open, onClose }) {
                     {/* 测试格式 */}
                     {disasterType && (
                         <FormControl fullWidth size="small">
-                            <InputLabel>测试格式</InputLabel>
+                            <InputLabel>测试格式 (数据源模板)</InputLabel>
                             <Select
                                 value={testType}
-                                label="测试格式"
+                                label="测试格式 (数据源模板)"
                                 onChange={(e) => setTestType(e.target.value)}
                             >
-                                {getTestTypeOptions().map(type => (
-                                    <MenuItem key={type} value={type}>{type}</MenuItem>
+                                {getTestTypeOptions().map(format => (
+                                    <MenuItem key={format.value} value={format.value}>
+                                        {format.label}
+                                    </MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
@@ -209,14 +237,20 @@ function SimulationModal({ open, onClose }) {
                                 sx={{ gridColumn: '1 / -1' }}
                             />
 
-                            <TextField
-                                fullWidth
-                                label="数据源"
-                                size="small"
-                                value={customParams.source}
-                                onChange={(e) => setCustomParams({ ...customParams, source: e.target.value })}
-                                sx={{ gridColumn: '1 / -1' }}
-                            />
+                            <FormControl fullWidth size="small" sx={{ gridColumn: '1 / -1' }}>
+                                <InputLabel>数据源</InputLabel>
+                                <Select
+                                    value={customParams.source}
+                                    label="数据源"
+                                    onChange={(e) => setCustomParams({ ...customParams, source: e.target.value })}
+                                >
+                                    {getTestTypeOptions().map(format => (
+                                        <MenuItem key={format.value} value={format.value}>
+                                            {format.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
                         </Box>
                     )}
 

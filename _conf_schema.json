@@ -643,7 +643,7 @@
         "hint": "单位：秒",
         "default": 15,
         "slider": {
-          "min": 1,
+          "min": 5,
           "max": 120,
           "step": 1
         }

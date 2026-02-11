@@ -91,34 +91,60 @@ function ConnectionsGrid() {
 
                     {/* 子数据源状态展示 */}
                     {conn.sub_sources && Object.keys(conn.sub_sources).length > 0 && (
-                        <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-                            <Typography variant="caption" sx={{ opacity: 0.5, display: 'block', mb: 0.5, fontSize: '10px' }}>
-                                已启用数据源
+                        <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="caption" sx={{ opacity: 0.6, display: 'block', mb: 1, fontSize: '11px', fontWeight: 600 }}>
+                                数据源详情
                             </Typography>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {Object.entries(conn.sub_sources).map(([key, enabled]) => {
-                                    if (!enabled) return null;
-                                    // 使用全局 formatSourceName (如果可用) 或回退到 key
-                                    // 注意：formatSourceName 定义在 index.html 引入的 formatters.js 中
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+                                {Object.entries(conn.sub_sources)
+                                    .sort(([, a], [, b]) => (a === b ? 0 : a ? -1 : 1))
+                                    .map(([key, enabled]) => {
                                     const friendlyName = window.formatSourceName ? window.formatSourceName(key) : key;
                                     
                                     return (
-                                        <span key={key} style={{
-                                            fontSize: '10px',
-                                            background: 'var(--md-sys-color-surface-variant)',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                            opacity: 0.8,
-                                            border: '1px solid rgba(0,0,0,0.05)',
-                                            display: 'block',
-                                            width: 'fit-content'
+                                        <Box key={key} sx={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            p: 0.75,
+                                            borderRadius: 1,
+                                            bgcolor: enabled ? 'rgba(76, 175, 80, 0.08)' : 'action.hover',
+                                            border: '1px solid',
+                                            borderColor: enabled ? 'rgba(76, 175, 80, 0.2)' : 'divider',
+                                            transition: 'all 0.2s'
                                         }}>
-                                            {friendlyName}
-                                        </span>
+                                            <Box sx={{
+                                                width: 6,
+                                                height: 6,
+                                                borderRadius: '50%',
+                                                bgcolor: enabled ? 'success.main' : 'text.disabled',
+                                                mr: 1,
+                                                flexShrink: 0,
+                                                boxShadow: enabled ? '0 0 4px rgba(76, 175, 80, 0.4)' : 'none'
+                                            }} />
+                                            <Typography sx={{
+                                                fontSize: '11px',
+                                                fontWeight: enabled ? 600 : 400,
+                                                color: enabled ? 'text.primary' : 'text.secondary',
+                                                flex: 1,
+                                                lineHeight: 1.2
+                                            }}>
+                                                {friendlyName}
+                                            </Typography>
+                                            {!enabled && (
+                                                <Typography sx={{
+                                                    fontSize: '10px',
+                                                    color: 'text.disabled',
+                                                    ml: 0.5,
+                                                    fontWeight: 500
+                                                }}>
+                                                    OFF
+                                                </Typography>
+                                            )}
+                                        </Box>
                                     );
                                 })}
-                            </div>
-                        </div>
+                            </Box>
+                        </Box>
                     )}
                 </div>
             ))}
