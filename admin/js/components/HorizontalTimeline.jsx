@@ -23,7 +23,7 @@ function HorizontalTimeline({ style }) {
             return false;
         });
 
-        // 按时间倒序排列 (左边是最新的)
+        // 按时间倒序排列获取最新的 5 个，然后反转（右边是最新的）
         return majorEvents
             .slice()
             .sort((a, b) => {
@@ -31,7 +31,8 @@ function HorizontalTimeline({ style }) {
                 const timeB = new Date(b.time || b.timestamp).getTime();
                 return timeB - timeA;
             })
-            .slice(0, 5);
+            .slice(0, 5)
+            .reverse();
     }, [events]);
 
     if (timelineItems.length === 0) {
@@ -105,7 +106,7 @@ function HorizontalTimeline({ style }) {
                 }}>
                     {timelineItems.map((item, index) => {
                         const color = getEventColor(item);
-                        const isLatest = index === 0;
+                        const isLatest = index === timelineItems.length - 1;
 
                         return (
                             <div key={index} style={{ 
