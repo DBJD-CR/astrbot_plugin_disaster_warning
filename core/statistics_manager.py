@@ -47,6 +47,7 @@ class StatisticsManager:
                 "by_region": defaultdict(int),  # 按地区统计
             },
             "recent_pushes": [],  # 最近推送记录详情，用于展示
+            "major_events": [],  # 重大事件列表，用于回溯 (M>=5.0, 海啸, 红/橙预警)
             "recent_event_ids": [],  # 最近处理的事件ID列表，用于重启后去重
             "hourly_counts": defaultdict(int),  # 小时级别统计，用于趋势图
             "daily_counts": defaultdict(int),  # 日级别统计，用于热力图
@@ -97,143 +98,178 @@ class StatisticsManager:
                     self._record_earthquake_stats(event.data)
                 elif isinstance(event.data, WeatherAlarmData):
                     self._record_weather_stats(event.data)
-                
+
                 # 3. 时间序列统计 (仅统计独立事件)
                 self._record_time_series(event)
 
-            # 3. 更新最近记录
+            # 更新最近记录 (包括 recent_pushes 和 major_events)
             # 智能合并逻辑：针对同一数据源的同一地震事件（通过 event_id 标识），合并更新记录
-            # 适用于所有地震类型（预警和情报），只要数据源支持多次更新
-            is_merged = False
 
-            if isinstance(event.data, EarthquakeData):
-                # 获取真实的物理事件ID (优先使用 data.event_id，它是跨报文的唯一标识)
-                real_event_id = event.data.event_id
+            # 判断是否为重大事件
+            is_major = self._is_major_event(event)
 
-                if real_event_id:
-                    for i, record in enumerate(self.stats["recent_pushes"]):
-                        # 严格检查：必须是同源 且 同一物理事件ID
-                        # 注意：record.get("real_event_id") 是新字段，旧记录可能没有，回退检查 event_id
-                        rec_source = record.get("source")
-                        rec_real_id = record.get("real_event_id")
-                        rec_legacy_id = record.get("event_id")
+            self._update_push_list(
+                self.stats["recent_pushes"],
+                event,
+                source_id,
+                event_unique_id,
+                current_time,
+                max_len=100,
+            )
 
-                        if rec_source == source_id:
-                            # 匹配逻辑：优先匹配 real_event_id，其次尝试匹配 legacy_id
-                            is_match = False
-                            if rec_real_id and rec_real_id == real_event_id:
-                                is_match = True
-                            elif not rec_real_id and rec_legacy_id == real_event_id:
-                                # 兼容旧记录：如果旧记录没有 real_event_id，但其 event_id 恰好等于当前的 real_event_id
-                                is_match = True
-
-                            # 匹配逻辑：优先匹配 real_event_id，其次尝试匹配 legacy_id
-                            # 新增：尝试匹配 unique_id (指纹)，解决 CWA Report 等数据源 event_id 不稳定的问题
-                            is_match = False
-                            rec_unique_id = record.get("unique_id")
-
-                            if rec_real_id and rec_real_id == real_event_id:
-                                is_match = True
-                            elif not rec_real_id and rec_legacy_id == real_event_id:
-                                # 兼容旧记录：如果旧记录没有 real_event_id，但其 event_id 恰好等于当前的 real_event_id
-                                is_match = True
-                            elif rec_unique_id and rec_unique_id == event_unique_id:
-                                # 指纹匹配：物理属性（时间地点震级）相同，视为同一事件
-                                is_match = True
-
-                            if is_match:
-                                # 1. 保存旧记录到 history (防止历史信息丢失)
-                                old_record = record.copy()
-                                # 移除 history 字段避免嵌套递归
-                                if "history" in old_record:
-                                    del old_record["history"]
-
-                                # 初始化或获取 history 列表
-                                if "history" not in record:
-                                    record["history"] = []
-
-                                # 插入旧记录到 history 顶部
-                                record["history"].insert(0, old_record)
-                                # 限制 history 长度 (例如 50)
-                                if len(record["history"]) > 50:
-                                    record["history"] = record["history"][:50]
-
-                                # 2. 更新当前记录
-                                record["timestamp"] = current_time
-                                record["event_id"] = event.id  # 更新为最新报文的ID
-                                record["real_event_id"] = (
-                                    real_event_id  # 确保设置 real_event_id
-                                )
-                                record["unique_id"] = event_unique_id  # 更新指纹
-                                record["description"] = self._get_event_description(
-                                    event
-                                )
-                                record["latitude"] = event.data.latitude
-                                record["longitude"] = event.data.longitude
-                                record["magnitude"] = event.data.magnitude
-                                record["time"] = (
-                                    event.data.shock_time.isoformat()
-                                    if event.data.shock_time
-                                    else None
-                                )
-
-                                # 记录更新次数
-                                record["update_count"] = (
-                                    record.get("update_count", 1) + 1
-                                )
-
-                                # 3. 将更新后的记录移动到列表顶部
-                                updated_record = self.stats["recent_pushes"].pop(i)
-                                self.stats["recent_pushes"].insert(0, updated_record)
-                                is_merged = True
-                                break
-
-            if not is_merged:
-                push_record = {
-                    "timestamp": current_time,
-                    "event_id": event.id,
-                    "type": event.disaster_type.value,
-                    "source": source_id,
-                    "description": self._get_event_description(event),
-                    "unique_id": event_unique_id,  # 记录唯一指纹
-                    "update_count": 1,
-                }
-
-                # 为地震事件添加坐标和震级信息
-                if isinstance(event.data, EarthquakeData):
-                    push_record["latitude"] = event.data.latitude
-                    push_record["longitude"] = event.data.longitude
-                    push_record["magnitude"] = event.data.magnitude
-                    push_record["time"] = (
-                        event.data.shock_time.isoformat()
-                        if event.data.shock_time
-                        else None
-                    )
-                    push_record["real_event_id"] = event.data.event_id  # 记录物理事件ID
-                elif isinstance(event.data, WeatherAlarmData):
-                    push_record["time"] = (
-                        event.data.issue_time.isoformat()
-                        if event.data.issue_time
-                        else None
-                    )
-                elif isinstance(event.data, TsunamiData):
-                    push_record["time"] = (
-                        event.data.issue_time.isoformat()
-                        if event.data.issue_time
-                        else None
-                    )
-
-                self.stats["recent_pushes"].insert(0, push_record)
-
-            # 保持最近记录数量限制
-            if len(self.stats["recent_pushes"]) > 100:
-                self.stats["recent_pushes"] = self.stats["recent_pushes"][:100]
+            if is_major:
+                self._update_push_list(
+                    self.stats["major_events"],
+                    event,
+                    source_id,
+                    event_unique_id,
+                    current_time,
+                    max_len=50,
+                )
 
             # 自动保存
             self.save_stats()
 
         except Exception as e:
             logger.error(f"[灾害预警] 记录统计数据失败: {e}")
+
+    def _is_major_event(self, event: DisasterEvent) -> bool:
+        """判断是否为重大事件"""
+        if isinstance(event.data, EarthquakeData):
+            # 地震：M >= 5.0
+            return event.data.magnitude is not None and event.data.magnitude >= 5.0
+        elif isinstance(event.data, TsunamiData):
+            # 海啸：全部计入
+            return True
+        elif isinstance(event.data, WeatherAlarmData):
+            # 气象：红色或橙色预警
+            level = event.data.alert_level or ""
+            headline = event.data.headline or ""
+            # 检查级别字段或标题中是否包含关键字
+            if "红" in level or "橙" in level:
+                return True
+            if "红" in headline or "橙" in headline:
+                return True
+        return False
+
+    def _update_push_list(
+        self,
+        target_list: list,
+        event: DisasterEvent,
+        source_id: str,
+        event_unique_id: str,
+        current_time: str,
+        max_len: int = 100,
+    ):
+        """更新推送列表 (支持合并更新)"""
+        is_merged = False
+
+        if isinstance(event.data, EarthquakeData):
+            # 获取真实的物理事件ID (优先使用 data.event_id，它是跨报文的唯一标识)
+            real_event_id = event.data.event_id
+
+            if real_event_id:
+                for i, record in enumerate(target_list):
+                    # 严格检查：必须是同源 且 同一物理事件ID
+                    rec_source = record.get("source")
+                    rec_real_id = record.get("real_event_id")
+                    rec_legacy_id = record.get("event_id")
+
+                    if rec_source == source_id:
+                        # 匹配逻辑：优先匹配 real_event_id，其次尝试匹配 legacy_id
+                        # 新增：尝试匹配 unique_id (指纹)，解决 CWA Report 等数据源 event_id 不稳定的问题
+                        is_match = False
+                        rec_unique_id = record.get("unique_id")
+
+                        if rec_real_id and rec_real_id == real_event_id:
+                            is_match = True
+                        elif not rec_real_id and rec_legacy_id == real_event_id:
+                            # 兼容旧记录：如果旧记录没有 real_event_id，但其 event_id 恰好等于当前的 real_event_id
+                            is_match = True
+                        elif rec_unique_id and rec_unique_id == event_unique_id:
+                            # 指纹匹配：物理属性（时间地点震级）相同，视为同一事件
+                            is_match = True
+
+                        if is_match:
+                            # 1. 保存旧记录到 history (防止历史信息丢失)
+                            old_record = record.copy()
+                            if "history" in old_record:
+                                del old_record["history"]
+
+                            if "history" not in record:
+                                record["history"] = []
+
+                            record["history"].insert(0, old_record)
+                            if len(record["history"]) > 50:
+                                record["history"] = record["history"][:50]
+
+                            # 2. 更新当前记录
+                            record["timestamp"] = current_time
+                            record["event_id"] = event.id
+                            record["real_event_id"] = real_event_id
+                            record["unique_id"] = event_unique_id
+                            record["description"] = self._get_event_description(event)
+                            record["latitude"] = event.data.latitude
+                            record["longitude"] = event.data.longitude
+                            record["magnitude"] = event.data.magnitude
+                            record["time"] = (
+                                event.data.shock_time.isoformat()
+                                if event.data.shock_time
+                                else None
+                            )
+                            record["update_count"] = record.get("update_count", 1) + 1
+
+                            # 3. 将更新后的记录移动到列表顶部
+                            updated_record = target_list.pop(i)
+                            target_list.insert(0, updated_record)
+                            is_merged = True
+                            break
+
+        if not is_merged:
+            push_record = {
+                "timestamp": current_time,
+                "event_id": event.id,
+                "type": event.disaster_type.value,
+                "source": source_id,
+                "description": self._get_event_description(event),
+                "unique_id": event_unique_id,
+                "update_count": 1,
+            }
+
+            if isinstance(event.data, EarthquakeData):
+                push_record["latitude"] = event.data.latitude
+                push_record["longitude"] = event.data.longitude
+                push_record["magnitude"] = event.data.magnitude
+                push_record["time"] = (
+                    event.data.shock_time.isoformat() if event.data.shock_time else None
+                )
+                push_record["real_event_id"] = event.data.event_id
+            elif isinstance(event.data, WeatherAlarmData):
+                push_record["time"] = (
+                    event.data.issue_time.isoformat() if event.data.issue_time else None
+                )
+                # 保存气象预警类型代码用于前端显示图标
+                if event.data.type:
+                    push_record["weather_type_code"] = event.data.type
+
+                if event.data.alert_level:
+                    push_record["level"] = event.data.alert_level
+                else:
+                    for color in ["红色", "橙色", "黄色", "蓝色"]:
+                        if color in (event.data.headline or ""):
+                            push_record["level"] = color
+                            break
+            elif isinstance(event.data, TsunamiData):
+                push_record["time"] = (
+                    event.data.issue_time.isoformat() if event.data.issue_time else None
+                )
+                push_record["level"] = event.data.level
+
+            target_list.insert(0, push_record)
+
+        # 保持记录数量限制
+        if len(target_list) > max_len:
+            del target_list[max_len:]
 
     def _get_unique_event_id(self, event: DisasterEvent) -> str:
         """获取用于去重的唯一事件ID - 基于地理位置和震级的模糊匹配"""
@@ -299,12 +335,15 @@ class StatisticsManager:
                     elif "震源" in data.info_type or "各地" in data.info_type:
                         is_reliable = True
 
+            # 如果数据源本身被信任（如手动注入的历史数据），也视为可靠
+            # 这里可以根据需要添加更多信任条件
+
             if is_reliable:
                 current_max = self.stats["earthquake_stats"].get("max_magnitude")
                 if current_max is None or mag > current_max.get("value", 0):
                     # 确保时间为 UTC
                     event_time = self._to_utc_aware(data.shock_time)
-                        
+
                     self.stats["earthquake_stats"]["max_magnitude"] = {
                         "value": mag,
                         "event_id": data.id,
@@ -312,6 +351,23 @@ class StatisticsManager:
                         "time": event_time.isoformat(),
                         "source": data.source.value,  # 记录来源以便调试
                     }
+                # 如果震级相同，比较时间，保留较新的
+                elif mag == current_max.get("value", 0):
+                    event_time = self._to_utc_aware(data.shock_time)
+                    current_time_str = current_max.get("time")
+                    if current_time_str:
+                        try:
+                            current_time = datetime.fromisoformat(current_time_str)
+                            if event_time > current_time:
+                                self.stats["earthquake_stats"]["max_magnitude"] = {
+                                    "value": mag,
+                                    "event_id": data.id,
+                                    "place_name": data.place_name,
+                                    "time": event_time.isoformat(),
+                                    "source": data.source.value,
+                                }
+                        except Exception:
+                            pass
 
             # CENC 正式测定地区统计
             if is_cenc_official:
@@ -349,11 +405,15 @@ class StatisticsManager:
         """将 datetime 统一规范为带 UTC 时区信息的对象"""
         if dt is None:
             return datetime.now(timezone.utc)
-        
+
         if dt.tzinfo is None:
-            # 如果缺少时区信息，假设为 UTC
-            return dt.replace(tzinfo=timezone.utc)
-        
+            # 如果缺少时区信息，默认将其视为 UTC+8 (北京时间) 并转换为 UTC
+            # 因为项目中大多数数据源和处理逻辑倾向于使用 naive datetime 表示北京时间
+            from datetime import timedelta
+
+            cst = timezone(timedelta(hours=8))
+            return dt.replace(tzinfo=cst).astimezone(timezone.utc)
+
         # 统一转换为 UTC
         return dt.astimezone(timezone.utc)
 
@@ -368,18 +428,18 @@ class StatisticsManager:
             event_time = event.data.shock_time
         elif isinstance(event.data, (WeatherAlarmData, TsunamiData)):
             event_time = event.data.issue_time
-        
+
         # 确保 event_time 是带 UTC 时区信息的 datetime 对象
         event_time = self._to_utc_aware(event_time)
-        
+
         # 小时级别的key (用于24小时/7天趋势图)
         hour_key = event_time.strftime("%Y-%m-%d %H:00")
         self.stats["hourly_counts"][hour_key] += 1
-        
+
         # 日级别的key (用于日历热力图)
         day_key = event_time.strftime("%Y-%m-%d")
         self.stats["daily_counts"][day_key] += 1
-    
+
     def _extract_region(self, text: str, strict: bool = False) -> str | None:
         """从文本中提取地区（省份）信息"""
         if not text:
@@ -458,6 +518,7 @@ class StatisticsManager:
                     "by_region": defaultdict(int),
                 },
                 "recent_pushes": [],
+                "major_events": [],
                 "recent_event_ids": [],
                 "hourly_counts": defaultdict(int),
                 "daily_counts": defaultdict(int),
@@ -490,6 +551,30 @@ class StatisticsManager:
 
         except Exception as e:
             logger.error(f"[灾害预警] 加载统计数据失败: {e}")
+
+        # [Auto-Fix] 修复已知的历史最大地震时区错误 (一次性修复)
+        # 问题描述：旧版本将 naive 的北京时间误作为 UTC 存储，导致前端显示时间快了8小时
+        # 修正逻辑：如果检测到最大地震记录为 M6.2 智利且时间为 21:34 (UTC)，则修正为 13:34 (UTC)
+        # 此段代码后续版本将视情况移除
+        try:
+            max_mag = self.stats.get("earthquake_stats", {}).get("max_magnitude")
+            # 严格匹配特征：震级6.2，智利，且时间包含 21:34 (说明被错误+8小时)
+            if (
+                max_mag
+                and max_mag.get("value") == 6.2
+                and "智利" in max_mag.get("place_name", "")
+                and "21:34" in max_mag.get("time", "")
+            ):
+                old_time = max_mag["time"]
+                # 21:34 UTC -> 13:34 UTC (即北京时间 21:34)
+                new_time = old_time.replace("21:34", "13:34")
+                max_mag["time"] = new_time
+                self.save_stats()
+                logger.info(
+                    f"[灾害预警] 已自动修复历史最大地震记录的时间偏差: {old_time} -> {new_time}"
+                )
+        except Exception as e:
+            logger.warning(f"[灾害预警] 尝试修复历史记录失败: {e}")
 
     def _merge_stats(self, current: dict, saved: dict):
         """递归合并统计数据"""
@@ -626,55 +711,85 @@ class StatisticsManager:
             text.append(f"{source}: {count}")
 
         return "\n".join(text)
-    
+
     def get_trend_data(self, hours: int = 24) -> list[dict[str, Any]]:
         """获取趋势数据（最近N小时）"""
         from datetime import datetime, timedelta, timezone
-        
+
         result = []
         now = datetime.now(timezone.utc)
         # 使用配置的目标时区
         target_tz = TimeConverter._get_timezone(self.display_timezone)
-        
+
         for i in range(hours):
             time_point = now - timedelta(hours=hours - i - 1)
             # 统计键名仍使用 UTC (保持与存储一致)
             hour_key_utc = time_point.strftime("%Y-%m-%d %H:00")
-            
+
             # 展示时间转换为目标时区
             time_point_local = time_point.astimezone(target_tz)
             display_time = time_point_local.strftime("%m-%d %H:00")
-            
+
             count = self.stats["hourly_counts"].get(hour_key_utc, 0)
-            result.append({
-                "time": display_time,
-                "count": count
-            })
-        
+            result.append({"time": display_time, "count": count})
+
         return result
-    
-    def get_heatmap_data(self, days: int = 180) -> list[dict[str, Any]]:
-        """获取日历热力图数据（最近N天）"""
+
+    def get_heatmap_data(
+        self, days: int = 180, year: int = None
+    ) -> list[dict[str, Any]]:
+        """获取日历热力图数据
+
+        Args:
+            days: 如果未指定年份，返回最近N天的数据
+            year: 指定年份，返回该年所有数据
+        """
         from datetime import datetime, timedelta, timezone
-        
+
         result = []
-        now = datetime.now(timezone.utc)
-        # 使用配置的目标时区
         target_tz = TimeConverter._get_timezone(self.display_timezone)
-        
-        for i in range(days):
-            date_point = now - timedelta(days=days - i - 1)
-            # 统计键名使用 UTC 日期 (保持与存储一致)
-            day_key_utc = date_point.strftime("%Y-%m-%d")
-            
-            # 获取该点对应的本地时间日期
-            date_point_local = date_point.astimezone(target_tz)
-            display_date = date_point_local.strftime("%Y-%m-%d")
-            
-            count = self.stats["daily_counts"].get(day_key_utc, 0)
-            result.append({
-                "date": display_date,
-                "count": count
-            })
-        
+        now = datetime.now(timezone.utc)
+
+        if year:
+            # 按年份获取
+            start_date = datetime(year, 1, 1, tzinfo=timezone.utc)
+            end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc) - timedelta(days=1)
+
+            # 如果是未来年份，只显示到今天
+            if start_date > now:
+                return []
+
+            # 如果是当前年份，只显示到今天
+            if end_date > now:
+                end_date = now
+
+            # 计算天数
+            delta = (end_date - start_date).days + 1
+
+            for i in range(delta):
+                date_point = start_date + timedelta(days=i)
+
+                # 统计键名使用 UTC 日期
+                day_key_utc = date_point.strftime("%Y-%m-%d")
+
+                # 前端显示使用 UTC 日期即可，保持一致性，或者根据需求转换
+                # 这里为了简单和数据对应，直接使用 ISO 日期
+                display_date = day_key_utc
+
+                count = self.stats["daily_counts"].get(day_key_utc, 0)
+                result.append({"date": display_date, "count": count})
+        else:
+            # 按最近N天获取
+            for i in range(days):
+                date_point = now - timedelta(days=days - i - 1)
+                # 统计键名使用 UTC 日期
+                day_key_utc = date_point.strftime("%Y-%m-%d")
+
+                # 获取该点对应的本地时间日期
+                date_point_local = date_point.astimezone(target_tz)
+                display_date = date_point_local.strftime("%Y-%m-%d")
+
+                count = self.stats["daily_counts"].get(day_key_utc, 0)
+                result.append({"date": display_date, "count": count})
+
         return result
