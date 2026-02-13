@@ -198,8 +198,8 @@ function EventsList() {
                         { id: 'all', label: '全部' },
                         { id: 'earthquake_warning', label: '地震预警' },
                         { id: 'earthquake', label: '地震情报' },
-                        { id: 'tsunami', label: '海啸预警' },
-                        { id: 'weather', label: '气象预警' }
+                        { id: 'weather', label: '气象预警' },
+                        { id: 'tsunami', label: '海啸预警' }
                     ].map(item => (
                         <button
                             key={item.id}
