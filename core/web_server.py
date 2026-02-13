@@ -6,6 +6,7 @@
 import asyncio
 import json
 import os
+import platform
 from datetime import datetime
 from typing import Any
 
@@ -107,6 +108,9 @@ class WebAdminServer:
                     "total_connections": status.get("total_connections", 0),
                     "connection_details": status.get("connection_details", {}),
                     "data_sources": status.get("data_sources", []),
+                    "sub_source_status": status.get(
+                        "sub_source_status", {}
+                    ),  # 新增：子数据源状态
                     "message_logger_enabled": status.get(
                         "message_logger_enabled", False
                     ),
@@ -169,6 +173,28 @@ class WebAdminServer:
                 }
             except Exception as e:
                 logger.error(f"[灾害预警] 获取统计失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/reconnect")
+        async def force_reconnect():
+            """强制重连所有离线数据源"""
+            try:
+                if not self.disaster_service:
+                    return JSONResponse({"error": "服务未初始化"}, status_code=503)
+
+                results = await self.disaster_service.reconnect_all_sources()
+
+                # 统计结果
+                triggered = sum(1 for s in results.values() if "已触发" in s)
+                failed = sum(1 for s in results.values() if "失败" in s)
+
+                return {
+                    "success": True,
+                    "message": f"操作完成: 触发 {triggered} 个重连, {failed} 个失败",
+                    "details": results,
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 通过Web端进行手动重连失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/connections")
@@ -256,6 +282,7 @@ class WebAdminServer:
                             "place_name", ""
                         ),
                     },
+                    "display_timezone": self.config.get("display_timezone", "UTC+8"),
                     "web_admin": self.config.get("web_admin", {}),
                 }
                 return config_summary
@@ -277,6 +304,70 @@ class WebAdminServer:
                 return summary
             except Exception as e:
                 logger.error(f"[灾害预警] 获取日志失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/open-log-dir")
+        async def open_log_dir():
+            """打开日志目录"""
+            try:
+                if (
+                    not self.disaster_service
+                    or not self.disaster_service.message_logger
+                ):
+                    return JSONResponse({"error": "日志功能不可用"}, status_code=503)
+
+                log_path = self.disaster_service.message_logger.log_file_path
+                log_dir = log_path.parent
+
+                if not log_dir.exists():
+                    return JSONResponse({"error": "日志目录不存在"}, status_code=404)
+
+                # 检查是否在 Docker 容器中运行
+                is_docker = os.path.exists("/.dockerenv")
+                if is_docker:
+                    return JSONResponse(
+                        {
+                            "error": "Docker 环境下不支持在宿主机打开目录，请手动查看挂载路径"
+                        },
+                        status_code=400,
+                    )
+
+                # 打开目录
+                system = platform.system()
+                if system == "Windows":
+                    os.startfile(log_dir)
+                elif system == "Darwin":  # macOS
+                    await asyncio.create_subprocess_exec("open", str(log_dir))
+                else:  # Linux
+                    await asyncio.create_subprocess_exec("xdg-open", str(log_dir))
+
+                return {"success": True, "message": "已在文件浏览器中打开日志目录"}
+            except Exception as e:
+                logger.error(f"[灾害预警] 打开日志目录失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/open-plugin-dir")
+        async def open_plugin_dir():
+            """打开插件根目录"""
+            try:
+                # 获取插件根目录 (当前文件所在目录的上级目录)
+                plugin_dir = os.path.dirname(os.path.dirname(__file__))
+
+                if not os.path.exists(plugin_dir):
+                    return JSONResponse({"error": "插件目录不存在"}, status_code=404)
+
+                # 打开目录
+                system = platform.system()
+                if system == "Windows":
+                    os.startfile(plugin_dir)
+                elif system == "Darwin":  # macOS
+                    await asyncio.create_subprocess_exec("open", str(plugin_dir))
+                else:  # Linux
+                    await asyncio.create_subprocess_exec("xdg-open", str(plugin_dir))
+
+                return {"success": True, "message": "已在文件浏览器中打开插件目录"}
+            except Exception as e:
+                logger.error(f"[灾害预警] 打开插件目录失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/earthquakes")
@@ -349,7 +440,7 @@ class WebAdminServer:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/heatmap")
-        async def get_heatmap(days: int = 180):
+        async def get_heatmap(days: int = 180, year: int = None):
             """获取日历热力图数据"""
             try:
                 if (
@@ -360,18 +451,30 @@ class WebAdminServer:
                         {"error": "统计管理器未初始化"}, status_code=503
                     )
 
-                # 限制范围：90-180天
-                if days < 90:
-                    days = 90
-                elif days > 180:
-                    days = 180
+                # 如果指定了年份，优先按年份获取
+                if year:
+                    heatmap_data = (
+                        self.disaster_service.statistics_manager.get_heatmap_data(
+                            days=0, year=year
+                        )
+                    )
+                else:
+                    # 限制范围：90-365天
+                    if days < 90:
+                        days = 90
+                    elif days > 365:
+                        days = 365
 
-                heatmap_data = self.disaster_service.statistics_manager.get_heatmap_data(
-                    days
-                )
+                    heatmap_data = (
+                        self.disaster_service.statistics_manager.get_heatmap_data(
+                            days=days
+                        )
+                    )
+
                 return {
                     "data": heatmap_data,
                     "days": days,
+                    "year": year,
                     "timestamp": datetime.now().isoformat(),
                 }
             except Exception as e:
@@ -706,7 +809,7 @@ class WebAdminServer:
             await websocket.accept()
             self._ws_connections.append(websocket)
             logger.info(
-                f"[灾害预警] WebSocket 客户端已连接，当前连接数: {len(self._ws_connections)}"
+                f"[灾害预警] 有 WebSocket 客户端已连接，当前连接数: {len(self._ws_connections)}"
             )
 
             try:
@@ -734,7 +837,7 @@ class WebAdminServer:
                 if websocket in self._ws_connections:
                     self._ws_connections.remove(websocket)
                 logger.info(
-                    f"[灾害预警] WebSocket 客户端已断开，当前连接数: {len(self._ws_connections)}"
+                    f"[灾害预警] 有 WebSocket 客户端已断开，当前连接数: {len(self._ws_connections)}"
                 )
 
     async def _send_full_update(self, websocket: WebSocket):
@@ -780,6 +883,9 @@ class WebAdminServer:
                     "uptime": status.get("uptime", "未知"),
                     "active_connections": status.get("active_websocket_connections", 0),
                     "total_connections": status.get("total_connections", 0),
+                    "sub_source_status": status.get(
+                        "sub_source_status", {}
+                    ),  # 新增：子数据源状态
                     "start_time": status.get("start_time"),
                     "version": get_plugin_version(),
                 }
@@ -819,7 +925,7 @@ class WebAdminServer:
                     "log_stats": self.disaster_service.message_logger.get_log_summary()
                     if self.disaster_service and self.disaster_service.message_logger
                     else {},
-                    "recent_pushes": stats.get("recent_pushes", [])[:50],
+                    "recent_pushes": stats.get("recent_pushes", [])[:250],
                 }
         except Exception as e:
             logger.debug(f"[灾害预警] 获取统计数据失败: {e}")
