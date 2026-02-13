@@ -19,16 +19,21 @@ function MagnitudeChart({ style }) {
     // 计算图表数据
     // 将震级分布数据转换为包含百分比的数组，用于渲染条形图长度
     const chartData = useMemo(() => {
+        // 计算总数
+        const total = magnitudeOrder.reduce((acc, label) => acc + (magnitudeDistribution[label] || 0), 0);
+        
         const data = magnitudeOrder.map(label => ({
             label,
             value: magnitudeDistribution[label] || 0
         }));
 
-        // 计算最大值，用于计算百分比
+        // 计算最大值，用于计算百分比 (条形图长度)
         const maxValue = Math.max(...data.map(d => d.value), 1);
+        
         return data.map(d => ({
             ...d,
-            percentage: (d.value / maxValue) * 100
+            percentage: (d.value / maxValue) * 100, // 相对最长条的百分比
+            ratio: total > 0 ? (d.value / total) * 100 : 0 // 占总数的百分比
         }));
     }, [magnitudeDistribution]);
 
@@ -57,7 +62,13 @@ function MagnitudeChart({ style }) {
                                 style={{ width: `${item.percentage}%` }}
                             ></div>
                         </div>
-                        <div className="mag-value">{item.value}</div>
+                        {/* 增加 minWidth，防止百分比和数值拥挤 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '100px', justifyContent: 'flex-end' }}>
+                            <div className="mag-value" style={{ textAlign: 'right' }}>{item.value}</div>
+                            <span style={{ fontSize: '12px', opacity: 0.6, fontWeight: 500, minWidth: '55px', textAlign: 'right' }}>
+                                ({item.ratio > 0 ? `${item.ratio.toFixed(2)}%` : '0.00%'})
+                            </span>
+                        </div>
                     </div>
                 ))}
             </div>
