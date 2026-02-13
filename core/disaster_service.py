@@ -42,6 +42,8 @@ class DisasterWarningService:
         self.context = context
         self.running = False
         self._start_lock = asyncio.Lock()  # 防止并发启动的锁
+        self._stop_lock = asyncio.Lock()  # 防止并发停止导致的竞态
+        self._stopping = False
 
         # 初始化消息记录器
         self.message_logger = MessageLogger(config, "disaster_warning")
@@ -268,6 +270,7 @@ class DisasterWarningService:
 
             try:
                 self.running = True
+                self._stopping = False
                 self.start_time = datetime.now(timezone.utc)  # 记录启动时间
                 logger.info("[灾害预警] 正在启动灾害预警服务...")
 
@@ -308,50 +311,58 @@ class DisasterWarningService:
                     )
                 raise
 
+    async def _cancel_and_wait(self, tasks: list[asyncio.Task]) -> None:
+        """取消并等待任务结束。"""
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     async def stop(self):
         """停止服务"""
-        try:
-            logger.info("[灾害预警] 正在停止灾害预警服务...")
-            # 先标记为停止，阻止新任务进入
-            was_running = self.running
-            self.running = False
+        async with self._stop_lock:
+            if self._stopping:
+                logger.debug("[灾害预警] 停止流程已在执行中，跳过重复调用")
+                return
+            self._stopping = True
+            try:
+                logger.info("[灾害预警] 正在停止灾害预警服务...")
+                # 先标记为停止，阻止新任务进入
+                was_running = self.running
+                self.running = False
 
-            # 仅在服务实际运行过时保存缓存
-            if was_running:
-                self._save_earthquake_lists_cache()
+                # 仅在服务实际运行过时保存缓存
+                if was_running:
+                    self._save_earthquake_lists_cache()
 
-            # 取消并等待所有连接任务退出
-            connection_tasks = list(self.connection_tasks)
-            for task in connection_tasks:
-                task.cancel()
-            if connection_tasks:
-                await asyncio.gather(*connection_tasks, return_exceptions=True)
-            self.connection_tasks.clear()
+                # 取消并等待所有连接任务退出
+                connection_tasks = list(self.connection_tasks)
+                await self._cancel_and_wait(connection_tasks)
+                self.connection_tasks.clear()
 
-            # 取消并等待所有定时任务退出
-            scheduled_tasks = list(self.scheduled_tasks)
-            for task in scheduled_tasks:
-                task.cancel()
-            if scheduled_tasks:
-                await asyncio.gather(*scheduled_tasks, return_exceptions=True)
-            self.scheduled_tasks.clear()
+                # 取消并等待所有定时任务退出
+                scheduled_tasks = list(self.scheduled_tasks)
+                await self._cancel_and_wait(scheduled_tasks)
+                self.scheduled_tasks.clear()
 
-            # 停止WebSocket管理器
-            await self.ws_manager.stop()
+                # 停止WebSocket管理器
+                await self.ws_manager.stop()
 
-            # 关闭HTTP获取器
-            if self.http_fetcher:
-                await self.http_fetcher.close()  # 修改点：调用显式的 close()
+                # 关闭HTTP获取器
+                if self.http_fetcher:
+                    await self.http_fetcher.close()  # 修改点：调用显式的 close()
 
-            logger.info("[灾害预警] 灾害预警服务已停止")
+                logger.info("[灾害预警] 灾害预警服务已停止")
 
-        except Exception as e:
-            logger.error(f"[灾害预警] 停止服务时出错: {e}")
-            # 上报停止服务错误到遥测
-            if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(
-                    e, module="core.disaster_service.stop"
-                )
+            except Exception as e:
+                logger.error(f"[灾害预警] 停止服务时出错: {e}")
+                # 上报停止服务错误到遥测
+                if self._telemetry and self._telemetry.enabled:
+                    await self._telemetry.track_error(
+                        e, module="core.disaster_service.stop"
+                    )
+            finally:
+                self._stopping = False
 
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""

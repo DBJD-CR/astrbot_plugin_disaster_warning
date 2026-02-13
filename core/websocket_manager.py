@@ -30,6 +30,8 @@ class WebSocketManager:
         self.connection_info: dict[str, dict] = {}  # 新增：存储连接信息
         self.running = False
         self.session: aiohttp.ClientSession | None = None
+        self._stop_lock = asyncio.Lock()
+        self._stopping = False
 
     def register_handler(self, connection_name: str, handler: Callable):
         """注册消息处理器"""
@@ -535,6 +537,7 @@ class WebSocketManager:
     async def start(self):
         """启动管理器"""
         self.running = True
+        self._stopping = False
 
         # 初始化 Shared Session
         if not self.session or self.session.closed:
@@ -546,35 +549,47 @@ class WebSocketManager:
         if not self.message_handlers:
             logger.warning("[灾害预警] 没有注册任何消息处理器")
 
+    async def _cancel_and_wait(self, tasks: list[asyncio.Task]) -> None:
+        """取消并等待任务结束。"""
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     async def stop(self):
         """停止管理器"""
-        logger.info("[灾害预警] WebSocket管理器正在停止...")
-        self.running = False
+        async with self._stop_lock:
+            if self._stopping:
+                logger.debug("[灾害预警] WebSocket管理器已在停止流程中，跳过重复调用")
+                return
+            self._stopping = True
+            try:
+                logger.info("[灾害预警] WebSocket管理器正在停止...")
+                self.running = False
 
-        # 取消并等待所有重连任务退出，避免停机后重连复活连接
-        reconnect_tasks = list(self.reconnect_tasks.values())
-        for task in reconnect_tasks:
-            task.cancel()
-        if reconnect_tasks:
-            await asyncio.gather(*reconnect_tasks, return_exceptions=True)
-        self.reconnect_tasks.clear()
+                # 取消并等待所有重连任务退出，避免停机后重连复活连接
+                reconnect_tasks = list(self.reconnect_tasks.values())
+                await self._cancel_and_wait(reconnect_tasks)
+                self.reconnect_tasks.clear()
 
-        # 断开所有连接
-        for name in list(self.connections.keys()):
-            await self.disconnect(name)
+                # 断开所有连接
+                for name in list(self.connections.keys()):
+                    await self.disconnect(name)
 
-        # 关闭 Session
-        if self.session:
-            await self.session.close()
-            self.session = None
+                # 关闭 Session
+                if self.session:
+                    await self.session.close()
+                    self.session = None
 
-        # 清理所有状态
-        self.connections.clear()
-        self.connection_info.clear()
-        self.connection_retry_counts.clear()
-        self.fallback_retry_counts.clear()
+                # 清理所有状态
+                self.connections.clear()
+                self.connection_info.clear()
+                self.connection_retry_counts.clear()
+                self.fallback_retry_counts.clear()
 
-        logger.info("[灾害预警] WebSocket管理器已停止")
+                logger.info("[灾害预警] WebSocket管理器已停止")
+            finally:
+                self._stopping = False
 
     def _find_handler_by_prefix(self, connection_name: str) -> str | None:
         """通过前缀匹配查找处理器名称"""
