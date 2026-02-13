@@ -522,6 +522,52 @@ class WebSocketManager:
         except Exception as e:
             logger.debug(f"[灾害预警] 心跳循环异常 {name}: {e}")
 
+    async def force_reconnect(self, name: str) -> bool:
+        """强制立即重连指定连接（跳过等待）
+
+        Returns:
+            bool: 是否触发了重连操作
+        """
+        # 1. 如果当前已连接且正常，跳过
+        if name in self.connections and not self.connections[name].closed:
+            return False
+
+        # 2. 如果有正在等待的重连任务，取消它
+        if name in self.reconnect_tasks:
+            task = self.reconnect_tasks[name]
+            if not task.done():
+                task.cancel()
+                logger.debug(f"[灾害预警] 取消了 {name} 正在等待的重连任务 (强制重连)")
+            self.reconnect_tasks.pop(name, None)
+
+        # 3. 获取连接信息
+        info = self.connection_info.get(name)
+        if not info:
+            logger.warning(f"[灾害预警] 无法重连 {name}: 找不到连接信息")
+            return False
+
+        uri = info.get("uri")
+        headers = info.get("headers")
+
+        # 4. 重置重试计数，确保作为一次新的尝试
+        self.connection_retry_counts[name] = 0
+        self.fallback_retry_counts[name] = 0
+
+        logger.info(f"[灾害预警] 正在手动重连 {name}...")
+
+        # 5. 立即发起连接
+        # 使用 create_task 避免阻塞当前调用者
+        asyncio.create_task(
+            self.connect(
+                name,
+                uri,
+                headers,
+                is_retry=False,  # 视为新连接，重置状态
+                connection_info=info,
+            )
+        )
+        return True
+
     async def disconnect(self, name: str):
         """断开连接"""
         if name in self.connections:
