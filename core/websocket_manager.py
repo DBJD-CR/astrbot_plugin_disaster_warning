@@ -162,6 +162,38 @@ class WebSocketManager:
                                     f"[灾害预警] 异常堆栈: {traceback.format_exc()}"
                                 )
 
+                        elif msg.type == WSMsgType.BINARY:
+                            message = msg.data  # bytes
+                            self.last_heartbeat_time[name] = (
+                                asyncio.get_event_loop().time()
+                            )
+                            try:
+                                # 记录二进制消息（记录长度而非内容）
+                                if self.message_logger:
+                                    self._log_message(
+                                        name, f"<binary:{len(message)} bytes>", uri
+                                    )
+
+                                # 智能处理器查找（支持前缀匹配）
+                                handler_name = self._find_handler_by_prefix(name)
+
+                                if handler_name:
+                                    # 传递二进制数据给处理器
+                                    await self.message_handlers[handler_name](
+                                        message,
+                                        connection_name=name,
+                                        connection_info=self.connection_info[name],
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"[灾害预警] 未找到消息处理器 - 连接: {name}"
+                                    )
+                            except Exception as e:
+                                logger.error(f"[灾害预警] 二进制消息处理错误 {name}: {e}")
+                                logger.debug(
+                                    f"[灾害预警] 异常堆栈: {traceback.format_exc()}"
+                                )
+
                         elif msg.type == WSMsgType.ERROR:
                             # 抛出异常以触发重连逻辑
                             raise msg.data

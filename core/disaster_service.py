@@ -255,7 +255,7 @@ class DisasterWarningService:
             "enabled", False
         ):
             # GlobalQuake Monitor 服务器地址（硬编码）
-            global_quake_url = "wss://gqm.aloys233.top/ws"
+            global_quake_url = "wss://gqm.aloys23.link/ws"
             self.connections["global_quake"] = {
                 "url": global_quake_url,
                 "handler": "global_quake",

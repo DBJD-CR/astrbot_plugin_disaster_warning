@@ -1414,7 +1414,7 @@ graph TD
 🕐 日志写入时间: 2026-01-09 03:31:23
 📡 来源: websocket_global_quake
 📋 类型: websocket_message
-🔗 连接: URL: wss://gqm.aloys233.top/ws
+🔗 连接: URL: wss://gqm.aloys23.link/ws
 
 📊 原始数据:
     📋 消息类型: earthquake

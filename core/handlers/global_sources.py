@@ -15,19 +15,62 @@ from ...models.models import (
     DisasterType,
     EarthquakeData,
 )
+from ...models.websocket_message_pb2 import WsMessage, MessageType
 from ...utils.converters import ScaleConverter, safe_float_convert
 from ...utils.fe_regions import translate_place_name
 from .base import BaseDataHandler
 
 
 class GlobalQuakeHandler(BaseDataHandler):
-    """Global Quake处理器 - 适配新的WebSocket JSON消息格式"""
+    """Global Quake处理器 - 适配 Protocol Buffers 格式"""
 
     def __init__(self, message_logger=None):
         super().__init__("global_quake", message_logger)
 
-    def parse_message(self, message: str) -> DisasterEvent | None:
-        """解析Global Quake消息"""
+    def parse_message(self, message: str | bytes) -> DisasterEvent | None:
+        """解析Global Quake消息 - 支持 JSON 和 Protobuf 格式"""
+        try:
+            # 检测消息类型：二进制 (protobuf) 或文本 (JSON)
+            if isinstance(message, bytes):
+                return self._parse_protobuf_message(message)
+            else:
+                return self._parse_json_message(message)
+
+        except Exception as e:
+            logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {e}")
+            return None
+
+    def _parse_protobuf_message(self, message: bytes) -> DisasterEvent | None:
+        """解析 Protocol Buffers 格式消息"""
+        try:
+            # 反序列化 protobuf 消息
+            ws_msg = WsMessage()
+            ws_msg.ParseFromString(message)
+
+            # 检查消息类型
+            if ws_msg.type == MessageType.EARTHQUAKE:
+                logger.debug(
+                    f"[灾害预警] {self.source_id} 收到地震消息 (Protobuf)"
+                )
+                return self._parse_earthquake_protobuf(ws_msg)
+            elif ws_msg.type == MessageType.HEARTBEAT:
+                logger.debug(f"[灾害预警] {self.source_id} 心跳消息")
+                return None
+            elif ws_msg.type == MessageType.STATUS:
+                logger.debug(
+                    f"[灾害预警] {self.source_id} 状态消息: {ws_msg.status_data.server_status}"
+                )
+                return None
+            else:
+                logger.debug(f"[灾害预警] {self.source_id} 未知消息类型: {ws_msg.type}")
+                return None
+
+        except Exception as e:
+            logger.error(f"[灾害预警] {self.source_id} Protobuf 解析失败: {e}")
+            return None
+
+    def _parse_json_message(self, message: str) -> DisasterEvent | None:
+        """解析 JSON 格式消息（向后兼容）"""
         try:
             data = json.loads(message)
 
@@ -37,7 +80,7 @@ class GlobalQuakeHandler(BaseDataHandler):
 
             if msg_type == "earthquake":
                 logger.debug(
-                    f"[灾害预警] {self.source_id} 收到地震消息，action: {action}"
+                    f"[灾害预警] {self.source_id} 收到地震消息 (JSON)，action: {action}"
                 )
                 return self._parse_earthquake_data(data)
             else:
@@ -47,8 +90,76 @@ class GlobalQuakeHandler(BaseDataHandler):
         except json.JSONDecodeError as e:
             logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {e}")
             return None
+
+    def _parse_earthquake_protobuf(self, ws_msg: WsMessage) -> DisasterEvent | None:
+        """解析 Protobuf 地震数据"""
+        try:
+            eq_data = ws_msg.earthquake_data
+
+            # 解析震源时间
+            shock_time = None
+            if eq_data.origin_time_iso:
+                shock_time = self._parse_datetime(eq_data.origin_time_iso)
+            elif eq_data.origin_time_ms:
+                shock_time = datetime.fromtimestamp(
+                    eq_data.origin_time_ms / 1000, tz=timezone.utc
+                )
+
+            # 解析烈度（从罗马数字转换）
+            intensity = ScaleConverter.convert_roman_intensity(eq_data.intensity)
+
+            # 格式化震级和深度
+            magnitude = round(eq_data.magnitude, 1) if eq_data.magnitude else None
+            depth = round(eq_data.depth, 1) if eq_data.depth else None
+
+            # 翻译地名
+            place_name = translate_place_name(
+                eq_data.region, eq_data.latitude, eq_data.longitude, fallback_to_original=True
+            )
+
+            # 提取台站信息
+            station_count = None
+            if eq_data.HasField("station_count"):
+                station_count = {
+                    "total": eq_data.station_count.total,
+                    "selected": eq_data.station_count.selected,
+                    "used": eq_data.station_count.used,
+                    "matching": eq_data.station_count.matching,
+                }
+
+            # 创建地震数据对象
+            earthquake = EarthquakeData(
+                id=eq_data.id,
+                event_id=eq_data.id,
+                source=DataSource.GLOBAL_QUAKE,
+                disaster_type=DisasterType.EARTHQUAKE,
+                shock_time=shock_time or datetime.now(timezone.utc),
+                latitude=eq_data.latitude,
+                longitude=eq_data.longitude,
+                depth=depth,
+                magnitude=magnitude,
+                intensity=intensity,
+                place_name=place_name,
+                updates=eq_data.revision_id,
+                raw_data={"protobuf": True, "id": eq_data.id},  # 简化原始数据
+                max_pga=eq_data.max_pga if eq_data.max_pga else None,
+                stations=station_count,
+            )
+
+            logger.info(
+                f"[灾害预警] Global Quake地震解析成功 (Protobuf): {earthquake.place_name} "
+                f"(M {earthquake.magnitude:.1f}), 烈度: {eq_data.intensity}, "
+                f"时间: {earthquake.shock_time}"
+            )
+
+            return DisasterEvent(
+                id=earthquake.id,
+                data=earthquake,
+                source=earthquake.source,
+                disaster_type=earthquake.disaster_type,
+            )
         except Exception as e:
-            logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {e}")
+            logger.error(f"[灾害预警] {self.source_id} 解析 Protobuf 地震数据失败: {e}")
             return None
 
     def _parse_earthquake_data(self, data: dict[str, Any]) -> DisasterEvent | None:
@@ -141,7 +252,7 @@ class GlobalQuakeHandler(BaseDataHandler):
         return None
 
     def _parse_data(self, data: dict[str, Any]) -> DisasterEvent | None:
-        """实现基类抽象方法"""
+        """实现基类抽象方法 - JSON 格式"""
         return self._parse_earthquake_data(data)
 
 
