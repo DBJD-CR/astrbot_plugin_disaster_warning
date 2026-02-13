@@ -2,7 +2,8 @@ const { Box, Typography, Chip } = MaterialUI;
 
 function StatsView() {
     const { state } = useAppContext();
-    const { stats } = state;
+    const { stats, config } = state;
+    const displayTimezone = config.displayTimezone || 'UTC+8';
     const maxMag = stats && stats.maxMagnitude ? stats.maxMagnitude : null;
     const sources = stats && stats.dataSources ? stats.dataSources : [];
     const eqRegions = stats && stats.earthquakeRegions ? stats.earthquakeRegions : [];
@@ -14,13 +15,7 @@ function StatsView() {
     // 格式化时间
     const formatTime = (time) => {
         if (!time) return '未知时间';
-        return new Date(time).toLocaleString('zh-CN', {
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        return formatTimeWithZone(time, displayTimezone, true);
     };
 
     const renderMaxMagCard = () => {
@@ -102,6 +97,9 @@ function StatsView() {
                 </div>
             );
         }
+        
+        // 计算最大值，用于比例条
+        const maxCount = Math.max(...data.slice(0, 10).map(d => d.count));
 
         return (
             <div className="card" style={{ height: '100%', minHeight: '200px' }}>
@@ -110,39 +108,59 @@ function StatsView() {
                     <Typography variant="h6">{title}</Typography>
                 </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {data.slice(0, 10).map((item, index) => (
-                        <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ 
-                                    width: '24px', 
-                                    height: '24px', 
-                                    borderRadius: '6px', 
-                                    background: index < 3 ? color : 'var(--md-sys-color-surface-variant)', 
-                                    color: index < 3 ? '#fff' : 'inherit',
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center',
-                                    fontSize: '12px',
-                                    fontWeight: 700
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {data.slice(0, 10).map((item, index) => {
+                        const percentage = (item.count / maxCount) * 100;
+                        
+                        return (
+                            <div key={index} style={{ position: 'relative', padding: '6px 8px', borderRadius: '8px', zIndex: 1, overflow: 'hidden' }}>
+                                {/* 进度条背景 - 从文字开始 (跳过数字标号)，稍微左移一点包裹文字 */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '4px',
+                                    bottom: '4px',
+                                    left: '40px', // 稍微往左移一点 (44px -> 40px)
+                                    right: '8px',
+                                    zIndex: -1,
                                 }}>
-                                    {index + 1}
+                                    <div style={{
+                                        width: `calc(${percentage}% + 4px)`, // 稍微加宽一点补偿左移
+                                        height: '100%',
+                                        background: color,
+                                        opacity: 0.2,
+                                        borderRadius: '4px',
+                                        transition: 'width 0.5s ease-out'
+                                    }}></div>
                                 </div>
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                    {item.region ? item.region : (item.type ? item.type : formatSourceName(item.source))}
-                                </Typography>
+
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0, marginRight: '8px' }}>
+                                        <div style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '6px',
+                                            background: index < 3 ? color : 'var(--md-sys-color-surface-variant)',
+                                            color: index < 3 ? '#fff' : 'inherit',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '12px',
+                                            fontWeight: 700,
+                                            flexShrink: 0
+                                        }}>
+                                            {index + 1}
+                                        </div>
+                                        <Typography variant="body2" noWrap sx={{ fontWeight: 600, fontSize: '13px' }}>
+                                            {item.region ? item.region : (item.type ? item.type : formatSourceName(item.source))}
+                                        </Typography>
+                                    </div>
+                                    <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.7, flexShrink: 0 }}>
+                                        {item.count}
+                                    </Typography>
+                                </div>
                             </div>
-                            <Chip
-                                label={item.count} 
-                                size="small" 
-                                sx={{ 
-                                    height: '24px', 
-                                    fontWeight: 700,
-                                    background: 'var(--md-sys-color-surface-variant)'
-                                }} 
-                            />
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -243,21 +261,138 @@ function StatsView() {
     const renderLogStatsCard = () => {
         if (!logStats) return null;
 
+        const fileCount = logStats.file_count || 1;
+        const maxCapacity = logStats.max_total_capacity_mb || 0;
+        const usagePercent = logStats.usage_percent || 0;
+        const fileSize = logStats.file_size_mb || 0;
+        const startTime = logStats.date_range?.start || '未知';
+        const endTime = logStats.date_range?.end || '未知';
+
+        // 进度条颜色逻辑和状态灯
+        let progressColor = 'var(--md-sys-color-primary)';
+        let statusDotColor = '#4CAF50'; // Green
+        
+        if (usagePercent > 90) {
+            progressColor = 'var(--md-sys-color-error)';
+            statusDotColor = '#F44336'; // Red
+        } else if (usagePercent > 70) {
+            progressColor = '#F9A825'; // Yellow/Amber
+            statusDotColor = '#FFC107'; // Amber
+        }
+
+        const handleOpenLogDir = async () => {
+            try {
+                // 确保 API URL 格式正确
+                const baseUrl = state.config.apiUrl || '';
+                const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+                const targetUrl = `${cleanBaseUrl}/api/open-log-dir`;
+                
+                console.log('[StatsView] Requesting open-log-dir:', targetUrl);
+
+                const response = await fetch(targetUrl, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    // 成功时不弹窗，直接静默打开
+                    console.log('Log directory opened successfully');
+                } else {
+                    alert('操作失败: ' + (result.error || '未知错误'));
+                }
+            } catch (e) {
+                console.error('Failed to open log dir:', e);
+                // 网络错误才弹窗
+                alert(`请求失败: ${e.message || '网络错误或服务不可达'}`);
+            }
+        };
+
         return (
             <div className="card" style={{ height: '100%', minHeight: '200px' }}>
-                <div className="chart-card-header">
-                    <span style={{ fontSize: '20px' }}>📝</span>
-                    <Typography variant="h6">系统日志统计</Typography>
+                <div className="chart-card-header" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>📝</span>
+                        <Typography variant="h6">系统日志统计</Typography>
+                    </div>
+                    <button
+                        className="btn"
+                        onClick={handleOpenLogDir}
+                        style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            background: 'var(--md-sys-color-primary-container)',
+                            color: 'var(--md-sys-color-on-primary-container)',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                        }}
+                        title="在文件管理器中打开日志目录"
+                    >
+                        <span style={{ fontSize: '14px' }}>📂</span>
+                        打开插件数据目录
+                    </button>
                 </div>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{ background: 'var(--md-sys-color-surface-variant)', padding: '12px', borderRadius: '8px', gridColumn: 'span 2' }}>
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>统计时间范围</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '13px' }}>
+                            {startTime} <span style={{ opacity: 0.5, margin: '0 4px' }}>~</span> {endTime}
+                        </Typography>
+                    </div>
+
                     <div style={{ background: 'var(--md-sys-color-surface-variant)', padding: '12px', borderRadius: '8px' }}>
                         <Typography variant="caption" sx={{ opacity: 0.7 }}>总条目</Typography>
                         <Typography variant="h6" sx={{ fontWeight: 700 }}>{logStats.total_entries || 0}</Typography>
                     </div>
                     <div style={{ background: 'var(--md-sys-color-surface-variant)', padding: '12px', borderRadius: '8px' }}>
-                        <Typography variant="caption" sx={{ opacity: 0.7 }}>日志大小</Typography>
-                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{(logStats.file_size_mb || 0).toFixed(2)} MB</Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>文件数量</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{fileCount}</Typography>
+                    </div>
+
+                    <div style={{ background: 'var(--md-sys-color-surface-variant)', padding: '12px', borderRadius: '8px', gridColumn: 'span 2' }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: statusDotColor,
+                                    boxShadow: `0 0 4px ${statusDotColor}`
+                                }}></div>
+                                <Typography variant="caption" sx={{ opacity: 0.7 }}>存储占用</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.7, fontSize: '11px' }}>
+                                    ({usagePercent.toFixed(2)}%)
+                                </Typography>
+                            </div>
+                            <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                                {fileSize.toFixed(2)} MB / {maxCapacity > 0 ? maxCapacity.toFixed(0) : '-'} MB
+                            </Typography>
+                        </div>
+                        <div style={{
+                            width: '100%',
+                            height: '6px',
+                            background: 'rgba(0,0,0,0.1)',
+                            borderRadius: '3px',
+                            overflow: 'hidden'
+                        }}>
+                            <div style={{
+                                width: `${Math.min(usagePercent, 100)}%`,
+                                height: '100%',
+                                background: progressColor,
+                                borderRadius: '3px',
+                                transition: 'width 0.5s ease-out'
+                            }}></div>
+                        </div>
                     </div>
                     <div style={{ background: 'var(--md-sys-color-surface-variant)', padding: '12px', borderRadius: '8px', gridColumn: 'span 2' }}>
                         <Typography variant="caption" sx={{ opacity: 0.7 }}>过滤统计</Typography>
@@ -311,11 +446,11 @@ function StatsView() {
                 </div>
 
                 {/* 时间维度统计：趋势图和热力图 */}
-                <div className="span-8">
-                    <TrendChart style={{ height: '100%' }} />
+                <div className="span-12">
+                    <TrendChart style={{ height: '100%', minHeight: '300px' }} />
                 </div>
-                <div className="span-4">
-                    <CalendarHeatmap style={{ height: '100%' }} />
+                <div className="span-12">
+                    <CalendarHeatmap style={{ height: '100%', minHeight: '220px' }} />
                 </div>
 
                 {/* 第二行：三个 Top 榜单 (地震地区、气象类型、数据源) */}
@@ -344,7 +479,7 @@ function StatsView() {
                     <div className="card" style={{ background: 'var(--md-sys-color-primary-container)', color: 'var(--md-sys-color-on-primary-container)', border: 'none' }}>
                         <h4 style={{ fontWeight: 800, marginBottom: '12px' }}>📊 数据摘要</h4>
                         <p style={{ fontSize: '14px', opacity: 0.8, lineHeight: 1.6 }}>
-                            统计信息每 5 分钟自动更新一次。您可以从这些图表中直观的观察到灾害活动的强度分布和频率。
+                            统计信息会自动实时更新。您可以从这些图表中直观的观察到灾害活动的强度分布和频率。
                         </p>
                     </div>
                 </div>
