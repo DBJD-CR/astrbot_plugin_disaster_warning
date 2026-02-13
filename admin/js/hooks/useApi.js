@@ -37,7 +37,13 @@ function useApi() {
     const getGeoLocation = async () => fetchData('/geolocate');
 
     const getTrend = (hours = 24) => fetchData(`/trend?hours=${hours}`);
-    const getHeatmap = (days = 180) => fetchData(`/heatmap?days=${days}`);
+    const getHeatmap = (days = 180, year = null) => {
+        let url = `/heatmap?days=${days}`;
+        if (year) {
+            url += `&year=${year}`;
+        }
+        return fetchData(url);
+    };
 
     return {
         getStatus,
