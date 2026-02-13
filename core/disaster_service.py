@@ -310,22 +310,31 @@ class DisasterWarningService:
 
     async def stop(self):
         """停止服务"""
-        if not self.running:
-            return
-
         try:
-            # 保存缓存数据
-            self._save_earthquake_lists_cache()
-
-            self.running = False
             logger.info("[灾害预警] 正在停止灾害预警服务...")
+            # 先标记为停止，阻止新任务进入
+            was_running = self.running
+            self.running = False
 
-            # 取消所有任务
-            for task in self.connection_tasks:
-                task.cancel()
+            # 仅在服务实际运行过时保存缓存
+            if was_running:
+                self._save_earthquake_lists_cache()
 
-            for task in self.scheduled_tasks:
+            # 取消并等待所有连接任务退出
+            connection_tasks = list(self.connection_tasks)
+            for task in connection_tasks:
                 task.cancel()
+            if connection_tasks:
+                await asyncio.gather(*connection_tasks, return_exceptions=True)
+            self.connection_tasks.clear()
+
+            # 取消并等待所有定时任务退出
+            scheduled_tasks = list(self.scheduled_tasks)
+            for task in scheduled_tasks:
+                task.cancel()
+            if scheduled_tasks:
+                await asyncio.gather(*scheduled_tasks, return_exceptions=True)
+            self.scheduled_tasks.clear()
 
             # 停止WebSocket管理器
             await self.ws_manager.stop()
@@ -379,7 +388,8 @@ class DisasterWarningService:
                 task = asyncio.create_task(
                     _connect_with_timeout(
                         conn_name, conn_config["url"], connection_info
-                    )
+                    ),
+                    name=f"dw_ws_connect_{conn_name}",
                 )
                 self.connection_tasks.append(task)
 
@@ -505,7 +515,7 @@ class DisasterWarningService:
                 except Exception as e:
                     logger.error(f"[灾害预警] 定时HTTP数据获取失败: {e}")
 
-        task = asyncio.create_task(fetch_wolfx_data())
+        task = asyncio.create_task(fetch_wolfx_data(), name="dw_http_fetch_wolfx")
         self.scheduled_tasks.append(task)
 
     async def _start_cleanup_task(self):
@@ -519,7 +529,7 @@ class DisasterWarningService:
                 except Exception as e:
                     logger.error(f"[灾害预警] 清理任务失败: {e}")
 
-        task = asyncio.create_task(cleanup())
+        task = asyncio.create_task(cleanup(), name="dw_cleanup")
         self.scheduled_tasks.append(task)
 
     def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
