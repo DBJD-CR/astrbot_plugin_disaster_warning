@@ -17,7 +17,13 @@ from astrbot.api import logger
 class BrowserManager:
     """浏览器管理器 - 单例浏览器 + 页面对象池"""
 
-    def __init__(self, pool_size: int = 2, telemetry=None, mode: str = "local", server_url: str = ""):
+    def __init__(
+        self,
+        pool_size: int = 2,
+        telemetry=None,
+        mode: str = "local",
+        server_url: str = "",
+    ):
         """
         初始化浏览器管理器
 
@@ -58,26 +64,34 @@ class BrowserManager:
                 if self._mode == "remote":
                     if not self._server_url:
                         raise ValueError("远程模式下必须配置 playwright_server_url")
-                    
-                    logger.info(f"[灾害预警] 连接到远程 Playwright 服务: {self._server_url}")
-                    
+
+                    logger.info(
+                        f"[灾害预警] 连接到远程 Playwright 服务: {self._server_url}"
+                    )
+
                     # 判断连接类型
-                    if self._server_url.startswith("ws://") or self._server_url.startswith("wss://"):
+                    if self._server_url.startswith(
+                        "ws://"
+                    ) or self._server_url.startswith("wss://"):
                         # WebSocket 连接 (Playwright Server)
                         self._browser = await self._playwright.chromium.connect(
                             ws_endpoint=self._server_url
                         )
-                    elif self._server_url.startswith("http://") or self._server_url.startswith("https://"):
+                    elif self._server_url.startswith(
+                        "http://"
+                    ) or self._server_url.startswith("https://"):
                         # CDP Endpoint 连接
-                        self._browser = await self._playwright.chromium.connect_over_cdp(
-                            endpoint_url=self._server_url
+                        self._browser = (
+                            await self._playwright.chromium.connect_over_cdp(
+                                endpoint_url=self._server_url
+                            )
                         )
                     else:
                         raise ValueError(
                             f"不支持的服务器地址格式: {self._server_url}。"
                             "请使用 ws://host:port 或 http://host:port"
                         )
-                    
+
                     logger.info("[灾害预警] 远程浏览器连接成功")
                 else:
                     # 本地模式：启动本地浏览器

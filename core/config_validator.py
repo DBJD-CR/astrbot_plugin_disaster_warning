@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 from astrbot.api import logger
 
@@ -10,7 +10,7 @@ class ConfigValidator:
     """
 
     @staticmethod
-    def validate(config: Dict[str, Any]) -> Dict[str, Any]:
+    def validate(config: dict[str, Any]) -> dict[str, Any]:
         """
         执行所有配置校验逻辑
         :param config: 原始配置字典
@@ -89,7 +89,7 @@ class ConfigValidator:
             config["display_timezone"] = ConfigValidator._validate_timezone(
                 config["display_timezone"]
             )
-            
+
         # 13. 遥测配置校验
         if "telemetry_config" in config:
             config["telemetry_config"] = ConfigValidator._validate_telemetry(
@@ -110,7 +110,7 @@ class ConfigValidator:
         return config
 
     @staticmethod
-    def _ensure_bool(cfg: Dict[str, Any], key: str, default: bool = False):
+    def _ensure_bool(cfg: dict[str, Any], key: str, default: bool = False):
         """确保配置项为布尔值"""
         if key in cfg and not isinstance(cfg[key], bool):
             logger.warning(
@@ -119,7 +119,7 @@ class ConfigValidator:
             cfg[key] = default
 
     @staticmethod
-    def _validate_local_monitoring(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_local_monitoring(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验本地监控配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -161,7 +161,7 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
-    def _validate_websocket_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_websocket_config(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验 WebSocket 配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -169,7 +169,9 @@ class ConfigValidator:
         # 重连间隔
         interval = cfg.get("reconnect_interval")
         if isinstance(interval, (int, float)) and interval < 1:
-            logger.warning(f"[灾害预警] 配置警告: 重连间隔 {interval} 过小，已修正为 1 秒。")
+            logger.warning(
+                f"[灾害预警] 配置警告: 重连间隔 {interval} 过小，已修正为 1 秒。"
+            )
             cfg["reconnect_interval"] = 1
 
         # 最大重连次数
@@ -183,7 +185,9 @@ class ConfigValidator:
         # 超时时间
         timeout = cfg.get("connection_timeout")
         if isinstance(timeout, (int, float)) and timeout < 1:
-            logger.warning(f"[灾害预警] 配置警告: 连接超时 {timeout} 过小，已修正为 5 秒。")
+            logger.warning(
+                f"[灾害预警] 配置警告: 连接超时 {timeout} 过小，已修正为 5 秒。"
+            )
             cfg["connection_timeout"] = 5
 
         # 心跳间隔
@@ -222,7 +226,7 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
-    def _validate_web_admin(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_web_admin(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验 Web 管理端配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -243,7 +247,7 @@ class ConfigValidator:
         # Host 校验
         if "host" in cfg and not isinstance(cfg["host"], str):
             logger.warning(
-                f"[灾害预警] 配置警告: Web Host 类型错误，已重置为 '0.0.0.0'。"
+                "[灾害预警] 配置警告: Web Host 类型错误，已重置为 '0.0.0.0'。"
             )
             cfg["host"] = "0.0.0.0"
 
@@ -253,7 +257,7 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
-    def _validate_strategies(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_strategies(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验策略配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -273,14 +277,14 @@ class ConfigValidator:
                         f"[灾害预警] 配置警告: 融合策略超时 {timeout} 过大，已修正为 120 秒。"
                     )
                     cenc_fusion["timeout"] = 120
-            
+
             ConfigValidator._ensure_bool(cenc_fusion, "enabled", True)
             cfg["cenc_fusion"] = cenc_fusion
 
         return cfg
 
     @staticmethod
-    def _validate_earthquake_filters(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_earthquake_filters(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验地震过滤器配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -303,19 +307,15 @@ class ConfigValidator:
                 logger.warning(
                     f"[灾害预警] 配置警告: 烈度过滤器最小震级 {min_mag} 超出常规范围，已修正。"
                 )
-                intensity_filter["min_magnitude"] = max(
-                    -3.0, min(10.0, float(min_mag))
-                )
+                intensity_filter["min_magnitude"] = max(-3.0, min(10.0, float(min_mag)))
 
             min_int = intensity_filter.get("min_intensity")
             if isinstance(min_int, (int, float)) and (min_int < 0 or min_int > 12):
                 logger.warning(
                     f"[灾害预警] 配置警告: 烈度过滤器最小烈度 {min_int} 超出范围，已修正。"
                 )
-                intensity_filter["min_intensity"] = max(
-                    0.0, min(12.0, float(min_int))
-                )
-            
+                intensity_filter["min_intensity"] = max(0.0, min(12.0, float(min_int)))
+
             ConfigValidator._ensure_bool(intensity_filter, "enabled", True)
             cfg["intensity_filter"] = intensity_filter
 
@@ -335,7 +335,7 @@ class ConfigValidator:
                     f"[灾害预警] 配置警告: 震度过滤器最小震度 {min_scale} 超出范围 (0-7)，已修正。"
                 )
                 scale_filter["min_scale"] = max(0.0, min(7.0, float(min_scale)))
-            
+
             ConfigValidator._ensure_bool(scale_filter, "enabled", True)
             cfg["scale_filter"] = scale_filter
 
@@ -348,7 +348,7 @@ class ConfigValidator:
                     f"[灾害预警] 配置警告: 仅震级过滤器最小震级 {min_mag} 超出常规范围，已修正。"
                 )
                 mag_filter["min_magnitude"] = max(-2.0, min(12.0, float(min_mag)))
-            
+
             ConfigValidator._ensure_bool(mag_filter, "enabled", True)
             cfg["magnitude_only_filter"] = mag_filter
 
@@ -368,14 +368,14 @@ class ConfigValidator:
                     f"[灾害预警] 配置警告: GQ过滤器最小烈度 {min_int} 超出范围，已修正。"
                 )
                 gq_filter["min_intensity"] = max(0.0, min(12.0, float(min_int)))
-            
+
             ConfigValidator._ensure_bool(gq_filter, "enabled", True)
             cfg["global_quake_filter"] = gq_filter
 
         return cfg
 
     @staticmethod
-    def _validate_weather_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_weather_config(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验气象配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -393,7 +393,7 @@ class ConfigValidator:
                 logger.warning(
                     f"[灾害预警] 配置警告: 气象预警级别 '{min_level}' 不在标准列表中。"
                 )
-            
+
             ConfigValidator._ensure_bool(weather_filter, "enabled", False)
             cfg["weather_filter"] = weather_filter
 
@@ -409,7 +409,7 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
-    def _validate_debug_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_debug_config(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验调试配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -490,13 +490,17 @@ class ConfigValidator:
     def _validate_target_sessions(sessions: Any) -> list[str]:
         """校验推送会话列表"""
         if not isinstance(sessions, list):
-            logger.warning("[灾害预警] 配置警告: target_sessions 不是列表，已重置为空列表。")
+            logger.warning(
+                "[灾害预警] 配置警告: target_sessions 不是列表，已重置为空列表。"
+            )
             return []
 
         # 过滤非字符串项
         valid_sessions = [s for s in sessions if isinstance(s, str) and s.strip()]
         if len(valid_sessions) != len(sessions):
-            logger.warning("[灾害预警] 配置警告: target_sessions 中包含无效项，已自动过滤。")
+            logger.warning(
+                "[灾害预警] 配置警告: target_sessions 中包含无效项，已自动过滤。"
+            )
 
         return valid_sessions
 
@@ -505,17 +509,17 @@ class ConfigValidator:
         """校验管理员列表"""
         if not isinstance(users, list):
             return []
-        
+
         # 确保都是字符串或数字，并转为字符串
         valid_users = []
         for u in users:
             if isinstance(u, (str, int)) and str(u).strip():
                 valid_users.append(str(u))
-        
+
         return valid_users
 
     @staticmethod
-    def _validate_message_format(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_message_format(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验消息格式配置"""
         if not isinstance(cfg, dict):
             return cfg
@@ -571,6 +575,40 @@ class ConfigValidator:
                 f"[灾害预警] 配置警告: GQ模板 '{gq_template}' 不在标准列表中，请确认是否为自定义模板。"
             )
 
+        # Playwright 模式校验
+        pw_mode = cfg.get("playwright_mode")
+        valid_modes = ["local", "remote"]
+        if pw_mode and pw_mode not in valid_modes:
+            logger.warning(
+                f"[灾害预警] 配置警告: Playwright 模式 '{pw_mode}' 无效，已重置为 'local'。"
+            )
+            cfg["playwright_mode"] = "local"
+
+        # 远程 Playwright 地址校验
+        if cfg.get("playwright_mode") == "remote":
+            server_url = cfg.get("playwright_server_url")
+            if (
+                not server_url
+                or not isinstance(server_url, str)
+                or not server_url.strip()
+            ):
+                logger.warning(
+                    "[灾害预警] 配置警告: 远程 Playwright 模式已启用但未配置服务器地址，已自动切换回 'local' 模式。"
+                )
+                cfg["playwright_mode"] = "local"
+            else:
+                # 简单检查 URL 格式
+                server_url = server_url.strip()
+                if not (
+                    server_url.startswith("ws://")
+                    or server_url.startswith("wss://")
+                    or server_url.startswith("http://")
+                    or server_url.startswith("https://")
+                ):
+                    logger.warning(
+                        f"[灾害预警] 配置警告: 远程 Playwright 地址 '{server_url}' 格式可能不正确 (应以 ws://, wss://, http:// 或 https:// 开头)。"
+                    )
+
         # 布尔值校验
         ConfigValidator._ensure_bool(cfg, "include_map", False)
         ConfigValidator._ensure_bool(cfg, "detailed_jma_intensity", False)
@@ -579,7 +617,7 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
-    def _validate_push_frequency(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_push_frequency(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验推送频率控制"""
         if not isinstance(cfg, dict):
             return cfg
@@ -588,7 +626,7 @@ class ConfigValidator:
         for key, max_val in [
             ("cea_cwa_report_n", 10),
             ("jma_report_n", 20),
-            ("gq_report_n", 20)
+            ("gq_report_n", 20),
         ]:
             val = cfg.get(key)
             if isinstance(val, int):
@@ -617,19 +655,19 @@ class ConfigValidator:
         return tz
 
     @staticmethod
-    def _validate_telemetry(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_telemetry(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验遥测配置"""
         if not isinstance(cfg, dict):
             return cfg
-        
+
         # 确保 enabled 是布尔值
         if "enabled" in cfg and not isinstance(cfg["enabled"], bool):
             cfg["enabled"] = True
-            
+
         return cfg
 
     @staticmethod
-    def _validate_data_sources(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_data_sources(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验数据源配置结构"""
         if not isinstance(cfg, dict):
             return cfg
@@ -638,7 +676,9 @@ class ConfigValidator:
         for key in ["fan_studio", "p2p_earthquake", "wolfx", "global_quake"]:
             if key in cfg:
                 if not isinstance(cfg[key], dict):
-                    logger.warning(f"[灾害预警] 配置警告: 数据源 {key} 格式错误，已重置。")
+                    logger.warning(
+                        f"[灾害预警] 配置警告: 数据源 {key} 格式错误，已重置。"
+                    )
                     cfg[key] = {"enabled": True}
                 else:
                     # 仅确保 enabled 为 bool，其他字段保持原样以支持扩展（如 API Key 等字符串配置）

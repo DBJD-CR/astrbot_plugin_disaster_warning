@@ -158,16 +158,16 @@ class MessagePushManager:
             # 将非法的 0/负数视为无效并回退到默认值 2
             if pool_size < 1:
                 pool_size = 2
-        
+
         # 获取 Playwright 配置
         playwright_mode = msg_config.get("playwright_mode", "local")
         playwright_server_url = msg_config.get("playwright_server_url", "")
-        
+
         self.browser_manager = BrowserManager(
             pool_size=pool_size,
             telemetry=telemetry,
             mode=playwright_mode,
-            server_url=playwright_server_url
+            server_url=playwright_server_url,
         )
 
         # 启动时执行一次清理，避免开发环境下重载插件导致临时文件堆积
