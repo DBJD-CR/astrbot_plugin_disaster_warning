@@ -356,6 +356,7 @@ class DisasterWarningPlugin(Star):
 📋 可用命令：
 • /灾害预警 - 显示此帮助信息
 • /灾害预警状态 - 查看服务运行状态
+• /灾害预警重连 - 强制重连所有数据源 (仅管理员)
 • /地震列表查询 [数据源] [数量] [格式] - 查询最新地震列表
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息 (仅管理员)
@@ -369,6 +370,52 @@ class DisasterWarningPlugin(Star):
 更多信息可参考 README 文档"""
 
         yield event.plain_result(help_text)
+
+    @filter.command("灾害预警重连")
+    async def disaster_reconnect(self, event: AstrMessageEvent):
+        """强制对所有已启用但离线的数据源发起重连"""
+        if not await self.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if not self.disaster_service:
+            yield event.plain_result("❌ 灾害预警服务未启动")
+            return
+
+        yield event.plain_result("🔄 正在尝试重连所有离线数据源...")
+
+        try:
+            results = await self.disaster_service.reconnect_all_sources()
+
+            # 构建结果消息
+            lines = ["🔄 重连操作结果："]
+            success_count = 0
+            fail_count = 0
+            skip_count = 0
+
+            for name, status in results.items():
+                if "已触发" in status:
+                    success_count += 1
+                    icon = "✅"
+                elif "失败" in status:
+                    fail_count += 1
+                    icon = "❌"
+                else:
+                    skip_count += 1
+                    icon = "⏩"
+
+                lines.append(f"  {icon} {name}: {status}")
+
+            lines.append("")
+            lines.append(
+                f"📊 统计: 触发 {success_count}, 跳过 {skip_count}, 失败 {fail_count}"
+            )
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 重连操作失败: {e}")
+            yield event.plain_result(f"❌ 重连操作失败: {str(e)}")
 
     @filter.command("灾害预警状态")
     async def disaster_status(self, event: AstrMessageEvent):
@@ -502,11 +549,30 @@ class DisasterWarningPlugin(Star):
                 )
                 return
 
+            usage_percent = log_summary.get("usage_percent", 0)
+            max_capacity = log_summary.get("max_total_capacity_mb", 0)
+            file_count = log_summary.get("file_count", 1)
+
+            # 生成文本进度条
+            bar_length = 15
+            filled_length = int(bar_length * usage_percent / 100)
+            filled_length = max(0, min(filled_length, bar_length))  # Clamp
+            bar = "█" * filled_length + "░" * (bar_length - filled_length)
+
+            # 根据使用率设置颜色指示 (通过emoji模拟)
+            status_icon = "🟢"
+            if usage_percent > 90:
+                status_icon = "🔴"
+            elif usage_percent > 70:
+                status_icon = "🟡"
+
             log_info = f"""📊 原始消息日志统计
 
-📁 日志文件：{log_summary["log_file"]}
+📁 文件路径：{log_summary["log_file"]}
+📄 文件数量：{file_count}
 📈 总条目数：{log_summary["total_entries"]}
-📦 文件大小：{log_summary.get("file_size_mb", 0):.2f} MB
+📦 占用空间：{log_summary.get("file_size_mb", 0):.2f} MB / {max_capacity:.0f} MB
+💾 存储占用：{bar} {usage_percent:.1f}% {status_icon}
 📅 时间范围：{log_summary["date_range"]["start"]} 至 {log_summary["date_range"]["end"]}
 
 📡 数据源统计："""
