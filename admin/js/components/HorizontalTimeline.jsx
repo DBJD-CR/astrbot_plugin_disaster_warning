@@ -1,39 +1,100 @@
 const { Typography, Chip, Tooltip } = MaterialUI;
-const { useMemo } = React;
+const { useMemo, useRef, useEffect } = React;
 
 /**
  * 重大事件时间轴组件
- * 横向展示最近的重大事件 (M>=5.0 或 红色/橙色预警)
+ * 横向展示最近的重大事件 (M>=5.0 或 红色/橙色预警 或 海啸)
  */
 function HorizontalTimeline({ style }) {
     const { state } = useAppContext();
-    const { events } = state;
+    const { events, majorEvents, config } = state; // 同时解构 events 和 majorEvents
+    const displayTimezone = config.displayTimezone || 'UTC+8';
 
     // 筛选并排序重大事件
     const timelineItems = useMemo(() => {
+        // 如果后端提供了 majorEvents，直接使用
+        if (majorEvents && Array.isArray(majorEvents) && majorEvents.length > 0) {
+            return majorEvents
+                .slice()
+                .sort((a, b) => {
+                    const timeA = new Date(a.time || a.timestamp).getTime();
+                    const timeB = new Date(b.time || b.timestamp).getTime();
+                    return timeB - timeA;
+                })
+                .slice(0, 6)
+                .reverse();
+        }
+
+        // 回退逻辑：如果后端未更新，仍然从 events 中筛选 (兼容旧版)
         if (!events || !Array.isArray(events)) return [];
 
-        const majorEvents = events.filter(e => {
+        const filteredEvents = events.filter(e => {
             // 地震：M >= 5.0
             if (e.type === 'earthquake' && e.magnitude >= 5.0) return true;
+
+            // 海啸：全部计入
+            if (e.type === 'tsunami') return true;
             
-            // 气象/海啸：描述中包含红色/橙色
+            // 气象：描述中包含红色/橙色
             if (e.description && (e.description.includes('红') || e.description.includes('橙'))) return true;
             
             return false;
         });
 
-        // 按时间倒序排列获取最新的 5 个，然后反转（右边是最新的）
-        return majorEvents
+        return filteredEvents
             .slice()
             .sort((a, b) => {
                 const timeA = new Date(a.time || a.timestamp).getTime();
                 const timeB = new Date(b.time || b.timestamp).getTime();
                 return timeB - timeA;
             })
-            .slice(0, 5)
-            .reverse();
-    }, [events]);
+            .reverse(); // 时间正序排列 (旧->新)
+    }, [state]);
+
+    const scrollContainerRef = useRef(null);
+    // 用于标记是否是用户触发的滚动，防止自动滚动逻辑干扰
+    const isUserScrolling = useRef(false);
+
+    const scrollLeft = () => {
+        if (scrollContainerRef.current) {
+            isUserScrolling.current = true;
+            scrollContainerRef.current.scrollBy({ left: -200, behavior: 'smooth' });
+            // 滚动动画结束后重置标志
+            setTimeout(() => { isUserScrolling.current = false; }, 500);
+        }
+    };
+
+    const scrollRight = () => {
+        if (scrollContainerRef.current) {
+            isUserScrolling.current = true;
+            scrollContainerRef.current.scrollBy({ left: 200, behavior: 'smooth' });
+            setTimeout(() => { isUserScrolling.current = false; }, 500);
+        }
+    };
+
+    // 在数据更新时自动滚动到最右侧
+    // 逻辑优化：只在组件首次挂载 或 timelineItems 长度增加（有新事件）时滚动
+    // 避免因其他原因导致的重渲染触发滚动，干扰用户查看历史
+    const prevItemsLengthRef = useRef(0);
+
+    useEffect(() => {
+        const hasNewItems = timelineItems.length > prevItemsLengthRef.current;
+        const isFirstRender = prevItemsLengthRef.current === 0;
+        
+        // 更新长度记录
+        prevItemsLengthRef.current = timelineItems.length;
+
+        if (scrollContainerRef.current && !isUserScrolling.current) {
+            // 只有在首次加载 或 有新数据追加时 才自动滚动
+            if (isFirstRender || hasNewItems) {
+                setTimeout(() => {
+                    if (!isUserScrolling.current && scrollContainerRef.current) {
+                        scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
+                    }
+                }, 100);
+            }
+        }
+    }, [timelineItems]);
 
     if (timelineItems.length === 0) {
         return (
@@ -52,21 +113,50 @@ function HorizontalTimeline({ style }) {
     const formatTime = (isoString) => {
         if (!isoString) return '';
         try {
-            const date = new Date(isoString);
-            return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            // 使用新的时区处理函数，不包含年份
+            const formatted = formatTimeWithZone(isoString, displayTimezone, false);
+            // 格式化后的结果已经是 MM-DD HH:mm，这里为了样式紧凑，我们可以把 - 换成 /
+            return formatted.replace('-', '/');
         } catch (e) {
             return '';
         }
     };
 
     const getEventColor = (event) => {
+        // 地震颜色判断
         if (event.type === 'earthquake') {
-            if (event.magnitude >= 7.0) return 'var(--md-sys-color-error)'; // 红色
+            if (event.magnitude >= 8.0) return '#6A1B9A'; // 紫色
+            if (event.magnitude >= 7.0) return '#D32F2F'; // 红色
             if (event.magnitude >= 6.0) return '#FB8C00'; // 橙色
             return '#FDD835'; // 黄色
         }
-        if (event.description?.includes('红')) return 'var(--md-sys-color-error)';
-        if (event.description?.includes('橙')) return '#FB8C00';
+
+        // 海啸颜色判断
+        if (event.type === 'tsunami') {
+            const level = event.level || '';
+            const desc = event.description || '';
+            if (level.includes('红') || level.includes('Major') || desc.includes('红')) return '#D32F2F'; // 红色/大海啸警报
+            if (level.includes('橙') || level.includes('Warning') || desc.includes('橙')) return '#FB8C00'; // 橙色/海啸警报
+            if (level.includes('黄') || level.includes('Watch') || desc.includes('黄')) return '#FDD835'; // 黄色/海啸注意报
+            return '#2196F3'; // 默认蓝色
+        }
+
+        // 气象预警颜色判断
+        // 优先尝试从 level 字段判断
+        if (event.level) {
+            if (event.level.includes('红')) return '#D32F2F';
+            if (event.level.includes('橙')) return '#FB8C00';
+            if (event.level.includes('黄')) return '#FDD835';
+            if (event.level.includes('蓝')) return '#2196F3';
+        }
+        
+        // 回退到描述匹配
+        const desc = event.description || '';
+        if (desc.includes('红')) return '#D32F2F';
+        if (desc.includes('橙')) return '#FB8C00';
+        if (desc.includes('黄')) return '#FDD835';
+        if (desc.includes('蓝')) return '#2196F3';
+        
         return 'var(--md-sys-color-primary)';
     };
 
@@ -77,74 +167,189 @@ function HorizontalTimeline({ style }) {
                 <Typography variant="h6">重大事件回溯</Typography>
             </div>
 
-            <div style={{ 
-                flex: 1, 
-                display: 'flex', 
-                alignItems: 'center', 
-                position: 'relative', 
-                padding: '20px 0',
-                minWidth: '600px' // 保证最小宽度，避免挤压
-            }}>
-                {/* 轴线 */}
-                <div style={{ 
-                    position: 'absolute', 
-                    top: '50%', 
-                    left: '20px', 
-                    right: '20px', 
-                    height: '2px', 
-                    background: 'var(--md-sys-color-outline-variant)',
-                    zIndex: 0
-                }}></div>
+            {/* 左右导航按钮 */}
+            <>
+                <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
+                            <div
+                                onClick={scrollLeft}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'var(--md-sys-color-on-surface)',
+                                    backdropFilter: 'blur(4px)',
+                                    opacity: 0.6,
+                                    transition: 'opacity 0.2s',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = 0.6}
+                            >
+                                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>‹</span>
+                            </div>
+                        </div>
 
-                {/* 事件节点 */}
-                <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    width: '100%', 
-                    zIndex: 1,
-                    padding: '0 20px'
-                }}>
-                    {timelineItems.map((item, index) => {
-                        const color = getEventColor(item);
-                        const isLatest = index === timelineItems.length - 1;
+                        <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
+                            <div
+                                onClick={scrollRight}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'var(--md-sys-color-on-surface)',
+                                    backdropFilter: 'blur(4px)',
+                                    opacity: 0.6,
+                                    transition: 'opacity 0.2s',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = 0.6}
+                            >
+                                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>›</span>
+                            </div>
+                        </div>
 
-                        return (
-                            <div key={index} style={{ 
-                                display: 'flex', 
-                                flexDirection: 'column', 
-                                alignItems: 'center', 
+                        <div
+                            ref={scrollContainerRef}
+                            className="horizontal-timeline-scroll-container"
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
                                 position: 'relative',
-                                width: '120px' // 固定每个节点的宽度区域
-                            }}>
+                                padding: '20px 0',
+                                overflowX: 'auto',
+                                overflowY: 'hidden',
+                                width: '100%',
+                                cursor: 'grab',
+                                // 隐藏滚动条但保留功能 (兼容性处理)
+                                scrollbarWidth: 'none',  // Firefox
+                                msOverflowStyle: 'none', // IE/Edge
+                            }}
+                            onMouseDown={(e) => {
+                                isUserScrolling.current = true; // 标记用户正在交互
+                                const ele = e.currentTarget;
+                                ele.style.cursor = 'grabbing';
+                                ele.style.userSelect = 'none';
+                    
+                                let pos = {
+                                    left: ele.scrollLeft,
+                                    x: e.clientX,
+                                };
+
+                                const mouseMoveHandler = (e) => {
+                                    const dx = e.clientX - pos.x;
+                                    ele.scrollLeft = pos.left - dx;
+                                };
+
+                                const mouseUpHandler = () => {
+                                    isUserScrolling.current = false; // 交互结束
+                                    ele.style.cursor = 'grab';
+                                    ele.style.removeProperty('user-select');
+                                    document.removeEventListener('mousemove', mouseMoveHandler);
+                                    document.removeEventListener('mouseup', mouseUpHandler);
+                                };
+
+                                document.addEventListener('mousemove', mouseMoveHandler);
+                                document.addEventListener('mouseup', mouseUpHandler);
+                            }}
+                            // 监听触摸事件，同样标记用户交互
+                            onTouchStart={() => { isUserScrolling.current = true; }}
+                            onTouchEnd={() => { isUserScrolling.current = false; }}
+                        >
+                            {/* 注入样式以隐藏 Webkit 滚动条 */}
+                            <style>{`
+                                .horizontal-timeline-scroll-container::-webkit-scrollbar {
+                                    display: none;
+                                }
+                            `}</style>
+                {/* 容器用于包裹内容，确保宽度足够 */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    minWidth: 'min-content', // 宽度随内容撑开
+                    padding: '0 20px',
+                    position: 'relative',
+                    height: '100%'
+                }}>
+                    {/* 轴线 - 固定位置 */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '65px', // 根据上方时间(30+8) + 圆点中心(8) 计算大约位置，根据实际微调
+                        left: '20px',
+                        right: '20px',
+                        height: '2px',
+                        background: 'var(--md-sys-color-outline-variant)',
+                        zIndex: 0
+                    }}></div>
+
+                            {/* 事件节点 */}
+                            {timelineItems.map((item, index) => {
+                                const color = getEventColor(item);
+
+                                return (
+                                    <div key={index} style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        position: 'relative',
+                                        width: '140px', // 稍微增加宽度
+                                        flexShrink: 0, // 防止被压缩
+                                        zIndex: 1,
+                                        height: '100%', // 占满高度
+                                        justifyContent: 'flex-start', // 顶部对齐
+                                        paddingTop: '20px' // 给上方留点空间
+                                    }}>
                                 {/* 上方：时间 */}
-                                <Typography variant="caption" sx={{ 
-                                    opacity: 0.7, 
-                                    mb: 1.5, 
-                                    fontWeight: 600,
-                                    background: 'var(--md-sys-color-surface)',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px'
+                                <div style={{
+                                    height: '30px', // 固定高度区域
+                                    display: 'flex',
+                                    alignItems: 'flex-end',
+                                    marginBottom: '8px'
                                 }}>
-                                    {formatTime(item.time || item.timestamp)}
-                                </Typography>
+                                    <Typography variant="caption" sx={{
+                                        opacity: 0.7,
+                                        fontWeight: 600,
+                                        background: 'var(--md-sys-color-surface)',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        {formatTime(item.time || item.timestamp)}
+                                    </Typography>
+                                </div>
 
                                 {/* 中间：圆点 */}
-                                <div style={{ 
-                                    width: isLatest ? '16px' : '12px', 
-                                    height: isLatest ? '16px' : '12px', 
-                                    borderRadius: '50%', 
-                                    background: color,
+                                <div style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    borderRadius: '50%',
+                                    backgroundColor: color, // 使用 backgroundColor 确保颜色生效
                                     border: '3px solid var(--md-sys-color-surface)',
-                                    boxShadow: isLatest ? `0 0 0 2px ${color}` : 'none',
+                                    boxShadow: `0 0 0 2px ${color}`,
                                     marginBottom: '12px',
-                                    transition: 'all 0.2s'
+                                    transition: 'all 0.2s',
+                                    zIndex: 2, // 提高层级，防止被轴线遮挡
+                                    flexShrink: 0 // 防止圆点被压缩
                                 }}></div>
 
                                 {/* 下方：描述 */}
                                 <Tooltip title={item.description} arrow placement="bottom">
-                                    <div style={{ 
-                                        textAlign: 'center', 
-                                        width: '100%'
+                                    <div style={{
+                                        textAlign: 'center',
+                                        width: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center'
                                     }}>
                                         <Typography variant="body2" sx={{ 
                                             fontWeight: 700, 
@@ -152,9 +357,25 @@ function HorizontalTimeline({ style }) {
                                             whiteSpace: 'nowrap', 
                                             overflow: 'hidden', 
                                             textOverflow: 'ellipsis',
-                                            maxWidth: '120px'
+                                            maxWidth: '120px',
+                                            color: color // 标题颜色跟随事件等级
                                         }}>
-                                            {item.type === 'earthquake' ? `M${item.magnitude} 地震` : item.description.split(' ')[0]}
+                                            {/* 标题显示优化：地震显示震级，气象显示核心类型 */}
+                                            {(() => {
+                                                if (item.type === 'earthquake') {
+                                                    return Number.isInteger(item.magnitude) ? `M ${item.magnitude}.0` : `M ${item.magnitude}`;
+                                                } else if (item.type === 'tsunami') {
+                                                    return item.title || '海啸预警';
+                                                } else {
+                                                    // 气象预警：尝试提取“发布”和“信号”之间的内容
+                                                    const match = item.description ? item.description.match(/发布(.*?)信号/) : null;
+                                                    if (match && match[1]) {
+                                                        return match[1];
+                                                    }
+                                                    // 回退逻辑
+                                                    return (item.description || '未知事件').split(' ')[0].slice(0, 8);
+                                                }
+                                            })()}
                                         </Typography>
                                         <Typography variant="caption" sx={{ 
                                             opacity: 0.6, 
@@ -165,15 +386,22 @@ function HorizontalTimeline({ style }) {
                                             textOverflow: 'ellipsis',
                                             maxWidth: '120px'
                                         }}>
-                                            {item.type === 'earthquake' ? item.description.split(' ').pop() : (item.description.length > 8 ? '...' : '')}
+                                            {/* 副标题优化：地震显示地点，气象显示完整描述（增加字数限制） */}
+                                            {(() => {
+                                                const desc = item.description || '';
+                                                return item.type === 'earthquake'
+                                                    ? (desc.includes(' ') ? desc.split(' ').slice(1).join(' ') : desc.replace(/^M[\d.]+\s*/, ''))
+                                                    : (desc.length > 12 ? desc.substring(0, 12) + '...' : desc);
+                                            })()}
                                         </Typography>
                                     </div>
                                 </Tooltip>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+            </>
         </div>
     );
 }
