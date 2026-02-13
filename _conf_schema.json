@@ -2,6 +2,7 @@
   "enabled": {
     "description": "启用灾害预警插件",
     "type": "bool",
+    "hint": "内置的插件总开关",
     "default": true
   },
   "admin_users": {
@@ -28,8 +29,9 @@
     "hint": "支持多API服务细粒度控制",
     "items": {
       "fan_studio": {
-        "description": "FAN Studio WebSocket 数据源 - 中国地震网、台湾中央气象署、气象预警、海啸预警",
+        "description": "FAN Studio WebSocket 数据源",
         "type": "object",
+        "hint": "FAN Studio数据源总开关",
         "items": {
           "enabled": {
             "description": "启用FAN Studio数据源",
@@ -93,8 +95,9 @@
         }
       },
       "p2p_earthquake": {
-        "description": "P2P地震情報 WebSocket 数据源 - 日本气象厅紧急地震速报、地震情报",
+        "description": "P2P地震情報 WebSocket 数据源",
         "type": "object",
+        "hint": "P2P数据源总开关",
         "items": {
           "enabled": {
             "description": "启用P2P地震情報数据源",
@@ -122,8 +125,9 @@
         }
       },
       "wolfx": {
-        "description": "Wolfx API 数据源 - 多国家地震预警和地震列表",
+        "description": "Wolfx Websocket 数据源",
         "type": "object",
+        "hint": "Wolfx数据源总开关",
         "items": {
           "enabled": {
             "description": "启用Wolfx数据源",
@@ -237,6 +241,7 @@
   "strategies": {
     "description": "高级策略配置",
     "type": "object",
+    "hint": "配置数据融合等高级处理策略",
     "items": {
       "cenc_fusion": {
         "description": "CENC 地震情报融合策略",
@@ -264,9 +269,9 @@
     }
   },
   "earthquake_filters": {
-  "description": "地震信息过滤器配置",
+  "description": "地震信息过滤配置",
   "type": "object",
-  "hint": "根据不同数据源类型使用不同的过滤器",
+  "hint": "根据不同数据源类型使用不同的过滤器和全局关键词过滤",
   "items": {
     "keyword_filter": {
       "description": "关键词过滤器",
@@ -422,7 +427,7 @@
   "push_frequency_control": {
     "description": "推送频率控制",
     "type": "object",
-    "hint": "测试性功能，用于控制 EEW 的推送频率，如遇到问题欢迎反馈",
+    "hint": "用于控制地震预警类型消息的推送频率",
     "items": {
       "cea_cwa_report_n": {
         "description": "CEA/CWA：每收到N报推送一次",
@@ -473,6 +478,7 @@
   "message_format": {
     "description": "地震消息格式配置",
     "type": "object",
+    "hint": "自定义预警消息的视觉呈现方式",
     "items": {
       "include_map": {
         "description": "是否包含地图图片",
@@ -518,7 +524,7 @@
       "playwright_server_url": {
         "description": "远程 Playwright 服务器地址",
         "type": "string",
-        "hint": "远程模式时必填。支持多种格式：ws://host:port（Playwright Server）、http://host:port（CDP Endpoint）。示例：ws://192.168.1.100:3000 或 http://192.168.1.100:9222",
+        "hint": "远程模式时必填。支持多种格式如 ws://, wss://, http:// 或 https:// 开头。示例：ws://192.168.1.100:3000 或 http://192.168.1.100:9222",
         "default": ""
       },
       "browser_pool_size": {
@@ -559,6 +565,7 @@
   "weather_config": {
     "description": "气象预警配置",
     "type": "object",
+    "hint": "配置气象预警的筛选规则和展示方式",
     "items": {
       "weather_filter": {
         "description": "气象预警过滤器",
@@ -614,6 +621,7 @@
   "websocket_config": {
     "description": "WebSocket连接配置",
     "type": "object",
+    "hint": "调整与上游数据源服务器的连接参数",
     "items": {
       "reconnect_interval": {
         "description": "重连间隔",
@@ -692,6 +700,7 @@
   "web_admin": {
     "description": "Web管理端配置",
     "type": "object",
+    "hint": "启用并配置内置的 Web 管理后台",
     "items": {
       "enabled": {
         "description": "启用Web管理端",
@@ -819,7 +828,7 @@
   "telemetry_config": {
     "description": "匿名遥测配置",
     "type": "object",
-    "hint": "用于收集插件使用情况和错误信息（可选，默认开启）",
+    "hint": "用于收集插件使用情况和错误信息",
     "items": {
       "enabled": {
         "description": "启用匿名遥测",
