@@ -731,6 +731,7 @@
 | :--- | :--- |
 | `/灾害预警` | 显示插件帮助信息 |
 | `/灾害预警状态` | 查看服务运行状态 |
+| `/灾害预警重连` | 强制重连所有数据源 **(仅管理员)** |
 | `/地震列表查询 [数据源] [数量] [格式]` | 查询最新地震列表 (card/text 格式) |
 | `/灾害预警统计` | 查看详细的事件统计报告 |
 | `/灾害预警统计清除` | 清除所有统计信息 **(仅管理员)** |
@@ -908,35 +909,38 @@ AstrBot/
          ├─ _conf_schema.json              # AstrBot WebUI 配置界面 schema 定义
          ├─ CHANGELOG.md                   # 插件更新日志，适用于 AstrBot v4.11.2+
          ├─ CONTRIBUTING.md                # 本插件的贡献指南
+         ├─ LICENSE                        # 许可证文件
+         ├─ logo.png                       # 插件 Logo，适用于 AstrBot v4.5.0+
          ├─ main.py                        # 插件主入口文件，包含命令处理
          ├─ metadata.yaml                  # 插件元数据信息
          ├─ README.md                      # 插件说明文档
          ├─ requirements.txt               # 插件依赖列表
-         ├─ logo.png                       # 插件 Logo，适用于 AstrBot v4.5.0+
-         ├─ LICENSE                        # 许可证文件
          ├─ admin/                         # Web 管理端前端资源
-         │   ├─ index.html                 # 管理端入口
          │   ├─ css/                       # 样式文件目录
-         │   └─ js/                        # 前端逻辑脚本目录
-         │       ├─ app.jsx                # React 应用入口
-         │       ├─ components/            # UI 组件 (图表、卡片、模态框等)
-         │       ├─ context/               # 全局状态管理
-         │       ├─ hooks/                 # 自定义 React Hooks
-         │       ├─ utils/                 # 前端工具函数
-         │       └─ views/                 # 页面视图组件
+         │   ├─ fonts/                     # 字体文件目录
+         │   ├─ js/                        # 前端逻辑脚本目录
+         │   │   ├─ components/            # UI 组件 (图表、卡片、模态框等)
+         │   │   ├─ context/               # 全局状态管理
+         │   │   ├─ hooks/                 # 自定义 React Hooks
+         │   │   ├─ utils/                 # 前端工具函数
+         │   │   ├─ views/                 # 页面视图组件
+         │   │   └─ app.jsx                # React 应用入口
+         │   ├─ lib/                       # 第三方库 (React, MUI 等)
+         │   └─ index.html                 # 管理端入口
          ├─ core/                          # 核心模块目录
          │   ├─ __init__.py
-         │   ├─ disaster_service.py        # 核心灾害预警服务
-         │   ├─ websocket_manager.py       # WebSocket 连接管理器
-         │   ├─ handler_registry.py        # 处理器注册表
-         │   ├─ event_deduplicator.py      # 基础事件去重器
-         │   ├─ intensity_calculator.py    # 本地烈度计算器
-         │   ├─ message_manager.py         # 消息推送管理器
          │   ├─ browser_manager.py         # Playwright 浏览器实例管理器
+         │   ├─ config_validator.py        # 配置校验器
+         │   ├─ disaster_service.py        # 核心灾害预警服务
+         │   ├─ event_deduplicator.py      # 基础事件去重器
+         │   ├─ handler_registry.py        # 处理器注册表
+         │   ├─ intensity_calculator.py    # 本地烈度计算器
          │   ├─ message_logger.py          # 原始消息记录器
-         │   ├─ telemetry_manager.py       # 匿名遥测管理器
+         │   ├─ message_manager.py         # 消息推送管理器
          │   ├─ statistics_manager.py      # 统计数据持久化管理器
+         │   ├─ telemetry_manager.py       # 匿名遥测管理器
          │   ├─ web_server.py              # Web 管理服务器 (FastAPI)
+         │   ├─ websocket_manager.py       # WebSocket 连接管理器
          │   ├─ handlers/                  # 数据处理器目录
          │   │   ├─ __init__.py
          │   │   ├─ base.py                # 基础处理器类
@@ -957,8 +961,8 @@ AstrBot/
          │       └─ weather_filter.py      # 气象预警过滤器
          ├─ models/                        # 数据模型目录
          │   ├─ __init__.py
-         │   ├─ models.py                  # 数据模型定义（地震、海啸、气象等）
-         │   └─ data_source_config.py      # 数据源配置管理器
+         │   ├─ data_source_config.py      # 数据源配置管理器
+         │   └─ models.py                  # 数据模型定义（地震、海啸、气象等）
          ├─ utils/                         # 工具模块目录
          │   ├─ __init__.py
          │   ├─ converters.py              # 数据类型转换工具
@@ -977,8 +981,8 @@ AstrBot/
              ├─ fe_regions_data.json       # FE 全球地震区划映射表
              └─ card_templates/            # 消息卡片 HTML 模板
                  ├─ Aurora/                # 极光主题模板
-                 ├─ DarkNight/             # 暗夜主题模板
-                 └─ Base/                  # 基础通用模板 (地图瓦片、地震列表等)
+                 ├─ Base/                  # 基础通用模板 (地图瓦片、地震列表等)
+                 └─ DarkNight/             # 暗夜主题模板
 ```
 
 ### 💾 数据持久化与存储
@@ -992,12 +996,12 @@ AstrBot/
       └─ astrbot_plugin_disaster_warning/
          ├─ temp/                          # 临时文件夹，用于存放渲染生成的图片文件
          ├─ .telemetry_id                  # 匿名遥测实例ID（不包含任何用户信息）
-         ├─ statistics.json                # 灾害事件统计数据（包含震级分布、历史极值等）
          ├─ earthquake_lists_cache.json    # Wolfx 地震列表数据缓存
          ├─ logger_stats.json              # 日志过滤器统计摘要
          ├─ raw_messages.log               # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
          ├─ raw_messages.log.1             # 轮转日志文件（自动管理）
-         └─ raw_messages.log.2             # 更多轮转文件...
+         ├─ raw_messages.log.2             # 更多轮转文件...
+         └─ statistics.json                # 灾害事件统计数据（包含震级分布、历史极值等）
 ```
 
 - **统计数据 (`statistics.json`)**: 记录自插件启动以来的所有灾害事件，包含了丰富的统计信息内容。即使插件重启，去重指纹和历史统计信息也会被保留。
