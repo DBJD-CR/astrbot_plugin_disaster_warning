@@ -7,7 +7,7 @@ const { useMemo } = React;
  */
 function ConnectionsGrid() {
     const { state } = useAppContext();
-    const { connections } = state;
+    const { connections, dataLoaded } = state;
 
     const displayConnections = useMemo(() => {
         // 定义需要监控的目标数据源及其匹配规则
@@ -93,6 +93,36 @@ function ConnectionsGrid() {
             indicatorShadow: 'none'
         }
     };
+
+    // 骨架屏
+    if (!dataLoaded) {
+        return (
+            <div className="connections-grid" style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '16px'
+            }}>
+                {[1, 2, 3, 4].map(i => (
+                    <div key={i} style={{
+                        borderRadius: '16px',
+                        border: '1px solid var(--glass-border)',
+                        padding: '20px',
+                        minHeight: '140px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="skeleton" style={{ width: '120px', height: '22px', borderRadius: '6px' }}></div>
+                            <div className="skeleton" style={{ width: '60px', height: '24px', borderRadius: '12px' }}></div>
+                        </div>
+                        <div className="skeleton" style={{ width: '80%', height: '16px', borderRadius: '4px' }}></div>
+                        <div className="skeleton" style={{ width: '60%', height: '16px', borderRadius: '4px' }}></div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     return (
         <div className="connections-grid" style={{

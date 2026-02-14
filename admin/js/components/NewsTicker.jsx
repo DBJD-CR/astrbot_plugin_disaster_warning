@@ -3,7 +3,7 @@ const { useMemo, useState, useEffect } = React;
 
 function NewsTicker({ style }) {
     const { state } = useAppContext();
-    const { events, config } = state;
+    const { events, config, dataLoaded } = state;
     const displayTimezone = config.displayTimezone || 'UTC+8';
     const [paused, setPaused] = useState(false);
 
@@ -32,7 +32,65 @@ function NewsTicker({ style }) {
         }));
     }, [events]);
 
-    if (tickerItems.length === 0) return null;
+    // 如果数据还没加载完成，显示加载状态
+    if (!dataLoaded) {
+        return (
+            <div className="card" style={{
+                ...style,
+                padding: '0 24px',
+                height: '56px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                overflow: 'hidden',
+                background: state.theme === 'dark' ? 'var(--md-sys-color-surface)' : 'var(--md-sys-color-secondary-container)',
+                marginBottom: '16px'
+            }}>
+                <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    fontWeight: 800, 
+                    minWidth: 'fit-content',
+                    fontSize: '0.9rem'
+                }}>
+                    <span style={{ fontSize: '20px' }}>📡</span>
+                    <span>实时动态</span>
+                </div>
+                <div className="skeleton" style={{ flex: 1, height: '24px', borderRadius: '12px' }}></div>
+            </div>
+        );
+    }
+
+    // 如果没有近期事件，显示提示
+    if (tickerItems.length === 0) {
+        return (
+            <div className="card" style={{
+                ...style,
+                padding: '0 24px',
+                height: '56px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                background: state.theme === 'dark' ? 'var(--md-sys-color-surface)' : 'var(--md-sys-color-secondary-container)',
+                marginBottom: '16px'
+            }}>
+                <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    fontWeight: 800, 
+                    fontSize: '0.9rem'
+                }}>
+                    <span style={{ fontSize: '20px' }}>📡</span>
+                    <span>实时动态</span>
+                </div>
+                <Typography style={{ opacity: 0.6, fontSize: '0.9rem' }}>
+                    暂无近期事件推送
+                </Typography>
+            </div>
+        );
+    }
 
     const formatTime = (isoString) => {
         if (!isoString) return '';
@@ -55,7 +113,7 @@ function NewsTicker({ style }) {
     };
 
     return (
-        <div className="card"
+        <div className="card news-ticker-card"
             style={{
                 ...style,
                 padding: '0 24px',

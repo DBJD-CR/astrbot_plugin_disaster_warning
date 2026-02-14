@@ -31,6 +31,31 @@ except ImportError:
     )
 
 
+def is_running_in_docker() -> bool:
+    """
+    检测是否在 Docker 容器中运行
+    使用多种方法进行检测以提高准确性
+    """
+    # 方法1: 检查 /.dockerenv 文件（最可靠的容器内标志）
+    if os.path.exists("/.dockerenv"):
+        return True
+
+    # 方法2: 检查当前进程的 cgroup 是否在 docker 或 kubepods 中
+    try:
+        with open("/proc/self/cgroup", "r") as f:
+            content = f.read()
+            if "/docker/" in content or "/kubepods/" in content:
+                return True
+    except (FileNotFoundError, PermissionError):
+        pass
+
+    # 方法3: 检查容器特定的环境变量
+    if os.environ.get("DOCKER_CONTAINER") == "true":
+        return True
+
+    return False
+
+
 class WebAdminServer:
     """Web 管理端服务器"""
 
@@ -323,8 +348,7 @@ class WebAdminServer:
                     return JSONResponse({"error": "日志目录不存在"}, status_code=404)
 
                 # 检查是否在 Docker 容器中运行
-                is_docker = os.path.exists("/.dockerenv")
-                if is_docker:
+                if is_running_in_docker():
                     return JSONResponse(
                         {
                             "error": "Docker 环境下不支持在宿主机打开目录，请手动查看挂载路径"
@@ -355,6 +379,15 @@ class WebAdminServer:
 
                 if not os.path.exists(plugin_dir):
                     return JSONResponse({"error": "插件目录不存在"}, status_code=404)
+
+                # 检查是否在 Docker 容器中运行
+                if is_running_in_docker():
+                    return JSONResponse(
+                        {
+                            "error": "Docker 环境下不支持在宿主机打开目录，请手动查看挂载路径"
+                        },
+                        status_code=400,
+                    )
 
                 # 打开目录
                 system = platform.system()

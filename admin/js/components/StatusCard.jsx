@@ -6,7 +6,33 @@ const { Box, Typography } = MaterialUI;
  */
 function StatusCard() {
     const { state } = useAppContext();
-    const { status } = state;
+    const { status, dataLoaded } = state;
+
+    // 骨架屏
+    if (!dataLoaded) {
+        return (
+            <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                    <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '10px',
+                        background: 'rgba(59, 130, 246, 0.1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '20px'
+                    }}>⚡</div>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>服务状态</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, justifyContent: 'center' }}>
+                    <div className="skeleton" style={{ height: '24px', borderRadius: '6px' }}></div>
+                    <div className="skeleton" style={{ height: '24px', borderRadius: '6px' }}></div>
+                    <div className="skeleton" style={{ height: '24px', borderRadius: '6px' }}></div>
+                </Box>
+            </div>
+        );
+    }
 
     return (
         <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

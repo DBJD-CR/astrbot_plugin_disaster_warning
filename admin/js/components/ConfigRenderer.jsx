@@ -603,7 +603,7 @@ function ConfigRenderer() {
             setExpandedKeys(finalExpandedKeys);
         } catch (e) {
             console.error('加载配置失败', e);
-            alert('加载配置失败,请检查控制台');
+            showToast('加载配置失败,请检查控制台', 'error');
         } finally {
             setLoading(false);
         }
@@ -654,10 +654,10 @@ function ConfigRenderer() {
             // 保存成功后，更新草稿为已清理的配置（或者清除草稿？为了防止意外，保留最新状态比较好）
             localStorage.setItem('astrbot_plugin_dw_draft_config', JSON.stringify(cleanedConfig));
             
-            alert('✅ 配置已保存');
+            showToast('配置已保存', 'success');
         } catch (e) {
             console.error('保存配置失败', e);
-            alert('❌ 保存配置失败,请检查控制台');
+            showToast('保存配置失败,请检查控制台', 'error');
         } finally {
             setSaving(false);
         }

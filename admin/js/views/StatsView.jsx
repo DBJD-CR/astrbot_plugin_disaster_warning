@@ -3,6 +3,7 @@ const { Box, Typography, Chip } = MaterialUI;
 function StatsView() {
     const { state } = useAppContext();
     const { stats, config } = state;
+    const { showToast } = useToast(); // 使用 Toast 提示
     const displayTimezone = config.displayTimezone || 'UTC+8';
     const maxMag = stats && stats.maxMagnitude ? stats.maxMagnitude : null;
     const sources = stats && stats.dataSources ? stats.dataSources : [];
@@ -293,21 +294,19 @@ function StatsView() {
                     method: 'POST'
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
                 const result = await response.json();
+                
                 if (result.success) {
                     // 成功时不弹窗，直接静默打开
                     console.log('Log directory opened successfully');
                 } else {
-                    alert('操作失败: ' + (result.error || '未知错误'));
+                    // 显示服务器返回的错误信息
+                    showToast(result.error || '操作失败', 'error');
                 }
             } catch (e) {
                 console.error('Failed to open log dir:', e);
                 // 网络错误才弹窗
-                alert(`请求失败: ${e.message || '网络错误或服务不可达'}`);
+                showToast(`请求失败: ${e.message || '网络错误或服务不可达'}`, 'error');
             }
         };
 

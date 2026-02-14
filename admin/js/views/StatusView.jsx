@@ -6,6 +6,7 @@ function StatusView({ onOpenSimulation }) {
     const [reconnecting, setReconnecting] = React.useState(false);
     const [refreshing, setRefreshing] = React.useState(false);
     const { sendMessage } = useWebSocket(); // 获取 WebSocket 发送消息函数
+    const { showToast } = useToast(); // 使用 Toast 提示
 
     const refreshAll = async () => {
         setRefreshing(true);
@@ -46,15 +47,15 @@ function StatusView({ onOpenSimulation }) {
                 setTimeout(() => {
                     refreshData();
                     setReconnecting(false);
-                    alert(result.message || '重连操作已触发');
+                    showToast(result.message || '重连操作已触发', 'success');
                 }, 1000);
             } else {
-                alert('重连失败: ' + (result.error || '未知错误'));
+                showToast('重连失败: ' + (result.error || '未知错误'), 'error');
                 setReconnecting(false);
             }
         } catch (e) {
             console.error('Reconnect failed:', e);
-            alert('请求失败，请检查网络连接');
+            showToast('请求失败，请检查网络连接', 'error');
             setReconnecting(false);
         }
     };

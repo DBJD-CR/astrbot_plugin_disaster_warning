@@ -64,7 +64,7 @@ function RealTimeClock({ timeZone }) {
  */
 function Header({ currentView }) {
     const { state, dispatch } = useAppContext();
-    const { config } = state;
+    const { config, dataLoaded } = state;
     const displayTimezone = config.displayTimezone || 'UTC+8';
 
     // 切换亮色/暗色主题
@@ -81,7 +81,36 @@ function Header({ currentView }) {
     };
 
     return (
-        <div className="top-bar">
+        <>
+            {/* 顶部加载进度条 */}
+            {!dataLoaded && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '3px',
+                    background: 'var(--md-sys-color-surface-variant)',
+                    zIndex: 9999,
+                    overflow: 'hidden'
+                }}>
+                    <div style={{
+                        height: '100%',
+                        background: 'var(--md-sys-color-primary)',
+                        animation: 'loading-bar 1.5s ease-in-out infinite',
+                        transformOrigin: 'left'
+                    }}></div>
+                    <style>{`
+                        @keyframes loading-bar {
+                            0% { transform: scaleX(0); transform-origin: left; }
+                            50% { transform: scaleX(0.7); transform-origin: left; }
+                            51% { transform: scaleX(0.7); transform-origin: right; }
+                            100% { transform: scaleX(0); transform-origin: right; }
+                        }
+                    `}</style>
+                </div>
+            )}
+            <div className="top-bar">
             <Typography variant="h5" sx={{
                 fontWeight: 800,
                 color: 'text.primary',
@@ -136,5 +165,6 @@ function Header({ currentView }) {
                 </IconButton>
             </Box>
         </div>
+        </>
     );
 }

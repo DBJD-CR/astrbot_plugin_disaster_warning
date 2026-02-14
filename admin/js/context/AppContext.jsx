@@ -38,14 +38,16 @@ const initialState = {
     events: [],
     magnitudeDistribution: {},
     wsConnected: false,
-    theme: localStorage.getItem('theme') || 'light'
+    theme: localStorage.getItem('theme') || 'light',
+    // 新增：数据加载状态
+    dataLoaded: false
 };
 
 // Reducer
 function appReducer(state, action) {
     switch (action.type) {
         case 'UPDATE_STATUS':
-            return { ...state, status: { ...state.status, ...action.payload } };
+            return { ...state, status: { ...state.status, ...action.payload }, dataLoaded: true };
         case 'UPDATE_CONFIG':
             return { ...state, config: { ...state.config, ...action.payload } };
         case 'UPDATE_STATS':
@@ -183,10 +185,15 @@ function AppProvider({ children }) {
             .catch(err => console.error('Failed to fetch config:', err));
     }, []);
 
-    // 初始化时获取状态和配置
+    // 初始化时延迟加载数据，优先渲染UI框架
     useEffect(() => {
-        refreshData();
-        fetchConfig();
+        // 使用 setTimeout 确保首屏 UI 先渲染
+        const timer = setTimeout(() => {
+            refreshData();
+            fetchConfig();
+        }, 0);
+        
+        return () => clearTimeout(timer);
     }, [refreshData, fetchConfig]);
 
     // 运行时长计时器

@@ -219,7 +219,7 @@ body.dark-theme .config-header {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.card:hover {
+.card:hover:not(.news-ticker-card) {
     transform: translateY(-4px);
     box-shadow: 0 12px 30px 0 rgba(103, 80, 164, 0.12);
 }
@@ -1027,4 +1027,35 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     .event-card:hover {
         transform: none !important;
     }
+}
+/* ========== 骨架屏动画 ========== */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--md-sys-color-surface-variant) 0%,
+        rgba(var(--md-sys-color-on-surface-variant-rgb, 73, 69, 79), 0.15) 50%,
+        var(--md-sys-color-surface-variant) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+body.dark-theme .skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--md-sys-color-surface-variant) 0%,
+        rgba(202, 196, 208, 0.15) 50%,
+        var(--md-sys-color-surface-variant) 100%
+    );
+    background-size: 200% 100%;
 }

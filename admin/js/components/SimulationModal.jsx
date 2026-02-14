@@ -12,6 +12,7 @@ const { useState, useEffect } = React;
  */
 function SimulationModal({ open, onClose }) {
     const api = useApi();
+    const { showToast } = useToast(); // 使用 Toast 提示
     const [disasterType, setDisasterType] = useState('earthquake');
     const [testType, setTestType] = useState('china');
     const [targetGroup, setTargetGroup] = useState('');
@@ -67,10 +68,10 @@ function SimulationModal({ open, onClose }) {
                     }));
                 }
             } else {
-                alert('获取位置失败: ' + (result.error || '未知错误'));
+                showToast('获取位置失败: ' + (result.error || '未知错误'), 'error');
             }
         } catch (e) {
-            alert('获取位置失败');
+            showToast('获取位置失败', 'error');
             console.error(e);
         }
     };
@@ -87,13 +88,13 @@ function SimulationModal({ open, onClose }) {
             });
 
             if (result.success) {
-                alert(`✅ 测试成功!\n${result.message || '预警消息已发送'}`);
+                showToast(result.message || '预警消息已发送', 'success');
                 onClose();
             } else {
-                alert(`❌ 测试失败: ${result.message || result.error}`);
+                showToast(`测试失败: ${result.message || result.error}`, 'error');
             }
         } catch (e) {
-            alert('请求失败,请检查控制台');
+            showToast('请求失败,请检查控制台', 'error');
             console.error(e);
         } finally {
             setSending(false);

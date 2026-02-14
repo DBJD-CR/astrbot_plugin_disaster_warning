@@ -437,6 +437,8 @@ const rootElement = document.getElementById('root');
 const root = ReactDOM.createRoot(rootElement);
 root.render(
     <AppProvider>
-        <App />
+        <ToastProvider>
+            <App />
+        </ToastProvider>
     </AppProvider>
 );
