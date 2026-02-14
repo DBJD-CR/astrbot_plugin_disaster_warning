@@ -2,7 +2,7 @@ const { Box, Button, Typography } = MaterialUI;
 
 function StatusView({ onOpenSimulation }) {
     const { state, refreshData } = useAppContext();
-    const { status } = state;
+    const { status, wsConnected } = state; // 获取 wsConnected 状态
     const [reconnecting, setReconnecting] = React.useState(false);
     const [refreshing, setRefreshing] = React.useState(false);
     const { sendMessage } = useWebSocket(); // 获取 WebSocket 发送消息函数
@@ -14,15 +14,19 @@ function StatusView({ onOpenSimulation }) {
             // 1. 通过 HTTP API 刷新状态
             await refreshData();
             
-            // 2. 通过 WebSocket 请求完整更新
-            sendMessage({ type: 'refresh' });
-            
-            // 延迟一下让数据有时间更新
-            setTimeout(() => {
-                setRefreshing(false);
-            }, 500);
+            // 2. 通过 WebSocket 请求完整更新（如果连接正常）
+            if (wsConnected) {
+                const sent = sendMessage({ type: 'refresh' });
+                if (!sent) {
+                    console.warn('[StatusView] WebSocket 未连接，跳过实时刷新请求');
+                }
+            } else {
+                console.warn('[StatusView] WebSocket 未连接，仅通过 HTTP API 刷新');
+            }
         } catch (e) {
             console.error('刷新数据失败:', e);
+        } finally {
+            // 清理刷新状态，使 UI 与实际刷新生命周期保持一致
             setRefreshing(false);
         }
     };

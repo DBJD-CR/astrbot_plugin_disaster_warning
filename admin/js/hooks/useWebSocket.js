@@ -1,4 +1,4 @@
-const { useEffect, useRef } = React;
+const { useEffect, useRef, useCallback } = React;
 
 // ========== 全局单例 WebSocket 实例 ==========
 // 确保整个应用只有一个 WebSocket 连接
@@ -15,7 +15,8 @@ function useWebSocket() {
         return `${protocol}//${window.location.host}/ws`;
     };
 
-    const handleWsMessage = (msg) => {
+    // 使用 useCallback 确保 handleWsMessage 稳定
+    const handleWsMessage = useCallback((msg) => {
         if (msg.type === 'full_update' || msg.type === 'update' || msg.type === 'event') {
             const data = msg.data;
 
@@ -64,7 +65,7 @@ function useWebSocket() {
         } else if (msg.type === 'pong') {
             // 心跳响应
         }
-    };
+    }, [dispatch, state.status.version]); // 添加依赖
 
     const scheduleReconnect = () => {
         if (globalReconnectTimer) return;
@@ -184,12 +185,14 @@ function useWebSocket() {
                 console.log('[WS] 所有监听器已移除，连接将保持但不再重连');
             }
         };
-    }, []);
+    }, [dispatch, handleWsMessage]); // 添加依赖
 
     const sendMessage = (msg) => {
         if (globalWsInstance && globalWsInstance.readyState === WebSocket.OPEN) {
             globalWsInstance.send(JSON.stringify(msg));
+            return true; // 发送成功
         }
+        return false; // 发送失败
     };
 
     return {
