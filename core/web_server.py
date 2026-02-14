@@ -7,10 +7,20 @@ import asyncio
 import json
 import os
 import platform
+import re
+import subprocess
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
+from urllib.parse import urlparse
 
 from astrbot.api import logger
+
+try:
+    import ping3
+    PING3_AVAILABLE = True
+except ImportError:
+    PING3_AVAILABLE = False
+    logger.warning("[灾害预警] ping3 未安装，延迟检测功能将不可用。请运行: pip install ping3")
 
 from ..utils.geolocation import close_geoip_session, fetch_location_from_ip
 from ..utils.version import get_plugin_version
@@ -66,7 +76,9 @@ class WebAdminServer:
         self.server = None
         self._server_task = None
         self._broadcast_task = None
+        self._ping_task = None  # 新增：定期ping任务
         self._ws_connections: list[WebSocket] = []  # Active WebSocket connections
+        self._latency_cache: dict[str, Optional[float]] = {}  # 新增：延迟缓存
 
         if not FASTAPI_AVAILABLE:
             return
@@ -243,6 +255,25 @@ class WebAdminServer:
                 # 获取所有预期的数据源
                 expected_sources = self._get_expected_data_sources()
 
+                # 并发测试所有数据源的延迟
+                ping_tasks = {}
+                for source_name in expected_sources.keys():
+                    host = self._get_data_source_host(source_name)
+                    if host:
+                        ping_tasks[source_name] = self._ping_host(host, timeout=1.0)
+                
+                # 等待所有ping完成
+                ping_results = {}
+                if ping_tasks:
+                    results = await asyncio.gather(*ping_tasks.values(), return_exceptions=True)
+                    for source_name, result in zip(ping_tasks.keys(), results):
+                        if isinstance(result, Exception):
+                            ping_results[source_name] = None
+                        else:
+                            ping_results[source_name] = result
+                        # 更新缓存
+                        self._latency_cache[source_name] = ping_results[source_name]
+
                 # 合并：确保所有预期的数据源都显示，未连接的标记为 disconnected
                 merged_connections = {}
                 for source_name, display_name in expected_sources.items():
@@ -260,6 +291,10 @@ class WebAdminServer:
                             "has_handler": False,
                             "status": "未连接",
                         }
+
+                    # 注入延迟信息
+                    latency = ping_results.get(source_name)
+                    conn_info["latency"] = latency  # 单位：毫秒，None表示无法测量
 
                     # 注入子数据源状态
                     if source_name == "fan_studio_all":
@@ -976,6 +1011,7 @@ class WebAdminServer:
 
                 expected_sources = self._get_expected_data_sources()
 
+                # WebSocket推送时使用缓存的延迟数据，不执行ping
                 merged_connections = {}
                 for source_name, display_name in expected_sources.items():
                     conn_info = {}
@@ -989,6 +1025,9 @@ class WebAdminServer:
                             "has_handler": False,
                             "status": "未连接",
                         }
+
+                    # 使用缓存的延迟信息
+                    conn_info["latency"] = self._latency_cache.get(source_name)
 
                     # 注入子数据源状态
                     if source_name == "fan_studio_all":
@@ -1110,6 +1149,54 @@ class WebAdminServer:
         expected["global_quake"] = "Global Quake"
 
         return expected
+
+    def _get_data_source_host(self, source_name: str) -> Optional[str]:
+        """获取数据源的主机名（用于ping）
+        
+        Args:
+            source_name: 数据源内部名称
+            
+        Returns:
+            主机名，如果无法确定则返回None
+        """
+        host_map = {
+            "fan_studio_all": "ws.fanstudio.tech",
+            "p2p_main": "api.p2pquake.net",
+            "wolfx_all": "ws-api.wolfx.jp",
+            "global_quake": "gqm.aloys23.link"
+        }
+        return host_map.get(source_name)
+
+    async def _ping_host(self, host: str, timeout: float = 2.0) -> Optional[float]:
+        """使用ping3测试主机延迟
+        
+        Args:
+            host: 主机名或IP地址
+            timeout: 超时时间（秒）
+            
+        Returns:
+            延迟时间（毫秒），如果失败则返回None
+        """
+        if not PING3_AVAILABLE:
+            return None
+            
+        try:
+            # 在线程池中执行ping3以避免阻塞事件循环
+            loop = asyncio.get_event_loop()
+            delay = await loop.run_in_executor(
+                None, 
+                lambda: ping3.ping(host, timeout=timeout, unit='ms')
+            )
+            
+            if delay is None or delay is False:
+                return None
+            
+            # delay已经是毫秒单位
+            return float(delay)
+            
+        except Exception as e:
+            logger.debug(f"[灾害预警] Ping {host} 异常: {e}")
+            return None
 
     async def start(self):
         """启动 Web 服务器"""

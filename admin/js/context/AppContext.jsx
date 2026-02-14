@@ -170,6 +170,18 @@ function AppProvider({ children }) {
             .catch(err => console.error('Failed to fetch status:', err));
     }, []);
 
+    // 获取连接状态（包括延迟）
+    const fetchConnections = React.useCallback(() => {
+        fetch('/api/connections')
+            .then(res => res.json())
+            .then(data => {
+                if (data.connections) {
+                    dispatch({ type: 'UPDATE_CONNECTIONS', payload: data.connections });
+                }
+            })
+            .catch(err => console.error('Failed to fetch connections:', err));
+    }, []);
+
     // 获取配置信息（包括时区）
     const fetchConfig = React.useCallback(() => {
         fetch('/api/config')
@@ -191,10 +203,11 @@ function AppProvider({ children }) {
         const timer = setTimeout(() => {
             refreshData();
             fetchConfig();
+            fetchConnections(); // 加载连接状态（包括延迟信息）
         }, 0);
         
         return () => clearTimeout(timer);
-    }, [refreshData, fetchConfig]);
+    }, [refreshData, fetchConfig, fetchConnections]);
 
     // 运行时长计时器
     // 每秒更新一次 uptime 显示，格式化为 天/小时/分/秒

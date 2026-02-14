@@ -60,11 +60,15 @@ function ConnectionsGrid() {
                 }
             });
 
+            // 获取延迟信息（取第一个匹配项的延迟）
+            const latency = matchedEntries.length > 0 ? matchedEntries[0][1].latency : undefined;
+
             return {
                 name: target.displayName,
                 status: status, // 'online' | 'offline' | 'disabled'
                 retry_count: retryCount,
-                sub_sources: allSubSources
+                sub_sources: allSubSources,
+                latency: latency  // 添加延迟字段
             };
         });
     }, [connections]);
@@ -183,6 +187,34 @@ function ConnectionsGrid() {
                             }}>
                                 {config.label}
                             </Typography>
+                            
+                            {/* 延迟显示 */}
+                            {conn.latency !== undefined && conn.latency !== null && (
+                                <Typography sx={{
+                                    color: 'text.secondary',
+                                    fontSize: '0.85rem',
+                                    mt: 0.5,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 0.5
+                                }}>
+                                    <span style={{ fontSize: '0.75rem' }}>⏱</span>
+                                    延迟: <span style={{ 
+                                        fontWeight: 600,
+                                        color: conn.latency < 100 ? '#4CAF50' : conn.latency < 300 ? '#FF9800' : '#F44336'
+                                    }}>{conn.latency.toFixed(0)}ms</span>
+                                </Typography>
+                            )}
+                            {conn.latency === null && conn.status !== 'disabled' && (
+                                <Typography sx={{
+                                    color: 'text.disabled',
+                                    fontSize: '0.85rem',
+                                    mt: 0.5,
+                                    fontStyle: 'italic'
+                                }}>
+                                    延迟: 无法测量
+                                </Typography>
+                            )}
                         </Box>
 
                         {/* 子数据源状态展示 */}

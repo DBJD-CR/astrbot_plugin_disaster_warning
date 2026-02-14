@@ -9,3 +9,4 @@ tomli>=2.0.1; python_version < "3.11"
 fastapi>=0.100.0
 uvicorn>=0.23.0
 protobuf>=6.33.1
+ping3>=5.1.0
