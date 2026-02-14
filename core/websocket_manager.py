@@ -32,6 +32,8 @@ class WebSocketManager:
         self.session: aiohttp.ClientSession | None = None
         self.heartbeat_tasks: dict[str, asyncio.Task] = {}  # 心跳任务
         self.last_heartbeat_time: dict[str, float] = {}  # 最后心跳时间
+        self._stop_lock = asyncio.Lock()
+        self._stopping = False
 
     def register_handler(self, connection_name: str, handler: Callable):
         """注册消息处理器"""
@@ -326,14 +328,25 @@ class WebSocketManager:
         connection_info = self.connection_info.get(name, {})
 
         # 启动重连任务
-        if self.running:
-            # 检查是否应该重连
-            if self._should_reconnect_on_error(error):
-                asyncio.create_task(
-                    self._schedule_reconnect(name, uri, headers, connection_info)
-                )
-            else:
-                logger.warning(f"[灾害预警] {name} 遇到不可恢复错误，停止重连")
+        if not self.running:
+            return
+
+        # 检查是否应该重连
+        if not self._should_reconnect_on_error(error):
+            logger.warning(f"[灾害预警] {name} 遇到不可恢复错误，停止重连")
+            return
+
+        # 避免同一连接并发创建多个重连任务
+        existing_task = self.reconnect_tasks.get(name)
+        if existing_task and not existing_task.done():
+            logger.debug(f"[灾害预警] {name} 已有正在运行的重连任务，跳过重复创建")
+            return
+
+        reconnect_task = asyncio.create_task(
+            self._schedule_reconnect(name, uri, headers, connection_info),
+            name=f"dw_reconnect_{name}",
+        )
+        self.reconnect_tasks[name] = reconnect_task
 
     def _should_reconnect_on_error(self, error: Exception) -> bool:
         """判断遇到错误时是否应该重连
@@ -399,16 +412,10 @@ class WebSocketManager:
             headers: 可选的HTTP头
             connection_info: 从 _handle_connection_error 传递的连接元数据
         """
-        # 限制并发重连任务，防止极端情况下的协程爆炸 (问题 9)
-        if name in self.reconnect_tasks:
-            existing_task = self.reconnect_tasks[name]
-            if not existing_task.done():
-                logger.debug(f"[灾害预警] {name} 已有正在运行的重连任务，跳过重复创建")
-                return
-            # 如果已完成，则清理掉
-            self.reconnect_tasks.pop(name)
+        if not self.running:
+            return
 
-        async def reconnect():
+        try:
             # 获取重连配置
             max_retries = self.config.get("max_reconnect_retries", 3)
             reconnect_interval = self.config.get("reconnect_interval", 10)
@@ -470,22 +477,20 @@ class WebSocketManager:
                     f"({fallback_display}/{fallback_max_display})"
                 )
 
-                try:
-                    await asyncio.sleep(fallback_interval)
-                    # 重置短时重连计数器，重新开始短时重连流程
-                    self.connection_retry_counts[name] = 0
-                    logger.info(f"[灾害预警] {name} 开始兜底重试，重置短时重连计数器")
-                    await self.connect(
-                        name,
-                        uri,
-                        headers,
-                        is_retry=True,
-                        connection_info=connection_info,
-                    )
-                except asyncio.CancelledError:
-                    logger.info(f"[灾害预警] {name} 兜底重试任务被取消")
-                except Exception as e:
-                    logger.error(f"[灾害预警] {name} 兜底重试失败: {e}")
+                await asyncio.sleep(fallback_interval)
+                if not self.running:
+                    return
+
+                # 重置短时重连计数器，重新开始短时重连流程
+                self.connection_retry_counts[name] = 0
+                logger.info(f"[灾害预警] {name} 开始兜底重试，重置短时重连计数器")
+                await self.connect(
+                    name,
+                    uri,
+                    headers,
+                    is_retry=True,
+                    connection_info=connection_info,
+                )
                 return
 
             # 确定目标服务器 URI
@@ -509,22 +514,28 @@ class WebSocketManager:
                 f"[灾害预警] {name} 将在 {reconnect_interval} 秒后尝试重连{server_type} ({display_retry}/{max_retries})"
             )
 
-            try:
-                await asyncio.sleep(reconnect_interval)
-                # 标记为重试连接
-                # 必须将 connection_info 传回去，否则下次重试时配置会丢失
-                await self.connect(
-                    name,
-                    target_uri,
-                    headers,
-                    is_retry=True,
-                    connection_info=connection_info,
-                )
-            except Exception as e:
-                logger.error(f"[灾害预警] WebSocket管理器重连执行失败 {name}: {e}")
-                pass
+            await asyncio.sleep(reconnect_interval)
+            if not self.running:
+                return
 
-        self.reconnect_tasks[name] = asyncio.create_task(reconnect())
+            # 标记为重试连接
+            # 必须将 connection_info 传回去，否则下次重试时配置会丢失
+            await self.connect(
+                name,
+                target_uri,
+                headers,
+                is_retry=True,
+                connection_info=connection_info,
+            )
+        except asyncio.CancelledError:
+            logger.info(f"[灾害预警] {name} 重连任务被取消")
+            raise
+        except Exception as e:
+            logger.error(f"[灾害预警] WebSocket管理器重连执行失败 {name}: {e}")
+        finally:
+            current_task = self.reconnect_tasks.get(name)
+            if current_task is asyncio.current_task():
+                self.reconnect_tasks.pop(name, None)
 
     async def _heartbeat_loop(self, name: str, websocket: ClientWebSocketResponse):
         """应用层心跳循环"""
@@ -664,6 +675,7 @@ class WebSocketManager:
     async def start(self):
         """启动管理器"""
         self.running = True
+        self._stopping = False
 
         # 初始化 Shared Session
         if not self.session or self.session.closed:
@@ -675,39 +687,57 @@ class WebSocketManager:
         if not self.message_handlers:
             logger.warning("[灾害预警] 没有注册任何消息处理器")
 
+    async def _cancel_and_wait(self, tasks: list[asyncio.Task]) -> None:
+        """取消并等待任务结束。"""
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     async def stop(self):
         """停止管理器"""
-        logger.info("[灾害预警] WebSocket管理器正在停止...")
-        self.running = False
+        async with self._stop_lock:
+            if self._stopping:
+                logger.debug("[灾害预警] WebSocket管理器已在停止流程中，跳过重复调用")
+                return
+            self._stopping = True
+            try:
+                logger.info("[灾害预警] WebSocket管理器正在停止...")
+                self.running = False
 
-        # 取消所有重连任务
-        for task in self.reconnect_tasks.values():
-            task.cancel()
+                # 取消并等待所有重连任务退出，避免停机后重连复活连接
+                reconnect_tasks = list(self.reconnect_tasks.values())
+                await self._cancel_and_wait(reconnect_tasks)
+                self.reconnect_tasks.clear()
 
-        # 取消所有心跳任务（防御性编程，确保没有遗漏）
-        for name, task in list(self.heartbeat_tasks.items()):
-            if task and not task.done():
-                task.cancel()
-                logger.debug(f"[灾害预警] 取消心跳任务: {name}")
+                # 取消所有心跳任务（防御性编程，确保没有遗漏）
+                heartbeat_tasks = [
+                    task
+                    for task in self.heartbeat_tasks.values()
+                    if task and not task.done()
+                ]
+                await self._cancel_and_wait(heartbeat_tasks)
+                self.heartbeat_tasks.clear()
 
-        # 断开所有连接
-        for name in list(self.connections.keys()):
-            await self.disconnect(name)
+                # 断开所有连接
+                for name in list(self.connections.keys()):
+                    await self.disconnect(name)
 
-        # 关闭 Session
-        if self.session:
-            await self.session.close()
-            self.session = None
+                # 关闭 Session
+                if self.session:
+                    await self.session.close()
+                    self.session = None
 
-        # 清理所有状态
-        self.connections.clear()
-        self.connection_info.clear()
-        self.connection_retry_counts.clear()
-        self.fallback_retry_counts.clear()
-        self.heartbeat_tasks.clear()
-        self.last_heartbeat_time.clear()
+                # 清理所有状态
+                self.connections.clear()
+                self.connection_info.clear()
+                self.connection_retry_counts.clear()
+                self.fallback_retry_counts.clear()
+                self.last_heartbeat_time.clear()
 
-        logger.info("[灾害预警] WebSocket管理器已停止")
+                logger.info("[灾害预警] WebSocket管理器已停止")
+            finally:
+                self._stopping = False
 
     def _find_handler_by_prefix(self, connection_name: str) -> str | None:
         """通过前缀匹配查找处理器名称"""
