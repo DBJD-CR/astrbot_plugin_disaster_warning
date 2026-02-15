@@ -124,6 +124,9 @@ class DatabaseManager:
             # 将字典和列表字段序列化为 JSON
             raw_data = json.dumps(event_data.get("raw_data", {}), ensure_ascii=False)
             history = json.dumps(event_data.get("history", []), ensure_ascii=False)
+            
+            # 确保 timestamp 总是有值，避免 NOT NULL 约束失败
+            timestamp = event_data.get("timestamp") or datetime.now().isoformat()
 
             cursor.execute(
                 """
@@ -147,7 +150,7 @@ class DatabaseManager:
                     event_data.get("depth"),
                     event_data.get("report_num"),
                     event_data.get("time"),
-                    event_data.get("timestamp"),
+                    timestamp,
                     event_data.get("update_count", 1),
                     event_data.get("weather_type_code"),
                     event_data.get("level"),
@@ -184,6 +187,9 @@ class DatabaseManager:
             # 将字典和列表字段序列化为 JSON
             raw_data = json.dumps(event_data.get("raw_data", {}), ensure_ascii=False)
             history = json.dumps(event_data.get("history", []), ensure_ascii=False)
+            
+            # 确保 timestamp 总是有值，避免 NOT NULL 约束失败
+            timestamp = event_data.get("timestamp") or datetime.now().isoformat()
 
             cursor.execute(
                 """
@@ -216,7 +222,7 @@ class DatabaseManager:
                     event_data.get("depth"),
                     event_data.get("report_num"),
                     event_data.get("time"),
-                    event_data.get("timestamp"),
+                    timestamp,
                     event_data.get("update_count", 1),
                     event_data.get("weather_type_code"),
                     event_data.get("level"),

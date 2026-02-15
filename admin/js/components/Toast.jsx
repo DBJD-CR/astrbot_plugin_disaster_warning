@@ -20,29 +20,62 @@ function ToastProvider({ children }) {
             message,
             severity, // 'success', 'error', 'warning', 'info'
             duration,
-            open: true
+            open: true,
+            autoCloseTimer: null,
+            removeTimer: null
         };
         
         setToasts(prev => [...prev, newToast]);
 
         // 自动关闭
         if (duration > 0) {
-            setTimeout(() => {
+            const timerId = setTimeout(() => {
                 closeToast(id);
             }, duration);
+            
+            // 存储定时器 ID
+            setToasts(prev => prev.map(t => 
+                t.id === id ? { ...t, autoCloseTimer: timerId } : t
+            ));
         }
     };
 
     const closeToast = (id) => {
-        setToasts(prev => prev.map(t => 
-            t.id === id ? { ...t, open: false } : t
-        ));
+        setToasts(prev => prev.map(t => {
+            if (t.id === id) {
+                // 清除自动关闭定时器
+                if (t.autoCloseTimer) {
+                    clearTimeout(t.autoCloseTimer);
+                }
+                return { ...t, open: false, autoCloseTimer: null };
+            }
+            return t;
+        }));
         
         // 延迟移除（等待动画完成）
-        setTimeout(() => {
+        const removeTimerId = setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id));
         }, 200);
+        
+        // 存储移除定时器 ID
+        setToasts(prev => prev.map(t => 
+            t.id === id ? { ...t, removeTimer: removeTimerId } : t
+        ));
     };
+    
+    // 组件卸载时清理所有定时器
+    useEffect(() => {
+        return () => {
+            toasts.forEach(toast => {
+                if (toast.autoCloseTimer) {
+                    clearTimeout(toast.autoCloseTimer);
+                }
+                if (toast.removeTimer) {
+                    clearTimeout(toast.removeTimer);
+                }
+            });
+        };
+    }, [toasts]);
 
     return (
         <ToastContext.Provider value={{ showToast }}>
