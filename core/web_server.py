@@ -705,8 +705,8 @@ class WebAdminServer:
                 source = custom_params.get("source", test_type)
 
                 # 复用命令行版本的逻辑
-                from ..utils.mappers import get_data_source_from_id, translate_place_name
-                from ..models.models import DisasterEvent, EarthquakeData, DisasterType
+                from ..models.models import DisasterEvent, EarthquakeData, DisasterType, get_data_source_from_id
+                from ..utils.fe_regions import translate_place_name
                 
                 manager = self.disaster_service.message_manager
                 

@@ -18,6 +18,8 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.star import StarTools
 
+from ..utils.map_tile_sources import get_tile_url_js
+
 from ..models.data_source_config import (
     get_eew_sources,
     get_intensity_based_sources,
@@ -576,8 +578,10 @@ class MessagePushManager:
                 context["zoom_level"] = zoom_level
                 
                 # 注入地图源配置
-                map_source = message_format_config.get("map_source", "amap")
+                map_source = message_format_config.get("map_source", "PetalMap矢量图亮")
                 context["map_source"] = map_source
+                # 注入完整的瓦片URL（处理特殊格式）
+                context["tile_url"] = get_tile_url_js(map_source)
 
                 # 获取模板名称配置
                 template_name = message_format_config.get(
@@ -586,17 +590,8 @@ class MessagePushManager:
 
                 # 加载模板
                 resources_dir = os.path.join(self.plugin_root, "resources")
-                
-                # 根据 playwright 模式选择模板
-                playwright_mode = self.config.get("message_format", {}).get("playwright_mode", "local")
-                if playwright_mode == "remote":
-                    # 远程模式：使用 CDN 版本的模板
-                    template_filename = "global_quake_remote.html"
-                else:
-                    template_filename = "global_quake.html"
-                
                 template_path = os.path.join(
-                    resources_dir, "card_templates", template_name, template_filename
+                    resources_dir, "card_templates", template_name, "global_quake.html"
                 )
 
                 if not os.path.exists(template_path):
@@ -605,7 +600,6 @@ class MessagePushManager:
                     with open(template_path, encoding="utf-8") as f:
                         template_content = f.read()
 
-                    # 计算 Leaflet.js 的绝对路径
                     # 根据 playwright 模式选择资源 URL
                     playwright_mode = self.config.get("message_format", {}).get("playwright_mode", "local")
                     if playwright_mode == "remote":
@@ -809,7 +803,7 @@ class MessagePushManager:
     ) -> str | None:
         """渲染通用地图图片"""
         try:
-            map_source = config.get("map_source", "petallight")
+            map_source = config.get("map_source", "PetalMap矢量图亮")
             zoom_level = config.get("map_zoom_level", 5)
 
             # 加载模板
@@ -849,6 +843,7 @@ class MessagePushManager:
                 "longitude": lon,
                 "zoom_level": zoom_level,
                 "map_source": map_source,
+                "tile_url": get_tile_url_js(map_source),
                 "leaflet_js_url": leaflet_js_url,
                 "leaflet_css_url": leaflet_css_url,
             }

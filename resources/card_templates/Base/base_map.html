@@ -52,8 +52,8 @@
             attributionControl: false
         });
 
-        // 添加瓦片层
-        const tileLayer = L.tileLayer(`https://tilemap.fanstudio.tech/${source}/{z}/{y}/{x}`, {
+        // 添加瓦片层（从配置读取完整URL）
+        const tileLayer = L.tileLayer(`{{ tile_url }}`, {
             maxZoom: 18,
             minZoom: 0
         }).addTo(map);

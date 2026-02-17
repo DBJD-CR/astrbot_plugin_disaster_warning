@@ -490,19 +490,16 @@
         "description": "地图瓦片源",
         "type": "string",
         "options": [
-          "amap",
-          "petallight",
-          "petaldark",
-          "osm",
-          "cartodb_light",
-          "cartodb_dark",
-          "arcwi",
-          "arcwob",
-          "arcwh",
-          "geovis"
+          "高德地图",
+          "PetalMap矢量图亮",
+          "PetalMap矢量图暗",
+          "ArcGIS卫星影像",
+          "ArcGIS地形图",
+          "ArcGIS山影图",
+          "中科星图卫星影像"
         ],
-        "default": "amap",
-        "hint": "选择地图渲染使用的瓦片源。amap=高德地图(国内推荐), petallight/petaldark=PetalMap矢量图, osm=OpenStreetMap, cartodb=CartoDB地图"
+        "default": "PetalMap矢量图亮",
+        "hint": "选择地图渲染使用的瓦片源"
       },
       "map_zoom_level": {
         "description": "地图缩放级别",
