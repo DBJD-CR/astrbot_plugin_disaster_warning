@@ -9,7 +9,37 @@ const { Box, Typography } = MaterialUI;
  */
 function StatsCard({ style }) {
     const { state } = useAppContext();
-    const { stats } = state;
+    const { stats, dataLoaded } = state;
+
+    // 骨架屏
+    if (!dataLoaded) {
+        return (
+            <div className="card" style={style}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                    <div style={{ 
+                        width: '40px', 
+                        height: '40px', 
+                        borderRadius: '10px', 
+                        background: 'rgba(139, 92, 246, 0.1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '20px'
+                    }}>📊</div>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>事件统计</Typography>
+                </Box>
+                <Box sx={{ py: 1 }}>
+                    <div className="skeleton" style={{ height: '48px', borderRadius: '8px', marginBottom: '12px' }}></div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                        <div className="skeleton" style={{ height: '64px', borderRadius: '8px' }}></div>
+                        <div className="skeleton" style={{ height: '64px', borderRadius: '8px' }}></div>
+                        <div className="skeleton" style={{ height: '64px', borderRadius: '8px' }}></div>
+                        <div className="skeleton" style={{ height: '64px', borderRadius: '8px' }}></div>
+                    </div>
+                </Box>
+            </div>
+        );
+    }
 
     return (
         <div className="card" style={style}>

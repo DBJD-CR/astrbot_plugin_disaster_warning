@@ -278,6 +278,9 @@ class DisasterWarningService:
                 self.start_time = datetime.now(timezone.utc)  # 记录启动时间
                 logger.info("[灾害预警] 正在启动灾害预警服务...")
 
+                # 初始化统计管理器的数据库连接
+                await self.statistics_manager.initialize()
+
                 # 加载缓存数据
                 self._load_earthquake_lists_cache()
 
@@ -354,7 +357,11 @@ class DisasterWarningService:
 
                 # 关闭HTTP获取器
                 if self.http_fetcher:
-                    await self.http_fetcher.close()  # 修改点：调用显式的 close()
+                    await self.http_fetcher.close()
+
+                # 关闭数据库连接
+                if self.statistics_manager and self.statistics_manager._db_initialized:
+                    await self.statistics_manager.db.close()
 
                 logger.info("[灾害预警] 灾害预警服务已停止")
 
@@ -804,7 +811,7 @@ class DisasterWarningService:
             self._log_event(event)
 
             # 记录统计数据 (不管是否推送成功)
-            self.statistics_manager.record_push(event)
+            await self.statistics_manager.record_push(event)
 
             # 推送消息 - 使用新消息管理器
             push_result = await self.message_manager.push_event(event)

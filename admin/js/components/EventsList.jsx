@@ -61,9 +61,9 @@ function EventsList() {
             groups[id].latestEvent = groups[id].events[0];
             
             // 计算更新总数：
-            // 优先使用后端返回的 updateCount (因为它可能包含数据库中更老的历史记录)
+            // 优先使用后端返回的 update_count (注意：是下划线命名)
             // 如果后端未返回，则回退使用前端聚合的数组长度
-            const backendCount = groups[id].latestEvent.updateCount || 0;
+            const backendCount = groups[id].latestEvent.update_count || 0;
             groups[id].updateCount = Math.max(groups[id].events.length, backendCount);
             
             // 合并后端返回的 'history' 字段 (如果有)
@@ -77,6 +77,8 @@ function EventsList() {
                     groups[id].events.push(...historyEvents);
                     // 合并后再次重新排序
                     groups[id].events.sort((a, b) => new Date(b.time) - new Date(a.time));
+                    // 更新计数
+                    groups[id].updateCount = Math.max(groups[id].events.length, backendCount);
                 }
             }
         }
@@ -99,7 +101,7 @@ function EventsList() {
         });
     };
 
-    const renderEventCard = (evt, isHistory = false, isExpandable = false, isExpanded = false) => {
+    const renderEventCard = (evt, isHistory = false, isExpandable = false, isExpanded = false, reportIndex = null) => {
         const isEarthquake = evt.type === 'earthquake' || evt.type === 'earthquake_warning';
         const isTsunami = evt.type === 'tsunami';
         const isWeather = evt.type === 'weather_alarm';
@@ -125,10 +127,24 @@ function EventsList() {
             }
         }
 
+        // 计算报数显示
+        let reportLabel = '';
+        if (reportIndex !== null && reportIndex > 0) {
+            // 历史记录：显示为 "第X报"
+            reportLabel = `第 ${reportIndex} 报`;
+        } else if (evt.report_num) {
+            // 最新记录：如果后端提供了 report_num，使用它
+            reportLabel = `第 ${evt.report_num} 报`;
+        } else if (!isHistory && isExpandable) {
+            // 最新记录但没有 report_num：显示为"最新"
+            reportLabel = '最新';
+        }
+
         return (
             <div className={`event-card ${isExpandable ? 'clickable' : ''}`} style={{
                 marginBottom: isHistory ? '4px' : '0',
-                padding: isHistory ? '12px 20px' : ''
+                padding: isHistory ? '12px 20px' : '',
+                position: 'relative'
             }}>
                 <div className={`mag-badge ${badgeClass}`} style={{
                     width: isHistory ? '40px' : '56px',
@@ -162,9 +178,28 @@ function EventsList() {
                 </div>
 
                 <div className="event-main">
-                    <Typography variant={isHistory ? "body2" : "h6"} sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
-                        {evt.description || '未知位置'}
-                    </Typography>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <Typography variant={isHistory ? "body2" : "h6"} sx={{ fontWeight: 700, color: 'text.primary' }}>
+                            {evt.description || '未知位置'}
+                        </Typography>
+                        {reportLabel && (
+                            <span style={{
+                                fontSize: isHistory ? '11px' : '12px',
+                                fontWeight: 600,
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                background: reportIndex !== null && reportIndex > 0 
+                                    ? 'rgba(0,0,0,0.06)' 
+                                    : 'var(--md-sys-color-primary-container)',
+                                color: reportIndex !== null && reportIndex > 0
+                                    ? 'inherit'
+                                    : 'var(--md-sys-color-on-primary-container)',
+                                opacity: 0.9
+                            }}>
+                                {reportLabel}
+                            </span>
+                        )}
+                    </div>
                     <div className="event-meta" style={{ opacity: 0.6, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                             🕒 {formatTimeFriendly(evt.time, displayTimezone)}
@@ -223,36 +258,182 @@ function EventsList() {
                 </div>
             ) : (
                 <div className="events-list">
-                    {groupedEvents.map((group) => (
-                        <div key={group.id} className="event-group">
-                            <div onClick={() => group.updateCount > 1 && toggleEventGroup(group.id)}>
-                                {renderEventCard(
-                                    { ...group.latestEvent, updateCount: group.updateCount },
-                                    false,
-                                    group.updateCount > 1,
-                                    expandedEvents.has(group.id)
-                                )}
-                            </div>
-
-                            <Collapse in={expandedEvents.has(group.id)} timeout={300}>
-                                {group.updateCount > 1 && (
-                                    <div style={{
-                                        padding: '12px 0 12px 64px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '12px',
-                                        marginTop: '8px'
-                                    }}>
-                                        {group.events.slice(1).map((evt, idx) => (
-                                            <div key={idx}>
-                                                {renderEventCard(evt, true)}
-                                            </div>
-                                        ))}
+                    {groupedEvents.map((group) => {
+                        const isExpanded = expandedEvents.has(group.id);
+                        const totalReports = group.events.length;
+                        
+                        return (
+                            <div key={group.id} className="event-group">
+                                {/* 折叠状态：只显示最新一条 */}
+                                {!isExpanded && (
+                                    <div onClick={() => group.updateCount > 1 && toggleEventGroup(group.id)}>
+                                        {renderEventCard(
+                                            { ...group.latestEvent, updateCount: group.updateCount },
+                                            false,
+                                            group.updateCount > 1,
+                                            false,
+                                            null
+                                        )}
                                     </div>
                                 )}
-                            </Collapse>
-                        </div>
-                    ))}
+
+                                {/* 展开状态：显示所有报的时间线 */}
+                                {isExpanded && (
+                                    <div className="card" style={{ 
+                                        padding: '24px',
+                                        position: 'relative'
+                                    }}>
+                                        {/* 顶部标题栏 */}
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            marginBottom: '24px',
+                                            paddingBottom: '16px',
+                                            borderBottom: '1px solid var(--md-sys-color-outline-variant)'
+                                        }}>
+                                            <div>
+                                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+                                                    {group.latestEvent.description || '未知位置'}
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ opacity: 0.6 }}>
+                                                    📡 {formatSourceName(group.latestEvent.source)} · 共 {totalReports} 次更新
+                                                </Typography>
+                                            </div>
+                                            <button
+                                                onClick={() => toggleEventGroup(group.id)}
+                                                style={{
+                                                    background: 'var(--md-sys-color-surface-variant)',
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '8px 16px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '13px',
+                                                    fontWeight: 600,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                <span>收起</span>
+                                                <span>▲</span>
+                                            </button>
+                                        </div>
+
+                                        {/* 时间线展示所有报 */}
+                                        <div style={{ position: 'relative', paddingLeft: '40px' }}>
+                                            {/* 时间线竖线 */}
+                                            <div style={{
+                                                position: 'absolute',
+                                                left: '19px',
+                                                top: '12px',
+                                                bottom: '12px',
+                                                width: '2px',
+                                                background: 'var(--md-sys-color-outline-variant)'
+                                            }}></div>
+
+                                            {/* 所有报的列表（倒序：最新在上） */}
+                                            {group.events.map((evt, idx) => {
+                                                const reportIndex = totalReports - idx;
+                                                const isLatest = idx === 0;
+                                                const isEarthquake = evt.type === 'earthquake' || evt.type === 'earthquake_warning';
+                                                
+                                                return (
+                                                    <div key={idx} style={{
+                                                        position: 'relative',
+                                                        marginBottom: idx === group.events.length - 1 ? '0' : '20px',
+                                                        paddingBottom: idx === group.events.length - 1 ? '0' : '20px',
+                                                        borderBottom: idx === group.events.length - 1 ? 'none' : '1px solid var(--md-sys-color-outline-variant)'
+                                                    }}>
+                                                        {/* 时间线节点 */}
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            left: '-29px',
+                                                            top: '8px',
+                                                            width: '20px',
+                                                            height: '20px',
+                                                            borderRadius: '50%',
+                                                            background: isLatest 
+                                                                ? 'var(--md-sys-color-primary)' 
+                                                                : 'var(--md-sys-color-surface-variant)',
+                                                            border: `3px solid ${isLatest ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface)'}`,
+                                                            boxShadow: isLatest ? '0 2px 8px rgba(103, 80, 164, 0.3)' : 'none'
+                                                        }}></div>
+
+                                                        {/* 报的内容 */}
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            gap: '12px',
+                                                            alignItems: 'flex-start'
+                                                        }}>
+                                                            {/* 震级徽章（只对地震显示） */}
+                                                            {isEarthquake && (
+                                                                <div style={{
+                                                                    minWidth: '60px',
+                                                                    height: '60px',
+                                                                    borderRadius: '12px',
+                                                                    background: 'var(--md-sys-color-error-container)',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    fontSize: '20px',
+                                                                    fontWeight: 700,
+                                                                    color: 'var(--md-sys-color-on-error-container)',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    {(evt.magnitude || 0).toFixed(1)}
+                                                                </div>
+                                                            )}
+
+                                                            {/* 信息列 */}
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                                                    <span style={{
+                                                                        fontSize: '13px',
+                                                                        fontWeight: 700,
+                                                                        padding: '3px 10px',
+                                                                        borderRadius: '6px',
+                                                                        background: isLatest 
+                                                                            ? 'var(--md-sys-color-primary)'
+                                                                            : 'var(--md-sys-color-surface-variant)',
+                                                                        color: isLatest 
+                                                                            ? 'var(--md-sys-color-on-primary)'
+                                                                            : 'inherit'
+                                                                    }}>
+                                                                        第 {reportIndex} 报
+                                                                    </span>
+                                                                    {isLatest && (
+                                                                        <span style={{
+                                                                            fontSize: '13px',
+                                                                            fontWeight: 700,
+                                                                            padding: '3px 10px',
+                                                                            borderRadius: '6px',
+                                                                            background: 'var(--md-sys-color-tertiary-container)',
+                                                                            color: 'var(--md-sys-color-on-tertiary-container)'
+                                                                        }}>
+                                                                            最新
+                                                                        </span>
+                                                                    )}
+                                                                    <Typography variant="body2" sx={{ opacity: 0.6, fontSize: '13px' }}>
+                                                                        🕒 {formatTimeFriendly(evt.time, displayTimezone)}
+                                                                    </Typography>
+                                                                </div>
+                                                                {isEarthquake && (
+                                                                    <Typography variant="body2" sx={{ opacity: 0.8, fontSize: '13px' }}>
+                                                                        深度: {evt.depth ? `${evt.depth} km` : '未知'}
+                                                                    </Typography>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </Box>

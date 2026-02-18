@@ -2,11 +2,33 @@ const { Box, Button, Typography } = MaterialUI;
 
 function StatusView({ onOpenSimulation }) {
     const { state, refreshData } = useAppContext();
-    const { status } = state;
+    const { status, wsConnected } = state; // 获取 wsConnected 状态
     const [reconnecting, setReconnecting] = React.useState(false);
+    const [refreshing, setRefreshing] = React.useState(false);
+    const { sendMessage } = useWebSocket(); // 获取 WebSocket 发送消息函数
+    const { showToast } = useToast(); // 使用 Toast 提示
 
-    const refreshAll = () => {
-        window.location.reload();
+    const refreshAll = async () => {
+        setRefreshing(true);
+        try {
+            // 1. 通过 HTTP API 刷新状态
+            await refreshData();
+            
+            // 2. 通过 WebSocket 请求完整更新（如果连接正常）
+            if (wsConnected) {
+                const sent = sendMessage({ type: 'refresh' });
+                if (!sent) {
+                    console.warn('[StatusView] WebSocket 未连接，跳过实时刷新请求');
+                }
+            } else {
+                console.warn('[StatusView] WebSocket 未连接，仅通过 HTTP API 刷新');
+            }
+        } catch (e) {
+            console.error('刷新数据失败:', e);
+        } finally {
+            // 清理刷新状态，使 UI 与实际刷新生命周期保持一致
+            setRefreshing(false);
+        }
     };
 
     const handleReconnect = async () => {
@@ -29,15 +51,15 @@ function StatusView({ onOpenSimulation }) {
                 setTimeout(() => {
                     refreshData();
                     setReconnecting(false);
-                    alert(result.message || '重连操作已触发');
+                    showToast(result.message || '重连操作已触发', 'success');
                 }, 1000);
             } else {
-                alert('重连失败: ' + (result.error || '未知错误'));
+                showToast('重连失败: ' + (result.error || '未知错误'), 'error');
                 setReconnecting(false);
             }
         } catch (e) {
             console.error('Reconnect failed:', e);
-            alert('请求失败，请检查网络连接');
+            showToast('请求失败，请检查网络连接', 'error');
             setReconnecting(false);
         }
     };
@@ -113,9 +135,25 @@ function StatusView({ onOpenSimulation }) {
                             <button
                                 className="btn btn-action"
                                 onClick={refreshAll}
+                                disabled={refreshing}
                             >
-                                <span style={{ fontSize: '18px' }}>🔄</span>
-                                刷新控制台数据
+                                {refreshing ? (
+                                    <>
+                                        <span className="spinner" style={{
+                                            width: '14px',
+                                            height: '14px',
+                                            border: '2px solid rgba(0,0,0,0.2)',
+                                            borderTopColor: 'var(--md-sys-color-primary)',
+                                            borderRadius: '50%'
+                                        }}></span>
+                                        刷新中...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span style={{ fontSize: '18px' }}>🔄</span>
+                                        刷新控制台数据
+                                    </>
+                                )}
                             </button>
                         </Box>
                     </div>

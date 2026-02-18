@@ -7,7 +7,7 @@ const { useMemo } = React;
  */
 function ConnectionsGrid() {
     const { state } = useAppContext();
-    const { connections } = state;
+    const { connections, dataLoaded } = state;
 
     const displayConnections = useMemo(() => {
         // 定义需要监控的目标数据源及其匹配规则
@@ -60,11 +60,15 @@ function ConnectionsGrid() {
                 }
             });
 
+            // 获取延迟信息（取第一个匹配项的延迟）
+            const latency = matchedEntries.length > 0 ? matchedEntries[0][1].latency : undefined;
+
             return {
                 name: target.displayName,
                 status: status, // 'online' | 'offline' | 'disabled'
                 retry_count: retryCount,
-                sub_sources: allSubSources
+                sub_sources: allSubSources,
+                latency: latency  // 添加延迟字段
             };
         });
     }, [connections]);
@@ -93,6 +97,36 @@ function ConnectionsGrid() {
             indicatorShadow: 'none'
         }
     };
+
+    // 骨架屏
+    if (!dataLoaded) {
+        return (
+            <div className="connections-grid" style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '16px'
+            }}>
+                {[1, 2, 3, 4].map(i => (
+                    <div key={i} style={{
+                        borderRadius: '16px',
+                        border: '1px solid var(--glass-border)',
+                        padding: '20px',
+                        minHeight: '140px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="skeleton" style={{ width: '120px', height: '22px', borderRadius: '6px' }}></div>
+                            <div className="skeleton" style={{ width: '60px', height: '24px', borderRadius: '12px' }}></div>
+                        </div>
+                        <div className="skeleton" style={{ width: '80%', height: '16px', borderRadius: '4px' }}></div>
+                        <div className="skeleton" style={{ width: '60%', height: '16px', borderRadius: '4px' }}></div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     return (
         <div className="connections-grid" style={{
@@ -153,6 +187,34 @@ function ConnectionsGrid() {
                             }}>
                                 {config.label}
                             </Typography>
+                            
+                            {/* 延迟显示 */}
+                            {conn.latency !== undefined && conn.latency !== null && (
+                                <Typography sx={{
+                                    color: 'text.secondary',
+                                    fontSize: '0.85rem',
+                                    mt: 0.5,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 0.5
+                                }}>
+                                    <span style={{ fontSize: '0.75rem' }}>⏱</span>
+                                    延迟: <span style={{ 
+                                        fontWeight: 600,
+                                        color: conn.latency < 100 ? '#4CAF50' : conn.latency < 300 ? '#FF9800' : '#F44336'
+                                    }}>{conn.latency.toFixed(0)}ms</span>
+                                </Typography>
+                            )}
+                            {conn.latency === null && conn.status !== 'disabled' && (
+                                <Typography sx={{
+                                    color: 'text.disabled',
+                                    fontSize: '0.85rem',
+                                    mt: 0.5,
+                                    fontStyle: 'italic'
+                                }}>
+                                    延迟: 无法测量
+                                </Typography>
+                            )}
                         </Box>
 
                         {/* 子数据源状态展示 */}

@@ -7,6 +7,7 @@ const { useState, useEffect, useMemo, useRef, useLayoutEffect } = React;
  */
 function CalendarHeatmap({ style }) {
     const { getHeatmap } = useApi();
+    const { state } = useAppContext(); // 从 Context 获取状态
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     
@@ -14,7 +15,7 @@ function CalendarHeatmap({ style }) {
     const currentYear = new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState(currentYear);
     const scrollContainerRef = useRef(null);
-    const { events } = useWebSocket(); // 获取 WebSocket 事件流
+    const events = state.events; // 直接从 Context 获取 events，不需要单独调用 useWebSocket
     
     // 生成可选年份列表 (从2025开始)
     const startYear = 2025;

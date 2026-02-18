@@ -9,32 +9,106 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>灾害预警管理端</title>
 
-    <!-- Fonts -->
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="../logo.png">
+
+    <!-- Fonts - 预加载 -->
+    <link rel="preload" href="fonts/outfit.css" as="style">
     <link href="fonts/outfit.css" rel="stylesheet">
 
     <!-- 自定义 CSS -->
     <link rel="stylesheet" href="css/style.css">
 
-    <!-- React 18 (生产环境) -->
-    <script crossorigin src="lib/react.production.min.js"></script>
-    <script crossorigin src="lib/react-dom.production.min.js"></script>
+    <!-- React 18 (生产环境) - defer加载 -->
+    <script crossorigin src="lib/react.production.min.js" defer></script>
+    <script crossorigin src="lib/react-dom.production.min.js" defer></script>
 
-    <!-- Babel Standalone (用于浏览器实时编译 JSX) -->
+    <!-- Babel Standalone (用于浏览器实时编译 JSX) - 不使用defer，确保在JSX脚本前加载 -->
     <script src="lib/babel.min.js"></script>
 
-    <!-- Material UI 组件库 -->
-    <script src="lib/material-ui.production.min.js"></script>
+    <!-- Material UI 组件库 - defer加载 -->
+    <script src="lib/material-ui.production.min.js" defer></script>
 
-    <!-- Emotion (Material UI 的 CSS-in-JS 依赖) -->
-    <script src="lib/emotion-react.umd.min.js"></script>
-    <script src="lib/emotion-styled.umd.min.js"></script>
+    <!-- Emotion (Material UI 的 CSS-in-JS 依赖) - defer加载 -->
+    <script src="lib/emotion-react.umd.min.js" defer></script>
+    <script src="lib/emotion-styled.umd.min.js" defer></script>
 </head>
 
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <!-- 首屏加载骨架屏 -->
+        <div id="loading-skeleton" style="
+            display: flex;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: white;
+            font-family: system-ui, -apple-system, sans-serif;
+        ">
+            <div style="
+                width: 80px;
+                height: 80px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 48px;
+                margin-bottom: 24px;
+                animation: pulse 2s ease-in-out infinite;
+            ">
+                🌍
+            </div>
+            <div style="font-size: 24px; font-weight: 700; margin-bottom: 12px;">
+                灾害预警管理端
+            </div>
+            <div style="font-size: 14px; opacity: 0.8; margin-bottom: 24px;">
+                正在加载...
+            </div>
+            <!-- 进度条容器 -->
+            <div style="
+                width: 280px;
+                height: 4px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 2px;
+                overflow: hidden;
+            ">
+                <!-- 进度条 -->
+                <div style="
+                    height: 100%;
+                    width: 40%;
+                    background: linear-gradient(90deg, 
+                        rgba(255,255,255,0.3) 0%, 
+                        rgba(255,255,255,0.9) 50%, 
+                        rgba(255,255,255,0.3) 100%);
+                    border-radius: 2px;
+                    animation: loading-progress 1.5s ease-in-out infinite;
+                "></div>
+            </div>
+        </div>
+        <style>
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); opacity: 1; }
+                50% { transform: scale(1.05); opacity: 0.8; }
+            }
+            @keyframes loading-progress {
+                0% {
+                    transform: translateX(-100%) scaleX(0.3);
+                }
+                50% {
+                    transform: translateX(50%) scaleX(0.8);
+                }
+                100% {
+                    transform: translateX(200%) scaleX(0.3);
+                }
+            }
+        </style>
+    </div>
 
     <!-- 工具函数 -->
-    <script src="js/utils/formatters.js"></script>
+    <script src="js/utils/formatters.js" defer></script>
 
     <!-- Context -->
     <script type="text/babel" src="js/context/AppContext.jsx"></script>
@@ -44,6 +118,7 @@
     <script type="text/babel" src="js/hooks/useApi.js"></script>
 
     <!-- 组件 (Components) -->
+    <script type="text/babel" src="js/components/Toast.jsx"></script>
     <script type="text/babel" src="js/components/Header.jsx"></script>
     <script type="text/babel" src="js/components/Sidebar.jsx"></script>
     <script type="text/babel" src="js/components/StatusCard.jsx"></script>
@@ -66,6 +141,22 @@
 
     <!-- 主入口 -->
     <script type="text/babel" src="js/app.jsx"></script>
+    
+    <script>
+        // 当React应用渲染完成后，移除加载骨架屏
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                var skeleton = document.getElementById('loading-skeleton');
+                if (skeleton) {
+                    skeleton.style.opacity = '0';
+                    skeleton.style.transition = 'opacity 0.3s ease-out';
+                    setTimeout(function() {
+                        skeleton.remove();
+                    }, 300);
+                }
+            }, 100);
+        });
+    </script>
 </body>
 
 </html>

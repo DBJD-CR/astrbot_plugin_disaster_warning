@@ -127,6 +127,27 @@ class GlobalQuakeHandler(BaseDataHandler):
                     "matching": eq_data.station_count.matching,
                 }
 
+            # 提取质量信息
+            quality_data = None
+            if eq_data.HasField("quality"):
+                quality_data = {
+                    "err_origin": eq_data.quality.err_origin,
+                    "err_depth": eq_data.quality.err_depth,
+                    "err_ns": eq_data.quality.err_ns,
+                    "err_ew": eq_data.quality.err_ew,
+                    "pct": eq_data.quality.pct,
+                    "stations": eq_data.quality.stations,
+                }
+
+            # 构建 raw_data，包含必要的质量信息
+            raw_data = {
+                "protobuf": True,
+                "id": eq_data.id,
+                "data": {
+                    "quality": quality_data
+                } if quality_data else {}
+            }
+
             # 创建地震数据对象
             earthquake = EarthquakeData(
                 id=eq_data.id,
@@ -141,7 +162,7 @@ class GlobalQuakeHandler(BaseDataHandler):
                 intensity=intensity,
                 place_name=place_name,
                 updates=eq_data.revision_id,
-                raw_data={"protobuf": True, "id": eq_data.id},  # 简化原始数据
+                raw_data=raw_data,
                 max_pga=eq_data.max_pga if eq_data.max_pga else None,
                 stations=station_count,
             )

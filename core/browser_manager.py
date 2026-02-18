@@ -5,10 +5,12 @@
 """
 
 import asyncio
+import json
 import os
 import tempfile
 import time
 
+import aiohttp
 from playwright.async_api import Browser, Page, async_playwright
 
 from astrbot.api import logger
@@ -36,6 +38,7 @@ class BrowserManager:
         self.pool_size = pool_size
         self._browser: Browser | None = None
         self._playwright = None
+        self._context = None  # 保存 context 引用（CDP 模式需要）
         self._page_pool: asyncio.Queue = asyncio.Queue(maxsize=pool_size)
         self._semaphore = asyncio.Semaphore(pool_size)  # 并发控制
         self._page_creation_lock = asyncio.Lock()  # 页面创建锁,防止并发创建超出池大小
@@ -54,59 +57,26 @@ class BrowserManager:
                 return
 
             try:
+                # 远程模式使用 HTTP API，不需要初始化 Playwright
+                if self._mode == "remote":
+                    logger.info(f"[灾害预警] 远程模式：使用 browserless HTTP API ({self._server_url})")
+                    self._initialized = True
+                    return
+
                 logger.info(f"[灾害预警] 正在启动浏览器（模式：{self._mode}）...")
                 start_time = time.time()
 
                 # 启动 Playwright
                 self._playwright = await async_playwright().start()
 
-                # 根据模式选择启动方式
-                if self._mode == "remote":
-                    if not self._server_url:
-                        raise ValueError("远程模式下必须配置 playwright_server_url")
+                # 本地模式：启动本地浏览器
+                self._browser = await self._playwright.chromium.launch(
+                    args=["--no-sandbox", "--disable-setuid-sandbox"]
+                )
+                logger.info("[灾害预警] 本地浏览器启动成功")
 
-                    logger.info(
-                        f"[灾害预警] 连接到远程 Playwright 服务: {self._server_url}"
-                    )
-
-                    # 判断连接类型
-                    if self._server_url.startswith(
-                        "ws://"
-                    ) or self._server_url.startswith("wss://"):
-                        # WebSocket 连接 (Playwright Server)
-                        self._browser = await self._playwright.chromium.connect(
-                            ws_endpoint=self._server_url
-                        )
-                    elif self._server_url.startswith(
-                        "http://"
-                    ) or self._server_url.startswith("https://"):
-                        # CDP Endpoint 连接
-                        self._browser = (
-                            await self._playwright.chromium.connect_over_cdp(
-                                endpoint_url=self._server_url
-                            )
-                        )
-                    else:
-                        raise ValueError(
-                            f"不支持的服务器地址格式: {self._server_url}。"
-                            "请使用 ws://host:port 或 http://host:port"
-                        )
-
-                    logger.info("[灾害预警] 远程浏览器连接成功")
-                else:
-                    # 本地模式：启动本地浏览器
-                    self._browser = await self._playwright.chromium.launch(
-                        args=["--no-sandbox", "--disable-setuid-sandbox"]
-                    )
-                    logger.info("[灾害预警] 本地浏览器启动成功")
-
-                # 预创建页面对象池
-                for i in range(self.pool_size):
-                    page = await self._browser.new_page(
-                        viewport={"width": 800, "height": 800}, device_scale_factor=2
-                    )
-                    await self._page_pool.put(page)
-                    logger.debug(f"[灾害预警] 页面 {i + 1}/{self.pool_size} 已创建")
+                # 本地模式：直接创建页面池
+                await self._initialize_local_page_pool()
 
                 elapsed = time.time() - start_time
                 self._initialized = True
@@ -124,6 +94,83 @@ class BrowserManager:
                 # 清理已创建的资源
                 await self._cleanup()
                 raise
+
+    async def _initialize_local_page_pool(self):
+        """初始化本地浏览器的页面池"""
+        for i in range(self.pool_size):
+            try:
+                page = await asyncio.wait_for(
+                    self._browser.new_page(
+                        viewport={"width": 800, "height": 800}, device_scale_factor=2
+                    ),
+                    timeout=10.0,
+                )
+                await self._page_pool.put(page)
+                logger.debug(f"[灾害预警] 页面 {i + 1}/{self.pool_size} 已创建")
+            except asyncio.TimeoutError:
+                logger.error(f"[灾害预警] 创建页面 {i + 1} 超时")
+                if i == 0:
+                    raise  # 如果第一个页面就失败，抛出异常
+                break  # 部分页面创建成功，继续使用
+            except Exception as e:
+                logger.error(f"[灾害预警] 创建页面 {i + 1} 失败: {e}")
+                if i == 0:
+                    raise
+                break
+
+    async def _initialize_remote_page_pool(self):
+        """初始化远程浏览器的页面池（兼容 browserless CDP）"""
+        try:
+            # browserless CDP：必须使用默认 context
+            contexts = self._browser.contexts
+            logger.debug(f"[灾害预警] 发现 {len(contexts)} 个现有 context")
+            
+            if contexts:
+                # 使用第一个 context（browserless 的默认 context）
+                self._context = contexts[0]
+                logger.debug("[灾害预警] 使用现有 context")
+            else:
+                # 没有现有 context，创建新的
+                logger.debug("[灾害预警] 创建新 context")
+                self._context = await asyncio.wait_for(
+                    self._browser.new_context(
+                        viewport={"width": 800, "height": 800},
+                        device_scale_factor=2,
+                    ),
+                    timeout=15.0,
+                )
+            
+            # 从 context 创建页面
+            for i in range(self.pool_size):
+                try:
+                    page = await asyncio.wait_for(
+                        self._context.new_page(), timeout=10.0
+                    )
+                    await self._page_pool.put(page)
+                    logger.debug(f"[灾害预警] 页面 {i + 1}/{self.pool_size} 已创建")
+                except asyncio.TimeoutError:
+                    logger.error(f"[灾害预警] 创建页面 {i + 1} 超时")
+                    if i == 0:
+                        raise
+                    break
+                except Exception as e:
+                    logger.error(f"[灾害预警] 创建页面 {i + 1} 失败: {e}")
+                    if i == 0:
+                        raise
+                    break
+            
+            # 检查是否至少有一个页面可用
+            if self._page_pool.qsize() == 0:
+                raise RuntimeError("无法创建任何可用页面")
+            
+            logger.info(f"[灾害预警] 远程浏览器页面池初始化完成，可用页面: {self._page_pool.qsize()}")
+            
+        except asyncio.TimeoutError:
+            logger.error("[灾害预警] 远程浏览器页面池初始化超时")
+            raise RuntimeError("远程浏览器页面池初始化超时，请检查网络或增加 browserless 超时设置")
+        except Exception as e:
+            logger.error(f"[灾害预警] 远程浏览器页面池初始化失败: {e}")
+            raise
 
     async def render_card(
         self,
@@ -144,6 +191,16 @@ class BrowserManager:
         Returns:
             成功返回图片路径,失败返回 None
         """
+        # 远程模式：使用 browserless HTTP API
+        if self._mode == "remote":
+            if not self._initialized:
+                logger.warning("[灾害预警] 浏览器未初始化，尝试初始化...")
+                await self.initialize()
+            return await self._render_card_via_http(
+                html_content, output_path, selector
+            )
+        
+        # 本地模式：使用 Playwright
         if not self._initialized:
             logger.warning("[灾害预警] 浏览器未初始化，尝试初始化...")
             await self.initialize()
@@ -166,7 +223,7 @@ class BrowserManager:
                 return None
 
             try:
-                # 从池中获取页面
+                # 本地模式：从池中获取页面
                 try:
                     page = await asyncio.wait_for(self._page_pool.get(), timeout=5.0)
                 except asyncio.TimeoutError:
@@ -174,7 +231,7 @@ class BrowserManager:
                     return None
 
                 try:
-                    # 将 HTML 保存为临时文件，以支持相对路径加载本地资源
+                    # 本地模式：使用 file:// 协议（支持相对路径资源）
                     temp_html = None
                     try:
                         # 创建临时 HTML 文件
@@ -186,43 +243,7 @@ class BrowserManager:
 
                         # 使用 file:// 协议加载，支持相对路径
                         file_url = f"file://{temp_html}"
-                        # 优化：使用 domcontentloaded 以加速加载，后续依赖 .map-ready 保证地图就绪
                         await page.goto(file_url, wait_until="domcontentloaded")
-
-                        # 等待地图渲染完成标记
-                        try:
-                            await page.wait_for_selector(
-                                ".map-ready", state="attached", timeout=10000
-                            )
-                            logger.debug("[灾害预警] 地图渲染标记已就绪")
-                        except Exception:
-                            logger.warning(
-                                "[灾害预警] 等待 .map-ready 标记超时，地图可能未完全加载"
-                            )
-                            # 兜底等待，确保至少能看到部分内容
-                            await asyncio.sleep(0.2)
-
-                        # 等待卡片元素可见
-                        try:
-                            await page.wait_for_selector(
-                                selector, state="visible", timeout=2000
-                            )
-                        except Exception:
-                            # 兜底：尝试找常见的类名
-                            logger.debug(
-                                f"[灾害预警] 选择器 {selector} 未找到，尝试备用选择器"
-                            )
-                            selector = ".quake-card"
-                            await page.wait_for_selector(
-                                selector, state="visible", timeout=1000
-                            )
-
-                        # 定位卡片元素
-                        card = page.locator(selector)
-
-                        # 截图：只截取元素，背景透明
-                        await card.screenshot(path=output_path, omit_background=True)
-
                     finally:
                         # 清理临时 HTML 文件
                         if temp_html and os.path.exists(temp_html):
@@ -230,6 +251,40 @@ class BrowserManager:
                                 os.unlink(temp_html)
                             except Exception:
                                 pass
+
+                    # 等待地图渲染完成标记
+                    try:
+                        await page.wait_for_selector(
+                            ".map-ready", state="attached", timeout=10000
+                        )
+                        logger.debug("[灾害预警] 地图渲染标记已就绪")
+                    except Exception:
+                        logger.warning(
+                            "[灾害预警] 等待 .map-ready 标记超时，地图可能未完全加载"
+                        )
+                        # 兜底等待，确保至少能看到部分内容
+                        await asyncio.sleep(0.2)
+
+                    # 等待卡片元素可见
+                    try:
+                        await page.wait_for_selector(
+                            selector, state="visible", timeout=2000
+                        )
+                    except Exception:
+                        # 兜底：尝试找常见的类名
+                        logger.debug(
+                            f"[灾害预警] 选择器 {selector} 未找到，尝试备用选择器"
+                        )
+                        selector = ".quake-card"
+                        await page.wait_for_selector(
+                            selector, state="visible", timeout=1000
+                        )
+
+                    # 定位卡片元素
+                    card = page.locator(selector)
+
+                    # 截图：只截取元素，背景透明
+                    await card.screenshot(path=output_path, omit_background=True)
 
                     elapsed = time.time() - start_time
 
@@ -241,7 +296,7 @@ class BrowserManager:
                         return None
 
                 finally:
-                    # 归还页面到池中
+                    # 本地模式：归还页面到池
                     if page:
                         await self._page_pool.put(page)
             finally:
@@ -256,19 +311,18 @@ class BrowserManager:
                 await self._telemetry.track_error(
                     e, module="core.browser_manager.render_card"
                 )
-            # 如果页面损坏，尝试重新创建一个新页面
+            # 如果页面损坏，关闭它并恢复页面池（仅本地模式）
             if page:
                 try:
                     await page.close()
                     logger.debug("[灾害预警] 已关闭损坏的页面")
                 except Exception:
                     pass
-
-                # 创建新页面并放回池中（使用锁防止并发创建超出池大小）
+                
+                # 恢复页面池
                 async with self._page_creation_lock:
                     try:
                         if self._browser and not self._closed:
-                            # 检查页面池是否已满（防止超出池大小限制）
                             if self._page_pool.qsize() < self.pool_size:
                                 new_page = await self._browser.new_page(
                                     viewport={"width": 800, "height": 800},
@@ -276,13 +330,85 @@ class BrowserManager:
                                 )
                                 await self._page_pool.put(new_page)
                                 logger.debug("[灾害预警] 已重新创建页面")
-                            else:
-                                logger.warning(
-                                    "[灾害预警] 页面池已满，跳过创建新页面（池大小限制保护）"
-                                )
                     except Exception as recover_err:
                         logger.error(f"[灾害预警] 页面恢复失败: {recover_err}")
 
+            return None
+
+    async def _render_card_via_http(
+        self, html_content: str, output_path: str, selector: str
+    ) -> str | None:
+        """使用 browserless HTTP API 渲染卡片"""
+        start_time = time.time()
+        
+        # 构建请求 URL
+        api_url = self._server_url
+        if not api_url.endswith("/"):
+            api_url += "/"
+        api_url += "screenshot"
+        
+        try:
+            # 构建请求体 - 使用 browserless screenshot API
+            payload = {
+                "html": html_content,
+                "options": {
+                    "type": "png",
+                    "omitBackground": True,
+                    "fullPage": False,
+                },
+                "gotoOptions": {
+                    "waitUntil": "networkidle2",  # 等待网络几乎空闲（允许2个连接）
+                    "timeout": 60000,
+                },
+                "viewport": {
+                    "width": 800,
+                    "height": 800,
+                    "deviceScaleFactor": 2,
+                },
+                "waitForTimeout": 3000,  # 额外等待 3 秒，确保地图瓦片加载
+            }
+            
+            # 如果指定了选择器，使用元素截图
+            if selector and selector != ".card":
+                payload["selector"] = selector
+                # 使用 waitForSelector 确保元素可见
+                payload["waitForSelector"] = {
+                    "selector": selector,
+                    "visible": True,
+                    "timeout": 10000,
+                }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    api_url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=90),  # 增加到 90 秒
+                ) as response:
+                    if response.status == 200:
+                        # 保存截图
+                        image_data = await response.read()
+                        with open(output_path, "wb") as f:
+                            f.write(image_data)
+                        
+                        elapsed = time.time() - start_time
+                        logger.info(f"[灾害预警] 卡片渲染成功（HTTP API），耗时 {elapsed:.3f}秒")
+                        return output_path
+                    else:
+                        error_text = await response.text()
+                        logger.error(
+                            f"[灾害预警] browserless API 返回错误: {response.status} - {error_text}"
+                        )
+                        return None
+                        
+        except asyncio.TimeoutError:
+            logger.error("[灾害预警] browserless API 请求超时")
+            return None
+        except Exception as e:
+            logger.error(f"[灾害预警] browserless API 请求失败: {e}")
+            if self._telemetry and self._telemetry.enabled:
+                await self._telemetry.track_error(
+                    e, module="core.browser_manager._render_card_via_http"
+                )
             return None
 
     async def close(self):

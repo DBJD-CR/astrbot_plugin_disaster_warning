@@ -11,6 +11,7 @@ const { Box, Typography } = MaterialUI;
 function Sidebar({ currentView, onViewChange }) {
     const { state } = useAppContext();
     const { version } = state.status;
+    const { showToast } = useToast(); // 使用 Toast 提示
 
     const menuItems = [
         { id: 'status', label: '运行状态', icon: '📊' },
@@ -61,10 +62,10 @@ function Sidebar({ currentView, onViewChange }) {
                                 if (data.success) {
                                     // 成功则不打扰用户
                                 } else {
-                                    alert(data.error || '打开失败');
+                                    showToast(data.error || '打开失败', 'error');
                                 }
                             })
-                            .catch(err => alert('请求失败: ' + err));
+                            .catch(err => showToast('请求失败: ' + err, 'error'));
                     }}
                     style={{
                         width: '100%',

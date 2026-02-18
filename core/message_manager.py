@@ -18,6 +18,8 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.star import StarTools
 
+from ..utils.map_tile_sources import get_tile_url_js
+
 from ..models.data_source_config import (
     get_eew_sources,
     get_intensity_based_sources,
@@ -29,6 +31,7 @@ from ..models.models import (
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
+    DisasterType,
 )
 from ..utils.formatters import (
     CWAReportFormatter,
@@ -176,9 +179,11 @@ class MessagePushManager:
         # 检查是否需要预启动浏览器
         # 如果启用了地图瓦片 (include_map) 或 Global Quake 卡片 (use_global_quake_card)
         # 则在后台异步预热浏览器，避免第一次推送时因启动浏览器造成延迟
+        # 注意：远程模式使用 HTTP API，不需要预热
         msg_config = config.get("message_format", {})
-        if msg_config.get("include_map", False) or msg_config.get(
-            "use_global_quake_card", False
+        if (
+            playwright_mode == "local"
+            and (msg_config.get("include_map", False) or msg_config.get("use_global_quake_card", False))
         ):
             logger.debug("[灾害预警] 检测到已启用卡片渲染功能，正在后台预热浏览器...")
             asyncio.create_task(self.browser_manager.initialize())
@@ -571,6 +576,12 @@ class MessagePushManager:
                 # 注入自定义缩放级别，默认设为 5
                 zoom_level = message_format_config.get("map_zoom_level", 5)
                 context["zoom_level"] = zoom_level
+                
+                # 注入地图源配置
+                map_source = message_format_config.get("map_source", "PetalMap矢量图亮")
+                context["map_source"] = map_source
+                # 注入完整的瓦片URL（处理特殊格式）
+                context["tile_url"] = get_tile_url_js(map_source)
 
                 # 获取模板名称配置
                 template_name = message_format_config.get(
@@ -589,15 +600,22 @@ class MessagePushManager:
                     with open(template_path, encoding="utf-8") as f:
                         template_content = f.read()
 
-                    # 计算 Leaflet.js 的绝对路径
-                    leaflet_path = os.path.abspath(
-                        os.path.join(resources_dir, "card_templates", "leaflet.js")
-                    )
-                    leaflet_css_path = os.path.abspath(
-                        os.path.join(resources_dir, "card_templates", "leaflet.css")
-                    )
-                    context["leaflet_js_url"] = f"file://{leaflet_path}"
-                    context["leaflet_css_url"] = f"file://{leaflet_css_path}"
+                    # 根据 playwright 模式选择资源 URL
+                    playwright_mode = self.config.get("message_format", {}).get("playwright_mode", "local")
+                    if playwright_mode == "remote":
+                        # 远程模式：使用 CDN
+                        context["leaflet_js_url"] = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                        context["leaflet_css_url"] = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+                    else:
+                        # 本地模式：使用本地文件
+                        leaflet_path = os.path.abspath(
+                            os.path.join(resources_dir, "card_templates", "leaflet.js")
+                        )
+                        leaflet_css_path = os.path.abspath(
+                            os.path.join(resources_dir, "card_templates", "leaflet.css")
+                        )
+                        context["leaflet_js_url"] = f"file://{leaflet_path}"
+                        context["leaflet_css_url"] = f"file://{leaflet_css_path}"
 
                     # Jinja2 渲染
                     template = Template(template_content)
@@ -785,7 +803,7 @@ class MessagePushManager:
     ) -> str | None:
         """渲染通用地图图片"""
         try:
-            map_source = config.get("map_source", "petallight")
+            map_source = config.get("map_source", "PetalMap矢量图亮")
             zoom_level = config.get("map_zoom_level", 5)
 
             # 加载模板
@@ -809,13 +827,25 @@ class MessagePushManager:
                 os.path.join(resources_dir, "card_templates", "leaflet.css")
             )
 
+            # 根据 playwright 模式选择资源 URL
+            playwright_mode = self.config.get("message_format", {}).get("playwright_mode", "local")
+            if playwright_mode == "remote":
+                # 远程模式：使用 CDN
+                leaflet_js_url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                leaflet_css_url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+            else:
+                # 本地模式：使用本地文件
+                leaflet_js_url = f"file://{leaflet_path}"
+                leaflet_css_url = f"file://{leaflet_css_path}"
+
             context = {
                 "latitude": lat,
                 "longitude": lon,
                 "zoom_level": zoom_level,
                 "map_source": map_source,
-                "leaflet_js_url": f"file://{leaflet_path}",
-                "leaflet_css_url": f"file://{leaflet_css_path}",
+                "tile_url": get_tile_url_js(map_source),
+                "leaflet_js_url": leaflet_js_url,
+                "leaflet_css_url": leaflet_css_url,
             }
 
             # 渲染 HTML

@@ -12,8 +12,9 @@ const { useState, useEffect } = React;
  */
 function SimulationModal({ open, onClose }) {
     const api = useApi();
+    const { showToast } = useToast(); // 使用 Toast 提示
     const [disasterType, setDisasterType] = useState('earthquake');
-    const [testType, setTestType] = useState('china');
+    const [testType, setTestType] = useState('cea_fanstudio');
     const [targetGroup, setTargetGroup] = useState('');
     const [customParams, setCustomParams] = useState({
         latitude: 39.9,
@@ -67,10 +68,10 @@ function SimulationModal({ open, onClose }) {
                     }));
                 }
             } else {
-                alert('获取位置失败: ' + (result.error || '未知错误'));
+                showToast('获取位置失败: ' + (result.error || '未知错误'), 'error');
             }
         } catch (e) {
-            alert('获取位置失败');
+            showToast('获取位置失败', 'error');
             console.error(e);
         }
     };
@@ -87,13 +88,13 @@ function SimulationModal({ open, onClose }) {
             });
 
             if (result.success) {
-                alert(`✅ 测试成功!\n${result.message || '预警消息已发送'}`);
+                showToast(result.message || '预警消息已发送', 'success');
                 onClose();
             } else {
-                alert(`❌ 测试失败: ${result.message || result.error}`);
+                showToast(`测试失败: ${result.message || result.error}`, 'error');
             }
         } catch (e) {
-            alert('请求失败,请检查控制台');
+            showToast('请求失败,请检查控制台', 'error');
             console.error(e);
         } finally {
             setSending(false);
@@ -102,7 +103,9 @@ function SimulationModal({ open, onClose }) {
 
     const getDisasterTypeOptions = () => {
         if (!params) return [];
-        return Object.keys(params.disaster_types || {});
+        // 只返回 earthquake，因为后端只支持地震模拟
+        const allTypes = Object.keys(params.disaster_types || {});
+        return allTypes.filter(type => type === 'earthquake');
     };
 
     const getTestTypeOptions = () => {
@@ -153,17 +156,19 @@ function SimulationModal({ open, onClose }) {
                             label="灾害类型"
                             onChange={(e) => {
                                 setDisasterType(e.target.value);
-                                setTestType('');
+                                setTestType('cea_fanstudio');
                             }}
+                            disabled
                         >
                             {getDisasterTypeOptions().map(type => (
                                 <MenuItem key={type} value={type}>
-                                    {type === 'earthquake' ? '🌍 地震' :
-                                        type === 'tsunami' ? '🌊 海啸' :
-                                            type === 'weather' ? '☁️ 气象预警' : type}
+                                    {type === 'earthquake' ? '🌍 地震（仅支持）' : type}
                                 </MenuItem>
                             ))}
                         </Select>
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 1.5 }}>
+                            目前仅支持地震模拟，其他灾害类型正在开发中
+                        </Typography>
                     </FormControl>
 
                     {/* 测试格式 */}

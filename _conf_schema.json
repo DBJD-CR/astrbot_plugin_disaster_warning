@@ -490,15 +490,16 @@
         "description": "地图瓦片源",
         "type": "string",
         "options": [
-          "petallight",
-          "petaldark",
-          "arcwi",
-          "arcwob",
-          "arcwh",
-          "geovis"
+          "高德地图",
+          "PetalMap矢量图亮",
+          "PetalMap矢量图暗",
+          "ArcGIS卫星影像",
+          "ArcGIS地形图",
+          "ArcGIS山影图",
+          "中科星图卫星影像"
         ],
-        "default": "petallight",
-        "hint": "选择地图渲染使用的瓦片源。推荐使用 PetalMap 矢量图 亮 (petallight)"
+        "default": "PetalMap矢量图亮",
+        "hint": "选择地图渲染使用的瓦片源"
       },
       "map_zoom_level": {
         "description": "地图缩放级别",

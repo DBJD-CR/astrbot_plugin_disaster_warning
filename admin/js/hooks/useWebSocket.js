@@ -1,16 +1,18 @@
-const { useEffect, useRef } = React;
+const { useEffect, useRef, useCallback } = React;
+
+// ========== 全局单例 WebSocket 实例 ==========
+// 确保整个应用只有一个 WebSocket 连接
+let globalWsInstance = null;
+let globalReconnectTimer = null;
+let connectionListeners = new Set(); // 存储所有订阅者
 
 function useWebSocket() {
     const { state, dispatch } = useAppContext();
-    const wsRef = useRef(null);
-    const reconnectTimerRef = useRef(null);
+    const listenerIdRef = useRef(null);
+    const handleWsMessageRef = useRef(null);
 
-    const getWsUrl = () => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/ws`;
-    };
-
-    const handleWsMessage = (msg) => {
+    // 使用 useRef 存储最新的消息处理函数，避免重复注册监听器
+    handleWsMessageRef.current = (msg) => {
         if (msg.type === 'full_update' || msg.type === 'update' || msg.type === 'event') {
             const data = msg.data;
 
@@ -61,12 +63,17 @@ function useWebSocket() {
         }
     };
 
+    const getWsUrl = () => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${window.location.host}/ws`;
+    };
+
     const scheduleReconnect = () => {
-        if (reconnectTimerRef.current) return;
-        reconnectTimerRef.current = setTimeout(() => {
-            reconnectTimerRef.current = null;
-            // 检查组件是否已卸载
-            if (!wsRef.current && state.wsConnected === undefined) return;
+        if (globalReconnectTimer) return;
+        globalReconnectTimer = setTimeout(() => {
+            globalReconnectTimer = null;
+            // 检查是否还有活跃的监听器
+            if (connectionListeners.size === 0) return;
             console.log('[WS] 尝试重连...');
             connect();
         }, 3000);
@@ -74,48 +81,58 @@ function useWebSocket() {
 
     const connect = () => {
         // 如果已经有连接且是开启状态，不重复连接
-        if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        if (globalWsInstance && (globalWsInstance.readyState === WebSocket.OPEN || globalWsInstance.readyState === WebSocket.CONNECTING)) {
+            console.log('[WS] 全局连接已存在，复用现有连接');
             return;
         }
 
         try {
             // 关闭旧连接
-            if (wsRef.current) {
+            if (globalWsInstance) {
                 // 移除旧的监听器防止干扰
-                wsRef.current.onclose = null;
-                wsRef.current.close();
+                globalWsInstance.onclose = null;
+                globalWsInstance.close();
             }
 
-            wsRef.current = new WebSocket(getWsUrl());
+            globalWsInstance = new WebSocket(getWsUrl());
 
-            wsRef.current.onopen = () => {
-                console.log('[WS] 已连接');
-                dispatch({ type: 'SET_WS_CONNECTED', payload: true });
-                if (reconnectTimerRef.current) {
-                    clearTimeout(reconnectTimerRef.current);
-                    reconnectTimerRef.current = null;
+            globalWsInstance.onopen = () => {
+                console.log('[WS] 全局单例连接已建立');
+                // 通知所有订阅者连接已建立
+                connectionListeners.forEach(listener => {
+                    if (listener.onConnected) listener.onConnected();
+                });
+                if (globalReconnectTimer) {
+                    clearTimeout(globalReconnectTimer);
+                    globalReconnectTimer = null;
                 }
             };
 
-            wsRef.current.onmessage = (event) => {
+            globalWsInstance.onmessage = (event) => {
                 try {
                     const msg = JSON.parse(event.data);
-                    handleWsMessage(msg);
+                    // 广播给所有订阅者
+                    connectionListeners.forEach(listener => {
+                        if (listener.onMessage) listener.onMessage(msg);
+                    });
                 } catch (e) {
                     console.error('[WS] 解析消息失败', e);
                 }
             };
 
-            wsRef.current.onclose = () => {
-                console.log('[WS] 连接已关闭');
-                // 只有当组件仍挂载时才更新状态
-                if (wsRef.current) {
-                    dispatch({ type: 'SET_WS_CONNECTED', payload: false });
+            globalWsInstance.onclose = () => {
+                console.log('[WS] 全局连接已关闭');
+                // 通知所有订阅者连接已关闭
+                connectionListeners.forEach(listener => {
+                    if (listener.onDisconnected) listener.onDisconnected();
+                });
+                // 只有当还有订阅者时才重连
+                if (connectionListeners.size > 0) {
                     scheduleReconnect();
                 }
             };
 
-            wsRef.current.onerror = (error) => {
+            globalWsInstance.onerror = (error) => {
                 console.error('[WS] 连接错误', error);
                 // 这里不需要重置状态，onclose 会被触发
             };
@@ -125,40 +142,63 @@ function useWebSocket() {
         }
     };
 
-    // 使用 ref 跟踪是否是挂载状态，避免严格模式下的重复连接
-    const isMounted = useRef(false);
-
     useEffect(() => {
-        isMounted.current = true;
+        // 生成唯一的监听器 ID
+        const listenerId = Math.random().toString(36).substr(2, 9);
+        listenerIdRef.current = listenerId;
         
-        // 只有当没有连接时才初始化连接
-        if (!wsRef.current) {
+        // 创建监听器对象
+        const listener = {
+            onConnected: () => {
+                dispatch({ type: 'SET_WS_CONNECTED', payload: true });
+            },
+            onDisconnected: () => {
+                dispatch({ type: 'SET_WS_CONNECTED', payload: false });
+            },
+            onMessage: (msg) => {
+                handleWsMessageRef.current(msg);
+            }
+        };
+        
+        // 注册监听器
+        connectionListeners.add(listener);
+        console.log(`[WS] 注册监听器 ${listenerId}，当前监听器数: ${connectionListeners.size}`);
+        
+        // 首次调用或连接不存在时，初始化连接
+        if (!globalWsInstance || globalWsInstance.readyState === WebSocket.CLOSED) {
             connect();
+        } else if (globalWsInstance.readyState === WebSocket.OPEN) {
+            // 如果已经连接，立即通知新监听器
+            dispatch({ type: 'SET_WS_CONNECTED', payload: true });
         }
-
-        // 注意：这里我们不再在 cleanup 中直接关闭连接
-        // 而是将 WebSocket 实例保持在 Context 或全局单例中会更好
-        // 但为了最小化改动，我们采用引用计数或全局检测的方式
         
         return () => {
-            isMounted.current = false;
-            // 组件卸载时不关闭连接，让它在后台保持
-            // 只有当页面完全刷新或关闭时连接才会断开
-            // 这解决了 React 严格模式下重复挂载导致连接断开重连的问题
+            // 移除监听器
+            connectionListeners.delete(listener);
+            console.log(`[WS] 移除监听器 ${listenerId}，剩余监听器数: ${connectionListeners.size}`);
             
-            // 如果确实需要清理，应该确保清理逻辑正确
-            // if (wsRef.current) {
-            //    wsRef.current.onclose = null; // 防止触发重连
-            //    wsRef.current.close();
-            //    wsRef.current = null;
-            // }
+            // 如果没有监听器了，清理重连定时器并关闭连接
+            if (connectionListeners.size === 0) {
+                if (globalReconnectTimer) {
+                    clearTimeout(globalReconnectTimer);
+                    globalReconnectTimer = null;
+                }
+                if (globalWsInstance) {
+                    console.log('[WS] 所有监听器已移除，关闭全局连接');
+                    globalWsInstance.onclose = null; // 移除 onclose 处理器防止触发重连
+                    globalWsInstance.close();
+                    globalWsInstance = null;
+                }
+            }
         };
-    }, []);
+    }, [dispatch]); // 只依赖 dispatch，不依赖 handleWsMessage
 
     const sendMessage = (msg) => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(msg));
+        if (globalWsInstance && globalWsInstance.readyState === WebSocket.OPEN) {
+            globalWsInstance.send(JSON.stringify(msg));
+            return true; // 发送成功
         }
+        return false; // 发送失败
     };
 
     return {
