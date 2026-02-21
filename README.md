@@ -919,7 +919,12 @@ AstrBot/
          │   ├─ css/                       # 样式文件目录
          │   ├─ fonts/                     # 字体文件目录
          │   ├─ js/                        # 前端逻辑脚本目录
-         │   │   ├─ components/            # UI 组件 (图表、卡片、模态框等)
+         │   │   ├─ components/            # UI 组件目录
+         │   │   │   ├─ common/            # 通用组件 (Header, Sidebar, Toast等)
+         │   │   │   ├─ config/            # 配置页组件
+         │   │   │   ├─ events/            # 事件列表页组件
+         │   │   │   ├─ stats/             # 统计分析页组件 (图表、卡片)
+         │   │   │   └─ status/            # 状态概览页组件
          │   │   ├─ context/               # 全局状态管理
          │   │   ├─ hooks/                 # 自定义 React Hooks
          │   │   ├─ utils/                 # 前端工具函数
@@ -931,6 +936,7 @@ AstrBot/
          │   ├─ __init__.py
          │   ├─ browser_manager.py         # Playwright 浏览器实例管理器
          │   ├─ config_validator.py        # 配置校验器
+         │   ├─ database_manager.py        # 数据库管理器 (SQLite)
          │   ├─ disaster_service.py        # 核心灾害预警服务
          │   ├─ event_deduplicator.py      # 基础事件去重器
          │   ├─ handler_registry.py        # 处理器注册表
@@ -962,12 +968,15 @@ AstrBot/
          ├─ models/                        # 数据模型目录
          │   ├─ __init__.py
          │   ├─ data_source_config.py      # 数据源配置管理器
-         │   └─ models.py                  # 数据模型定义（地震、海啸、气象等）
+         │   ├─ models.py                  # 数据模型定义（地震、海啸、气象等）
+         │   ├─ websocket_message.proto    # Protobuf 消息定义文件
+         │   └─ websocket_message_pb2.py   # Protobuf 生成的 Python 代码
          ├─ utils/                         # 工具模块目录
          │   ├─ __init__.py
          │   ├─ converters.py              # 数据类型转换工具
          │   ├─ fe_regions.py              # FE地震区划中文翻译
          │   ├─ geolocation.py             # IP 地理定位工具
+         │   ├─ map_tile_sources.py        # 地图瓦片源定义
          │   ├─ time_converter.py          # 时间格式转换工具
          │   ├─ version.py                 # 获取插件版本号的工具
          │   └─ formatters/                # 消息格式化器目录
@@ -997,6 +1006,7 @@ AstrBot/
          ├─ temp/                          # 临时文件夹，用于存放渲染生成的图片文件
          ├─ .telemetry_id                  # 匿名遥测实例ID（不包含任何用户信息）
          ├─ earthquake_lists_cache.json    # Wolfx 地震列表数据缓存
+         ├─ events.db                      # SQLite 数据库，存储所有历史灾害事件记录
          ├─ logger_stats.json              # 日志过滤器统计摘要
          ├─ raw_messages.log               # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
          ├─ raw_messages.log.1             # 轮转日志文件（自动管理）
@@ -1004,7 +1014,8 @@ AstrBot/
          └─ statistics.json                # 灾害事件统计数据（包含震级分布、历史极值等）
 ```
 
-- **统计数据 (`statistics.json`)**: 记录自插件启动以来的所有灾害事件，包含了丰富的统计信息内容。即使插件重启，去重指纹和历史统计信息也会被保留。
+- **事件数据库 (`events.db`)**: 采用 SQLite 存储所有历史灾害事件的详细记录，支持高效查询和持久化存储。
+- **统计数据 (`statistics.json`)**: 记录自插件启动以来的统计摘要信息（如震级分布、历史极值等）。即使插件重启，去重指纹和历史统计信息也会被保留。
 - **列表缓存 (`earthquake_lists_cache.json`)**: 持久化缓存获取到的地震列表数据，用于重载插件后也能第一时间使用 `/地震列表查询` 命令。
 - **日志统计 (`logger_stats.json`)**: 记录日志过滤器的拦截统计信息，如心跳包过滤数、重复事件拦截数等。
 - **匿名ID (`.telemetry_id`)**: 用于遥测统计的匿名随机实例标识符。
