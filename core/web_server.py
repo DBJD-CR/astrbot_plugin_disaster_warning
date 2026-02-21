@@ -7,20 +7,10 @@ import asyncio
 import json
 import os
 import platform
-import re
-import subprocess
 from datetime import datetime
-from typing import Any, Optional
-from urllib.parse import urlparse
+from typing import Any
 
 from astrbot.api import logger
-
-try:
-    import ping3
-    PING3_AVAILABLE = True
-except ImportError:
-    PING3_AVAILABLE = False
-    logger.warning("[灾害预警] ping3 未安装，延迟检测功能将不可用。请运行: pip install ping3")
 
 from ..utils.geolocation import close_geoip_session, fetch_location_from_ip
 from ..utils.version import get_plugin_version
@@ -52,7 +42,7 @@ def is_running_in_docker() -> bool:
 
     # 方法2: 检查当前进程的 cgroup 是否在 docker 或 kubepods 中
     try:
-        with open("/proc/self/cgroup", "r") as f:
+        with open("/proc/self/cgroup") as f:
             content = f.read()
             if "/docker/" in content or "/kubepods/" in content:
                 return True
@@ -78,7 +68,7 @@ class WebAdminServer:
         self._broadcast_task = None
         self._ping_task = None  # 新增：定期ping任务
         self._ws_connections: list[WebSocket] = []  # Active WebSocket connections
-        self._latency_cache: dict[str, Optional[float]] = {}  # 新增：延迟缓存
+        self._latency_cache: dict[str, float | None] = {}  # 新增：延迟缓存
 
         if not FASTAPI_AVAILABLE:
             return
@@ -639,7 +629,7 @@ class WebAdminServer:
         async def simulate_disaster(simulation_data: dict[str, Any]):
             """
             模拟灾害预警（复用命令行版本的过滤器测试逻辑）
-            
+
             目前仅支持地震模拟，会执行完整的过滤器测试
 
             支持的参数:
@@ -661,8 +651,10 @@ class WebAdminServer:
                 # 目前仅支持地震模拟
                 if disaster_type != "earthquake":
                     return JSONResponse(
-                        {"error": f"暂不支持 {disaster_type} 类型的模拟，仅支持 earthquake"},
-                        status_code=400
+                        {
+                            "error": f"暂不支持 {disaster_type} 类型的模拟，仅支持 earthquake"
+                        },
+                        status_code=400,
                     )
 
                 # 确定目标 session
@@ -686,23 +678,31 @@ class WebAdminServer:
                 source = custom_params.get("source", test_type)
 
                 # 复用命令行版本的逻辑
-                from ..models.models import DisasterEvent, EarthquakeData, DisasterType, get_data_source_from_id
+                from ..models.models import (
+                    DATA_SOURCE_MAPPING,
+                    DisasterEvent,
+                    DisasterType,
+                    EarthquakeData,
+                    get_data_source_from_id,
+                )
                 from ..utils.fe_regions import translate_place_name
-                
+
                 manager = self.disaster_service.message_manager
-                
+
                 # 1. 获取数据源
                 data_source = get_data_source_from_id(source)
                 if not data_source:
-                    valid_sources = ", ".join(DATA_SOURCE_MAPPING.keys())
-                    return JSONResponse({
-                        "error": f"无效的数据源: {source}",
-                        "valid_sources": list(DATA_SOURCE_MAPPING.keys())
-                    }, status_code=400)
+                    return JSONResponse(
+                        {
+                            "error": f"无效的数据源: {source}",
+                            "valid_sources": list(DATA_SOURCE_MAPPING.keys()),
+                        },
+                        status_code=400,
+                    )
 
                 # 2. 构造模拟数据
                 final_place_name = translate_place_name("模拟震中", lat, lon)
-                
+
                 earthquake = EarthquakeData(
                     id=f"sim_{int(datetime.now().timestamp())}",
                     event_id=f"sim_{int(datetime.now().timestamp())}",
@@ -738,7 +738,7 @@ class WebAdminServer:
                     "🧪 灾害预警模拟报告",
                     f"Input: M{magnitude} @ ({lat}, {lon}), Depth {depth}km\n",
                 ]
-                
+
                 global_pass = True
                 local_pass = True
 
@@ -746,7 +746,9 @@ class WebAdminServer:
                 if manager.intensity_filter:
                     if manager.intensity_filter.should_filter(earthquake):
                         global_pass = False
-                        report_lines.append("❌ 全局过滤: 拦截 (不满足最小震级/烈度要求)")
+                        report_lines.append(
+                            "❌ 全局过滤: 拦截 (不满足最小震级/烈度要求)"
+                        )
                     else:
                         report_lines.append("✅ 全局过滤: 通过")
 
@@ -771,11 +773,13 @@ class WebAdminServer:
                         )
                         dist_str = f"{dist:.1f} km" if dist is not None else "未知"
                         inte_str = f"{inte:.1f}" if inte is not None else "未知"
-                        report_lines.extend([
-                            f"   ⦁ 距本地: {dist_str}",
-                            f"   ⦁ 预估最大本地烈度: {inte_str}",
-                            f"   ⦁ 本地烈度阈值: {manager.local_monitor.threshold}",
-                        ])
+                        report_lines.extend(
+                            [
+                                f"   ⦁ 距本地: {dist_str}",
+                                f"   ⦁ 预估最大本地烈度: {inte_str}",
+                                f"   ⦁ 本地烈度阈值: {manager.local_monitor.threshold}",
+                            ]
+                        )
                 else:
                     report_lines.append("ℹ️ 本地监控: 未配置")
 
@@ -784,9 +788,11 @@ class WebAdminServer:
                     logger.info("[灾害预警] 开始构建模拟预警消息...")
                     msg_chain = await manager.build_message_async(disaster_event)
                     await manager._send_message(final_target_session, msg_chain)
-                    logger.info(f"[灾害预警] ✅ 模拟事件已成功推送到 {final_target_session}")
+                    logger.info(
+                        f"[灾害预警] ✅ 模拟事件已成功推送到 {final_target_session}"
+                    )
                     report_lines.append(f"\n✅ 消息已发送到: {final_target_session}")
-                    
+
                     return {
                         "success": True,
                         "message": "\n".join(report_lines),
@@ -801,6 +807,7 @@ class WebAdminServer:
             except Exception as e:
                 logger.error(f"[灾害预警] 模拟推送失败: {e}")
                 import traceback
+
                 logger.error(traceback.format_exc())
                 return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -1198,12 +1205,12 @@ class WebAdminServer:
 
         return expected
 
-    def _get_data_source_host(self, source_name: str) -> Optional[str]:
+    def _get_data_source_host(self, source_name: str) -> str | None:
         """获取数据源的主机名（用于ping）
-        
+
         Args:
             source_name: 数据源内部名称
-            
+
         Returns:
             主机名，如果无法确定则返回None
         """
@@ -1211,71 +1218,80 @@ class WebAdminServer:
             "fan_studio_all": "ws.fanstudio.tech",
             "p2p_main": "api.p2pquake.net",
             "wolfx_all": "ws-api.wolfx.jp",
-            "global_quake": "gqm.aloys23.link"
+            "global_quake": "gqm.aloys23.link",
         }
         return host_map.get(source_name)
 
-    async def _ping_host(self, host: str, timeout: float = 2.0) -> Optional[float]:
-        """使用ping3测试主机延迟
-        
+    async def _ping_host(
+        self, host: str, port: int = 443, timeout: float = 3.0
+    ) -> float | None:
+        """使用 TCP 连接测试主机延迟 (tcping)
+
         Args:
             host: 主机名或IP地址
+            port: 端口号，默认 443
             timeout: 超时时间（秒）
-            
+
         Returns:
             延迟时间（毫秒），如果失败则返回None
         """
-        if not PING3_AVAILABLE:
-            return None
-            
         try:
-            # 在线程池中执行ping3以避免阻塞事件循环
-            loop = asyncio.get_event_loop()
-            delay = await loop.run_in_executor(
-                None, 
-                lambda: ping3.ping(host, timeout=timeout, unit='ms')
-            )
-            
-            if delay is None or delay is False:
-                return None
-            
-            # delay已经是毫秒单位
-            return float(delay)
-            
-        except Exception as e:
-            logger.debug(f"[灾害预警] Ping {host} 异常: {e}")
+            start_time = asyncio.get_running_loop().time()
+            # 尝试建立 TCP 连接
+            future = asyncio.open_connection(host, port)
+            reader, writer = await asyncio.wait_for(future, timeout=timeout)
+            end_time = asyncio.get_running_loop().time()
+
+            # 关闭连接
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+            # 计算延迟 (毫秒)
+            latency = (end_time - start_time) * 1000
+            return latency
+
+        except (asyncio.TimeoutError, OSError, Exception):
+            # logger.debug(f"[灾害预警] TCP Ping {host}:{port} 异常: {e}")
             return None
 
     async def _background_ping_loop(self):
         """后台定期更新延迟缓存"""
         logger.info("[灾害预警] 启动后台延迟检测任务")
-        
+
         while True:
             try:
                 # 获取所有预期的数据源
                 expected_sources = self._get_expected_data_sources()
-                
+
                 # 并发测试所有数据源的延迟
                 ping_tasks = {}
                 for source_name in expected_sources.keys():
                     host = self._get_data_source_host(source_name)
                     if host:
-                        ping_tasks[source_name] = self._ping_host(host, timeout=1.0)
-                
+                        # 使用 TCP Ping 测试 443 端口
+                        ping_tasks[source_name] = self._ping_host(
+                            host, port=443, timeout=2.0
+                        )
+
                 # 等待所有ping完成
                 if ping_tasks:
-                    results = await asyncio.gather(*ping_tasks.values(), return_exceptions=True)
+                    results = await asyncio.gather(
+                        *ping_tasks.values(), return_exceptions=True
+                    )
                     for source_name, result in zip(ping_tasks.keys(), results):
                         if isinstance(result, Exception):
                             self._latency_cache[source_name] = None
                         else:
                             self._latency_cache[source_name] = result
-                
+
                 logger.debug(f"[灾害预警] 延迟缓存已更新: {self._latency_cache}")
-                
+
                 # 每45秒更新一次
                 await asyncio.sleep(45)
-                
+
             except asyncio.CancelledError:
                 logger.info("[灾害预警] 后台延迟检测任务已停止")
                 break
@@ -1305,7 +1321,7 @@ class WebAdminServer:
 
         # 启动 WebSocket 广播循环
         self._broadcast_task = asyncio.create_task(self._broadcast_loop())
-        
+
         # 启动后台延迟检测任务
         self._ping_task = asyncio.create_task(self._background_ping_loop())
 
@@ -1318,7 +1334,7 @@ class WebAdminServer:
                 await self._ping_task
             except asyncio.CancelledError:
                 pass
-        
+
         # 停止 WebSocket 广播循环
         if self._broadcast_task:
             self._broadcast_task.cancel()
