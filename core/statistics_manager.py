@@ -28,7 +28,7 @@ class StatisticsManager:
         self.display_timezone = self.config.get("display_timezone", "UTC+8")
         self.data_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
         self.stats_file = self.data_dir / "statistics.json"
-        
+
         # 初始化数据库（异步）
         self.db = DatabaseManager(self.data_dir / "events.db")
         self._db_initialized = False
@@ -77,7 +77,7 @@ class StatisticsManager:
             # 确保数据库已初始化
             if not self._db_initialized:
                 await self.initialize()
-            
+
             current_time = datetime.now(timezone.utc).isoformat()
             self.stats["last_updated"] = current_time
 
@@ -232,22 +232,27 @@ class StatisticsManager:
                                 else None
                             )
                             record["update_count"] = record.get("update_count", 1) + 1
-                            
+
                             # 保存报数信息（如果有）
-                            if hasattr(event.data, 'report_num') and event.data.report_num:
+                            if (
+                                hasattr(event.data, "report_num")
+                                and event.data.report_num
+                            ):
                                 record["report_num"] = event.data.report_num
 
                             # 3. 将更新后的记录移动到列表顶部
                             updated_record = target_list.pop(i)
                             target_list.insert(0, updated_record)
                             is_merged = True
-                            
+
                             # 同步更新数据库
                             try:
-                                await self.db.update_event(event.id, source_id, updated_record)
+                                await self.db.update_event(
+                                    event.id, source_id, updated_record
+                                )
                             except Exception as e:
                                 logger.error(f"[灾害预警] 更新数据库事件失败: {e}")
-                            
+
                             break
 
         if not is_merged:
@@ -270,7 +275,7 @@ class StatisticsManager:
                     event.data.shock_time.isoformat() if event.data.shock_time else None
                 )
                 push_record["real_event_id"] = event.data.event_id
-                
+
                 # 保存报数信息（如果有）
                 if event.data.report_num:
                     push_record["report_num"] = event.data.report_num
@@ -296,7 +301,7 @@ class StatisticsManager:
                 push_record["level"] = event.data.level
 
             target_list.insert(0, push_record)
-            
+
             # 同步保存到数据库
             try:
                 await self.db.insert_event(push_record)
@@ -533,7 +538,7 @@ class StatisticsManager:
         else:
             return data
 
-    def reset_stats(self):
+    async def reset_stats(self):
         """重置统计数据"""
         try:
             self.stats = {
@@ -562,6 +567,10 @@ class StatisticsManager:
             # 清空内存中的去重集合
             self._recorded_event_ids.clear()
 
+            # 清除数据库
+            if self._db_initialized:
+                await self.db.clear_all_events()
+
             # 保存到文件
             self.save_stats()
             logger.info("[灾害预警] 统计数据已重置")
@@ -580,7 +589,7 @@ class StatisticsManager:
 
                 # 检查 JSON 中是否有历史记录需要迁移
                 json_has_events = bool(saved_stats.get("recent_pushes"))
-                
+
                 # 恢复数据，保留默认值结构（暂时跳过 recent_pushes）
                 recent_pushes_backup = saved_stats.pop("recent_pushes", None)
                 self._merge_stats(self.stats, saved_stats)
@@ -588,21 +597,21 @@ class StatisticsManager:
                 # 恢复去重集合
                 if "recent_event_ids" in self.stats:
                     self._recorded_event_ids.update(self.stats["recent_event_ids"])
-                
+
                 # 如果有需要迁移的数据，先放回去
                 if recent_pushes_backup:
                     saved_stats["recent_pushes"] = recent_pushes_backup
 
             except Exception as e:
                 logger.error(f"[灾害预警] 加载统计数据失败: {e}")
-        
+
         # 优先从数据库加载
         try:
             db_events = await self.db.get_recent_events(500)
             if db_events:
                 logger.info(f"[灾害预警] 从数据库加载了 {len(db_events)} 条历史记录")
                 self.stats["recent_pushes"] = db_events
-                
+
                 # 重建 recorded_event_ids
                 for evt in db_events:
                     unique_id = evt.get("unique_id")
@@ -610,9 +619,9 @@ class StatisticsManager:
                         self._recorded_event_ids.add(unique_id)
             elif json_has_events:
                 # 数据库为空但 JSON 有数据，执行一次性迁移
-                logger.info(f"[灾害预警] 检测到 JSON 历史记录，开始迁移到数据库...")
+                logger.info("[灾害预警] 检测到 JSON 历史记录，开始迁移到数据库...")
                 await self._migrate_json_from_file()
-                
+
         except Exception as e:
             logger.error(f"[灾害预警] 从数据库加载失败: {e}")
 
@@ -654,22 +663,24 @@ class StatisticsManager:
                     current[k] = v
             else:
                 current[k] = v
-    
+
     async def _migrate_json_from_file(self):
         """将 JSON 文件中的历史记录一次性迁移到数据库"""
         try:
             # 重新读取 JSON 文件获取 recent_pushes
             with open(self.stats_file, encoding="utf-8") as f:
                 saved_stats = json.load(f)
-            
+
             recent_pushes = saved_stats.get("recent_pushes", [])
             if not recent_pushes:
                 return
-            
-            logger.info(f"[灾害预警] 开始迁移 {len(recent_pushes)} 条历史记录到数据库...")
+
+            logger.info(
+                f"[灾害预警] 开始迁移 {len(recent_pushes)} 条历史记录到数据库..."
+            )
             migrated = 0
             failed_records = []
-            
+
             # 尝试插入所有记录
             for record in recent_pushes:
                 try:
@@ -679,23 +690,29 @@ class StatisticsManager:
                     # 记录失败的记录
                     logger.debug(f"[灾害预警] 迁移记录失败（可能已存在）: {e}")
                     failed_records.append(record)
-            
-            logger.info(f"[灾害预警] 成功迁移 {migrated}/{len(recent_pushes)} 条记录到数据库")
-            
+
+            logger.info(
+                f"[灾害预警] 成功迁移 {migrated}/{len(recent_pushes)} 条记录到数据库"
+            )
+
             # 验证数据库中是否有数据
             db_events = await self.db.get_recent_events(500)
             if not db_events:
-                logger.error(f"[灾害预警] 数据库验证失败，未找到迁移的数据，保留 JSON 备份")
+                logger.error(
+                    "[灾害预警] 数据库验证失败，未找到迁移的数据，保留 JSON 备份"
+                )
                 return
-            
+
             # 只有在数据库验证成功后才清空 JSON
-            logger.info(f"[灾害预警] 数据库验证成功，从数据库加载了 {len(db_events)} 条记录")
-            
+            logger.info(
+                f"[灾害预警] 数据库验证成功，从数据库加载了 {len(db_events)} 条记录"
+            )
+
             # 迁移完成后，清空 JSON 中的 recent_pushes 避免重复迁移
             saved_stats["recent_pushes"] = []
-            
+
             # 创建备份文件（保险措施）
-            backup_file = self.stats_file.with_suffix('.json.backup')
+            backup_file = self.stats_file.with_suffix(".json.backup")
             try:
                 with open(self.stats_file, encoding="utf-8") as f:
                     with open(backup_file, "w", encoding="utf-8") as bf:
@@ -703,22 +720,24 @@ class StatisticsManager:
                 logger.info(f"[灾害预警] 已创建 JSON 备份: {backup_file}")
             except Exception as be:
                 logger.warning(f"[灾害预警] 创建备份失败: {be}")
-            
+
             # 清空 JSON 文件中的历史记录
             with open(self.stats_file, "w", encoding="utf-8") as f:
                 json.dump(saved_stats, f, ensure_ascii=False, indent=2)
-            logger.info(f"[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储")
-            
+            logger.info(
+                "[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储"
+            )
+
             # 从数据库加载到内存
             self.stats["recent_pushes"] = db_events
             for evt in db_events:
                 unique_id = evt.get("unique_id")
                 if unique_id:
                     self._recorded_event_ids.add(unique_id)
-                        
+
         except Exception as e:
             logger.error(f"[灾害预警] 迁移数据到数据库失败: {e}")
-            logger.warning(f"[灾害预警] 保留原始 JSON 数据以防数据丢失")
+            logger.warning("[灾害预警] 保留原始 JSON 数据以防数据丢失")
 
     def get_summary(self) -> str:
         """获取统计摘要文本"""

@@ -6,9 +6,10 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import aiosqlite
+
 from astrbot.api import logger
 
 
@@ -23,7 +24,7 @@ class DatabaseManager:
             db_path: 数据库文件路径
         """
         self.db_path = db_path
-        self.connection: Optional[aiosqlite.Connection] = None
+        self.connection: aiosqlite.Connection | None = None
 
     async def initialize(self):
         """异步初始化数据库，创建必要的表结构"""
@@ -121,14 +122,14 @@ class DatabaseManager:
             # 将字典和列表字段序列化为 JSON
             raw_data = json.dumps(event_data.get("raw_data", {}), ensure_ascii=False)
             history = json.dumps(event_data.get("history", []), ensure_ascii=False)
-            
+
             # 确保 timestamp 总是有值，避免 NOT NULL 约束失败
             timestamp = event_data.get("timestamp") or datetime.now().isoformat()
 
             await cursor.execute(
                 """
                 INSERT INTO events (
-                    event_id, real_event_id, unique_id, type, source, 
+                    event_id, real_event_id, unique_id, type, source,
                     description, latitude, longitude, magnitude, depth,
                     report_num, time, timestamp, update_count,
                     weather_type_code, level, raw_data, history
@@ -184,7 +185,7 @@ class DatabaseManager:
             # 将字典和列表字段序列化为 JSON
             raw_data = json.dumps(event_data.get("raw_data", {}), ensure_ascii=False)
             history = json.dumps(event_data.get("history", []), ensure_ascii=False)
-            
+
             # 确保 timestamp 总是有值，避免 NOT NULL 约束失败
             timestamp = event_data.get("timestamp") or datetime.now().isoformat()
 
@@ -284,7 +285,7 @@ class DatabaseManager:
 
     async def find_event_by_id(
         self, event_id: str, source: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         根据事件ID和数据源查找事件
 
@@ -331,7 +332,7 @@ class DatabaseManager:
 
     async def find_event_by_real_id(
         self, real_event_id: str, source: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         根据真实事件ID和数据源查找事件
 
@@ -426,6 +427,24 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"[灾害预警] 获取统计信息失败: {e}")
             return {}
+
+    async def clear_all_events(self) -> bool:
+        """
+        清除所有事件记录
+
+        Returns:
+            是否清除成功
+        """
+        try:
+            cursor = await self.connection.cursor()
+            await cursor.execute("DELETE FROM events")
+            await self.connection.commit()
+            logger.info("[灾害预警] 数据库所有事件记录已清除")
+            return True
+        except Exception as e:
+            logger.error(f"[灾害预警] 清除数据库事件记录失败: {e}")
+            await self.connection.rollback()
+            return False
 
     async def close(self):
         """关闭数据库连接"""

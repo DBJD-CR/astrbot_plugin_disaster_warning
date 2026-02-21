@@ -654,7 +654,7 @@ class DisasterWarningPlugin(Star):
             return
 
         try:
-            self.disaster_service.statistics_manager.reset_stats()
+            await self.disaster_service.statistics_manager.reset_stats()
             yield event.plain_result(
                 "✅ 统计数据已重置\n\n所有历史统计记录已被清除，新的统计将重新开始。"
             )
