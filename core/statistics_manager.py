@@ -1,6 +1,6 @@
 import json
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from astrbot.api import logger
@@ -450,8 +450,6 @@ class StatisticsManager:
         if dt.tzinfo is None:
             # 如果缺少时区信息，默认将其视为 UTC+8 (北京时间) 并转换为 UTC
             # 因为项目中大多数数据源和处理逻辑倾向于使用 naive datetime 表示北京时间
-            from datetime import timedelta
-
             cst = timezone(timedelta(hours=8))
             return dt.replace(tzinfo=cst).astimezone(timezone.utc)
 
@@ -724,9 +722,7 @@ class StatisticsManager:
             # 清空 JSON 文件中的历史记录
             with open(self.stats_file, "w", encoding="utf-8") as f:
                 json.dump(saved_stats, f, ensure_ascii=False, indent=2)
-            logger.info(
-                "[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储"
-            )
+            logger.info("[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储")
 
             # 从数据库加载到内存
             self.stats["recent_pushes"] = db_events
@@ -862,8 +858,6 @@ class StatisticsManager:
 
     def get_trend_data(self, hours: int = 24) -> list[dict[str, Any]]:
         """获取趋势数据（最近N小时）"""
-        from datetime import datetime, timedelta, timezone
-
         result = []
         now = datetime.now(timezone.utc)
         # 使用配置的目标时区
@@ -892,8 +886,6 @@ class StatisticsManager:
             days: 如果未指定年份，返回最近N天的数据
             year: 指定年份，返回该年所有数据
         """
-        from datetime import datetime, timedelta, timezone
-
         result = []
         target_tz = TimeConverter._get_timezone(self.display_timezone)
         now = datetime.now(timezone.utc)

@@ -7,11 +7,20 @@ import asyncio
 import json
 import os
 import platform
+import traceback
 from datetime import datetime
 from typing import Any
 
 from astrbot.api import logger
 
+from ..models.models import (
+    DATA_SOURCE_MAPPING,
+    DisasterEvent,
+    DisasterType,
+    EarthquakeData,
+    get_data_source_from_id,
+)
+from ..utils.fe_regions import translate_place_name
 from ..utils.geolocation import close_geoip_session, fetch_location_from_ip
 from ..utils.version import get_plugin_version
 from .config_validator import ConfigValidator
@@ -678,15 +687,6 @@ class WebAdminServer:
                 source = custom_params.get("source", test_type)
 
                 # 复用命令行版本的逻辑
-                from ..models.models import (
-                    DATA_SOURCE_MAPPING,
-                    DisasterEvent,
-                    DisasterType,
-                    EarthquakeData,
-                    get_data_source_from_id,
-                )
-                from ..utils.fe_regions import translate_place_name
-
                 manager = self.disaster_service.message_manager
 
                 # 1. 获取数据源
@@ -806,8 +806,6 @@ class WebAdminServer:
 
             except Exception as e:
                 logger.error(f"[灾害预警] 模拟推送失败: {e}")
-                import traceback
-
                 logger.error(traceback.format_exc())
                 return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -867,8 +865,6 @@ class WebAdminServer:
                 return {"error": f"Schema file not found at: {schema_path}"}
             except Exception as e:
                 logger.error(f"[灾害预警] 获取配置Schema失败: {e}, path: {schema_path}")
-                import traceback
-
                 return JSONResponse(
                     {
                         "error": f"{str(e)}, path: {schema_path}, trace: {traceback.format_exc()}"
@@ -1253,8 +1249,8 @@ class WebAdminServer:
             latency = (end_time - start_time) * 1000
             return latency
 
-        except (asyncio.TimeoutError, OSError, Exception):
-            # logger.debug(f"[灾害预警] TCP Ping {host}:{port} 异常: {e}")
+        except (asyncio.TimeoutError, OSError, Exception) as e:
+            logger.debug(f"[灾害预警] TCP Ping {host}:{port} 异常: {e}")
             return None
 
     async def _background_ping_loop(self):
@@ -1289,15 +1285,15 @@ class WebAdminServer:
 
                 logger.debug(f"[灾害预警] 延迟缓存已更新: {self._latency_cache}")
 
-                # 每45秒更新一次
-                await asyncio.sleep(45)
+                # 每30秒更新一次，与前端广播频率保持一致
+                await asyncio.sleep(30)
 
             except asyncio.CancelledError:
                 logger.info("[灾害预警] 后台延迟检测任务已停止")
                 break
             except Exception as e:
                 logger.error(f"[灾害预警] 后台延迟检测出错: {e}")
-                await asyncio.sleep(45)
+                await asyncio.sleep(30)
 
     async def start(self):
         """启动 Web 服务器"""
