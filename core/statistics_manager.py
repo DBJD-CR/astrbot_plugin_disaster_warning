@@ -41,7 +41,7 @@ class StatisticsManager:
             "start_time": datetime.now(timezone.utc).isoformat(),
             "last_updated": datetime.now(timezone.utc).isoformat(),
             "by_type": defaultdict(int),
-            "by_source": defaultdict(int),
+            "by_source": defaultdict(int),  # 按数据源统计独立事件数（去重后）
             "earthquake_stats": {
                 "by_magnitude": defaultdict(int),  # 按震级区间统计
                 "by_region": defaultdict(int),  # 按地区统计 (仅CENC正式)
@@ -54,13 +54,15 @@ class StatisticsManager:
             },
             "recent_pushes": [],  # 最近推送记录详情，用于展示
             "major_events": [],  # 重大事件列表，用于回溯 (M>=5.0, 海啸, 红/橙预警)
-            "recent_event_ids": [],  # 最近处理的事件ID列表，用于重启后去重
+            "recent_event_ids": [],  # 最近处理的全局事件ID列表，用于重启后去重
+            "recent_source_event_ids": [],  # 最近处理的源内事件ID列表（source_id + unique_id）
             "hourly_counts": defaultdict(int),  # 小时级别统计，用于趋势图
             "daily_counts": defaultdict(int),  # 日级别统计，用于热力图
         }
 
         # 运行时去重集合
-        self._recorded_event_ids = set()
+        self._recorded_event_ids = set()  # 全局去重（用于 total_events）
+        self._recorded_source_event_ids = set()  # 源内去重（用于 by_source）
 
         # 初始化去重器用于生成指纹 (使用默认配置)
         self.deduplicator = EventDeduplicator()
@@ -89,10 +91,21 @@ class StatisticsManager:
             self.stats["total_received"] += 1
 
             source_id = event.source_id or event.source.value
-            self.stats["by_source"][source_id] += 1
 
             # 记录独立事件数
             event_unique_id = self._get_unique_event_id(event)
+
+            # 按数据源去重统计（用于前端“数据源贡献 TOP10”）
+            source_event_unique_id = f"{source_id}:{event_unique_id}"
+            if source_event_unique_id not in self._recorded_source_event_ids:
+                self.stats["by_source"][source_id] += 1
+                self._recorded_source_event_ids.add(source_event_unique_id)
+                self.stats["recent_source_event_ids"].append(source_event_unique_id)
+                if len(self.stats["recent_source_event_ids"]) > 2000:
+                    self.stats["recent_source_event_ids"] = self.stats[
+                        "recent_source_event_ids"
+                    ][-2000:]
+
             if event_unique_id not in self._recorded_event_ids:
                 self.stats["total_events"] += 1
                 self._recorded_event_ids.add(event_unique_id)
@@ -564,11 +577,13 @@ class StatisticsManager:
                 "recent_pushes": [],
                 "major_events": [],
                 "recent_event_ids": [],
+                "recent_source_event_ids": [],
                 "hourly_counts": defaultdict(int),
                 "daily_counts": defaultdict(int),
             }
             # 清空内存中的去重集合
             self._recorded_event_ids.clear()
+            self._recorded_source_event_ids.clear()
 
             # 清除数据库
             if self._db_initialized:
@@ -600,6 +615,10 @@ class StatisticsManager:
                 # 恢复去重集合
                 if "recent_event_ids" in self.stats:
                     self._recorded_event_ids.update(self.stats["recent_event_ids"])
+                if "recent_source_event_ids" in self.stats:
+                    self._recorded_source_event_ids.update(
+                        self.stats["recent_source_event_ids"]
+                    )
 
                 # 如果有需要迁移的数据，先放回去
                 if recent_pushes_backup:
@@ -620,6 +639,13 @@ class StatisticsManager:
                     unique_id = evt.get("unique_id")
                     if unique_id:
                         self._recorded_event_ids.add(unique_id)
+
+                # 兼容修正：by_source 使用数据库中的独立事件统计（去重后）覆盖旧值
+                # 避免旧版本按“记录次数”累计导致的历史偏差
+                db_stats = await self.db.get_statistics()
+                by_source_from_db = db_stats.get("by_source", {}) if db_stats else {}
+                if by_source_from_db:
+                    self.stats["by_source"] = defaultdict(int, by_source_from_db)
             elif json_has_events:
                 # 数据库为空但 JSON 有数据，执行一次性迁移
                 logger.info("[灾害预警] 检测到 JSON 历史记录，开始迁移到数据库...")
