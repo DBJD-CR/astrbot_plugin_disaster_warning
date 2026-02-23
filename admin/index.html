@@ -11,6 +11,20 @@
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="../logo.png">
+    <link rel="preload" href="../logo.png" as="image" fetchpriority="high">
+
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'dark') {
+                    document.documentElement.classList.add('theme-dark');
+                }
+            } catch (e) {
+                /* 忽略 localStorage 不可用场景 */
+            }
+        })();
+    </script>
 
     <!-- Fonts - 预加载 -->
     <link rel="preload" href="fonts/outfit.css" as="style">
@@ -19,12 +33,17 @@
     <!-- 自定义 CSS -->
     <link rel="stylesheet" href="css/style.css">
 
+    <!-- 核心运行时脚本预加载 -->
+    <link rel="preload" href="lib/react.production.min.js" as="script">
+    <link rel="preload" href="lib/react-dom.production.min.js" as="script">
+    <link rel="preload" href="lib/material-ui.production.min.js" as="script">
+
     <!-- React 18 (生产环境) - defer加载 -->
     <script crossorigin src="lib/react.production.min.js" defer></script>
     <script crossorigin src="lib/react-dom.production.min.js" defer></script>
 
-    <!-- Babel Standalone (用于浏览器实时编译 JSX) - 不使用defer，确保在JSX脚本前加载 -->
-    <script src="lib/babel.min.js"></script>
+    <!-- Babel Standalone (用于浏览器实时编译 JSX) -->
+    <script src="lib/babel.min.js" defer></script>
 
     <!-- Material UI 组件库 - defer加载 -->
     <script src="lib/material-ui.production.min.js" defer></script>
@@ -35,140 +54,104 @@
 </head>
 
 <body>
-    <div id="root">
+    <div id="root" aria-busy="true" aria-live="polite">
         <!-- 首屏加载骨架屏 -->
-        <div id="loading-skeleton" style="
-            display: flex;
-            height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            color: white;
-            font-family: system-ui, -apple-system, sans-serif;
-        ">
-            <div style="
-                width: 80px;
-                height: 80px;
-                background: rgba(255,255,255,0.2);
-                border-radius: 20px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 48px;
-                margin-bottom: 24px;
-                animation: pulse 2s ease-in-out infinite;
-            ">
-                🌍
+        <div id="loading-skeleton" class="boot-loader" role="status" aria-live="polite" aria-atomic="true">
+            <div class="boot-loader__logo" aria-hidden="true">🌍</div>
+            <div class="boot-loader__title">灾害预警管理端</div>
+            <div class="boot-loader__subtitle">正在加载...</div>
+            <div class="boot-loader__progress" aria-hidden="true">
+                <div class="boot-loader__progress-bar"></div>
             </div>
-            <div style="font-size: 24px; font-weight: 700; margin-bottom: 12px;">
-                灾害预警管理端
-            </div>
-            <div style="font-size: 14px; opacity: 0.8; margin-bottom: 24px;">
-                正在加载...
-            </div>
-            <!-- 进度条容器 -->
-            <div style="
-                width: 280px;
-                height: 4px;
-                background: rgba(255,255,255,0.2);
-                border-radius: 2px;
-                overflow: hidden;
-            ">
-                <!-- 进度条 -->
-                <div style="
-                    height: 100%;
-                    width: 40%;
-                    background: linear-gradient(90deg, 
-                        rgba(255,255,255,0.3) 0%, 
-                        rgba(255,255,255,0.9) 50%, 
-                        rgba(255,255,255,0.3) 100%);
-                    border-radius: 2px;
-                    animation: loading-progress 1.5s ease-in-out infinite;
-                "></div>
-            </div>
+            <span class="visually-hidden">应用资源加载中，请稍候</span>
         </div>
-        <style>
-            @keyframes pulse {
-                0%, 100% { transform: scale(1); opacity: 1; }
-                50% { transform: scale(1.05); opacity: 0.8; }
-            }
-            @keyframes loading-progress {
-                0% {
-                    transform: translateX(-100%) scaleX(0.3);
-                }
-                50% {
-                    transform: translateX(50%) scaleX(0.8);
-                }
-                100% {
-                    transform: translateX(200%) scaleX(0.3);
-                }
-            }
-        </style>
     </div>
 
     <!-- 工具函数 -->
     <script src="js/utils/formatters.js" defer></script>
 
     <!-- Context -->
-    <script type="text/babel" src="js/context/AppContext.jsx"></script>
+    <script type="text/babel" src="js/context/AppContext.jsx" defer></script>
 
     <!-- Hooks -->
-    <script type="text/babel" src="js/hooks/useWebSocket.js"></script>
-    <script type="text/babel" src="js/hooks/useApi.js"></script>
+    <script type="text/babel" src="js/hooks/useWebSocket.js" defer></script>
+    <script type="text/babel" src="js/hooks/useApi.js" defer></script>
 
     <!-- 组件 (Components) -->
     <!-- Common -->
-    <script type="text/babel" src="js/components/common/Toast.jsx"></script>
-    <script type="text/babel" src="js/components/common/Header.jsx"></script>
-    <script type="text/babel" src="js/components/common/Sidebar.jsx"></script>
+    <script type="text/babel" src="js/components/common/Toast.jsx" defer></script>
+    <script type="text/babel" src="js/components/common/Header.jsx" defer></script>
+    <script type="text/babel" src="js/components/common/Sidebar.jsx" defer></script>
 
     <!-- Status View Components -->
-    <script type="text/babel" src="js/components/status/StatusCard.jsx"></script>
-    <script type="text/babel" src="js/components/status/ConnectionsGrid.jsx"></script>
-    <script type="text/babel" src="js/components/status/NewsTicker.jsx"></script>
-    <script type="text/babel" src="js/components/status/SimulationModal.jsx"></script>
+    <script type="text/babel" src="js/components/status/StatusCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/ConnectionsGrid.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/NewsTicker.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/SimulationModal.jsx" defer></script>
 
     <!-- Stats View Components -->
-    <script type="text/babel" src="js/components/stats/StatsCard.jsx"></script>
-    <script type="text/babel" src="js/components/stats/MagnitudeChart.jsx"></script>
-    <script type="text/babel" src="js/components/stats/TrendChart.jsx"></script>
-    <script type="text/babel" src="js/components/stats/CalendarHeatmap.jsx"></script>
-    <script type="text/babel" src="js/components/stats/MaxMagCard.jsx"></script>
-    <script type="text/babel" src="js/components/stats/TopListCard.jsx"></script>
-    <script type="text/babel" src="js/components/stats/WeatherLevelCard.jsx"></script>
-    <script type="text/babel" src="js/components/stats/LogStatsCard.jsx"></script>
+    <script type="text/babel" src="js/components/stats/StatsCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/MagnitudeChart.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/TrendChart.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/CalendarHeatmap.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/MaxMagCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/TopListCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/WeatherLevelCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/LogStatsCard.jsx" defer></script>
 
     <!-- Events View Components -->
-    <script type="text/babel" src="js/components/events/HorizontalTimeline.jsx"></script>
-    <script type="text/babel" src="js/components/events/EventsList.jsx"></script>
+    <script type="text/babel" src="js/components/events/HorizontalTimeline.jsx" defer></script>
+    <script type="text/babel" src="js/components/events/EventsList.jsx" defer></script>
 
     <!-- Config View Components -->
-    <script type="text/babel" src="js/components/config/ConfigRenderer.jsx"></script>
+    <script type="text/babel" src="js/components/config/ConfigRenderer.jsx" defer></script>
 
     <!-- 视图 (Views) -->
-    <script type="text/babel" src="js/views/StatusView.jsx"></script>
-    <script type="text/babel" src="js/views/EventsView.jsx"></script>
-    <script type="text/babel" src="js/views/StatsView.jsx"></script>
-    <script type="text/babel" src="js/views/ConfigView.jsx"></script>
+    <script type="text/babel" src="js/views/StatusView.jsx" defer></script>
+    <script type="text/babel" src="js/views/EventsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/StatsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/ConfigView.jsx" defer></script>
 
     <!-- 主入口 -->
-    <script type="text/babel" src="js/app.jsx"></script>
+    <script type="text/babel" src="js/app.jsx" defer></script>
     
     <script>
-        // 当React应用渲染完成后，移除加载骨架屏
-        window.addEventListener('load', function() {
-            setTimeout(function() {
+        (function () {
+            var hidden = false;
+            var start = (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+            var MIN_VISIBLE_MS = 280;
+
+            function doHide() {
+                if (hidden) return;
+                hidden = true;
+
                 var skeleton = document.getElementById('loading-skeleton');
-                if (skeleton) {
-                    skeleton.style.opacity = '0';
-                    skeleton.style.transition = 'opacity 0.3s ease-out';
-                    setTimeout(function() {
-                        skeleton.remove();
-                    }, 300);
-                }
-            }, 100);
-        });
+                if (!skeleton) return;
+
+                skeleton.classList.add('is-exiting');
+                setTimeout(function () {
+                    if (skeleton && skeleton.parentNode) {
+                        skeleton.parentNode.removeChild(skeleton);
+                    }
+
+                    var root = document.getElementById('root');
+                    if (root) {
+                        root.setAttribute('aria-busy', 'false');
+                    }
+                }, 320);
+            }
+
+            window.__ASTRBOT_HIDE_BOOTLOADER = function () {
+                var now = (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+                var delay = Math.max(0, MIN_VISIBLE_MS - (now - start));
+                setTimeout(doHide, delay);
+            };
+
+            // 兜底：若应用初始化异常，窗口 load 后仍自动隐藏
+            window.addEventListener('load', function () {
+                setTimeout(window.__ASTRBOT_HIDE_BOOTLOADER, 1200);
+            }, { once: true });
+        })();
     </script>
 </body>
 

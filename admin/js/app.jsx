@@ -155,6 +155,23 @@ function App() {
     // 所以调用是安全的。保持全局单例连接。
     useWebSocket();
 
+    // 首次可交互后主动隐藏启动加载页（优先于 window.load 兜底）
+    useEffect(() => {
+        const hideBootloader = () => {
+            if (typeof window.__ASTRBOT_HIDE_BOOTLOADER === 'function') {
+                window.__ASTRBOT_HIDE_BOOTLOADER();
+            }
+        };
+
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(hideBootloader);
+            });
+        } else {
+            setTimeout(hideBootloader, 0);
+        }
+    }, []);
+
     // Material Design 3 主题配置 - 紫色种子色（正确的层次）
     const theme = useMemo(() => createTheme({
         palette: {

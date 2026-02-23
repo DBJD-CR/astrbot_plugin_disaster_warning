@@ -49,6 +49,26 @@ body.dark-theme {
     --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
 
+/* 首屏主题预初始化（在 React 挂载前生效，减少 FOUC） */
+html.theme-dark body {
+    --md-sys-color-primary: #D0BCFF;
+    --md-sys-color-on-primary: #381E72;
+    --md-sys-color-primary-container: #4F378B;
+    --md-sys-color-on-primary-container: #EADDFF;
+
+    --md-sys-color-surface: rgba(28, 27, 31, 0.8);
+    --md-sys-color-on-surface: #E6E1E5;
+    --md-sys-color-on-surface-variant: #CAC4D0;
+    --md-sys-color-surface-variant: #49454F;
+
+    --md-sys-color-background: #141218;
+    --md-sys-color-outline-variant: rgba(208, 188, 255, 0.1);
+
+    --glass-bg: rgba(28, 27, 31, 0.7);
+    --glass-border: rgba(208, 188, 255, 0.1);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
 /* 基础样式 */
 * {
     box-sizing: border-box;
@@ -86,6 +106,113 @@ body {
     min-height: 100vh;
     /* 移除 body 上的 transition，使用全局通配符控制 */
     overflow-x: hidden;
+}
+
+/* 无障碍：仅供读屏器读取 */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* 首屏加载页（结构化样式，替代内联） */
+.boot-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.12), transparent 42%),
+        linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    opacity: 1;
+    transform: translateZ(0);
+    will-change: opacity, transform;
+}
+
+html.theme-dark .boot-loader,
+body.dark-theme .boot-loader {
+    background:
+        radial-gradient(circle at 20% 20%, rgba(208, 188, 255, 0.14), transparent 42%),
+        linear-gradient(135deg, #1a1630 0%, #2b1f47 100%);
+}
+
+#loading-skeleton.is-exiting {
+    opacity: 0;
+    transform: scale(0.985);
+    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+
+.boot-loader__logo {
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: boot-loader-pulse 2s ease-in-out infinite;
+    will-change: transform, opacity;
+}
+
+.boot-loader__title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    letter-spacing: 0.01em;
+}
+
+.boot-loader__subtitle {
+    font-size: 14px;
+    opacity: 0.84;
+    margin-bottom: 24px;
+}
+
+.boot-loader__progress {
+    width: min(280px, 72vw);
+    height: 4px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.18);
+    contain: paint;
+}
+
+.boot-loader__progress-bar {
+    height: 100%;
+    width: 42%;
+    border-radius: 999px;
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.2) 0%,
+        rgba(255, 255, 255, 0.95) 50%,
+        rgba(255, 255, 255, 0.2) 100%);
+    animation: boot-loader-progress 1.45s ease-in-out infinite;
+    will-change: transform;
+    transform: translate3d(-110%, 0, 0) scaleX(0.35);
+}
+
+@keyframes boot-loader-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.85; }
+}
+
+@keyframes boot-loader-progress {
+    0% { transform: translate3d(-110%, 0, 0) scaleX(0.35); }
+    50% { transform: translate3d(40%, 0, 0) scaleX(0.85); }
+    100% { transform: translate3d(220%, 0, 0) scaleX(0.35); }
 }
 
 /* 磨砂玻璃效果 */
@@ -1039,6 +1166,7 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s ease-in-out infinite;
     border-radius: var(--radius-sm);
+    will-change: background-position;
 }
 
 @keyframes skeleton-loading {
@@ -1050,7 +1178,8 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     }
 }
 
-body.dark-theme .skeleton {
+body.dark-theme .skeleton,
+html.theme-dark .skeleton {
     background: linear-gradient(
         90deg,
         var(--md-sys-color-surface-variant) 0%,
@@ -1058,4 +1187,22 @@ body.dark-theme .skeleton {
         var(--md-sys-color-surface-variant) 100%
     );
     background-size: 200% 100%;
+}
+
+/* 可访问性：系统偏好减少动态效果 */
+@media (prefers-reduced-motion: reduce) {
+    .boot-loader__logo,
+    .boot-loader__progress-bar,
+    .skeleton {
+        animation: none !important;
+    }
+
+    #loading-skeleton.is-exiting {
+        transition: opacity 0.15s linear !important;
+        transform: none !important;
+    }
+
+    .boot-loader__progress-bar {
+        transform: translate3d(0, 0, 0) scaleX(1);
+    }
 }
