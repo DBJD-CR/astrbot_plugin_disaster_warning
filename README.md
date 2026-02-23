@@ -993,7 +993,8 @@ AstrBot/
              └─ card_templates/            # 消息卡片 HTML 模板
                  ├─ Aurora/                # 极光主题模板
                  ├─ Base/                  # 基础通用模板 (地图瓦片、地震列表等)
-                 └─ DarkNight/             # 暗夜主题模板
+                 ├─ DarkNight/             # 暗夜主题模板
+                 └─ map_render_helper.js   # 地图瓦片渲染共享 helper（统一 map-ready 收敛逻辑）
 ```
 
 ### 💾 数据持久化与存储
