@@ -22,7 +22,7 @@ jobs:
           curl -fL -o fuck-u-code \
             https://github.com/Done-0/fuck-u-code/releases/download/v1.0.0-beta.1/fuck-u-code-linux-amd64
           chmod +x fuck-u-code
-          ./fuck-u-code --version
+          ./fuck-u-code --help >/dev/null
 
       - name: 运行屎山分析 & 详细评分
         id: analyze
