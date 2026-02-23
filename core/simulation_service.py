@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -36,6 +37,19 @@ class SimulationParamsDefaults:
     magnitude: float = 5.5
     depth: float = 10.0
     source: str = "cea_fanstudio"
+
+
+# 进程内模拟事件递增计数器：用于避免同秒多次触发时 ID 冲突
+_sim_event_sequence = 0
+_sim_event_sequence_lock = threading.Lock()
+
+
+def _next_sim_event_sequence() -> int:
+    """获取下一个模拟事件序号（线程安全，单调递增）。"""
+    global _sim_event_sequence
+    with _sim_event_sequence_lock:
+        _sim_event_sequence += 1
+        return _sim_event_sequence
 
 
 def get_simulation_params(config: dict[str, Any]) -> dict[str, Any]:
@@ -126,11 +140,13 @@ def build_earthquake_simulation(
 
     now = datetime.now()
     ts = int(now.timestamp())
+    seq = _next_sim_event_sequence()
+    sim_id_suffix = f"{ts}_{seq}"
     final_place_name = translate_place_name("模拟震中", lat, lon)
 
     earthquake = EarthquakeData(
-        id=f"sim_{ts}",
-        event_id=f"sim_{ts}",
+        id=f"sim_{sim_id_suffix}",
+        event_id=f"sim_{sim_id_suffix}",
         source=data_source,
         disaster_type=DisasterType.EARTHQUAKE,
         shock_time=now,
@@ -151,7 +167,7 @@ def build_earthquake_simulation(
         earthquake.scale = earthquake.max_scale
 
     disaster_event = DisasterEvent(
-        id=f"sim_evt_{ts}",
+        id=f"sim_evt_{sim_id_suffix}",
         data=earthquake,
         source=data_source,
         disaster_type=DisasterType.EARTHQUAKE,
