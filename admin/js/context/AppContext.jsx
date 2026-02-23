@@ -137,13 +137,17 @@ function AppProvider({ children }) {
 
     // 主题效果
     useEffect(() => {
-        document.body.className = state.theme === 'dark' ? 'dark-theme' : '';
+        const isDark = state.theme === 'dark';
+
+        document.body.className = isDark ? 'dark-theme' : '';
+        document.documentElement.classList.toggle('theme-dark', isDark);
+
         localStorage.setItem('theme', state.theme);
     }, [state.theme]);
 
     // 封装刷新数据的函数
     const refreshData = React.useCallback(() => {
-        fetch('/api/status')
+        return fetch('/api/status')
             .then(res => res.json())
             .then(data => {
                 const statusUpdate = {
@@ -166,25 +170,33 @@ function AppProvider({ children }) {
                 }
 
                 dispatch({ type: 'UPDATE_STATUS', payload: statusUpdate });
+                return data;
             })
-            .catch(err => console.error('Failed to fetch status:', err));
+            .catch(err => {
+                console.error('Failed to fetch status:', err);
+                throw err;
+            });
     }, []);
 
     // 获取连接状态（包括延迟）
     const fetchConnections = React.useCallback(() => {
-        fetch('/api/connections')
+        return fetch('/api/connections')
             .then(res => res.json())
             .then(data => {
                 if (data.connections) {
                     dispatch({ type: 'UPDATE_CONNECTIONS', payload: data.connections });
                 }
+                return data;
             })
-            .catch(err => console.error('Failed to fetch connections:', err));
+            .catch(err => {
+                console.error('Failed to fetch connections:', err);
+                throw err;
+            });
     }, []);
 
     // 获取配置信息（包括时区）
     const fetchConfig = React.useCallback(() => {
-        fetch('/api/config')
+        return fetch('/api/config')
             .then(res => res.json())
             .then(data => {
                 if (data.display_timezone) {
@@ -193,8 +205,12 @@ function AppProvider({ children }) {
                         payload: { displayTimezone: data.display_timezone }
                     });
                 }
+                return data;
             })
-            .catch(err => console.error('Failed to fetch config:', err));
+            .catch(err => {
+                console.error('Failed to fetch config:', err);
+                throw err;
+            });
     }, []);
 
     // 初始化时延迟加载数据，优先渲染UI框架
@@ -241,7 +257,7 @@ function AppProvider({ children }) {
     }, [state.status.startTime, state.status.running]);
 
     return (
-        <AppContext.Provider value={{ state, dispatch, refreshData }}>
+        <AppContext.Provider value={{ state, dispatch, refreshData, fetchConnections, fetchConfig }}>
             {children}
         </AppContext.Provider>
     );
