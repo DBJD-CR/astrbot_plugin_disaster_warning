@@ -1,5 +1,5 @@
 const { Box, Typography, Collapse, CircularProgress } = MaterialUI;
-const { useState, useMemo, useEffect, useCallback } = React;
+const { useState, useMemo, useEffect, useCallback, useRef } = React;
 
 /**
  * 事件列表组件
@@ -53,13 +53,19 @@ function EventsList() {
         fetchEvents(1, filterType);
     }, [filterType, fetchEvents]);
 
-    // 监听 WebSocket 新事件，刷新第1页
+    // 用 ref 追踪最新 filterType，供新事件触发的刷新使用，避免引入 filterType 为依赖
+    // 导致 filterType 变化时同时触发本 effect 和上方 effect 的双重请求
+    const filterTypeRef = useRef(filterType);
     useEffect(() => {
-        if (state.wsConnected) {
-            fetchEvents(currentPage, filterType);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [state.events]); // state.events 变化时（有新事件推送）刷新
+        filterTypeRef.current = filterType;
+    });
+
+    // WebSocket 收到新事件时，回到第1页刷新（始终用当前筛选条件）
+    useEffect(() => {
+        if (!state.wsConnected) return;
+        setCurrentPage(1);
+        fetchEvents(1, filterTypeRef.current);
+    }, [state.events, state.wsConnected, fetchEvents]);
 
     const filteredEvents = useMemo(() => {
         return Array.isArray(events) ? events : [];

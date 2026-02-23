@@ -29,11 +29,10 @@ function HorizontalTimeline({ style }) {
         fetchMajorEvents();
     }, [fetchMajorEvents]);
 
-    // 有新事件推送时刷新
+    // 有新事件推送时刷新（fetchMajorEvents 由 useCallback([]) 生成，引用稳定）
     useEffect(() => {
         fetchMajorEvents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [state.events]);
+    }, [state.events, fetchMajorEvents]);
 
     // 按事件时间排序（正序：旧→新，用于时间轴从左到右展示）
     const timelineItems = useMemo(() => {
