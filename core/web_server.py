@@ -418,6 +418,49 @@ class WebAdminServer:
                 logger.error(f"[灾害预警] 打开插件目录失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.get("/api/events")
+        async def get_events_paginated(page: int = 1, limit: int = 50, type: str = ""):
+            """分页获取历史事件记录"""
+            try:
+                if not self.disaster_service or not self.disaster_service.statistics_manager:
+                    return {"events": [], "total": 0, "page": page, "limit": limit, "total_pages": 0}
+
+                db = self.disaster_service.statistics_manager.db
+                event_type = type if type else None
+                # 限制每页最多100条
+                limit = min(max(1, limit), 100)
+                page = max(1, page)
+
+                total = await db.get_events_count(event_type)
+                events = await db.get_events_paginated(page, limit, event_type)
+                total_pages = (total + limit - 1) // limit if total > 0 else 0
+
+                return {
+                    "events": events,
+                    "total": total,
+                    "page": page,
+                    "limit": limit,
+                    "total_pages": total_pages,
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 分页获取事件失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/events/major")
+        async def get_major_events(limit: int = 100):
+            """获取重大事件列表（用于时间轴）"""
+            try:
+                if not self.disaster_service or not self.disaster_service.statistics_manager:
+                    return {"events": []}
+
+                db = self.disaster_service.statistics_manager.db
+                limit = min(max(1, limit), 200)
+                events = await db.get_major_events(limit)
+                return {"events": events}
+            except Exception as e:
+                logger.error(f"[灾害预警] 获取重大事件失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.get("/api/earthquakes")
         async def get_earthquakes():
             """获取地震数据用于3D地球可视化"""

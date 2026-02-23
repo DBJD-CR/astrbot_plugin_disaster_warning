@@ -1,55 +1,50 @@
 const { Typography, Chip, Tooltip } = MaterialUI;
-const { useMemo, useRef, useEffect } = React;
+const { useMemo, useRef, useEffect, useState, useCallback } = React;
 
 /**
  * 重大事件时间轴组件
  * 横向展示最近的重大事件 (M>=5.0 或 红色/橙色预警 或 海啸)
+ * 数据直接从 /api/events/major 获取，支持历史回溯
  */
 function HorizontalTimeline({ style }) {
     const { state } = useAppContext();
-    const { events, majorEvents, config } = state; // 同时解构 events 和 majorEvents
+    const { config } = state;
     const displayTimezone = config.displayTimezone || 'UTC+8';
 
-    // 筛选并排序重大事件
+    const [majorEvents, setMajorEvents] = useState([]);
+
+    const fetchMajorEvents = useCallback(() => {
+        fetch('/api/events/major?limit=100')
+            .then(res => res.json())
+            .then(data => {
+                if (Array.isArray(data.events)) {
+                    setMajorEvents(data.events);
+                }
+            })
+            .catch(err => console.error('Failed to fetch major events:', err));
+    }, []);
+
+    // 初始加载
+    useEffect(() => {
+        fetchMajorEvents();
+    }, [fetchMajorEvents]);
+
+    // 有新事件推送时刷新
+    useEffect(() => {
+        fetchMajorEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.events]);
+
+    // 按事件时间排序（正序：旧→新，用于时间轴从左到右展示）
     const timelineItems = useMemo(() => {
-        // 如果后端提供了 majorEvents，直接使用
-        if (majorEvents && Array.isArray(majorEvents) && majorEvents.length > 0) {
-            return majorEvents
-                .slice()
-                .sort((a, b) => {
-                    const timeA = new Date(a.time || a.timestamp).getTime();
-                    const timeB = new Date(b.time || b.timestamp).getTime();
-                    return timeB - timeA;
-                })
-                .slice(0, 6)
-                .reverse();
-        }
-
-        // 回退逻辑：如果后端未更新，仍然从 events 中筛选 (兼容旧版)
-        if (!events || !Array.isArray(events)) return [];
-
-        const filteredEvents = events.filter(e => {
-            // 地震：M >= 5.0
-            if (e.type === 'earthquake' && e.magnitude >= 5.0) return true;
-
-            // 海啸：全部计入
-            if (e.type === 'tsunami') return true;
-            
-            // 气象：描述中包含红色/橙色
-            if (e.description && (e.description.includes('红') || e.description.includes('橙'))) return true;
-            
-            return false;
-        });
-
-        return filteredEvents
+        return majorEvents
             .slice()
             .sort((a, b) => {
                 const timeA = new Date(a.time || a.timestamp).getTime();
                 const timeB = new Date(b.time || b.timestamp).getTime();
-                return timeB - timeA;
-            })
-            .reverse(); // 时间正序排列 (旧->新)
-    }, [state]);
+                return timeA - timeB;
+            });
+    }, [majorEvents]);
 
     const scrollContainerRef = useRef(null);
     // 用于标记是否是用户触发的滚动，防止自动滚动逻辑干扰

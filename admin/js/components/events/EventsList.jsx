@@ -1,40 +1,69 @@
-const { Box, Typography, Collapse } = MaterialUI;
-const { useState, useMemo } = React;
+const { Box, Typography, Collapse, CircularProgress } = MaterialUI;
+const { useState, useMemo, useEffect, useCallback } = React;
 
 /**
  * 事件列表组件
  * 展示地震、海啸、气象预警等各类事件列表
  * 提供了按事件类型筛选、按事件ID分组以及折叠历史更新记录的功能
+ * 数据通过分页 API 从数据库直接拉取
  */
 function EventsList() {
     const { state } = useAppContext();
-    const { events, config } = state;
+    const { config } = state;
     const displayTimezone = config.displayTimezone || 'UTC+8';
     const [filterType, setFilterType] = useState('all');
     const [expandedEvents, setExpandedEvents] = useState(new Set());
 
+    // 分页状态
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(0);
+    const [total, setTotal] = useState(0);
+    const [events, setEvents] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const LIMIT = 50;
+
+    const fetchEvents = useCallback((page, type) => {
+        setLoading(true);
+        const typeParam = type === 'all' ? '' : type;
+        // 将前端 filter key 映射为后端的 type 值
+        const typeMap = {
+            'earthquake_warning': 'earthquake_warning',
+            'earthquake': 'earthquake',
+            'tsunami': 'tsunami',
+            'weather': 'weather_alarm',
+        };
+        const apiType = typeMap[type] || typeParam;
+        fetch(`/api/events?page=${page}&limit=${LIMIT}${apiType ? `&type=${apiType}` : ''}`)
+            .then(res => res.json())
+            .then(data => {
+                setEvents(Array.isArray(data.events) ? data.events : []);
+                setTotal(data.total || 0);
+                setTotalPages(data.total_pages || 0);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error('Failed to fetch events:', err);
+                setLoading(false);
+            });
+    }, []);
+
+    // 切换筛选类型时重置到第1页
+    useEffect(() => {
+        setCurrentPage(1);
+        fetchEvents(1, filterType);
+    }, [filterType, fetchEvents]);
+
+    // 监听 WebSocket 新事件，刷新第1页
+    useEffect(() => {
+        if (state.wsConnected) {
+            fetchEvents(currentPage, filterType);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.events]); // state.events 变化时（有新事件推送）刷新
+
     const filteredEvents = useMemo(() => {
-        // 先确保 events 是数组，如果不是则返回空数组，避免崩溃
-        const safeEvents = Array.isArray(events) ? events : [];
-        if (filterType === 'all') return safeEvents;
-        
-        return safeEvents.filter(evt => {
-            const type = evt.type || '';
-            if (filterType === 'earthquake_warning') {
-                return type === 'earthquake_warning';
-            }
-            if (filterType === 'earthquake') {
-                return type === 'earthquake';
-            }
-            if (filterType === 'tsunami') {
-                return type === 'tsunami';
-            }
-            if (filterType === 'weather') {
-                return type === 'weather_alarm';
-            }
-            return true;
-        });
-    }, [events, filterType]);
+        return Array.isArray(events) ? events : [];
+    }, [events]);
 
     // 将扁平的事件列表按照 event_id 进行分组
     // 这样可以将同一事件的多次更新（如：第1报、第2报...最终报）聚合在一起显示
@@ -224,9 +253,16 @@ function EventsList() {
     return (
         <Box sx={{ my: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
-                <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.5px', color: 'text.primary' }}>
-                    最近事件记录
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.5px', color: 'text.primary' }}>
+                        最近事件记录
+                    </Typography>
+                    {total > 0 && (
+                        <Typography variant="body2" sx={{ opacity: 0.5, fontSize: '0.85rem' }}>
+                            共 {total} 条
+                        </Typography>
+                    )}
+                </Box>
                 
                 <div className="filter-group">
                     {[
@@ -248,7 +284,11 @@ function EventsList() {
                 </div>
             </Box>
 
-            {groupedEvents.length === 0 ? (
+            {loading ? (
+                <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
+                    <CircularProgress size={32} />
+                </div>
+            ) : groupedEvents.length === 0 ? (
                 <div className="card" style={{ textAlign: 'center', padding: '80px' }}>
                     <Typography variant="h2" sx={{ opacity: 0.1, mb: 2 }}>📭</Typography>
                     <Typography variant="body1" sx={{ opacity: 0.5 }}>暂无该类型的事件记录</Typography>
@@ -257,6 +297,7 @@ function EventsList() {
                     </Typography>
                 </div>
             ) : (
+                <>
                 <div className="events-list">
                     {groupedEvents.map((group) => {
                         const isExpanded = expandedEvents.has(group.id);
@@ -435,6 +476,56 @@ function EventsList() {
                         );
                     })}
                 </div>
+
+                {/* 分页控件 */}
+                {totalPages > 1 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 4, gap: 2 }}>
+                        <button
+                            onClick={() => {
+                                const p = currentPage - 1;
+                                setCurrentPage(p);
+                                fetchEvents(p, filterType);
+                            }}
+                            disabled={currentPage <= 1}
+                            style={{
+                                padding: '8px 20px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--md-sys-color-outline-variant)',
+                                background: 'var(--md-sys-color-surface-variant)',
+                                cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+                                opacity: currentPage <= 1 ? 0.4 : 1,
+                                fontWeight: 600,
+                                fontSize: '14px'
+                            }}
+                        >
+                            ‹ 上一页
+                        </button>
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                            第 {currentPage} / {totalPages} 页
+                        </Typography>
+                        <button
+                            onClick={() => {
+                                const p = currentPage + 1;
+                                setCurrentPage(p);
+                                fetchEvents(p, filterType);
+                            }}
+                            disabled={currentPage >= totalPages}
+                            style={{
+                                padding: '8px 20px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--md-sys-color-outline-variant)',
+                                background: 'var(--md-sys-color-surface-variant)',
+                                cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                                opacity: currentPage >= totalPages ? 0.4 : 1,
+                                fontWeight: 600,
+                                fontSize: '14px'
+                            }}
+                        >
+                            下一页 ›
+                        </button>
+                    </Box>
+                )}
+                </>
             )}
         </Box>
     );

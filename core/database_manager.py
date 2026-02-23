@@ -102,9 +102,81 @@ class DatabaseManager:
             await self.connection.commit()
             logger.info(f"[灾害预警] 数据库初始化完成: {self.db_path}")
 
+            # 字段迁移：为旧数据库补充 is_major 列
+            await self._migrate_schema(cursor)
+
         except Exception as e:
             logger.error(f"[灾害预警] 数据库初始化失败: {e}")
             raise
+
+    async def _migrate_schema(self, cursor):
+        """处理数据库 schema 的向前兼容迁移"""
+        try:
+            await cursor.execute("PRAGMA table_info(events)")
+            columns = {row[1] for row in await cursor.fetchall()}
+            if "is_major" not in columns:
+                await cursor.execute(
+                    "ALTER TABLE events ADD COLUMN is_major INTEGER DEFAULT 0"
+                )
+                await cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_is_major ON events(is_major)"
+                )
+                await self.connection.commit()
+                logger.info("[灾害预警] 数据库迁移完成：新增 is_major 列")
+                # 新增列后立即回填旧数据
+                await self.backfill_major_events()
+        except Exception as e:
+            logger.warning(f"[灾害预警] 数据库 schema 迁移失败: {e}")
+
+    async def backfill_major_events(self) -> int:
+        """
+        回填旧记录的 is_major 标记（一次性迁移）
+
+        地震 M>=5.0、海啸全部、气象含红/橙 → is_major=1
+
+        Returns:
+            更新的记录数
+        """
+        try:
+            cursor = await self.connection.cursor()
+            # 地震 M >= 5.0
+            await cursor.execute(
+                """
+                UPDATE events SET is_major = 1
+                WHERE is_major = 0
+                  AND type IN ('earthquake', 'earthquake_warning')
+                  AND magnitude IS NOT NULL AND magnitude >= 5.0
+                """
+            )
+            eq_count = cursor.rowcount
+            # 海啸全部
+            await cursor.execute(
+                "UPDATE events SET is_major = 1 WHERE is_major = 0 AND type = 'tsunami'"
+            )
+            ts_count = cursor.rowcount
+            # 气象含红/橙（level 或 description 字段）
+            await cursor.execute(
+                """
+                UPDATE events SET is_major = 1
+                WHERE is_major = 0
+                  AND type = 'weather_alarm'
+                  AND (level LIKE '%红%' OR level LIKE '%橙%'
+                       OR description LIKE '%红%' OR description LIKE '%橙%')
+                """
+            )
+            wx_count = cursor.rowcount
+            await self.connection.commit()
+            total = eq_count + ts_count + wx_count
+            if total:
+                logger.info(
+                    f"[灾害预警] is_major 回填完成：地震 {eq_count} 条，"
+                    f"海啸 {ts_count} 条，气象 {wx_count} 条"
+                )
+            return total
+        except Exception as e:
+            logger.error(f"[灾害预警] is_major 回填失败: {e}")
+            await self.connection.rollback()
+            return 0
 
     async def insert_event(self, event_data: dict[str, Any]) -> int:
         """
@@ -132,8 +204,8 @@ class DatabaseManager:
                     event_id, real_event_id, unique_id, type, source,
                     description, latitude, longitude, magnitude, depth,
                     report_num, time, timestamp, update_count,
-                    weather_type_code, level, raw_data, history
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    weather_type_code, level, raw_data, history, is_major
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     event_data.get("event_id"),
@@ -154,6 +226,7 @@ class DatabaseManager:
                     event_data.get("level"),
                     raw_data,
                     history,
+                    1 if event_data.get("is_major") else 0,
                 ),
             )
 
@@ -207,6 +280,7 @@ class DatabaseManager:
                     level = ?,
                     raw_data = ?,
                     history = ?,
+                    is_major = CASE WHEN ? = 1 THEN 1 ELSE is_major END,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE event_id = ? AND source = ?
             """,
@@ -226,6 +300,7 @@ class DatabaseManager:
                     event_data.get("level"),
                     raw_data,
                     history,
+                    1 if event_data.get("is_major") else 0,
                     event_id,
                     source,
                 ),
@@ -376,6 +451,133 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"[灾害预警] 根据真实ID查找事件失败: {e}")
             return None
+
+    async def get_major_events(self, limit: int = 100) -> list[dict[str, Any]]:
+        """
+        获取重大事件记录（is_major=1），按事件时间倒序
+
+        Args:
+            limit: 返回数量上限
+
+        Returns:
+            重大事件列表
+        """
+        try:
+            cursor = await self.connection.cursor()
+            await cursor.execute(
+                """
+                SELECT * FROM events
+                WHERE is_major = 1
+                ORDER BY time DESC, timestamp DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            events = []
+            rows = await cursor.fetchall()
+            for row in rows:
+                event = dict(row)
+                if event.get("raw_data"):
+                    try:
+                        event["raw_data"] = json.loads(event["raw_data"])
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        event["raw_data"] = {}
+                if event.get("history"):
+                    try:
+                        event["history"] = json.loads(event["history"])
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        event["history"] = []
+                events.append(event)
+            return events
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询重大事件失败: {e}")
+            return []
+
+    async def get_events_count(self, event_type: str | None = None) -> int:
+        """
+        获取事件总数
+
+        Args:
+            event_type: 可选，按类型过滤
+
+        Returns:
+            事件总数
+        """
+        try:
+            cursor = await self.connection.cursor()
+            if event_type:
+                await cursor.execute(
+                    "SELECT COUNT(*) as total FROM events WHERE type = ?", (event_type,)
+                )
+            else:
+                await cursor.execute("SELECT COUNT(*) as total FROM events")
+            row = await cursor.fetchone()
+            return row["total"] if row else 0
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询事件总数失败: {e}")
+            return 0
+
+    async def get_events_paginated(
+        self,
+        page: int = 1,
+        limit: int = 50,
+        event_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        分页获取事件记录
+
+        Args:
+            page: 页码（从 1 开始）
+            limit: 每页记录数
+            event_type: 可选，按类型过滤
+
+        Returns:
+            事件记录列表
+        """
+        try:
+            offset = (page - 1) * limit
+            cursor = await self.connection.cursor()
+            if event_type:
+                await cursor.execute(
+                    """
+                    SELECT * FROM events
+                    WHERE type = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (event_type, limit, offset),
+                )
+            else:
+                await cursor.execute(
+                    """
+                    SELECT * FROM events
+                    ORDER BY timestamp DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (limit, offset),
+                )
+
+            events = []
+            rows = await cursor.fetchall()
+            for row in rows:
+                event = dict(row)
+                if event.get("raw_data"):
+                    try:
+                        event["raw_data"] = json.loads(event["raw_data"])
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        event["raw_data"] = {}
+                if event.get("history"):
+                    try:
+                        event["history"] = json.loads(event["history"])
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        event["history"] = []
+                events.append(event)
+
+            return events
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 分页查询事件失败: {e}")
+            return []
 
     async def get_statistics(self) -> dict[str, Any]:
         """
