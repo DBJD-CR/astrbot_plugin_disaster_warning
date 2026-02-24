@@ -28,6 +28,9 @@
     --radius-md: 12px;
     --radius-lg: 20px;
     --radius-xl: 28px;
+
+    /* --- 顶栏 --- */
+    --top-bar-height: 80px;
 }
 
 body.dark-theme {
@@ -294,7 +297,7 @@ body.dark-theme .boot-loader {
 }
 
 .top-bar {
-    height: 80px;
+    height: var(--top-bar-height);
     padding: 0 40px;
     display: flex;
     align-items: center;
@@ -308,13 +311,14 @@ body.dark-theme .boot-loader {
 }
 
 /* 模糊渐变层放在伪元素上，不影响内容文字透明度 */
+/* height 取顶栏高度的 2 倍，使渐变有足够空间自然消散 */
 .top-bar::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    height: 160px;
+    height: calc(var(--top-bar-height) * 2);
     backdrop-filter: blur(28px);
     -webkit-backdrop-filter: blur(28px);
     background: linear-gradient(
@@ -363,7 +367,7 @@ body.dark-theme .top-bar::before {
 .main-content {
     flex: 1;
     overflow-y: auto;
-    padding: 80px 24px 24px;
+    padding: var(--top-bar-height) 24px 24px;
 }
 
 /* 仪表盘卡片 (Bento 风格) */
@@ -384,7 +388,7 @@ body.dark-theme .top-bar::before {
 
 /* 配置页面专用卡片样式 - 固定高度，内部滚动 */
 .config-card {
-    height: calc(100vh - 104px); /* 视口高度减去顶部栏和边距 */
+    height: calc(100vh - var(--top-bar-height) - 24px); /* 视口高度减去顶部栏和底部边距 */
     display: flex;
     flex-direction: column;
     padding: 0 !important; /*以此接管padding控制*/
@@ -870,19 +874,21 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
         display: none;
     }
 
-    /* 顶部栏 */
+    /* 顶部栏：移动端回归正常文档流，取消模糊伪元素 */
     .top-bar {
         position: relative;
         top: auto;
         left: auto;
         right: auto;
         height: auto;
-        min-height: 60px;
+        min-height: calc(var(--top-bar-height) * 0.75);
         padding: 12px 16px;
         flex-wrap: wrap;
         gap: 12px;
-        -webkit-mask-image: none;
-        mask-image: none;
+    }
+
+    .top-bar::before {
+        display: none;
     }
 
     .top-bar > h5 {
