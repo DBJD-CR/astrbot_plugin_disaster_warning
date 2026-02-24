@@ -308,41 +308,26 @@ body.dark-theme .boot-loader {
     right: 0;
     z-index: 10;
     background: transparent;
+    overflow: hidden; /* 裁剪伪元素，防止模糊层影响下方内容 */
+    isolation: isolate; /* 创建独立层叠上下文，约束 backdrop-filter 影响范围 */
 }
 
 /* 模糊渐变层放在伪元素上，不影响内容文字透明度 */
-/* height 取顶栏高度的 2 倍，使渐变有足够空间自然消散 */
+/* 仅覆盖顶栏高度，避免 backdrop-filter 向下影响内容区域 */
 .top-bar::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    height: calc(var(--top-bar-height) * 2);
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
+    bottom: 0;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     background: linear-gradient(
         to bottom,
         var(--glass-bg) 0%,
-        var(--glass-bg) 35%,
-        rgba(255, 255, 255, 0.15) 65%,
-        transparent 100%
-    );
-    -webkit-mask-image: linear-gradient(
-        to bottom,
-        black 0%,
-        black 35%,
-        rgba(0, 0, 0, 0.7) 55%,
-        rgba(0, 0, 0, 0.3) 75%,
-        transparent 100%
-    );
-    mask-image: linear-gradient(
-        to bottom,
-        black 0%,
-        black 35%,
-        rgba(0, 0, 0, 0.7) 55%,
-        rgba(0, 0, 0, 0.3) 75%,
-        transparent 100%
+        rgba(255, 255, 255, 0.22) 70%,
+        rgba(255, 255, 255, 0.08) 100%
     );
     pointer-events: none;
     z-index: 0;
