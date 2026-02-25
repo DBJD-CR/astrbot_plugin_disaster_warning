@@ -16,7 +16,7 @@ import aiosqlite
 
 from astrbot.api import logger
 
-from ..utils.converters import is_major_event
+from ...utils.converters import is_major_event
 
 
 class DatabaseManager:

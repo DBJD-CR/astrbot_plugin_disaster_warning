@@ -1,4 +1,4 @@
-const { Box, TextField, Switch, FormControlLabel, Typography, Button, Accordion, AccordionSummary, AccordionDetails, Divider, Paper, Chip, Slider, MenuItem } = MaterialUI;
+const { Box, TextField, Switch, FormControlLabel, Typography, Button, Accordion, AccordionSummary, AccordionDetails, Divider, Paper, Chip, Slider, MenuItem, ToggleButton, ToggleButtonGroup } = MaterialUI;
 const { useState, useEffect, useRef, useLayoutEffect } = React;
 
 // 辅助函数：获取所有可展开的路径
@@ -21,16 +21,23 @@ const CONFIG_ICONS = {
     target_sessions: '📨',
     display_timezone: '🌍',
     data_sources: '📡',
-    earthquake_filters: '🔍',
     local_monitoring: '📍',
-    message_format: '💬',
+    earthquake_filters: '🔍',
+    strategies: '🧠',
     push_frequency_control: '⏱️',
-    strategies: '🎯',
-    telemetry_config: '📊',
+    message_format: '🎨',
     weather_config: '⛈️',
-    web_admin: '💻',
     websocket_config: '🔌',
-    debug_config: '🐛'
+    web_admin: '💻',
+    debug_config: '🐛',
+    telemetry_config: '📊',
+};
+
+const LEADING_EMOJI_REGEX = /^\s*(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)\s*/u;
+
+const stripLeadingEmoji = (text) => {
+    if (typeof text !== 'string') return text;
+    return text.replace(LEADING_EMOJI_REGEX, '').trimStart();
 };
 
 /**
@@ -59,6 +66,8 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
         onChange(newValue);
     };
 
+    const rawTitle = schema.description || fieldKey;
+    const titleText = stripLeadingEmoji(rawTitle) || rawTitle;
     const icon = CONFIG_ICONS[fieldKey] || '⚙️';
     const currentPath = path ? `${path}.${fieldKey}` : fieldKey;
 
@@ -122,7 +131,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
                                         fontSize: depth === 0 ? '0.95rem' : '0.875rem'
                                     }}
                                 >
-                                    {schema.description || fieldKey}
+                                    {titleText}
                                 </Typography>
                                 {schema.hint && depth === 0 && (
                                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
@@ -497,17 +506,52 @@ function ConfigRenderer() {
     const [expandedKeys, setExpandedKeys] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+
+    // 多会话模式相关状态
+    const [mode, setMode] = useState('global'); // global | session
+    const [sessions, setSessions] = useState([]);
+    const [selectedSession, setSelectedSession] = useState('');
+    const [sessionLoading, setSessionLoading] = useState(false);
+
     const api = useApi();
     const scrollContainerRef = useRef(null);
+    const loadConfigSeqRef = useRef(0);
+
+    // 动态缓存 key，避免全局与会话配置草稿互相覆盖
+    const getDraftKey = (currentMode = mode, currentSession = selectedSession) => {
+        if (currentMode === 'session' && currentSession) {
+            return `astrbot_plugin_dw_draft_config_session_${currentSession}`;
+        }
+        return 'astrbot_plugin_dw_draft_config_global';
+    };
+
+    const getExpandedKey = (currentMode = mode, currentSession = selectedSession) => {
+        if (currentMode === 'session' && currentSession) {
+            return `astrbot_plugin_dw_expanded_keys_session_${currentSession}`;
+        }
+        return 'astrbot_plugin_dw_expanded_keys_global';
+    };
+
+    const getScrollKey = (currentMode = mode, currentSession = selectedSession) => {
+        if (currentMode === 'session' && currentSession) {
+            return `astrbot_scroll_config_list_session_${currentSession}`;
+        }
+        return 'astrbot_scroll_config_list_global';
+    };
 
     useEffect(() => {
-        loadConfig();
+        initializePage();
     }, []);
+
+    useEffect(() => {
+        if (!schema) return;
+        loadConfig(mode, selectedSession);
+    }, [mode, selectedSession]);
 
     // 滚动位置恢复
     useLayoutEffect(() => {
         if (!loading && scrollContainerRef.current) {
-            const savedPos = localStorage.getItem('astrbot_scroll_config_list');
+            const savedPos = localStorage.getItem(getScrollKey());
             if (savedPos) {
                 // 尝试恢复
                 const pos = parseInt(savedPos, 10);
@@ -522,7 +566,7 @@ function ConfigRenderer() {
                 }
             }
         }
-    }, [loading]);
+    }, [loading, mode, selectedSession]);
 
     // 监听滚动保存
     useEffect(() => {
@@ -530,7 +574,7 @@ function ConfigRenderer() {
         if (!el || loading) return;
 
         const handleScroll = () => {
-            localStorage.setItem('astrbot_scroll_config_list', el.scrollTop);
+            localStorage.setItem(getScrollKey(), el.scrollTop);
         };
 
         let timeout;
@@ -544,49 +588,101 @@ function ConfigRenderer() {
             el.removeEventListener('scroll', debouncedScroll);
             clearTimeout(timeout);
         };
-    }, [loading]);
+    }, [loading, mode, selectedSession]);
 
     // 自动保存草稿
     useEffect(() => {
         if (config) {
-            localStorage.setItem('astrbot_plugin_dw_draft_config', JSON.stringify(config));
+            localStorage.setItem(getDraftKey(), JSON.stringify(config));
         }
-    }, [config]);
+    }, [config, mode, selectedSession]);
 
     // 自动保存展开状态
     useEffect(() => {
         if (schema) { // 确保 schema 加载后再保存，避免初始化时的空状态覆盖
-            localStorage.setItem('astrbot_plugin_dw_expanded_keys', JSON.stringify(expandedKeys));
+            localStorage.setItem(getExpandedKey(), JSON.stringify(expandedKeys));
         }
-    }, [expandedKeys, schema]);
+    }, [expandedKeys, schema, mode, selectedSession]);
 
-    const loadConfig = async () => {
+    const initializePage = async () => {
+        setLoading(true);
         try {
-            const [schemaData, configData] = await Promise.all([
-                api.getConfigSchema(),
-                api.getFullConfig()
-            ]);
-            console.log('[ConfigRenderer] Schema:', schemaData);
-            console.log('[ConfigRenderer] Config:', configData);
+            const schemaData = await api.getConfigSchema();
+            setSchema(schemaData);
+
+            await loadSessions();
+        } catch (e) {
+            console.error('初始化配置页失败', e);
+            showToast('初始化配置页失败,请检查控制台', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadSessions = async () => {
+        try {
+            const result = await api.listSessionConfigs();
+            const sessionList = result?.sessions || [];
+            setSessions(sessionList);
+
+            // 默认选中第一个会话
+            if (!selectedSession && sessionList.length > 0) {
+                setSelectedSession(sessionList[0].session);
+            }
+        } catch (e) {
+            console.error('加载会话列表失败', e);
+            showToast('加载会话列表失败,请检查控制台', 'error');
+        }
+    };
+
+    const loadConfig = async (currentMode = mode, currentSession = selectedSession) => {
+        if (!schema) return;
+
+        const requestSeq = ++loadConfigSeqRef.current;
+        setLoading(true);
+        try {
+            let configData = null;
+
+            if (currentMode === 'session') {
+                if (!currentSession) {
+                    if (requestSeq === loadConfigSeqRef.current) {
+                        setConfig(null);
+                    }
+                    return;
+                }
+                setSessionLoading(true);
+                const sessionData = await api.getSessionConfig(currentSession);
+                configData = sessionData?.effective || {};
+            } else {
+                configData = await api.getFullConfig();
+            }
+
+            // 如果不是最新请求，丢弃过期响应，避免会话串改
+            if (requestSeq !== loadConfigSeqRef.current) {
+                return;
+            }
 
             // 1. 处理配置记忆 (草稿)
-            const draftConfigStr = localStorage.getItem('astrbot_plugin_dw_draft_config');
+            // 会话模式以服务端 effective 为准，避免本地草稿造成会话间污染
             let finalConfig = configData;
-            if (draftConfigStr) {
-                try {
-                    const draftConfig = JSON.parse(draftConfigStr);
-                    // 简单校验：如果草稿是对象且不为空，则使用草稿
-                    if (draftConfig && typeof draftConfig === 'object') {
-                        finalConfig = draftConfig;
-                        console.log('已恢复本地草稿配置');
+            if (currentMode === 'global') {
+                const draftConfigStr = localStorage.getItem(getDraftKey(currentMode, currentSession));
+                if (draftConfigStr) {
+                    try {
+                        const draftConfig = JSON.parse(draftConfigStr);
+                        // 简单校验：如果草稿是对象且不为空，则使用草稿
+                        if (draftConfig && typeof draftConfig === 'object') {
+                            finalConfig = draftConfig;
+                            console.log('已恢复本地草稿配置');
+                        }
+                    } catch (e) {
+                        console.error('解析草稿配置失败', e);
                     }
-                } catch (e) {
-                    console.error('解析草稿配置失败', e);
                 }
             }
 
             // 2. 处理展开状态记忆
-            const cachedExpandedStr = localStorage.getItem('astrbot_plugin_dw_expanded_keys');
+            const cachedExpandedStr = localStorage.getItem(getExpandedKey(currentMode, currentSession));
             let finalExpandedKeys = [];
             if (cachedExpandedStr) {
                 try {
@@ -596,17 +692,22 @@ function ConfigRenderer() {
                 }
             } else {
                 // 默认全展开
-                finalExpandedKeys = getAllExpandablePaths(schemaData);
+                finalExpandedKeys = getAllExpandablePaths(schema);
             }
 
-            setSchema(schemaData);
             setConfig(finalConfig);
             setExpandedKeys(finalExpandedKeys);
         } catch (e) {
-            console.error('加载配置失败', e);
-            showToast('加载配置失败,请检查控制台', 'error');
+            if (requestSeq === loadConfigSeqRef.current) {
+                console.error('加载配置失败', e);
+                showToast('加载配置失败,请检查控制台', 'error');
+                setConfig(null);
+            }
         } finally {
-            setLoading(false);
+            if (requestSeq === loadConfigSeqRef.current) {
+                setSessionLoading(false);
+                setLoading(false);
+            }
         }
     };
 
@@ -628,37 +729,75 @@ function ConfigRenderer() {
         }
     };
 
+    const cleanConfig = (obj) => {
+        if (Array.isArray(obj)) {
+            return obj
+                .map(item => typeof item === 'string' ? item.trim() : item)
+                .filter(item => item !== '');
+        }
+        if (obj && typeof obj === 'object') {
+            const newObj = {};
+            for (const key in obj) {
+                newObj[key] = cleanConfig(obj[key]);
+            }
+            return newObj;
+        }
+        return obj;
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
-            // 递归清理配置数据：去除数组中的空项和首尾空格
-            const cleanConfig = (obj) => {
-                if (Array.isArray(obj)) {
-                    return obj
-                        .map(item => typeof item === 'string' ? item.trim() : item)
-                        .filter(item => item !== '');
-                }
-                if (obj && typeof obj === 'object') {
-                    const newObj = {};
-                    for (const key in obj) {
-                        newObj[key] = cleanConfig(obj[key]);
-                    }
-                    return newObj;
-                }
-                return obj;
-            };
-
             const cleanedConfig = cleanConfig(config);
-            await api.updateConfig(cleanedConfig);
-            setConfig(cleanedConfig); // 更新界面显示为清理后的数据
-            
-            // 保存成功后，更新草稿为已清理的配置（或者清除草稿？为了防止意外，保留最新状态比较好）
-            localStorage.setItem('astrbot_plugin_dw_draft_config', JSON.stringify(cleanedConfig));
-            
-            showToast('配置已保存', 'success');
+            const currentMode = mode;
+            const currentSession = selectedSession;
+
+            if (currentMode === 'session') {
+                if (!currentSession) {
+                    showToast('请先选择会话', 'warning');
+                    return;
+                }
+                await api.updateSessionConfig(currentSession, {
+                    mode: 'effective',
+                    effective: cleanedConfig
+                });
+                showToast('会话差异配置已保存', 'success');
+                await loadSessions();
+                // 会话模式保存后强制回读服务端 effective，确保会话隔离与覆写状态显示正确
+                await loadConfig(currentMode, currentSession);
+            } else {
+                await api.updateConfig(cleanedConfig);
+                showToast('全局配置已保存', 'success');
+                setConfig(cleanedConfig); // 全局模式可直接更新界面
+                localStorage.setItem(getDraftKey(currentMode, currentSession), JSON.stringify(cleanedConfig));
+            }
         } catch (e) {
             console.error('保存配置失败', e);
             showToast('保存配置失败,请检查控制台', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleResetOverride = async () => {
+        if (!selectedSession) {
+            showToast('请先选择会话', 'warning');
+            return;
+        }
+
+        const ok = confirm('确定要清空该会话的差异配置吗？\n\n清空后将完全继承全局默认配置。');
+        if (!ok) return;
+
+        setSaving(true);
+        try {
+            await api.resetSessionConfig(selectedSession);
+            showToast('会话差异配置已清空', 'success');
+            localStorage.removeItem(getDraftKey(mode, selectedSession));
+            await loadSessions();
+            await loadConfig(mode, selectedSession);
+        } catch (e) {
+            console.error('清空会话差异配置失败', e);
+            showToast('清空会话差异配置失败', 'error');
         } finally {
             setSaving(false);
         }
@@ -682,8 +821,59 @@ function ConfigRenderer() {
         );
     }
 
+    const selectedSessionMeta = sessions.find(s => s.session === selectedSession);
+
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            {/* 顶部模式与会话选择栏 */}
+            <Box sx={{ px: 3, pt: 2, pb: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                    <ToggleButtonGroup
+                        exclusive
+                        size="small"
+                        value={mode}
+                        onChange={(e, val) => {
+                            if (!val) return;
+                            setMode(val);
+                        }}
+                    >
+                        <ToggleButton value="global">全局配置</ToggleButton>
+                        <ToggleButton value="session">会话差异配置</ToggleButton>
+                    </ToggleButtonGroup>
+
+                    {mode === 'session' && (
+                        <>
+                            <TextField
+                                select
+                                size="small"
+                                label="目标会话"
+                                value={selectedSession}
+                                onChange={(e) => setSelectedSession(e.target.value)}
+                                sx={{ minWidth: 420, maxWidth: '100%' }}
+                            >
+                                {sessions.map((item) => (
+                                    <MenuItem key={item.session} value={item.session}>
+                                        {item.session}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            {selectedSessionMeta?.has_override && (
+                                <Chip size="small" color="primary" label="已存在差异覆写" />
+                            )}
+                            {sessionLoading && (
+                                <Typography variant="caption" color="text.secondary">会话配置加载中...</Typography>
+                            )}
+                        </>
+                    )}
+                </Box>
+
+                {mode === 'session' && selectedSessionMeta && (
+                    <Typography variant="caption" color="text.secondary">
+                        当前会话：{selectedSessionMeta.session} ｜ push_enabled：{selectedSessionMeta.push_enabled ? '开启' : '关闭'} ｜ override字段：{(selectedSessionMeta.override_keys || []).join(', ') || '无'}
+                    </Typography>
+                )}
+            </Box>
+
             {/* 配置项列表 */}
             <Box
                 ref={scrollContainerRef}
@@ -770,7 +960,7 @@ function ConfigRenderer() {
                                 
                                 const defaults = generateDefaults(schema);
                                 setConfig(defaults);
-                                localStorage.removeItem('astrbot_plugin_dw_draft_config');
+                                localStorage.removeItem(getDraftKey());
                             }
                         }}
                         disabled={saving}
@@ -791,7 +981,7 @@ function ConfigRenderer() {
                     <Button
                         onClick={() => {
                             if (confirm('确定要撤销所有未保存的更改吗？\n\n这将重新加载服务器上已保存的配置。')) {
-                                localStorage.removeItem('astrbot_plugin_dw_draft_config');
+                                localStorage.removeItem(getDraftKey());
                                 loadConfig();
                             }
                         }}
@@ -809,6 +999,25 @@ function ConfigRenderer() {
                     >
                         撤销更改
                     </Button>
+                    {mode === 'session' && (
+                        <Button
+                            onClick={handleResetOverride}
+                            disabled={saving || !selectedSession}
+                            variant="outlined"
+                            color="warning"
+                            size="medium"
+                            startIcon={<span>♻️</span>}
+                            sx={{
+                                minWidth: 130,
+                                borderRadius: 2,
+                                borderWidth: 1.5,
+                                fontSize: '0.875rem',
+                                '&:hover': { borderWidth: 1.5 }
+                            }}
+                        >
+                            清空会话覆写
+                        </Button>
+                    )}
                     <Button
                         variant="contained"
                         onClick={handleSave}
@@ -825,7 +1034,7 @@ function ConfigRenderer() {
                             }
                         }}
                     >
-                        {saving ? '保存中...' : '保存配置'}
+                        {saving ? '保存中...' : (mode === 'session' ? '保存会话配置' : '保存配置')}
                     </Button>
                 </Box>
             </Box>

@@ -9,18 +9,15 @@ from datetime import datetime
 from typing import Any
 
 import astrbot.api.message_components as Comp
-
-# [已移除] Windows平台WebSocket兼容性修复
-# 采用 aiohttp 替代 websockets 库，原生支持 Windows EventLoop，无需修改全局策略
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
-from .core.config_validator import ConfigValidator
-from .core.disaster_service import get_disaster_service, stop_disaster_service
-from .core.simulation_service import build_earthquake_simulation
-from .core.telemetry_manager import TelemetryManager
-from .core.web_server import WebAdminServer
+from .core.app.disaster_service import get_disaster_service, stop_disaster_service
+from .core.network.web_server import WebAdminServer
+from .core.support.config_validator import ConfigValidator
+from .core.support.simulation_service import build_earthquake_simulation
+from .core.support.telemetry_manager import TelemetryManager
 from .utils.version import get_plugin_version
 
 
@@ -355,7 +352,7 @@ class DisasterWarningPlugin(Star):
 • /灾害预警统计清除 - 清除所有统计信息 (仅管理员)
 • /灾害预警推送开关 - 开启或关闭当前会话的推送 (仅管理员)
 • /灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源] - 模拟地震事件
-• /灾害预警配置 查看 - 查看当前配置摘要 (仅管理员)
+• /灾害预警配置 查看 [全局|当前|会话UMO] - 查看配置（会话模式返回差异覆写）(仅管理员)
 • /灾害预警日志 - 查看原始消息日志统计摘要 (仅管理员)
 • /灾害预警日志开关 - 开关原始消息日志记录 (仅管理员)
 • /灾害预警日志清除 - 清除所有原始消息日志 (仅管理员)
@@ -423,10 +420,12 @@ class DisasterWarningPlugin(Star):
             # --- 基础状态 ---
             running_state = "🟢 运行中" if status["running"] else "🔴 已停止"
             uptime = status.get("uptime", "未知")
+            plugin_version = get_plugin_version()
 
             status_text = [
                 "📊 灾害预警服务状态\n",
                 "\n",
+                f"🔧 插件版本：{plugin_version}\n",
                 f"🔄 运行状态：{running_state} (已运行 {uptime})\n",
                 f"🔗 活跃连接：{status['active_websocket_connections']} / {status['total_connections']}\n",
             ]
@@ -701,14 +700,25 @@ class DisasterWarningPlugin(Star):
             yield event.plain_result(f"❌ 切换推送状态失败: {str(e)}")
 
     @filter.command("灾害预警配置")
-    async def disaster_config(self, event: AstrMessageEvent, action: str = None):
-        """查看当前配置信息"""
+    async def disaster_config(
+        self,
+        event: AstrMessageEvent,
+        action: str = None,
+        target: str = None,
+    ):
+        """查看当前配置信息（支持按会话查看差异覆写）"""
         if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
         if action != "查看":
-            yield event.plain_result("❓ 请使用格式：/灾害预警配置 查看")
+            yield event.plain_result(
+                "❓ 请使用格式：\n"
+                "• /灾害预警配置 查看\n"
+                "• /灾害预警配置 查看 全局\n"
+                "• /灾害预警配置 查看 当前\n"
+                "• /灾害预警配置 查看 <会话UMO>"
+            )
             return
 
         try:
@@ -732,16 +742,10 @@ class DisasterWarningPlugin(Star):
 
                 translated = {}
                 for key, value in config_item.items():
-                    # 获取当前键的 schema 定义
                     item_schema = schema_item.get(key, {}) if schema_item else {}
-
-                    # 获取中文描述，如果没有则使用原键名
-                    # 格式：中文描述
                     description = item_schema.get("description", key)
 
-                    # 处理嵌套结构
                     if isinstance(value, dict):
-                        # 如果 schema 中有 items 定义（通常用于嵌套对象），则传入子 schema
                         sub_schema = item_schema.get("items", {})
                         translated[description] = _translate_recursive(
                             value, sub_schema
@@ -751,15 +755,51 @@ class DisasterWarningPlugin(Star):
 
                 return translated
 
-            # 将配置转换为字典并进行翻译
-            config_data = dict(self.config)
-            translated_config = _translate_recursive(config_data, schema)
+            target_mode = (target or "全局").strip()
+            if target_mode.lower() == "global":
+                target_mode = "全局"
 
-            # 转换为格式化的 JSON 字符串
-            config_str = json.dumps(translated_config, indent=2, ensure_ascii=False)
+            # 默认行为仍为查看全局配置
+            if target_mode == "全局":
+                config_data = dict(self.config)
+                translated_config = _translate_recursive(config_data, schema)
+                config_str = json.dumps(translated_config, indent=2, ensure_ascii=False)
+                yield event.plain_result(f"🔧 当前全局配置详情：{config_str}")
+                return
 
-            # 构造返回消息
-            yield event.plain_result(f"🔧 当前配置详情：{config_str}")
+            # 支持“当前”快捷词：使用当前会话 UMO
+            session_umo = (
+                event.unified_msg_origin
+                if target_mode in ["当前", "本会话", "this", "current"]
+                else target_mode
+            )
+            if not session_umo:
+                yield event.plain_result("❌ 无法解析目标会话 UMO")
+                return
+
+            if not self.disaster_service or not hasattr(
+                self.disaster_service, "session_config_manager"
+            ):
+                yield event.plain_result("❌ 会话配置管理器不可用")
+                return
+
+            mgr = self.disaster_service.session_config_manager
+            override = mgr.get_override(session_umo)
+            effective = mgr.get_effective_config(session_umo)
+
+            translated_override = _translate_recursive(override, schema)
+            translated_effective = _translate_recursive(effective, schema)
+
+            override_str = json.dumps(translated_override, indent=2, ensure_ascii=False)
+            effective_str = json.dumps(
+                translated_effective, indent=2, ensure_ascii=False
+            )
+
+            yield event.plain_result(
+                f"🔧 会话配置详情 ({session_umo})\n"
+                f"\n📌 差异覆写 (override)：\n{override_str}"
+                f"\n\n📘 合并后配置 (effective)：\n{effective_str}"
+            )
 
         except Exception as e:
             logger.error(f"[灾害预警] 获取配置详情失败: {e}")
@@ -1025,4 +1065,4 @@ class DisasterWarningPlugin(Star):
     @filter.on_astrbot_loaded()
     async def on_astrbot_loaded(self):
         """AstrBot加载完成时的钩子"""
-        logger.info("[灾害预警] AstrBot已加载完成，灾害预警插件准备就绪")
+        logger.debug("[灾害预警] AstrBot已加载完成，灾害预警插件准备就绪")

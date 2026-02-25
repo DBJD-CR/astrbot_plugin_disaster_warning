@@ -2,6 +2,12 @@ from typing import Any
 
 from astrbot.api import logger
 
+from ...utils.map_tile_sources import (
+    MAP_SOURCE_NAME_TO_ID,
+    MAP_TILE_SOURCES,
+    normalize_map_source,
+)
+
 
 class ConfigValidator:
     """
@@ -168,27 +174,45 @@ class ConfigValidator:
 
         # 重连间隔
         interval = cfg.get("reconnect_interval")
-        if isinstance(interval, (int, float)) and interval < 1:
-            logger.warning(
-                f"[灾害预警] 配置警告: 重连间隔 {interval} 过小，已修正为 1 秒。"
-            )
-            cfg["reconnect_interval"] = 1
+        if isinstance(interval, (int, float)):
+            if interval < 1:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 重连间隔 {interval} 过小，已修正为 1 秒。"
+                )
+                cfg["reconnect_interval"] = 1
+            elif interval > 60:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 重连间隔 {interval} 过大，已修正为 60 秒。"
+                )
+                cfg["reconnect_interval"] = 60
 
         # 最大重连次数
         max_retries = cfg.get("max_reconnect_retries")
         if isinstance(max_retries, int):
             if max_retries < 1:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 最大重连次数 {max_retries} 过小，已修正为 1。"
+                )
                 cfg["max_reconnect_retries"] = 1
             elif max_retries > 10:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 最大重连次数 {max_retries} 过大，已修正为 10。"
+                )
                 cfg["max_reconnect_retries"] = 10
 
         # 超时时间
         timeout = cfg.get("connection_timeout")
-        if isinstance(timeout, (int, float)) and timeout < 1:
-            logger.warning(
-                f"[灾害预警] 配置警告: 连接超时 {timeout} 过小，已修正为 5 秒。"
-            )
-            cfg["connection_timeout"] = 5
+        if isinstance(timeout, (int, float)):
+            if timeout < 5:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 连接超时 {timeout} 过小，已修正为 5 秒。"
+                )
+                cfg["connection_timeout"] = 5
+            elif timeout > 120:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 连接超时 {timeout} 过大，已修正为 120 秒。"
+                )
+                cfg["connection_timeout"] = 120
 
         # 心跳间隔
         heartbeat = cfg.get("heartbeat_interval")
@@ -206,19 +230,31 @@ class ConfigValidator:
 
         # 兜底重试间隔
         fallback_interval = cfg.get("fallback_retry_interval")
-        if isinstance(fallback_interval, int) and fallback_interval < 300:
-            logger.warning(
-                f"[灾害预警] 配置警告: 兜底重试间隔 {fallback_interval} 过小，已修正为 10 秒。"
-            )
-            cfg["fallback_retry_interval"] = 300
+        if isinstance(fallback_interval, int):
+            if fallback_interval < 300:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 兜底重试间隔 {fallback_interval} 过小，已修正为 300 秒。"
+                )
+                cfg["fallback_retry_interval"] = 300
+            elif fallback_interval > 86400:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 兜底重试间隔 {fallback_interval} 过大，已修正为 86400 秒。"
+                )
+                cfg["fallback_retry_interval"] = 86400
 
         # 兜底重试最大次数
         fallback_count = cfg.get("fallback_retry_max_count")
-        if isinstance(fallback_count, int) and fallback_count < -1:
-            logger.warning(
-                f"[灾害预警] 配置警告: 兜底重试最大次数 {fallback_count} 无效，已修正为 -1 (无限)。"
-            )
-            cfg["fallback_retry_max_count"] = -1
+        if isinstance(fallback_count, int):
+            if fallback_count < -1:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 兜底重试最大次数 {fallback_count} 无效，已修正为 -1 (无限)。"
+                )
+                cfg["fallback_retry_max_count"] = -1
+            elif fallback_count > 100:
+                logger.warning(
+                    f"[灾害预警] 配置警告: 兜底重试最大次数 {fallback_count} 过大，已修正为 100。"
+                )
+                cfg["fallback_retry_max_count"] = 100
 
         # 布尔值校验
         ConfigValidator._ensure_bool(cfg, "fallback_retry_enabled", True)
@@ -272,11 +308,11 @@ class ConfigValidator:
                         f"[灾害预警] 配置警告: 融合策略超时 {timeout} 过小，已修正为 1 秒。"
                     )
                     cenc_fusion["timeout"] = 1
-                elif timeout > 120:
+                elif timeout > 60:
                     logger.warning(
-                        f"[灾害预警] 配置警告: 融合策略超时 {timeout} 过大，已修正为 120 秒。"
+                        f"[灾害预警] 配置警告: 融合策略超时 {timeout} 过大，已修正为 60 秒。"
                     )
-                    cenc_fusion["timeout"] = 120
+                    cenc_fusion["timeout"] = 60
 
             ConfigValidator._ensure_bool(cenc_fusion, "enabled", True)
             cfg["cenc_fusion"] = cenc_fusion
@@ -303,11 +339,11 @@ class ConfigValidator:
         intensity_filter = cfg.get("intensity_filter", {})
         if isinstance(intensity_filter, dict):
             min_mag = intensity_filter.get("min_magnitude")
-            if isinstance(min_mag, (int, float)) and (min_mag < -3 or min_mag > 10):
+            if isinstance(min_mag, (int, float)) and (min_mag < 0 or min_mag > 10):
                 logger.warning(
                     f"[灾害预警] 配置警告: 烈度过滤器最小震级 {min_mag} 超出常规范围，已修正。"
                 )
-                intensity_filter["min_magnitude"] = max(-3.0, min(10.0, float(min_mag)))
+                intensity_filter["min_magnitude"] = max(0.0, min(10.0, float(min_mag)))
 
             min_int = intensity_filter.get("min_intensity")
             if isinstance(min_int, (int, float)) and (min_int < 0 or min_int > 12):
@@ -323,11 +359,11 @@ class ConfigValidator:
         scale_filter = cfg.get("scale_filter", {})
         if isinstance(scale_filter, dict):
             min_mag = scale_filter.get("min_magnitude")
-            if isinstance(min_mag, (int, float)) and (min_mag < -2 or min_mag > 12):
+            if isinstance(min_mag, (int, float)) and (min_mag < 0 or min_mag > 10):
                 logger.warning(
                     f"[灾害预警] 配置警告: 震度过滤器最小震级 {min_mag} 超出常规范围，已修正。"
                 )
-                scale_filter["min_magnitude"] = max(-2.0, min(12.0, float(min_mag)))
+                scale_filter["min_magnitude"] = max(0.0, min(10.0, float(min_mag)))
 
             min_scale = scale_filter.get("min_scale")
             if isinstance(min_scale, (int, float)) and (min_scale < 0 or min_scale > 7):
@@ -343,11 +379,11 @@ class ConfigValidator:
         mag_filter = cfg.get("magnitude_only_filter", {})
         if isinstance(mag_filter, dict):
             min_mag = mag_filter.get("min_magnitude")
-            if isinstance(min_mag, (int, float)) and (min_mag < -2 or min_mag > 12):
+            if isinstance(min_mag, (int, float)) and (min_mag < 0 or min_mag > 10):
                 logger.warning(
                     f"[灾害预警] 配置警告: 仅震级过滤器最小震级 {min_mag} 超出常规范围，已修正。"
                 )
-                mag_filter["min_magnitude"] = max(-2.0, min(12.0, float(min_mag)))
+                mag_filter["min_magnitude"] = max(0.0, min(10.0, float(min_mag)))
 
             ConfigValidator._ensure_bool(mag_filter, "enabled", True)
             cfg["magnitude_only_filter"] = mag_filter
@@ -356,11 +392,11 @@ class ConfigValidator:
         gq_filter = cfg.get("global_quake_filter", {})
         if isinstance(gq_filter, dict):
             min_mag = gq_filter.get("min_magnitude")
-            if isinstance(min_mag, (int, float)) and (min_mag < -2 or min_mag > 12):
+            if isinstance(min_mag, (int, float)) and (min_mag < 0 or min_mag > 10):
                 logger.warning(
                     f"[灾害预警] 配置警告: GQ过滤器最小震级 {min_mag} 超出常规范围，已修正。"
                 )
-                gq_filter["min_magnitude"] = max(-2.0, min(12.0, float(min_mag)))
+                gq_filter["min_magnitude"] = max(0.0, min(10.0, float(min_mag)))
 
             min_int = gq_filter.get("min_intensity")
             if isinstance(min_int, (int, float)) and (min_int < 0 or min_int > 12):
@@ -552,19 +588,24 @@ class ConfigValidator:
 
         # 地图源校验
         map_source = cfg.get("map_source")
-        valid_sources = [
-            "petallight",
-            "petaldark",
-            "arcwi",
-            "arcwob",
-            "arcwh",
-            "geovis",
-        ]
-        if map_source and map_source not in valid_sources:
-            # 仅警告，不强制重置，以支持未来扩展或自定义源
-            logger.warning(
-                f"[灾害预警] 配置警告: 地图源 '{map_source}' 不在标准列表中，请确认是否为自定义源。"
-            )
+        valid_source_ids = set(MAP_TILE_SOURCES.keys())
+        valid_source_names = set(MAP_SOURCE_NAME_TO_ID.keys())
+        if map_source is not None:
+            if not isinstance(map_source, str):
+                logger.warning(
+                    f"[灾害预警] 配置警告: 地图源类型错误 ({type(map_source).__name__})，已重置为 'PetalMap矢量图亮'。"
+                )
+                cfg["map_source"] = "PetalMap矢量图亮"
+            else:
+                normalized_source = normalize_map_source(map_source)
+                if (
+                    map_source not in valid_source_names
+                    and normalized_source not in valid_source_ids
+                ):
+                    # 仅警告，不强制重置，以支持未来扩展或自定义源
+                    logger.warning(
+                        f"[灾害预警] 配置警告: 地图源 '{map_source}' 不在标准列表中，请确认是否为自定义源。"
+                    )
 
         # Global Quake 模板校验
         gq_template = cfg.get("global_quake_template")

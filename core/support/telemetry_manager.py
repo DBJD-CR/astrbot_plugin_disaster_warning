@@ -24,7 +24,7 @@ import aiohttp
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-from ..utils.version import get_astrbot_version
+from ...utils.version import get_astrbot_version
 
 
 class TelemetryManager:

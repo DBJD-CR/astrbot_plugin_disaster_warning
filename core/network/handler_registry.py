@@ -7,7 +7,7 @@ import json
 
 from astrbot.api import logger
 
-from .websocket_manager import WebSocketManager
+from ..network.websocket_manager import WebSocketManager
 
 
 class WebSocketHandlerRegistry:

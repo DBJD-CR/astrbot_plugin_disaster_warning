@@ -14,24 +14,25 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 if TYPE_CHECKING:
-    from .telemetry_manager import TelemetryManager
+    from ..support.telemetry_manager import TelemetryManager
 
-from ..models.data_source_config import DATA_SOURCE_CONFIGS
-from ..models.models import (
+from ...models.data_source_config import DATA_SOURCE_CONFIGS
+from ...models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
 )
-from ..utils.fe_regions import load_data_async
-from ..utils.formatters import MESSAGE_FORMATTERS
-from .handler_registry import WebSocketHandlerRegistry
-from .handlers import DATA_HANDLERS
-from .message_logger import MessageLogger
-from .message_manager import MessagePushManager
-from .statistics_manager import StatisticsManager
-from .websocket_manager import HTTPDataFetcher, WebSocketManager
+from ...utils.fe_regions import load_data_async
+from ...utils.formatters import MESSAGE_FORMATTERS
+from ..handlers import DATA_HANDLERS
+from ..message.message_logger import MessageLogger
+from ..message.message_manager import MessagePushManager
+from ..network.handler_registry import WebSocketHandlerRegistry
+from ..network.websocket_manager import HTTPDataFetcher, WebSocketManager
+from ..storage.session_config_manager import SessionConfigManager
+from ..storage.statistics_manager import StatisticsManager
 
 
 class DisasterWarningService:
@@ -53,6 +54,9 @@ class DisasterWarningService:
 
         # 遥测管理器引用 (由 main.py 注入)
         self._telemetry: TelemetryManager | None = None
+
+        # 会话差异配置管理器
+        self.session_config_manager = SessionConfigManager(config)
 
         # 初始化组件（传入 telemetry，但此时可能为 None）
         self.ws_manager = WebSocketManager(
@@ -810,15 +814,23 @@ class DisasterWarningService:
             logger.debug(f"[灾害预警] 处理灾害事件: {event.id}")
             self._log_event(event)
 
-            # 记录统计数据 (不管是否推送成功)
-            await self.statistics_manager.record_push(event)
-
             # 推送消息 - 使用新消息管理器
-            push_result = await self.message_manager.push_event(event)
+            target_sessions = self.session_config_manager.list_target_sessions()
+            push_result = await self.message_manager.push_event(
+                event,
+                target_sessions=target_sessions,
+                session_config_getter=self.session_config_manager.get_effective_config,
+            )
             if push_result:
                 logger.debug(f"[灾害预警] ✅ 事件推送成功: {event.id}")
             else:
                 logger.debug(f"[灾害预警] 事件推送被过滤: {event.id}")
+
+            # 记录统计数据 (不管是否推送成功)
+            await self.statistics_manager.record_push(
+                event,
+                pushed_sessions=self.message_manager.last_success_sessions,
+            )
 
             # 实时通知 Web 管理端（如果已配置）
             if self.web_admin_server:

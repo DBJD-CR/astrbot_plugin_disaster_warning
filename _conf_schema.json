@@ -24,7 +24,7 @@
     "default": "UTC+8"
   },
   "data_sources": {
-    "description": "数据源配置",
+    "description": "📡 数据源配置",
     "type": "object",
     "hint": "支持多API服务细粒度控制",
     "items": {
@@ -182,7 +182,7 @@
     }
   },
   "local_monitoring": {
-    "description": "本地烈度监控配置",
+    "description": "📍 本地烈度监控配置",
     "type": "object",
     "hint": "配置机器人所在位置，计算本地预估烈度",
     "items": {
@@ -239,7 +239,7 @@
     }
   },
   "strategies": {
-    "description": "高级策略配置",
+    "description": "🧠 高级策略配置",
     "type": "object",
     "hint": "配置数据融合等高级处理策略",
     "items": {
@@ -269,7 +269,7 @@
     }
   },
   "earthquake_filters": {
-  "description": "地震信息过滤配置",
+  "description": "🔍 地震信息过滤配置",
   "type": "object",
   "hint": "根据不同数据源类型使用不同的过滤器和全局关键词过滤",
   "items": {
@@ -425,7 +425,7 @@
     }
   },
   "push_frequency_control": {
-    "description": "推送频率控制",
+    "description": "⏱️ 推送频率控制",
     "type": "object",
     "hint": "用于控制地震预警类型消息的推送频率",
     "items": {
@@ -476,7 +476,7 @@
     }
   },
   "message_format": {
-    "description": "地震消息格式配置",
+    "description": "🎨 地震消息格式配置",
     "type": "object",
     "hint": "自定义预警消息的视觉呈现方式",
     "items": {
@@ -564,7 +564,7 @@
     }
   },
   "weather_config": {
-    "description": "气象预警配置",
+    "description": "⛈️ 气象预警配置",
     "type": "object",
     "hint": "配置气象预警的筛选规则和展示方式",
     "items": {
@@ -620,7 +620,7 @@
     }
   },
   "websocket_config": {
-    "description": "WebSocket连接配置",
+    "description": "🔌 WebSocket连接配置",
     "type": "object",
     "hint": "调整与上游数据源服务器的连接参数",
     "items": {
@@ -699,7 +699,7 @@
     }
   },
   "web_admin": {
-    "description": "Web管理端配置",
+    "description": "💻 Web管理端配置",
     "type": "object",
     "hint": "启用并配置内置的 Web 管理后台",
     "items": {
@@ -712,7 +712,7 @@
       "host": {
         "description": "监听地址",
         "type": "string",
-        "default": "0.0.0.0",
+        "default": "127.0.0.1",
         "hint": "0.0.0.0表示允许所有IP访问，127.0.0.1表示仅限本机访问"
       },
       "port": {
@@ -728,7 +728,7 @@
     }
   },
   "debug_config": {
-    "description": "调试配置",
+    "description": "🐛 调试配置",
     "type": "object",
     "hint": "用于开发和排查问题",
     "items": {
@@ -827,7 +827,7 @@
     }
   },
   "telemetry_config": {
-    "description": "匿名遥测配置",
+    "description": "📊 匿名遥测配置",
     "type": "object",
     "hint": "用于收集插件使用情况和错误信息",
     "items": {

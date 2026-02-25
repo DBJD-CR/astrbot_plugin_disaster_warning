@@ -13,10 +13,10 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ..utils.geolocation import close_geoip_session, fetch_location_from_ip
-from ..utils.version import get_plugin_version
-from .config_validator import ConfigValidator
-from .simulation_service import (
+from ...utils.geolocation import close_geoip_session, fetch_location_from_ip
+from ...utils.version import get_plugin_version
+from ..support.config_validator import ConfigValidator
+from ..support.simulation_service import (
     build_earthquake_simulation,
     get_simulation_params,
     resolve_target_session,
@@ -103,7 +103,9 @@ class WebAdminServer:
         self._register_routes()
 
         # 静态文件服务
-        admin_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin")
+        admin_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "admin"
+        )
         if os.path.exists(admin_dir):
             self.app.mount(
                 "/", StaticFiles(directory=admin_dir, html=True), name="admin"
@@ -116,7 +118,7 @@ class WebAdminServer:
         async def get_logo():
             """获取插件 Logo"""
             logo_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "logo.png"
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logo.png"
             )
             if os.path.exists(logo_path):
                 return FileResponse(logo_path)
@@ -202,6 +204,7 @@ class WebAdminServer:
                     "recent_pushes": stats.get("recent_pushes", [])[
                         :50
                     ],  # 取最新的50条
+                    "session_stats": stats.get("session_stats", {}),
                     "timestamp": datetime.now().isoformat(),
                 }
             except Exception as e:
@@ -387,7 +390,7 @@ class WebAdminServer:
             """打开插件根目录"""
             try:
                 # 获取插件根目录 (当前文件所在目录的上级目录)
-                plugin_dir = os.path.dirname(os.path.dirname(__file__))
+                plugin_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
                 if not os.path.exists(plugin_dir):
                     return JSONResponse({"error": "插件目录不存在"}, status_code=404)
@@ -727,7 +730,8 @@ class WebAdminServer:
             try:
                 schema_path = os.path.abspath(
                     os.path.join(
-                        os.path.dirname(os.path.dirname(__file__)), "_conf_schema.json"
+                        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                        "_conf_schema.json",
                     )
                 )
                 if os.path.exists(schema_path):
@@ -790,6 +794,128 @@ class WebAdminServer:
                 return {"success": True, "message": "配置已校验并保存"}
             except Exception as e:
                 logger.error(f"[灾害预警] 保存配置失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/session-config/sessions")
+        async def list_session_configs():
+            """列出当前已知会话及其配置概览"""
+            try:
+                if not self.disaster_service or not hasattr(
+                    self.disaster_service, "session_config_manager"
+                ):
+                    return JSONResponse(
+                        {"error": "会话配置管理器未初始化"}, status_code=503
+                    )
+
+                mgr = self.disaster_service.session_config_manager
+                sessions = mgr.list_all_known_sessions()
+
+                data = []
+                for session in sessions:
+                    override = mgr.get_override(session)
+                    effective = mgr.get_effective_config(session)
+                    data.append(
+                        {
+                            "session": session,
+                            "has_override": bool(override),
+                            "override_keys": list(override.keys()),
+                            "push_enabled": effective.get("push_enabled", True),
+                        }
+                    )
+
+                return {
+                    "sessions": data,
+                    "total": len(data),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 获取会话配置列表失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/session-config/{umo:path}")
+        async def get_session_config(umo: str):
+            """获取指定会话的 override 与 effective 配置"""
+            try:
+                if not self.disaster_service or not hasattr(
+                    self.disaster_service, "session_config_manager"
+                ):
+                    return JSONResponse(
+                        {"error": "会话配置管理器未初始化"}, status_code=503
+                    )
+
+                mgr = self.disaster_service.session_config_manager
+                return {
+                    "session": umo,
+                    "override": mgr.get_override(umo),
+                    "effective": mgr.get_effective_config(umo),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 获取会话配置失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/session-config/{umo:path}")
+        async def update_session_config(umo: str, payload: dict[str, Any]):
+            """更新指定会话配置（提交 effective 或 override）"""
+            try:
+                if not self.disaster_service or not hasattr(
+                    self.disaster_service, "session_config_manager"
+                ):
+                    return JSONResponse(
+                        {"error": "会话配置管理器未初始化"}, status_code=503
+                    )
+
+                mgr = self.disaster_service.session_config_manager
+                mode = payload.get("mode", "effective")
+
+                if mode == "override":
+                    override = payload.get("override", {})
+                    if not isinstance(override, dict):
+                        return JSONResponse(
+                            {"error": "override 必须是对象"}, status_code=400
+                        )
+                    mgr.set_override(umo, override)
+                else:
+                    effective = payload.get("effective", payload)
+                    if not isinstance(effective, dict):
+                        return JSONResponse(
+                            {"error": "effective 必须是对象"}, status_code=400
+                        )
+                    mgr.update_session_from_effective(umo, effective)
+
+                return {
+                    "success": True,
+                    "message": "会话配置已保存",
+                    "session": umo,
+                    "override": mgr.get_override(umo),
+                    "effective": mgr.get_effective_config(umo),
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 更新会话配置失败: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.delete("/api/session-config/{umo:path}")
+        async def reset_session_config(umo: str):
+            """清空指定会话覆写配置（回退到默认）"""
+            try:
+                if not self.disaster_service or not hasattr(
+                    self.disaster_service, "session_config_manager"
+                ):
+                    return JSONResponse(
+                        {"error": "会话配置管理器未初始化"}, status_code=503
+                    )
+
+                mgr = self.disaster_service.session_config_manager
+                mgr.delete_override(umo)
+                return {
+                    "success": True,
+                    "message": "会话覆写已清空",
+                    "session": umo,
+                    "override": {},
+                    "effective": mgr.get_effective_config(umo),
+                }
+            except Exception as e:
+                logger.error(f"[灾害预警] 清空会话配置失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         # ========== WebSocket 端点 ==========
@@ -916,6 +1042,7 @@ class WebAdminServer:
                     if self.disaster_service and self.disaster_service.message_logger
                     else {},
                     "recent_pushes": stats.get("recent_pushes", [])[:250],
+                    "session_stats": stats.get("session_stats", {}),
                 }
         except Exception as e:
             logger.debug(f"[灾害预警] 获取统计数据失败: {e}")

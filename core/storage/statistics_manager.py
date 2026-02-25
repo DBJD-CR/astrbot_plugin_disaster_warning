@@ -6,7 +6,7 @@ from typing import Any
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-from ..models.models import (
+from ...models.models import (
     CHINA_PROVINCES,
     DisasterEvent,
     DisasterType,
@@ -14,11 +14,11 @@ from ..models.models import (
     TsunamiData,
     WeatherAlarmData,
 )
-from ..utils.converters import is_major_event
-from ..utils.formatters.weather import COLOR_LEVEL_EMOJI, SORTED_WEATHER_TYPES
-from ..utils.time_converter import TimeConverter
+from ...utils.converters import is_major_event
+from ...utils.formatters.weather import COLOR_LEVEL_EMOJI, SORTED_WEATHER_TYPES
+from ...utils.time_converter import TimeConverter
+from ..support.event_deduplicator import EventDeduplicator
 from .database_manager import DatabaseManager
-from .event_deduplicator import EventDeduplicator
 
 
 class StatisticsManager:
@@ -58,6 +58,16 @@ class StatisticsManager:
             "recent_source_event_ids": [],  # 最近处理的源内事件ID列表（source_id + unique_id）
             "hourly_counts": defaultdict(int),  # 小时级别统计，用于趋势图
             "daily_counts": defaultdict(int),  # 日级别统计，用于热力图
+            "session_stats": {
+                "by_session": defaultdict(
+                    lambda: {
+                        "received": 0,
+                        "pushed": 0,
+                        "last_push_time": None,
+                    }
+                ),
+                "top_sessions": [],
+            },
         }
 
         # 运行时去重集合
@@ -74,7 +84,11 @@ class StatisticsManager:
             self._db_initialized = True
             await self._load_stats()
 
-    async def record_push(self, event: DisasterEvent):
+    async def record_push(
+        self,
+        event: DisasterEvent,
+        pushed_sessions: list[str] | None = None,
+    ):
         """记录一次事件处理（无论是否推送）"""
         try:
             # 确保数据库已初始化
@@ -156,6 +170,9 @@ class StatisticsManager:
                 )
 
             # 自动保存
+            pushed_sessions = pushed_sessions or []
+            self._record_session_stats(pushed_sessions, current_time)
+
             self.save_stats()
 
         except Exception as e:
@@ -460,6 +477,63 @@ class StatisticsManager:
         region = self._extract_region(headline)
         self.stats["weather_stats"]["by_region"][region] += 1
 
+    def _record_session_stats(
+        self, pushed_sessions: list[str], current_time: str
+    ) -> None:
+        """记录会话维度统计"""
+        try:
+            session_stats = self.stats.get("session_stats")
+            if not isinstance(session_stats, dict):
+                session_stats = {
+                    "by_session": defaultdict(
+                        lambda: {
+                            "received": 0,
+                            "pushed": 0,
+                            "last_push_time": None,
+                        }
+                    ),
+                    "top_sessions": [],
+                }
+                self.stats["session_stats"] = session_stats
+
+            by_session = session_stats.get("by_session")
+            if not isinstance(by_session, defaultdict):
+                by_session = defaultdict(
+                    lambda: {
+                        "received": 0,
+                        "pushed": 0,
+                        "last_push_time": None,
+                    },
+                    by_session if isinstance(by_session, dict) else {},
+                )
+                session_stats["by_session"] = by_session
+
+            for session in pushed_sessions:
+                if not session:
+                    continue
+                info = by_session[session]
+                info["received"] = int(info.get("received", 0)) + 1
+                info["pushed"] = int(info.get("pushed", 0)) + 1
+                info["last_push_time"] = current_time
+
+            sorted_sessions = sorted(
+                by_session.items(),
+                key=lambda x: x[1].get("pushed", 0),
+                reverse=True,
+            )
+            session_stats["top_sessions"] = [
+                {
+                    "session": session,
+                    "received": info.get("received", 0),
+                    "pushed": info.get("pushed", 0),
+                    "last_push_time": info.get("last_push_time"),
+                }
+                for session, info in sorted_sessions[:20]
+            ]
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 记录会话统计失败: {e}")
+
     def _to_utc_aware(self, dt: datetime | None) -> datetime:
         """将 datetime 统一规范为带 UTC 时区信息的对象"""
         if dt is None:
@@ -580,6 +654,16 @@ class StatisticsManager:
                 "recent_source_event_ids": [],
                 "hourly_counts": defaultdict(int),
                 "daily_counts": defaultdict(int),
+                "session_stats": {
+                    "by_session": defaultdict(
+                        lambda: {
+                            "received": 0,
+                            "pushed": 0,
+                            "last_push_time": None,
+                        }
+                    ),
+                    "top_sessions": [],
+                },
             }
             # 清空内存中的去重集合
             self._recorded_event_ids.clear()
@@ -653,30 +737,6 @@ class StatisticsManager:
 
         except Exception as e:
             logger.error(f"[灾害预警] 从数据库加载失败: {e}")
-
-        # [Auto-Fix] 修复已知的历史最大地震时区错误 (一次性修复)
-        # 问题描述：旧版本将 naive 的北京时间误作为 UTC 存储，导致前端显示时间快了8小时
-        # 修正逻辑：如果检测到最大地震记录为 M6.2 智利且时间为 21:34 (UTC)，则修正为 13:34 (UTC)
-        # 此段代码后续版本将视情况移除
-        try:
-            max_mag = self.stats.get("earthquake_stats", {}).get("max_magnitude")
-            # 严格匹配特征：震级6.2，智利，且时间包含 21:34 (说明被错误+8小时)
-            if (
-                max_mag
-                and max_mag.get("value") == 6.2
-                and "智利" in max_mag.get("place_name", "")
-                and "21:34" in max_mag.get("time", "")
-            ):
-                old_time = max_mag["time"]
-                # 21:34 UTC -> 13:34 UTC (即北京时间 21:34)
-                new_time = old_time.replace("21:34", "13:34")
-                max_mag["time"] = new_time
-                self.save_stats()
-                logger.info(
-                    f"[灾害预警] 已自动修复历史最大地震记录的时间偏差: {old_time} -> {new_time}"
-                )
-        except Exception as e:
-            logger.warning(f"[灾害预警] 尝试修复历史记录失败: {e}")
 
     def _merge_stats(self, current: dict, saved: dict):
         """递归合并统计数据"""
@@ -886,6 +946,19 @@ class StatisticsManager:
         )
         for source, count in sorted_sources[:10]:  # 显示前10个
             text.append(f"{source}: {count}")
+
+        session_stats = s.get("session_stats", {})
+        top_sessions = (
+            session_stats.get("top_sessions", [])
+            if isinstance(session_stats, dict)
+            else []
+        )
+        if top_sessions:
+            text.extend(["", "👥 会话推送统计 Top10:"])
+            for item in top_sessions[:10]:
+                text.append(
+                    f"{item.get('session')}: pushed={item.get('pushed', 0)}, received={item.get('received', 0)}"
+                )
 
         return "\n".join(text)
 

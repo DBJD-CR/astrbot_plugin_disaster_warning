@@ -7,14 +7,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from ..models.models import (
+from ...models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
     DisasterType,
     EarthquakeData,
     get_data_source_from_id,
 )
-from ..utils.fe_regions import translate_place_name
+from ...utils.fe_regions import translate_place_name
 
 
 @dataclass(slots=True)

@@ -23,13 +23,13 @@ COLOR_LEVELS = {
 class WeatherFilter:
     """气象预警过滤器"""
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], emit_enable_log: bool = True):
         self.enabled = config.get("enabled", False)
         self.provinces = config.get("provinces", [])
         self.min_color_level = config.get("min_color_level", "白色")
         self.min_level_value = COLOR_LEVELS.get(self.min_color_level, 0)
 
-        if self.enabled:
+        if self.enabled and emit_enable_log:
             filter_info = []
             if self.provinces:
                 filter_info.append(f"省份白名单: {', '.join(self.provinces)}")

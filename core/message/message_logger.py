@@ -18,8 +18,8 @@ from typing import Any
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-from ..models.websocket_message_pb2 import MessageAction, MessageType, WsMessage
-from ..utils.version import get_plugin_version
+from ...models.websocket_message_pb2 import MessageAction, MessageType, WsMessage
+from ...utils.version import get_plugin_version
 
 
 class MessageLogger:
@@ -1094,7 +1094,7 @@ class MessageLogger:
 
         try:
             # 读取真实的区域代码文件
-            csv_path = Path(__file__).parent.parent / "resources/epsp-area.csv"
+            csv_path = Path(__file__).parent.parent.parent / "resources/epsp-area.csv"
             if csv_path.exists():
                 with open(csv_path, encoding="utf-8") as f:
                     # 跳过标题行

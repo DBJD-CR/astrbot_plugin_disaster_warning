@@ -321,26 +321,18 @@ body.dark-theme .boot-loader {
     left: 0;
     right: 0;
     bottom: 0;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    background: linear-gradient(
-        to bottom,
-        var(--glass-bg) 0%,
-        rgba(255, 255, 255, 0.22) 70%,
-        rgba(255, 255, 255, 0.08) 100%
-    );
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: rgba(255, 255, 255, 0.68);
+    /* 顶部保持不透明以遮挡内容，仅底边消融 */
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
     pointer-events: none;
     z-index: 0;
 }
 
 body.dark-theme .top-bar::before {
-    background: linear-gradient(
-        to bottom,
-        rgba(20, 18, 24, 0.9) 0%,
-        rgba(20, 18, 24, 0.9) 35%,
-        rgba(20, 18, 24, 0.15) 65%,
-        transparent 100%
-    );
+    background: rgba(20, 18, 24, 0.88);
 }
 
 /* 顶栏内容在模糊层之上 */

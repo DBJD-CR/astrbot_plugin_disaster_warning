@@ -6,7 +6,7 @@
 import re
 from datetime import datetime
 
-from ...core.intensity_calculator import IntensityCalculator
+from ...core.support.intensity_calculator import IntensityCalculator
 from ...models.models import EarthquakeData
 from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter

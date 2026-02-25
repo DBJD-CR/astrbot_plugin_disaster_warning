@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AstrBot-v4.12.1%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.12.1">
+  <img src="https://img.shields.io/badge/AstrBot-v4.18.2%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.18.2">
   <img src="https://img.shields.io/github/v/release/DBJD-CR/astrbot_plugin_disaster_warning?label=Release&color=brightgreen" alt="Latest Release">
   <img src="https://img.shields.io/badge/QQ群-1033089808-12B7F3.svg" alt="QQ Group">
 </p>
@@ -91,7 +91,7 @@
 >
 > 累计工时：约 220 小时（主插件部分）
 >
-> 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro (With RooCode in VSCode)
+> 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro、GPT Codex 5.3(With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
@@ -345,12 +345,14 @@
     ```
 
   - **推荐方案**：使用 **远程 Playwright** 避免在容器内安装浏览器。在配置中设置：
+
     ```json
     {
       "playwright_mode": "remote",
       "playwright_server_url": "ws://192.168.1.100:3000"
     }
     ```
+
     然后在宿主机或其他服务器上运行：`npx playwright run-server --port 3000 --host 0.0.0.0`
 
 - **存储空间 (Storage)**：
@@ -418,6 +420,34 @@
 
 本插件在 AstrBot WebUI 中提供了详尽的配置项，采用了分层级、模块化的设计，旨在让用户能针对全球不同地区的灾害信息进行极致的个性化定制。
 
+### ♨️ WebUI 配置热重载说明（重要）
+
+通过插件自带 WebUI（内置管理端）保存配置后，**并非所有配置项都需要重载插件**。
+
+- **可立即生效（热重载）**：主要是消息推送链路中的运行时配置，例如会话差异覆写（override/effective）、地震过滤阈值、推送频率控制、消息格式（文本/地图/模板）等。
+- **通常需要重载插件**：主要是启动期初始化的基础设施配置，例如 `web_admin` 启停与监听参数、部分 WebSocket 连接生命周期参数、浏览器池初始化参数、日志器初始化参数等。
+
+#### ✅ 典型“可热重载”配置
+
+- 会话差异配置（会话级 override / effective）
+- `earthquake_filters`
+- `push_frequency_control`
+- `message_format`（大部分展示参数）
+- `weather_config`（消息显示相关项）
+
+#### ⚠️ 典型“建议重载后生效”配置
+
+- `web_admin`（启用状态、host、port）
+- `websocket_config`（连接生命周期相关参数）
+- `message_format` 中与浏览器池初始化强相关的参数（如 `browser_pool_size`、`playwright_mode`）
+- `debug_config` 中依赖初始化读取的日志器参数
+
+> [!TIP]
+> 实战建议：
+>
+> 1. 修改“过滤器/会话覆写/消息格式”等业务规则时，可先直接在插件 WebUI 保存并观察推送结果。
+> 2. 修改“服务监听/连接管理/渲染器初始化”相关参数后，建议手动重载插件以确保全部组件按新配置重建。
+
 ### ⚙️ 1. 基础全局配置 (General)
 
 控制插件的核心运行逻辑和基础通信参数。
@@ -463,7 +493,8 @@
 插件中目前最全面、最稳定的综合灾害数据流。
 
 - **启用 (`enabled`)**: 开启后将订阅来自 FAN Studio 的实时推送。
-- **中国地震预警网 (`china_earthquake_warning`)**: 接入国内地震预警系统，通常能在地震横波到达前数秒至数十秒下发预警。
+- **中国地震预警网 (`china_earthquake_warning`)**: 接入国内地震预警系统（国家级），通常能在地震横波到达前数秒至数十秒下发预警。
+- **中国地震预警网（省级）(`china_earthquake_warning_provincial`)**: FAN Studio 提供的省级地震预警通道，预警推送频率比国家级更高，如果追求高覆盖率只开启省级预警网即可（同时避免重复推送）。
 - **台湾中央气象署预警 (`taiwan_cwa_earthquake`)**: 针对台湾地区的强震即时警报 (EEW)，速度快但精度略低。
 - **台湾中央气象署报告 (`taiwan_cwa_report`)**: 台湾地区的正式地震报告，包含震中图、等震度图等详细信息。
 - **中国地震台网 (`china_cenc_earthquake`)**: 接收地震测定正式报，信息包含确切的发震时间、经纬度、深度和震级。
@@ -567,20 +598,21 @@
 
 主要用于国内及通用数据源。
 
-- **最小震级 (`min_magnitude`)**: 设置为 `4.5` 可过滤掉绝大多数无感小震。
-- **最小烈度 (`min_intensity`)**: 针对震中或本地计算的预估烈度。建议设置为 `4.0`。
+- **最小震级 (`min_magnitude`)**: 建议范围 `0.0 - 10.0`，常见推荐值 `2.0 - 4.5`。
+- **最小烈度 (`min_intensity`)**: 针对震中或本地计算的预估烈度，建议范围 `0.0 - 12.0`，常见推荐值 `4.0`。
 
 #### 📖 震度过滤器 (Scale Filter)
 
 专门针对日本气象厅（JMA）的震度等级。
 
-- **最小震度 (`min_scale`)**: 注意日本震度与中国烈度标准不同（0-7）。
+- **最小震级 (`min_magnitude`)**: 建议范围 `0.0 - 10.0`。
+- **最小震度 (`min_scale`)**: 注意日本震度与中国烈度标准不同（`0.0 - 7.0`）。
 
 #### 📖 USGS 震级过滤器 (Magnitude Only)
 
 适用于仅提供震级信息的源（如 USGS）。
 
-- **最小震级 (`min_magnitude`)**: 低于此震级的消息将被过滤。
+- **最小震级 (`min_magnitude`)**: 建议范围 `0.0 - 10.0`，低于此值的消息将被过滤。
 
 #### 📖 Global Quake 专用过滤器
 
@@ -621,10 +653,10 @@
 
 ```json
 "push_frequency_control": {
-  "jma_report_n": 3,                  // JMA 紧急地震速报每收到 3 报推送一次
-  "gq_report_n": 5,                   // Global Quake 每收到 5 报推送一次
-  "final_report_always_push": true,   // 最终报报数总是强制推送
-  "ignore_non_final_reports": false   // 是否开启只推送首/终报的极简模式
+  "jma_report_n": 3,                    // JMA 紧急地震速报每收到 3 报推送一次
+  "gq_report_n": 5,                     // Global Quake 每收到 5 报推送一次
+  "final_report_always_push": true,     // 最终报报数总是强制推送
+  "ignore_non_final_reports": false     // 是否开启只推送首/终报的极简模式
 }
 ```
 
@@ -634,9 +666,8 @@
 
 - **是否包含地图图片 (`include_map`)**: 消息末尾附加地图瓦片渲染出的图片。
 - **地图瓦片源 (`map_source`)**:
-  - `petallight` / `petaldark`: PetalMap 矢量图 亮/暗，推荐使用。
-  - `arcwi` / `arcwob` / `arcwh`: ArcGIS 卫星影像/地形图/山影图。
-  - `geovis`: 中科星图 卫星影像。
+  - WebUI 中文选项：`高德地图`、`PetalMap矢量图亮`、`PetalMap矢量图暗`、`ArcGIS卫星影像`、`ArcGIS地形图`、`ArcGIS山影图`、`中科星图卫星影像`。
+  - 同时兼容英文 ID：`amap`、`petallight`、`petaldark`、`arcwi`、`arcwob`、`arcwh`、`geovis`。
 - **地图缩放级别 (`map_zoom_level`)**: 范围 0-18 ，数值越大，固定视野中展现的区域范围就越小。(默认值 5)
   - z=0-2：全球视图
   - z=3-5：国家视图
@@ -653,17 +684,26 @@
 - **Global Quake 卡片模板**:
   - `Aurora` (极光): 浅色背景，清新现代。
   - `DarkNight` (暗夜): 深色背景，极客风格。
+- **Playwright 运行模式 (`playwright_mode`)**:
+  - `local`：使用本地浏览器渲染（需安装 Playwright 浏览器内核）。
+  - `remote`：连接远程 Playwright 服务，适合容器/轻量主机环境。
+- **远程 Playwright 服务器地址 (`playwright_server_url`)**:
+  - 仅在 `remote` 模式下必填，支持 `ws://`、`wss://`、`http://`、`https://`。
 - **浏览器页面池大小 (`browser_pool_size`)**:
   - **默认值**: `2`
   - **说明**: 控制后台同时存在的浏览器页面数量。增大此值可提高并发处理能力，但会显著增加内存占用。建议在内存充足 (>2GB) 的服务器上适当调大 (3-5)。
 
 ```json
 "message_format": {
-  "include_map": true,                // 是否在消息中附带地图图片
-  "map_source": "petallight",         // 使用的地图源 (通用)
-  "use_global_quake_card": true,      // 是否启用 GQ 卡片渲染
-  "global_quake_template": "Aurora",  // GQ 卡片视觉主题
-  "browser_pool_size": 2              // 浏览器页面池大小 (默认2)
+  "include_map": false,                         // 是否在消息中附带地图图片
+  "map_source": "PetalMap矢量图亮",             // 地图源（可填中文名或英文ID）
+  "map_zoom_level": 5,                         // 地图缩放级别（0-18）
+  "playwright_mode": "local",                  // 渲染模式：local/remote
+  "playwright_server_url": "",                 // remote 模式下填写远程服务地址
+  "detailed_jma_intensity": false,             // 是否显示全部 JMA 震度区域
+  "use_global_quake_card": false,              // 是否启用 GQ 卡片渲染
+  "global_quake_template": "Aurora",           // GQ 卡片视觉主题
+  "browser_pool_size": 2                       // 浏览器页面池大小 (默认2)
 }
 ```
 
@@ -691,31 +731,76 @@
 
 ---
 
-### 🛠️ 9. 调试与高级网络配置 (`websocket_config` / `debug_config`)
+### 🔌 9. WebSocket 连接配置 (`websocket_config`)
 
-- **WebSocket 连接配置**:
-  - **重连间隔**: 网络断开后的重试间隔。
-  - **最大重连次数**: 超过此次数将触发长周期的“兜底重试”。
-  - **心跳间隔**: 维持连接活跃的 Ping/Pong 频率。
-- **调试配置**:
-  - **原始消息日志 (`enable_raw_message_logging`)**: 记录并格式化上游原始 JSON 报文到 `raw_messages.log`。
-  - **过滤机制**: 可选择过滤心跳包、P2P 区域状态消息、重复事件等，减少日志噪音。
-  - **启动静默期 (`startup_silence_duration`)**: 插件启动后在此时间内自动忽略所有事件。
+- **重连间隔 (`reconnect_interval`)**: 范围 `1 - 60` 秒。
+- **最大重连次数 (`max_reconnect_retries`)**: 范围 `1 - 10`。
+- **连接超时 (`connection_timeout`)**: 范围 `5 - 120` 秒。
+- **心跳间隔 (`heartbeat_interval`)**: 范围 `10 - 600` 秒。
+- **启用兜底重试 (`fallback_retry_enabled`)**: 短时重连失败后进入长周期补偿重连。
+- **兜底重试间隔 (`fallback_retry_interval`)**: 范围 `300 - 86400` 秒。
+- **兜底重试最大次数 (`fallback_retry_max_count`)**: `-1`（无限）/ `0`（禁用）/ `1~100`。
 
 ```json
 "websocket_config": {
-  "reconnect_interval": 10,             // 连接断开后的重试间隔（秒）
-  "fallback_retry_enabled": true        // 是否启用兜底重连机制
-},
-"debug_config": {
-  "enable_raw_message_logging": true,   // 开启原始日志记录功能
-  "startup_silence_duration": 0         // 插件启动后的消息静默期（秒）
+  "reconnect_interval": 10,          // 连接断开后的重试间隔（秒）
+  "max_reconnect_retries": 3,        // 短时重连最大次数
+  "connection_timeout": 15,          // 建立连接超时时间（秒）
+  "heartbeat_interval": 120,         // 心跳发送间隔（秒）
+  "fallback_retry_enabled": true,    // 是否启用兜底重连机制
+  "fallback_retry_interval": 1800,   // 兜底重连间隔（秒）
+  "fallback_retry_max_count": -1     // 兜底重连次数：-1为无限，0为禁用，正数为最大次数
 }
 ```
 
 ---
 
-### 📡 10. 匿名遥测 (`telemetry_config`)
+### 💻 10. Web 管理端 (`web_admin`)
+
+- **启用 (`enabled`)**: 是否启用内置 Web 管理后台。
+- **监听地址 (`host`)**: 默认 `127.0.0.1`（仅本机访问，更安全）；如需局域网访问可改为 `0.0.0.0`。
+- **服务端口 (`port`)**: 默认 `8089`，建议使用 `1024 - 65535`。
+
+```json
+"web_admin": {
+  "enabled": false,       // 是否启用 Web 管理端
+  "host": "127.0.0.1",    // 默认仅本机访问；如需局域网访问改为 0.0.0.0
+  "port": 8089            // 监听端口（建议 1024-65535）
+}
+```
+
+---
+
+### 🛠️ 11. 调试配置 (`debug_config`)
+
+- **原始消息日志 (`enable_raw_message_logging`)**: 记录并格式化上游原始 JSON 报文到 `raw_messages.log`。
+- **原始日志路径 (`raw_message_log_path`)**: 相对于插件数据目录。
+- **日志轮转**:
+  - `log_max_size_mb`：单日志文件大小上限。
+  - `log_max_files`：轮转文件最大保留数量。
+- **过滤机制**: 可过滤心跳包、P2P 节点状态、重复事件、连接状态等日志噪音。
+- **Wolfx 列表日志上限 (`wolfx_list_log_max_items`)**: 记录 Wolfx 列表时的最大条目数。
+- **启动静默期 (`startup_silence_duration`)**: 插件启动后在此时间内自动忽略所有事件。
+
+```json
+"debug_config": {
+  "enable_raw_message_logging": false,               // 是否记录原始消息日志
+  "raw_message_log_path": "raw_messages.log",        // 原始日志文件路径（相对插件数据目录）
+  "log_max_size_mb": 50,                             // 单个日志文件大小上限（MB）
+  "log_max_files": 5,                                // 日志轮转最大保留文件数
+  "filter_heartbeat_messages": true,                 // 是否过滤心跳包日志
+  "filtered_message_types": ["heartbeat", "ping", "pong"], // 需要过滤的消息类型列表
+  "filter_p2p_areas_messages": true,                 // 是否过滤 P2P 节点状态消息
+  "filter_duplicate_events": true,                   // 是否过滤重复事件日志
+  "filter_connection_status": true,                  // 是否过滤连接状态日志
+  "wolfx_list_log_max_items": 5,                     // Wolfx 列表日志最大记录条数
+  "startup_silence_duration": 0                      // 启动静默期（秒），0 表示禁用
+}
+```
+
+---
+
+### 📡 12. 匿名遥测 (`telemetry_config`)
 
 - **启用匿名遥测 (`enabled`)**:
   - 默认开启。插件会发送匿名的使用统计（如活跃状态、报错信息）以帮助开发者改进插件。
@@ -736,7 +821,7 @@
 | `/灾害预警统计` | 查看详细的事件统计报告 |
 | `/灾害预警统计清除` | 清除所有统计信息 **(仅管理员)** |
 | `/灾害预警推送开关` | 开启或关闭当前会话的推送 **(仅管理员)** |
-| `/灾害预警配置 查看` | 查看当前配置信息 **(仅管理员)** |
+| `/灾害预警配置 查看 全局/当前/<会话UMO>` | 查看会话配置信息**(仅管理员)** |
 | `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]` | 模拟地震事件测试 |
 | `/灾害预警日志` | 查看原始消息日志统计摘要 **(仅管理员)** |
 | `/灾害预警日志开关` | 开关原始消息日志记录 **(仅管理员)** |
@@ -905,96 +990,136 @@ AstrBot/
 └─ data/
    └─ plugins/
       └─ astrbot_plugin_disaster_warning/
-         ├─ __init__.py                    # Python 包初始化文件，支持相对导入
-         ├─ _conf_schema.json              # AstrBot WebUI 配置界面 schema 定义
-         ├─ CHANGELOG.md                   # 插件更新日志，适用于 AstrBot v4.11.2+
-         ├─ CONTRIBUTING.md                # 本插件的贡献指南
-         ├─ LICENSE                        # 许可证文件
-         ├─ logo.png                       # 插件 Logo，适用于 AstrBot v4.5.0+
-         ├─ main.py                        # 插件主入口文件，包含命令处理
-         ├─ metadata.yaml                  # 插件元数据信息
-         ├─ README.md                      # 插件说明文档
-         ├─ requirements.txt               # 插件依赖列表
-         ├─ run_ruff.bat                   # Ruff 一键格式化与自动修复脚本（开发辅助）
-         ├─ admin/                         # Web 管理端前端资源
-         │   ├─ css/                       # 样式文件目录
-         │   ├─ fonts/                     # 字体文件目录
-         │   ├─ js/                        # 前端逻辑脚本目录
-         │   │   ├─ components/            # UI 组件目录
-         │   │   │   ├─ common/            # 通用组件 (Header, Sidebar, Toast等)
-         │   │   │   ├─ config/            # 配置页组件
-         │   │   │   ├─ events/            # 事件列表页组件
-         │   │   │   ├─ stats/             # 统计分析页组件 (图表、卡片)
-         │   │   │   └─ status/            # 状态概览页组件
-         │   │   ├─ context/               # 全局状态管理
-         │   │   ├─ hooks/                 # 自定义 React Hooks
-         │   │   ├─ utils/                 # 前端工具函数
-         │   │   ├─ views/                 # 页面视图组件
-         │   │   └─ app.jsx                # React 应用入口
-         │   ├─ lib/                       # 第三方库 (React, MUI 等)
-         │   └─ index.html                 # 管理端入口
-         ├─ core/                          # 核心模块目录
+         ├─ __init__.py                        # Python 包初始化文件，支持相对导入
+         ├─ _conf_schema.json                  # AstrBot WebUI 配置界面 schema 定义
+         ├─ CHANGELOG.md                       # 插件更新日志，适用于 AstrBot v4.11.2+
+         ├─ CONTRIBUTING.md                    # 本插件的贡献指南
+         ├─ LICENSE                            # 许可证文件
+         ├─ logo.png                           # 插件 Logo，适用于 AstrBot v4.5.0+
+         ├─ main.py                            # 插件主入口文件，包含命令处理
+         ├─ metadata.yaml                      # 插件元数据信息
+         ├─ README.md                          # 插件说明文档
+         ├─ requirements.txt                   # 插件依赖列表
+         ├─ run_ruff.bat                       # Ruff 一键格式化与自动修复脚本（开发辅助）
+         │
+         ├─ admin/                             # Web 管理端前端资源
+         │   ├─ css/                           # 样式文件目录
+         │   │
+         │   ├─ fonts/                         # 字体文件目录
+         │   │
+         │   ├─ js/                            # 前端逻辑脚本目录
+         │   │   ├─ .syntax_check_config_renderer.js # ConfigRenderer 语法检查辅助脚本（多会话配置页开发辅助）
+         │   │   │
+         │   │   ├─ components/                # UI 组件目录
+         │   │   │   ├─ common/                # 通用组件 (Header, Sidebar, Toast等)
+         │   │   │   ├─ config/                # 配置页组件
+         │   │   │   ├─ events/                # 事件列表页组件
+         │   │   │   ├─ stats/                 # 统计分析页组件 (图表、卡片)
+         │   │   │   └─ status/                # 状态概览页组件
+         │   │   │
+         │   │   ├─ context/                   # 全局状态管理
+         │   │   │   └─ AppContext.jsx         # 全局 Store 与 Reducer（状态/统计/连接/主题管理）
+         │   │   │
+         │   │   ├─ hooks/                     # 自定义 React Hooks
+         │   │   │   ├─ useApi.js              # API 请求封装（含多会话差异配置接口）
+         │   │   │   └─ useWebSocket.js        # 全局单例 WebSocket Hook（状态广播/重连控制）
+         │   │   │
+         │   │   ├─ utils/                     # 前端工具函数
+         │   │   │   └─ formatters.js          # 时间/震级/数据源名称等前端格式化工具
+         │   │   │
+         │   │   ├─ views/                     # 页面视图组件
+         │   │   │   ├─ ConfigView.jsx         # 配置管理页容器（承载 ConfigRenderer）
+         │   │   │   ├─ EventsView.jsx         # 事件总览页（时间轴 + 事件列表）
+         │   │   │   ├─ StatsView.jsx          # 统计分析页（图表、榜单、日志统计）
+         │   │   │   └─ StatusView.jsx         # 运行状态页（状态卡片、连接状态、快捷操作）
+         │   │   │
+         │   │   └─ app.jsx                    # React 应用入口
+         │   ├─ lib/                           # 第三方库 (React, MUI 等)
+         │   │
+         │   └─ index.html                     # 管理端入口
+         │
+         ├─ core/                              # 核心模块目录
          │   ├─ __init__.py
-         │   ├─ browser_manager.py         # Playwright 浏览器实例管理器
-         │   ├─ config_validator.py        # 配置校验器
-         │   ├─ database_manager.py        # 数据库管理器 (SQLite)
-         │   ├─ disaster_service.py        # 核心灾害预警服务
-         │   ├─ event_deduplicator.py      # 基础事件去重器
-         │   ├─ handler_registry.py        # 处理器注册表
-         │   ├─ intensity_calculator.py    # 本地烈度计算器
-         │   ├─ message_logger.py          # 原始消息记录器
-         │   ├─ message_manager.py         # 消息推送管理器
-         │   ├─ statistics_manager.py      # 统计数据持久化管理器
-         │   ├─ telemetry_manager.py       # 匿名遥测管理器
-         │   ├─ simulation_service.py      # 模拟预警统一服务（参数/构建/过滤测试）
-         │   ├─ web_server.py              # Web 管理服务器 (FastAPI)
-         │   ├─ websocket_manager.py       # WebSocket 连接管理器
-         │   ├─ handlers/                  # 数据处理器目录
+         │   ├─ app/                           # 应用编排层
          │   │   ├─ __init__.py
-         │   │   ├─ base.py                # 基础处理器类
-         │   │   ├─ china_earthquake.py    # 中国地震台网处理器
-         │   │   ├─ china_eew.py           # 中国地震预警处理器
-         │   │   ├─ global_sources.py      # 全球数据源处理器
-         │   │   ├─ japan_earthquake.py    # 日本地震情报处理器
-         │   │   ├─ japan_eew.py           # 日本紧急地震速报处理器
-         │   │   ├─ taiwan_earthquake.py   # 台湾地震报告处理器
-         │   │   ├─ taiwan_eew.py          # 台湾地震预警处理器
-         │   │   ├─ tsunami.py             # 海啸预警处理器
-         │   │   └─ weather.py             # 气象预警处理器
-         │   └─ filters/                   # 过滤器目录
+         │   │   └─ disaster_service.py        # 核心灾害预警服务（生命周期/任务调度/事件分发）
+         │   │
+         │   ├─ filters/                       # 过滤器目录
+         │   │   ├─ __init__.py
+         │   │   ├─ intensity_filter.py        # 烈度/震级/震度过滤器
+         │   │   ├─ local_intensity.py         # 本地烈度过滤器
+         │   │   ├─ report_controller.py       # 报数控制器
+         │   │   └─ weather_filter.py          # 气象预警过滤器
+         │   │
+         │   ├─ handlers/                      # 数据处理器目录
+         │   │   ├─ __init__.py
+         │   │   ├─ base.py                    # 基础处理器类
+         │   │   ├─ china_earthquake.py        # 中国地震台网处理器
+         │   │   ├─ china_eew.py               # 中国地震预警处理器
+         │   │   ├─ global_sources.py          # 全球数据源处理器
+         │   │   ├─ japan_earthquake.py        # 日本地震情报处理器
+         │   │   ├─ japan_eew.py               # 日本紧急地震速报处理器
+         │   │   ├─ taiwan_earthquake.py       # 台湾地震报告处理器
+         │   │   ├─ taiwan_eew.py              # 台湾地震预警处理器
+         │   │   ├─ tsunami.py                 # 海啸预警处理器
+         │   │   └─ weather.py                 # 气象预警处理器
+         │   │
+         │   ├─ message/                       # 消息与渲染链路
+         │   │   ├─ __init__.py
+         │   │   ├─ browser_manager.py         # Playwright 浏览器实例管理器
+         │   │   ├─ message_logger.py          # 原始消息记录器
+         │   │   └─ message_manager.py         # 消息推送管理器
+         │   │
+         │   ├─ network/                       # 网络与接口层
+         │   │   ├─ __init__.py
+         │   │   ├─ handler_registry.py        # 处理器注册表
+         │   │   ├─ web_server.py              # Web 管理服务器 (FastAPI)
+         │   │   └─ websocket_manager.py       # WebSocket 连接管理器
+         │   │
+         │   ├─ storage/                       # 存储与配置层
+         │   │   ├─ __init__.py
+         │   │   ├─ database_manager.py        # 数据库管理器 (SQLite)
+         │   │   ├─ session_config_manager.py  # 会话差异配置管理器（多会话架构核心）
+         │   │   └─ statistics_manager.py      # 统计数据持久化管理器
+         │   │
+         │   └─ support/                       # 通用支撑能力
          │       ├─ __init__.py
-         │       ├─ intensity_filter.py    # 烈度/震级/震度过滤器
-         │       ├─ local_intensity.py     # 本地烈度过滤器
-         │       ├─ report_controller.py   # 报数控制器
-         │       └─ weather_filter.py      # 气象预警过滤器
-         ├─ models/                        # 数据模型目录
+         │       ├─ config_validator.py        # 配置校验器
+         │       ├─ event_deduplicator.py      # 基础事件去重器
+         │       ├─ intensity_calculator.py    # 本地烈度计算器
+         │       ├─ simulation_service.py      # 模拟预警统一服务（参数/构建/过滤测试）
+         │       └─ telemetry_manager.py       # 匿名遥测管理器
+         │
+         ├─ models/                            # 数据模型目录
          │   ├─ __init__.py
-         │   ├─ data_source_config.py      # 数据源配置管理器
-         │   ├─ models.py                  # 数据模型定义（地震、海啸、气象等）
-         │   ├─ websocket_message.proto    # Protobuf 消息定义文件
-         │   └─ websocket_message_pb2.py   # Protobuf 生成的 Python 代码
-         ├─ utils/                         # 工具模块目录
+         │   ├─ data_source_config.py          # 数据源配置管理器
+         │   ├─ models.py                      # 数据模型定义（地震、海啸、气象等）
+         │   ├─ websocket_message.proto        # Protobuf 消息定义文件
+         │   └─ websocket_message_pb2.py       # Protobuf 生成的 Python 代码
+         │
+         ├─ utils/                             # 工具模块目录
          │   ├─ __init__.py
-         │   ├─ converters.py              # 数据类型转换工具
-         │   ├─ fe_regions.py              # FE地震区划中文翻译
-         │   ├─ geolocation.py             # IP 地理定位工具
-         │   ├─ map_tile_sources.py        # 地图瓦片源定义
-         │   ├─ time_converter.py          # 时间格式转换工具
-         │   ├─ version.py                 # 获取插件版本号的工具
-         │   └─ formatters/                # 消息格式化器目录
+         │   ├─ converters.py                  # 数据类型转换工具
+         │   ├─ fe_regions.py                  # FE地震区划中文翻译
+         │   ├─ geolocation.py                 # IP 地理定位工具
+         │   ├─ map_tile_sources.py            # 地图瓦片源定义
+         │   ├─ time_converter.py              # 时间格式转换工具
+         │   ├─ version.py                     # 获取插件版本号的工具
+         │   └─ formatters/                    # 消息格式化器目录
          │       ├─ __init__.py
-         │       ├─ base.py                # 基础格式化器
-         │       ├─ earthquake.py          # 地震消息格式化器
-         │       ├─ tsunami.py             # 海啸消息格式化器
-         │       └─ weather.py             # 气象消息格式化器
-         └─ resources/                     # 资源文件目录
-             ├─ epsp-area.csv              # P2P 地震区域代码映射表
-             ├─ fe_regions_data.json       # FE 全球地震区划映射表
-             └─ card_templates/            # 消息卡片 HTML 模板
-                 ├─ Aurora/                # 极光主题模板
-                 ├─ Base/                  # 基础通用模板 (地图瓦片、地震列表等)
-                 ├─ DarkNight/             # 暗夜主题模板
-                 └─ map_render_helper.js   # 地图瓦片渲染共享 helper（统一 map-ready 收敛逻辑）
+         │       ├─ base.py                    # 基础格式化器
+         │       ├─ earthquake.py              # 地震消息格式化器
+         │       ├─ tsunami.py                 # 海啸消息格式化器
+         │       └─ weather.py                 # 气象消息格式化器
+         │
+         └─ resources/                         # 资源文件目录
+             ├─ epsp-area.csv                  # P2P 地震区域代码映射表
+             ├─ fe_regions_data.json           # FE 全球地震区划映射表
+             └─ card_templates/                # 消息卡片 HTML 模板
+                 ├─ Aurora/                    # 极光主题模板
+                 ├─ Base/                      # 基础通用模板 (地图瓦片、地震列表等)
+                 ├─ DarkNight/                 # 暗夜主题模板
+                 └─ map_render_helper.js       # 地图瓦片渲染共享 helper（统一 map-ready 收敛逻辑）
 ```
 
 ### 💾 数据持久化与存储
@@ -1006,15 +1131,17 @@ AstrBot/
 └─ data/
    └─ plugin_data/
       └─ astrbot_plugin_disaster_warning/
-         ├─ temp/                          # 临时文件夹，用于存放渲染生成的图片文件
-         ├─ .telemetry_id                  # 匿名遥测实例ID（不包含任何用户信息）
-         ├─ earthquake_lists_cache.json    # Wolfx 地震列表数据缓存
-         ├─ events.db                      # SQLite 数据库，存储所有历史灾害事件记录
-         ├─ logger_stats.json              # 日志过滤器统计摘要
-         ├─ raw_messages.log               # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
-         ├─ raw_messages.log.1             # 轮转日志文件（自动管理）
-         ├─ raw_messages.log.2             # 更多轮转文件...
-         └─ statistics.json                # 灾害事件统计数据（包含震级分布、历史极值等）
+         ├─ temp/                              # 临时文件夹，用于存放渲染生成的图片文件
+         │
+         ├─ .telemetry_id                      # 匿名遥测实例ID（不包含任何用户信息）
+         ├─ earthquake_lists_cache.json        # Wolfx 地震列表数据缓存
+         │
+         ├─ events.db                          # SQLite 数据库，存储所有历史灾害事件记录
+         ├─ logger_stats.json                  # 日志过滤器统计摘要
+         ├─ raw_messages.log                   # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
+         ├─ raw_messages.log.1                 # 轮转日志文件（自动管理）
+         ├─ raw_messages.log.2                 # 更多轮转文件...
+         └─ statistics.json                    # 灾害事件统计数据（包含震级分布、历史极值等）
 ```
 
 - **事件数据库 (`events.db`)**: 采用 SQLite 存储所有历史灾害事件的详细记录，支持高效查询和持久化存储。
@@ -1660,4 +1787,4 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 
 ---
 
-Made with ❤️ by DBJD-CR & Aloys233 & Kimi & Gemini & Claude
+Made with ❤️ by DBJD-CR & Aloys233 & Kimi & Gemini & Claude & GPT

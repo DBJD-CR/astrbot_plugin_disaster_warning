@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 from astrbot.api import logger
 
-from ..models.models import DataSource, DisasterEvent, DisasterType, EarthquakeData
-from ..utils.time_converter import TimeConverter
+from ...models.models import DataSource, DisasterEvent, DisasterType, EarthquakeData
+from ...utils.time_converter import TimeConverter
 
 
 class EventDeduplicator:

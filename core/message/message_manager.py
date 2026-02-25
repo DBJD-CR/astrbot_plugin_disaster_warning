@@ -6,8 +6,10 @@
 import asyncio
 import base64
 import glob
+import json
 import os
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -18,30 +20,28 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.star import StarTools
 
-from ..models.data_source_config import (
+from ...models.data_source_config import (
     get_eew_sources,
     get_intensity_based_sources,
     get_scale_based_sources,
 )
-from ..models.models import (
+from ...models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
 )
-from ..utils.formatters import (
+from ...utils.formatters import (
     CWAReportFormatter,
     GlobalQuakeFormatter,
     format_earthquake_message,
     format_tsunami_message,
     format_weather_message,
 )
-from ..utils.map_tile_sources import get_tile_url_js
-from ..utils.version import get_plugin_version
-from .browser_manager import BrowserManager
-from .event_deduplicator import EventDeduplicator
-from .filters import (
+from ...utils.map_tile_sources import get_tile_url_js
+from ...utils.version import get_plugin_version
+from ..filters import (
     GlobalQuakeFilter,
     IntensityFilter,
     KeywordFilter,
@@ -51,6 +51,8 @@ from .filters import (
     USGSFilter,
     WeatherFilter,
 )
+from ..support.event_deduplicator import EventDeduplicator
+from .browser_manager import BrowserManager
 
 
 class MessagePushManager:
@@ -61,7 +63,9 @@ class MessagePushManager:
         self.context = context
         self._telemetry = telemetry
         # 初始化插件根目录 (用于访问 resources)
-        self.plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.plugin_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
 
         # 初始化数据存储目录 (使用 StarTools 获取，用于存放 temp)
         self.storage_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
@@ -190,8 +194,267 @@ class MessagePushManager:
         # key: event_id (Fan), value: {'event': event, 'task': asyncio.Task}
         self.cenc_pending = {}
 
-    def should_push_event(self, event: DisasterEvent) -> bool:
+        # 会话级报数控制器缓存
+        self._session_report_controllers: dict[
+            tuple[str, str], ReportCountController
+        ] = {}
+
+        # 最近一次推送成功的会话列表（供服务层统计使用）
+        self.last_success_sessions: list[str] = []
+
+        # 渲染缓存（地图/卡片）
+        # key -> (cache_time, image_path)
+        self._render_image_cache: dict[str, tuple[float, str]] = {}
+        # key -> in-flight render task
+        self._render_inflight_tasks: dict[str, asyncio.Task[str | None]] = {}
+        self._render_cache_lock = asyncio.Lock()
+        self._render_cache_ttl_seconds = 180
+
+    def _build_runtime_components(
+        self,
+        runtime_config: dict[str, Any],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """基于运行时配置构建过滤组件（支持会话级配置）。"""
+        earthquake_filters = runtime_config.get("earthquake_filters", {})
+
+        # 关键词过滤器配置
+        keyword_filter_config = earthquake_filters.get("keyword_filter", {})
+        keyword_filter = KeywordFilter(
+            enabled=keyword_filter_config.get("enabled", False),
+            blacklist=keyword_filter_config.get("blacklist", []),
+            whitelist=keyword_filter_config.get("whitelist", []),
+        )
+
+        # 烈度过滤器配置
+        intensity_filter_config = earthquake_filters.get("intensity_filter", {})
+        intensity_filter = IntensityFilter(
+            enabled=intensity_filter_config.get("enabled", True),
+            min_magnitude=intensity_filter_config.get("min_magnitude", 2.0),
+            min_intensity=intensity_filter_config.get("min_intensity", 4.0),
+        )
+
+        # 震度过滤器配置
+        scale_filter_config = earthquake_filters.get("scale_filter", {})
+        scale_filter = ScaleFilter(
+            enabled=scale_filter_config.get("enabled", True),
+            min_magnitude=scale_filter_config.get("min_magnitude", 2.0),
+            min_scale=scale_filter_config.get("min_scale", 1.0),
+        )
+
+        # USGS过滤器配置
+        magnitude_only_filter_config = earthquake_filters.get(
+            "magnitude_only_filter", {}
+        )
+        usgs_filter = USGSFilter(
+            enabled=magnitude_only_filter_config.get("enabled", True),
+            min_magnitude=magnitude_only_filter_config.get("min_magnitude", 4.5),
+        )
+
+        # Global Quake过滤器配置
+        global_quake_filter_config = earthquake_filters.get("global_quake_filter", {})
+        global_quake_filter = GlobalQuakeFilter(
+            enabled=global_quake_filter_config.get("enabled", True),
+            min_magnitude=global_quake_filter_config.get("min_magnitude", 4.5),
+            min_intensity=global_quake_filter_config.get("min_intensity", 5.0),
+        )
+
+        # 初始化报数控制器
+        push_config = runtime_config.get("push_frequency_control", {})
+        report_controller = self.report_controller
+        if session_id:
+            cache_key = (
+                session_id,
+                json.dumps(push_config, sort_keys=True, ensure_ascii=False),
+            )
+            cached = self._session_report_controllers.get(cache_key)
+            if cached is None:
+                cached = ReportCountController(
+                    cea_cwa_report_n=push_config.get("cea_cwa_report_n", 1),
+                    jma_report_n=push_config.get("jma_report_n", 3),
+                    gq_report_n=push_config.get("gq_report_n", 5),
+                    final_report_always_push=push_config.get(
+                        "final_report_always_push", True
+                    ),
+                    ignore_non_final_reports=push_config.get(
+                        "ignore_non_final_reports", False
+                    ),
+                )
+                self._session_report_controllers[cache_key] = cached
+            report_controller = cached
+
+        # 初始化本地监控过滤器
+        local_monitor = LocalIntensityFilter(runtime_config.get("local_monitoring", {}))
+
+        # 初始化气象预警过滤器
+        weather_config = runtime_config.get("weather_config", {})
+        weather_filter_config = weather_config.get("weather_filter", {})
+        weather_filter = WeatherFilter(weather_filter_config, emit_enable_log=False)
+
+        return {
+            "keyword_filter": keyword_filter,
+            "intensity_filter": intensity_filter,
+            "scale_filter": scale_filter,
+            "usgs_filter": usgs_filter,
+            "global_quake_filter": global_quake_filter,
+            "report_controller": report_controller,
+            "local_monitor": local_monitor,
+            "weather_filter": weather_filter,
+        }
+
+    def _cleanup_render_image_cache(self):
+        """清理过期或失效的渲染缓存。"""
+        now = time.time()
+        expired_keys = []
+        for key, (cache_time, image_path) in self._render_image_cache.items():
+            if now - cache_time > self._render_cache_ttl_seconds:
+                expired_keys.append(key)
+                continue
+            if not os.path.exists(image_path):
+                expired_keys.append(key)
+
+        for key in expired_keys:
+            self._render_image_cache.pop(key, None)
+
+    async def _render_with_cache(
+        self,
+        cache_key: str,
+        renderer: Callable[[], Awaitable[str | None]],
+    ) -> str | None:
+        """带去重与缓存的渲染包装器。"""
+        render_task: asyncio.Task[str | None] | None = None
+
+        async with self._render_cache_lock:
+            self._cleanup_render_image_cache()
+
+            cached_item = self._render_image_cache.get(cache_key)
+            if cached_item:
+                _, image_path = cached_item
+                if os.path.exists(image_path):
+                    logger.debug(f"[灾害预警] 命中渲染缓存: {cache_key}")
+                    return image_path
+
+            render_task = self._render_inflight_tasks.get(cache_key)
+            if render_task is None:
+                render_task = asyncio.create_task(renderer())
+                self._render_inflight_tasks[cache_key] = render_task
+
+        try:
+            result_path = await render_task
+            if result_path and os.path.exists(result_path):
+                async with self._render_cache_lock:
+                    self._render_image_cache[cache_key] = (time.time(), result_path)
+            return result_path
+        finally:
+            async with self._render_cache_lock:
+                if self._render_inflight_tasks.get(cache_key) is render_task:
+                    self._render_inflight_tasks.pop(cache_key, None)
+
+    @staticmethod
+    def _build_map_cache_key(lat: float, lon: float, config: dict[str, Any]) -> str:
+        """构建地图渲染缓存键。"""
+        key_obj = {
+            "type": "map",
+            "lat": round(lat, 5),
+            "lon": round(lon, 5),
+            "map_source": config.get("map_source", "PetalMap矢量图亮"),
+            "map_zoom_level": config.get("map_zoom_level", 5),
+            "playwright_mode": config.get("playwright_mode", "local"),
+        }
+        return json.dumps(key_obj, sort_keys=True, ensure_ascii=False)
+
+    @staticmethod
+    def _build_global_quake_card_cache_key(
+        earthquake: EarthquakeData,
+        message_format_config: dict[str, Any],
+        display_timezone: str,
+    ) -> str:
+        """构建 Global Quake 卡片缓存键。"""
+        key_obj = {
+            "type": "global_quake_card",
+            "event_id": earthquake.event_id or earthquake.id,
+            "updates": getattr(earthquake, "updates", 1),
+            "shock_time": (
+                earthquake.shock_time.isoformat()
+                if getattr(earthquake, "shock_time", None)
+                else None
+            ),
+            "latitude": earthquake.latitude,
+            "longitude": earthquake.longitude,
+            "magnitude": earthquake.magnitude,
+            "depth": earthquake.depth,
+            "intensity": earthquake.intensity,
+            "place_name": earthquake.place_name,
+            "template": message_format_config.get("global_quake_template", "Aurora"),
+            "map_source": message_format_config.get("map_source", "PetalMap矢量图亮"),
+            "map_zoom_level": message_format_config.get("map_zoom_level", 5),
+            "playwright_mode": message_format_config.get("playwright_mode", "local"),
+            "timezone": display_timezone,
+        }
+        return json.dumps(key_obj, sort_keys=True, ensure_ascii=False)
+
+    @staticmethod
+    def _build_message_build_cache_key(
+        event: DisasterEvent,
+        runtime_config: dict[str, Any],
+    ) -> str:
+        """构建消息构建缓存键（同事件+同渲染参数复用）。"""
+        message_format_config = runtime_config.get("message_format", {})
+        weather_config = runtime_config.get("weather_config", {})
+
+        key_obj = {
+            "event_id": event.id,
+            "source": event.source.value
+            if hasattr(event.source, "value")
+            else str(event.source),
+            "display_timezone": runtime_config.get("display_timezone", "UTC+8"),
+            "message_format": {
+                "include_map": message_format_config.get("include_map", False),
+                "map_source": message_format_config.get(
+                    "map_source", "PetalMap矢量图亮"
+                ),
+                "map_zoom_level": message_format_config.get("map_zoom_level", 5),
+                "playwright_mode": message_format_config.get(
+                    "playwright_mode", "local"
+                ),
+                "use_global_quake_card": message_format_config.get(
+                    "use_global_quake_card", False
+                ),
+                "global_quake_template": message_format_config.get(
+                    "global_quake_template", "Aurora"
+                ),
+                "detailed_jma_intensity": message_format_config.get(
+                    "detailed_jma_intensity", False
+                ),
+            },
+            "weather": {
+                "enable_weather_icon": weather_config.get("enable_weather_icon", True),
+                "max_description_length": weather_config.get(
+                    "max_description_length", 384
+                ),
+            },
+        }
+        return json.dumps(key_obj, sort_keys=True, ensure_ascii=False)
+
+    def should_push_event(
+        self,
+        event: DisasterEvent,
+        runtime_config: dict[str, Any] | None = None,
+        session_id: str | None = None,
+        filter_reason_out: list[str] | None = None,
+        emit_filter_log: bool = True,
+    ) -> bool:
         """判断是否应该推送事件"""
+        runtime_config = runtime_config or self.config
+        runtime_components = self._build_runtime_components(runtime_config, session_id)
+
+        def reject(reason: str, log_message: str | None = None) -> bool:
+            if filter_reason_out is not None:
+                filter_reason_out.append(reason)
+            if emit_filter_log and log_message:
+                logger.info(log_message)
+            return False
+
         # 1. 时间检查（所有事件类型）- 这是最重要的过滤
         # 获取带时区的事件时间
         event_time_aware = self._get_event_time(event)
@@ -204,16 +467,18 @@ class MessagePushManager:
             ).total_seconds() / 3600  # 小时
 
             if time_diff > 1:
-                logger.info(f"[灾害预警] 事件时间过早（{time_diff:.1f}小时前），过滤")
-                return False
+                return reject(
+                    "事件时间过早",
+                    f"[灾害预警] 事件时间过早（{time_diff:.1f}小时前），过滤",
+                )
 
         # 2. 非地震事件检查
         if not isinstance(event.data, EarthquakeData):
             # 气象预警事件需要进行过滤
             if isinstance(event.data, WeatherAlarmData):
                 headline = event.data.headline or event.data.title or ""
-                if self.weather_filter.should_filter(headline):
-                    return False
+                if runtime_components["weather_filter"].should_filter(headline):
+                    return reject("气象关键字过滤")
             # 海啸和气象事件通过了过滤，可以推送
             return True
 
@@ -222,42 +487,51 @@ class MessagePushManager:
         source_id = self._get_source_id(event)
 
         # 通用关键词过滤 (适用于所有地震事件)
-        if self.keyword_filter.should_filter(earthquake):
-            logger.info(f"[灾害预警] 事件被关键词过滤器过滤: {source_id}")
-            return False
+        if runtime_components["keyword_filter"].should_filter(earthquake):
+            return reject(
+                "关键词过滤",
+                f"[灾害预警] 事件被关键词过滤器过滤: {source_id}",
+            )
 
         # 数据源专用过滤器
         if source_id == "global_quake":
             # Global Quake专用过滤器
-            if self.global_quake_filter.should_filter(earthquake):
-                logger.info("[灾害预警] 事件被Global Quake过滤器过滤")
-                return False
+            if runtime_components["global_quake_filter"].should_filter(earthquake):
+                return reject(
+                    "Global Quake过滤器",
+                    "[灾害预警] 事件被Global Quake过滤器过滤",
+                )
         elif source_id in get_intensity_based_sources():
             # 使用烈度过滤器
-            if self.intensity_filter.should_filter(earthquake):
-                logger.info(f"[灾害预警] 事件被烈度过滤器过滤: {source_id}")
-                return False
+            if runtime_components["intensity_filter"].should_filter(earthquake):
+                return reject(
+                    "烈度过滤器",
+                    f"[灾害预警] 事件被烈度过滤器过滤: {source_id}",
+                )
         elif source_id in get_scale_based_sources():
             # 使用震度过滤器
-            if self.scale_filter.should_filter(earthquake):
-                logger.info(f"[灾害预警] 事件被震度过滤器过滤: {source_id}")
-                return False
+            if runtime_components["scale_filter"].should_filter(earthquake):
+                return reject(
+                    "震度过滤器",
+                    f"[灾害预警] 事件被震度过滤器过滤: {source_id}",
+                )
         elif source_id == "usgs_fanstudio":
             # USGS专用过滤器
-            if self.usgs_filter.should_filter(earthquake):
-                logger.info("[灾害预警] 事件被USGS过滤器过滤")
-                return False
+            if runtime_components["usgs_filter"].should_filter(earthquake):
+                return reject("USGS过滤器", "[灾害预警] 事件被USGS过滤器过滤")
 
         # 报数控制（仅EEW数据源）
-        if not self.report_controller.should_push_report(event):
-            logger.info(f"[灾害预警] 事件被报数控制器过滤: {source_id}")
-            return False
+        if not runtime_components["report_controller"].should_push_report(event):
+            return reject(
+                "报数控制器",
+                f"[灾害预警] 事件被报数控制器过滤: {source_id}",
+            )
 
         # 本地烈度过滤与注入（使用统一的辅助方法）
-        result = self.local_monitor.inject_local_estimation(earthquake)
+        result = runtime_components["local_monitor"].inject_local_estimation(earthquake)
         # result 为 None 表示未启用，否则检查 is_allowed
         if result is not None and not result.get("is_allowed", True):
-            return False
+            return reject("本地监控过滤")
 
         return True
 
@@ -319,7 +593,12 @@ class MessagePushManager:
         reverse_mapping = {v.value: k for k, v in DATA_SOURCE_MAPPING.items()}
         return reverse_mapping.get(event.source.value, event.source.value)
 
-    async def push_event(self, event: DisasterEvent) -> bool:
+    async def push_event(
+        self,
+        event: DisasterEvent,
+        target_sessions: list[str] | None = None,
+        session_config_getter=None,
+    ) -> bool:
         """推送事件入口"""
         source_id = self._get_source_id(event)
 
@@ -340,7 +619,11 @@ class MessagePushManager:
             return False
 
         # 默认流程
-        return await self._execute_push(event)
+        return await self._execute_push(
+            event,
+            target_sessions=target_sessions,
+            session_config_getter=session_config_getter,
+        )
 
     async def _handle_cenc_fan_interception(
         self, event: DisasterEvent, timeout: int
@@ -425,7 +708,12 @@ class MessagePushManager:
         except Exception as e:
             logger.error(f"[灾害预警] 融合操作失败: {e}")
 
-    async def _execute_push(self, event: DisasterEvent) -> bool:
+    async def _execute_push(
+        self,
+        event: DisasterEvent,
+        target_sessions: list[str] | None = None,
+        session_config_getter=None,
+    ) -> bool:
         """执行实际的推送流程（原 push_event 逻辑）"""
         logger.debug(f"[灾害预警] 执行事件推送流程: {event.id}")
         source_id = self._get_source_id(event)
@@ -435,41 +723,114 @@ class MessagePushManager:
             logger.debug(f"[灾害预警] 事件 {event.id} 被去重器过滤")
             return False
 
-        # 2. 推送条件检查
-        if not self.should_push_event(event):
-            logger.debug(f"[灾害预警] 事件 {event.id} 未通过推送条件检查")
-            return False
-
         try:
-            # 3. 构建消息 (使用异步构建以支持卡片渲染)
-            message = await self.build_message_async(event)
-            logger.debug("[灾害预警] 消息构建完成")
+            self.last_success_sessions = []
 
-            # 4. 获取目标会话
-            target_sessions = self.config.get("target_sessions", [])
-            if not target_sessions:
+            # 2. 获取目标会话
+            sessions = (
+                target_sessions
+                if target_sessions is not None
+                else self.config.get("target_sessions", [])
+            )
+            if not sessions:
                 logger.warning("[灾害预警] 没有配置目标会话，无法推送消息")
                 return False
 
-            # 5. 推送消息
+            # 3. 推送消息
             push_success_count = 0
-            for session in target_sessions:
+            passed_sessions: list[str] = []
+            session_message_format_config: dict[str, dict[str, Any]] = {}
+            filter_reason_stats: dict[str, int] = {}
+
+            # 先做会话筛选（轻量，同步执行）
+            push_candidates: list[tuple[str, dict[str, Any]]] = []
+            for session in sessions:
+                runtime_config = (
+                    session_config_getter(session)
+                    if callable(session_config_getter)
+                    else self.config
+                )
+                if not isinstance(runtime_config, dict):
+                    runtime_config = self.config
+
+                if runtime_config.get("push_enabled", True) is False:
+                    logger.debug(f"[灾害预警] 会话 {session} 推送开关关闭，跳过")
+                    continue
+
+                filter_reasons: list[str] = []
+                if not self.should_push_event(
+                    event,
+                    runtime_config=runtime_config,
+                    session_id=session,
+                    filter_reason_out=filter_reasons,
+                    emit_filter_log=False,
+                ):
+                    reason = filter_reasons[0] if filter_reasons else "未通过推送条件"
+                    filter_reason_stats[reason] = filter_reason_stats.get(reason, 0) + 1
+                    logger.debug(
+                        f"[灾害预警] 事件 {event.id} 未通过会话 {session} 的推送条件检查: {reason}"
+                    )
+                    continue
+
+                push_candidates.append((session, runtime_config))
+
+            # 构建任务级消息缓存：同一个事件 + 同一渲染参数只构建一次消息
+            message_task_cache: dict[str, asyncio.Task[MessageChain]] = {}
+            message_task_lock = asyncio.Lock()
+
+            async def get_or_build_message(
+                runtime_config: dict[str, Any],
+            ) -> MessageChain:
+                cache_key = self._build_message_build_cache_key(event, runtime_config)
+                task = message_task_cache.get(cache_key)
+                if task is None:
+                    async with message_task_lock:
+                        task = message_task_cache.get(cache_key)
+                        if task is None:
+                            task = asyncio.create_task(
+                                self.build_message_async(
+                                    event, runtime_config=runtime_config
+                                )
+                            )
+                            message_task_cache[cache_key] = task
+                return await task
+
+            async def push_to_session(
+                session: str,
+                runtime_config: dict[str, Any],
+            ) -> tuple[bool, str, dict[str, Any] | None]:
                 try:
+                    message = await get_or_build_message(runtime_config)
                     await self._send_message(session, message)
                     logger.info(f"[灾害预警] 消息已推送到 {session}")
-                    push_success_count += 1
+                    return True, session, runtime_config.get("message_format", {})
                 except Exception as e:
                     logger.error(f"[灾害预警] 推送到 {session} 失败: {e}")
+                    return False, session, None
+
+            # 并发推送：不同会话互不阻塞
+            if push_candidates:
+                push_tasks = [
+                    asyncio.create_task(push_to_session(session, runtime_config))
+                    for session, runtime_config in push_candidates
+                ]
+                push_results = await asyncio.gather(*push_tasks, return_exceptions=True)
+
+                for result in push_results:
+                    if isinstance(result, Exception):
+                        logger.error(f"[灾害预警] 会话推送任务异常: {result}")
+                        continue
+
+                    ok, session, msg_cfg = result
+                    if ok:
+                        push_success_count += 1
+                        passed_sessions.append(session)
+                        session_message_format_config[session] = msg_cfg or {}
 
             # 6. 异步处理分离的地图瓦片 (针对 EEW 数据源的优化)
-            message_format_config = self.config.get("message_format", {})
-            include_map = message_format_config.get("include_map", False)
-            # 动态获取所有 EEW 数据源，但排除掉使用独立卡片渲染的 global_quake
             split_map_sources = set(get_eew_sources()) - {"global_quake"}
-            if (
-                include_map
-                and source_id in split_map_sources
-                and isinstance(event.data, EarthquakeData)
+            if source_id in split_map_sources and isinstance(
+                event.data, EarthquakeData
             ):
                 # 频率控制逻辑：参考报数控制器，第1报必推，之后每5报推一次，最终报必推
                 current_report = getattr(event.data, "updates", 1)
@@ -482,20 +843,53 @@ class MessagePushManager:
                 if current_report == 1 or current_report % map_push_n == 0 or is_final:
                     should_gen_map = True
 
-                if should_gen_map:
+                if should_gen_map and passed_sessions:
                     logger.debug(
                         f"[灾害预警] 触发异步地图渲染 (第 {current_report} 报)"
                     )
-                    asyncio.create_task(
-                        self._push_split_map(
-                            event, target_sessions, message_format_config
+
+                    # 按 message_format 配置分组发送地图
+                    grouped_sessions: dict[str, list[str]] = {}
+                    grouped_config: dict[str, dict[str, Any]] = {}
+                    for session in passed_sessions:
+                        msg_cfg = session_message_format_config.get(session, {})
+                        include_map = msg_cfg.get("include_map", False)
+                        if not include_map:
+                            continue
+                        k = json.dumps(msg_cfg, sort_keys=True, ensure_ascii=False)
+                        if k not in grouped_sessions:
+                            grouped_sessions[k] = []
+                            grouped_config[k] = msg_cfg
+                        grouped_sessions[k].append(session)
+
+                    for k, grouped in grouped_sessions.items():
+                        asyncio.create_task(
+                            self._push_split_map(
+                                event,
+                                grouped,
+                                grouped_config[k],
+                            )
                         )
-                    )
 
             # 7. 记录推送
-            logger.info(
-                f"[灾害预警] 事件 {event.id} 推送完成，成功推送到 {push_success_count} 个会话"
-            )
+            self.last_success_sessions = list(passed_sessions)
+            if filter_reason_stats:
+                summary = "，".join(
+                    f"{reason}×{count}"
+                    for reason, count in sorted(filter_reason_stats.items())
+                )
+                if push_success_count > 0:
+                    logger.debug(
+                        f"[灾害预警] 事件 {event.id} 部分会话被过滤: {summary}"
+                    )
+                else:
+                    logger.info(
+                        f"[灾害预警] 事件 {event.id} 已被会话过滤拦截: {summary}"
+                    )
+            if push_success_count > 0:
+                logger.info(
+                    f"[灾害预警] 事件 {event.id} 推送完成，成功推送到 {push_success_count} 个会话"
+                )
             return push_success_count > 0
 
         except Exception as e:
@@ -553,10 +947,15 @@ class MessagePushManager:
         chain = self._build_text_message(event, source_id, message_format_config)
         return chain
 
-    async def build_message_async(self, event: DisasterEvent) -> MessageChain:
+    async def build_message_async(
+        self,
+        event: DisasterEvent,
+        runtime_config: dict[str, Any] | None = None,
+    ) -> MessageChain:
         """构建消息 (异步版本) - 支持卡片渲染"""
+        active_config = runtime_config or self.config
         source_id = self._get_source_id(event)
-        message_format_config = self.config.get("message_format", {})
+        message_format_config = active_config.get("message_format", {})
 
         # 1. Global Quake 卡片处理逻辑
         use_gq_card = message_format_config.get("use_global_quake_card", False)
@@ -567,7 +966,7 @@ class MessagePushManager:
         ):
             try:
                 # 渲染 Global Quake 卡片
-                display_timezone = self.config.get("display_timezone", "UTC+8")
+                display_timezone = active_config.get("display_timezone", "UTC+8")
                 options = {"timezone": display_timezone}
                 context = GlobalQuakeFormatter.get_render_context(event.data, options)
 
@@ -599,7 +998,7 @@ class MessagePushManager:
                         template_content = f.read()
 
                     # 根据 playwright 模式选择资源 URL
-                    playwright_mode = self.config.get("message_format", {}).get(
+                    playwright_mode = active_config.get("message_format", {}).get(
                         "playwright_mode", "local"
                     )
                     if playwright_mode == "remote":
@@ -635,14 +1034,22 @@ class MessagePushManager:
                     html_content = template.render(**context)
 
                     # 准备临时文件路径
-                    image_filename = (
-                        f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                    card_cache_key = self._build_global_quake_card_cache_key(
+                        event.data,
+                        message_format_config,
+                        display_timezone,
                     )
-                    image_path = os.path.join(self.temp_dir, image_filename)
 
-                    # 使用 BrowserManager 渲染卡片
-                    result_path = await self.browser_manager.render_card(
-                        html_content, image_path, selector="#card-wrapper"
+                    async def render_gq_card() -> str | None:
+                        image_filename = f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                        image_path = os.path.join(self.temp_dir, image_filename)
+                        return await self.browser_manager.render_card(
+                            html_content, image_path, selector="#card-wrapper"
+                        )
+
+                    result_path = await self._render_with_cache(
+                        card_cache_key,
+                        render_gq_card,
                     )
 
                     if result_path and os.path.exists(result_path):
@@ -665,7 +1072,12 @@ class MessagePushManager:
         # 2. 通用文本消息构建 (包含新的瓦片地图图片逻辑)
 
         # 获取基础文本消息
-        chain = self._build_text_message(event, source_id, message_format_config)
+        chain = self._build_text_message(
+            event,
+            source_id,
+            message_format_config,
+            full_config=active_config,
+        )
 
         # 3. 检查是否需要附加地图图片
         include_map = message_format_config.get("include_map", False)
@@ -711,7 +1123,7 @@ class MessagePushManager:
                         logger.error(f"[灾害预警] 地图图片生成失败: {e}")
 
         # 4. 检查是否需要附加气象预警图标
-        weather_config = self.config.get("weather_config", {})
+        weather_config = active_config.get("weather_config", {})
         enable_weather_icon = weather_config.get("enable_weather_icon", True)
         if enable_weather_icon and isinstance(event.data, WeatherAlarmData):
             p_code = event.data.type
@@ -726,13 +1138,20 @@ class MessagePushManager:
 
         return chain
 
-    def _build_text_message(self, event, source_id, config) -> MessageChain:
+    def _build_text_message(
+        self,
+        event,
+        source_id,
+        config,
+        full_config: dict[str, Any] | None = None,
+    ) -> MessageChain:
         """构建纯文本部分的消息"""
-        display_timezone = self.config.get("display_timezone", "UTC+8")
+        active_config = full_config or self.config
+        display_timezone = active_config.get("display_timezone", "UTC+8")
         detailed_jma = config.get("detailed_jma_intensity", False)
 
         if isinstance(event.data, WeatherAlarmData):
-            weather_config = self.config.get("weather_config", {})
+            weather_config = active_config.get("weather_config", {})
             options = {
                 "max_description_length": weather_config.get(
                     "max_description_length", 384
@@ -814,79 +1233,84 @@ class MessagePushManager:
     async def _render_map_image(
         self, lat: float, lon: float, config: dict
     ) -> str | None:
-        """渲染通用地图图片"""
-        try:
-            map_source = config.get("map_source", "PetalMap矢量图亮")
-            zoom_level = config.get("map_zoom_level", 5)
+        """渲染通用地图图片（带缓存复用）。"""
 
-            # 加载模板
-            resources_dir = os.path.join(self.plugin_root, "resources")
-            template_path = os.path.join(
-                resources_dir, "card_templates", "Base", "base_map.html"
-            )
+        async def render_map() -> str | None:
+            try:
+                map_source = config.get("map_source", "PetalMap矢量图亮")
+                zoom_level = config.get("map_zoom_level", 5)
 
-            if not os.path.exists(template_path):
-                logger.error(f"[灾害预警] 找不到通用地图模板: {template_path}")
+                # 加载模板
+                resources_dir = os.path.join(self.plugin_root, "resources")
+                template_path = os.path.join(
+                    resources_dir, "card_templates", "Base", "base_map.html"
+                )
+
+                if not os.path.exists(template_path):
+                    logger.error(f"[灾害预警] 找不到通用地图模板: {template_path}")
+                    return None
+
+                with open(template_path, encoding="utf-8") as f:
+                    template_content = f.read()
+
+                # 准备上下文
+                leaflet_path = os.path.abspath(
+                    os.path.join(resources_dir, "card_templates", "leaflet.js")
+                )
+                leaflet_css_path = os.path.abspath(
+                    os.path.join(resources_dir, "card_templates", "leaflet.css")
+                )
+
+                map_helper_path = os.path.abspath(
+                    os.path.join(
+                        resources_dir, "card_templates", "map_render_helper.js"
+                    )
+                )
+                with open(map_helper_path, encoding="utf-8") as helper_file:
+                    map_render_helper_js = helper_file.read()
+
+                # 根据 playwright 模式选择资源 URL
+                playwright_mode = config.get("playwright_mode") or self.config.get(
+                    "message_format", {}
+                ).get("playwright_mode", "local")
+                if playwright_mode == "remote":
+                    # 远程模式：使用 CDN
+                    leaflet_js_url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                    leaflet_css_url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+                else:
+                    # 本地模式：使用本地文件
+                    leaflet_js_url = f"file://{leaflet_path}"
+                    leaflet_css_url = f"file://{leaflet_css_path}"
+
+                context = {
+                    "latitude": lat,
+                    "longitude": lon,
+                    "zoom_level": zoom_level,
+                    "map_source": map_source,
+                    "tile_url": get_tile_url_js(map_source),
+                    "leaflet_js_url": leaflet_js_url,
+                    "leaflet_css_url": leaflet_css_url,
+                    "map_render_helper_js": map_render_helper_js,
+                }
+
+                # 渲染 HTML
+                template = Template(template_content)
+                html_content = template.render(**context)
+
+                # 渲染图片
+                image_filename = f"map_{lat}_{lon}_{int(time.time())}.png"
+                image_path = os.path.join(self.temp_dir, image_filename)
+
+                return await self.browser_manager.render_card(
+                    html_content, image_path, selector="#card-wrapper"
+                )
+
+            except Exception as e:
+                logger.error(f"[灾害预警] 渲染地图图片时出错: {e}")
                 return None
 
-            with open(template_path, encoding="utf-8") as f:
-                template_content = f.read()
-
-            # 准备上下文
-            leaflet_path = os.path.abspath(
-                os.path.join(resources_dir, "card_templates", "leaflet.js")
-            )
-            leaflet_css_path = os.path.abspath(
-                os.path.join(resources_dir, "card_templates", "leaflet.css")
-            )
-
-            map_helper_path = os.path.abspath(
-                os.path.join(resources_dir, "card_templates", "map_render_helper.js")
-            )
-            with open(map_helper_path, encoding="utf-8") as helper_file:
-                map_render_helper_js = helper_file.read()
-
-            # 根据 playwright 模式选择资源 URL
-            playwright_mode = self.config.get("message_format", {}).get(
-                "playwright_mode", "local"
-            )
-            if playwright_mode == "remote":
-                # 远程模式：使用 CDN
-                leaflet_js_url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-                leaflet_css_url = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-            else:
-                # 本地模式：使用本地文件
-                leaflet_js_url = f"file://{leaflet_path}"
-                leaflet_css_url = f"file://{leaflet_css_path}"
-
-            context = {
-                "latitude": lat,
-                "longitude": lon,
-                "zoom_level": zoom_level,
-                "map_source": map_source,
-                "tile_url": get_tile_url_js(map_source),
-                "leaflet_js_url": leaflet_js_url,
-                "leaflet_css_url": leaflet_css_url,
-                "map_render_helper_js": map_render_helper_js,
-            }
-
-            # 渲染 HTML
-            template = Template(template_content)
-            html_content = template.render(**context)
-
-            # 渲染图片
-            image_filename = f"map_{lat}_{lon}_{int(time.time())}.png"
-            image_path = os.path.join(self.temp_dir, image_filename)
-
-            result_path = await self.browser_manager.render_card(
-                html_content, image_path, selector="#card-wrapper"
-            )
-
-            return result_path
-
-        except Exception as e:
-            logger.error(f"[灾害预警] 渲染地图图片时出错: {e}")
-            return None
+        map_cache_key = self._build_map_cache_key(lat, lon, config)
+        return await self._render_with_cache(map_cache_key, render_map)
 
     async def _send_message(self, session: str, message: MessageChain):
         """发送消息到指定会话"""

@@ -45,6 +45,18 @@ function useApi() {
         return fetchData(url);
     };
 
+    // 会话差异配置相关接口
+    const listSessionConfigs = () => fetchData('/session-config/sessions');
+    const getSessionConfig = (umo) => fetchData(`/session-config/${encodeURIComponent(umo)}`);
+    const updateSessionConfig = (umo, payload) => fetchData(`/session-config/${encodeURIComponent(umo)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const resetSessionConfig = (umo) => fetchData(`/session-config/${encodeURIComponent(umo)}`, {
+        method: 'DELETE'
+    });
+
     return {
         getStatus,
         getStatistics,
@@ -56,6 +68,10 @@ function useApi() {
         getSimulationParams,
         getGeoLocation,
         getTrend,
-        getHeatmap
+        getHeatmap,
+        listSessionConfigs,
+        getSessionConfig,
+        updateSessionConfig,
+        resetSessionConfig
     };
 }
