@@ -3,7 +3,7 @@ name: 💩 屎山代码检测
 on:
   push:
     branches: [ main ]
-  pull_request_target:
+  pull_request:
     branches: [ main, master, dev/* ]
 
 jobs:
@@ -12,14 +12,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-        with:
-          # push 事件用 github.sha，pull_request_target 用 PR head sha
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      
+
       - name: 下载 fuck-u-code（固定 v1.0.0-beta.1）
         run: |
           curl -fL -o fuck-u-code \
@@ -208,10 +205,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**💡 优化建议**" >> $GITHUB_STEP_SUMMARY
           echo "$ADVICE" >> $GITHUB_STEP_SUMMARY
-      
+
       # 在 PR 评论里显示详细等级
       - name: PR 评论（氛围版）
-        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |

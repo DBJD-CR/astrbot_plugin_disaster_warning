@@ -3,7 +3,7 @@ name: 🐍 代码格式与质量检查
 on:
   push:
     branches: [ main ]
-  pull_request_target:
+  pull_request:
     branches: [ main, master, dev/* ]
 
 jobs:
@@ -17,9 +17,6 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-        with:
-          # push 事件用 github.sha，pull_request_target 用 PR head sha
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: 设置 Python 环境
         uses: actions/setup-python@v5
@@ -122,7 +119,7 @@ jobs:
             await core.summary.addRaw(summary).write();
             
             // --- PR 评论 (仅在 PR 事件触发时) ---
-            if (context.eventName === 'pull_request' || context.eventName === 'pull_request_target') {
+            if (context.eventName === 'pull_request') {
                 const issue_number = context.issue.number;
                 const owner = context.repo.owner;
                 const repo = context.repo.repo;
