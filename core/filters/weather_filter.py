@@ -36,19 +36,19 @@ class WeatherFilter:
             filter_info.append(f"最低级别: {self.min_color_level}")
             logger.info(f"[灾害预警] 气象预警过滤器已启用，{', '.join(filter_info)}")
 
-    def extract_province(self, headline: str) -> str | None:
-        """从预警标题中提取省份名称"""
+    def extract_province(self, title_text: str) -> str | None:
+        """从预警标题文本中提取省份名称"""
         for province in CHINA_PROVINCES:
-            if province in headline:
+            if province in title_text:
                 return province
         return None
 
-    def extract_color_level(self, headline: str) -> str:
-        """从预警标题中提取颜色级别"""
+    def extract_color_level(self, title_text: str) -> str:
+        """从预警标题文本中提取颜色级别"""
         # 预处理：去除无效上下文中的颜色引用
         # 1. 去除括号内的内容 (通常是 "原...已失效" 等)
         # 兼容全角和半角括号
-        cleaned = re.sub(r"[（\(].*?[）\)]", "", headline)
+        cleaned = re.sub(r"[（\(].*?[）\)]", "", title_text)
 
         # 2. 去除 "解除...预警" (通常是 "解除...预警，发布..." 或单纯解除)
         # 这里的非贪婪匹配 .*? 会匹配到最近的 "预警"
@@ -60,8 +60,8 @@ class WeatherFilter:
         # 4. 去除 "原...预警" (如果没有被括号包裹)
         cleaned = re.sub(r"原[^，。,]*?预警", "", cleaned)
 
-        if cleaned != headline:
-            logger.debug(f"[灾害预警] 标题清洗: '{headline}' -> '{cleaned}'")
+        if cleaned != title_text:
+            logger.debug(f"[灾害预警] 标题清洗: '{title_text}' -> '{cleaned}'")
 
         # 匹配颜色 - 优先匹配剩下的文本
         for color in ["红色", "橙色", "黄色", "蓝色", "白色"]:
@@ -73,7 +73,7 @@ class WeatherFilter:
         # 这种情况下返回“白色”作为最低级别，通常会被过滤器拦截（除非用户设置阈值为白色）。
         return "白色"
 
-    def should_filter(self, headline: str) -> bool:
+    def should_filter(self, title_text: str) -> bool:
         """
         判断是否应过滤该预警
         返回 True 表示应过滤（不推送），False 表示不过滤（推送）
@@ -82,7 +82,7 @@ class WeatherFilter:
             return False
 
         # 1. 级别过滤
-        current_color = self.extract_color_level(headline)
+        current_color = self.extract_color_level(title_text)
         current_level_value = COLOR_LEVELS.get(current_color, 0)
 
         if current_level_value < self.min_level_value:
@@ -93,10 +93,12 @@ class WeatherFilter:
 
         # 2. 省份过滤
         if self.provinces:
-            province = self.extract_province(headline)
+            province = self.extract_province(title_text)
             if province is None:
                 # 无法识别省份，默认不过滤
-                logger.debug(f"[灾害预警] 无法从预警标题中识别省份: {headline[:50]}...")
+                logger.debug(
+                    f"[灾害预警] 无法从预警标题中识别省份: {title_text[:50]}..."
+                )
                 return False
 
             if province not in self.provinces:
