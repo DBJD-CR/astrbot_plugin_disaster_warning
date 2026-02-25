@@ -15,7 +15,7 @@ function NewsTicker({ style }) {
         // 过滤掉 1 小时前的旧事件
         const oneHourAgo = Date.now() - 3600000;
         const recentEvents = events.filter(e => {
-            const t = new Date(e.time || e.timestamp).getTime();
+            const t = parseEventTimeToDate(e.time || e.timestamp, e.source || '')?.getTime() || 0;
             return t > oneHourAgo;
         });
 
@@ -27,6 +27,7 @@ function NewsTicker({ style }) {
             id: event.event_id || `${event.time || event.timestamp}-${event.type}`,
             time: event.time || event.timestamp,
             type: event.type,
+            source: event.source || '',
             desc: event.description || '无详细描述',
             mag: event.magnitude
         }));
@@ -92,11 +93,11 @@ function NewsTicker({ style }) {
         );
     }
 
-    const formatTime = (isoString) => {
+    const formatTime = (isoString, source) => {
         if (!isoString) return '';
         try {
             // 使用自定义时区格式化
-            const formatted = formatTimeWithZone(isoString, displayTimezone, false);
+            const formatted = formatTimeWithZone(isoString, displayTimezone, false, source || '');
             // 这里只需要时分，例如 "14:30"
             return formatted.split(' ')[1];
         } catch (e) {
@@ -163,7 +164,7 @@ function NewsTicker({ style }) {
                         const isLastInGroup = (index + 1) % tickerItems.length === 0;
                         return (
                             <div key={`${item.id}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginRight: isLastInGroup ? '24px' : '48px' }}>
-                                <span style={{ opacity: 0.7, fontSize: '13px', fontWeight: 600 }}>{formatTime(item.time)}</span>
+                                <span style={{ opacity: 0.7, fontSize: '13px', fontWeight: 600 }}>{formatTime(item.time, item.source)}</span>
                                 <span style={{ fontSize: '16px' }}>{getIcon(item.type)}</span>
                                 
                                 {/* 震级标签挪到前面 */}
