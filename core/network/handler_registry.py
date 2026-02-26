@@ -243,10 +243,12 @@ class WebSocketHandlerRegistry:
                                             f"[灾害预警] CENC 异步分发失败: {dispatch_err}"
                                         )
 
-                                asyncio.create_task(
+                                task = asyncio.create_task(
                                     _dispatch_event_non_blocking(event),
                                     name=f"dw_fan_cenc_dispatch_{event.id}",
                                 )
+                                if hasattr(self.service, "register_background_task"):
+                                    self.service.register_background_task(task)
                             else:
                                 await self.service._handle_disaster_event(event)
 
