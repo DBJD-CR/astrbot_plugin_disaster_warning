@@ -74,9 +74,8 @@ class WeatherFilter:
 
     def _query_province_by_place_name(self, place_name: str) -> str | None:
         """通过行政区划查询API获取省份"""
-        cached = self._location_province_cache.get(place_name)
-        if cached is not None or place_name in self._location_province_cache:
-            return cached
+        if place_name in self._location_province_cache:
+            return self._location_province_cache[place_name]
 
         params = urlencode(
             {
@@ -95,7 +94,6 @@ class WeatherFilter:
                 payload = json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             logger.debug(f"[灾害预警] 行政区划查询失败: {place_name}, 错误: {exc}")
-            self._location_province_cache[place_name] = None
             return None
 
         for record in payload.get("records", []):
