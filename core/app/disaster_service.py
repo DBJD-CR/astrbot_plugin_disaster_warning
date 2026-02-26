@@ -876,9 +876,7 @@ class DisasterWarningService:
                 log_info = f"海啸事件 - 级别: {tsunami.level}, 标题: {tsunami.title}, 数据源: {event.source.value}"
             elif isinstance(event.data, WeatherAlarmData):
                 weather = event.data
-                log_info = (
-                    f"气象事件 - 标题: {weather.headline}, 数据源: {event.source.value}"
-                )
+                log_info = f"气象事件 - 标题: {weather.title or weather.headline}, 数据源: {event.source.value}"
             else:
                 log_info = (
                     f"未知事件类型 - ID: {event.id}, 数据源: {event.source.value}"

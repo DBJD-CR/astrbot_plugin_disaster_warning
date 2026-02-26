@@ -378,10 +378,10 @@ class MessageLogger:
             return "|".join(hash_parts)
 
         # 2. 组合关键字段作为ID
-        # 标题/Headline
-        headline = data.get("headline") or data.get("title") or ""
-        if headline:
-            hash_parts.append(f"wh:{headline[:30]}")
+        # 标题（优先 title，兼容 headline）
+        title_text = data.get("title") or data.get("headline") or ""
+        if title_text:
+            hash_parts.append(f"wh:{title_text[:30]}")
 
         # 地区/Area
         area = data.get("areaDesc") or data.get("sender") or ""

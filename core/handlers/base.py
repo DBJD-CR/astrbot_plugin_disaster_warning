@@ -96,7 +96,7 @@ class BaseDataHandler:
         critical_fields = {
             "usgs_fanstudio": ["id", "magnitude", "placeName"],
             "china_tsunami_fanstudio": ["warningInfo", "title", "level"],
-            "china_weather_fanstudio": ["headline", "description"],
+            "china_weather_fanstudio": ["title", "description"],
         }
 
         if self.source_id in critical_fields:

@@ -14,7 +14,7 @@ from ...models.models import (
     TsunamiData,
     WeatherAlarmData,
 )
-from ...utils.converters import is_major_event
+from ...utils.converters import ScaleConverter, is_major_event
 from ...utils.formatters.weather import COLOR_LEVEL_EMOJI, SORTED_WEATHER_TYPES
 from ...utils.time_converter import TimeConverter
 from ..support.event_deduplicator import EventDeduplicator
@@ -105,6 +105,11 @@ class StatisticsManager:
             self.stats["total_received"] += 1
 
             source_id = event.source_id or event.source.value
+            source_for_display = (
+                event.source.value
+                if hasattr(event.source, "value") and event.source.value
+                else source_id
+            )
 
             # 记录独立事件数
             event_unique_id = self._get_unique_event_id(event)
@@ -152,7 +157,7 @@ class StatisticsManager:
             await self._update_push_list(
                 self.stats["recent_pushes"],
                 event,
-                source_id,
+                source_for_display,
                 event_unique_id,
                 current_time,
                 max_len=100,
@@ -162,11 +167,12 @@ class StatisticsManager:
                 await self._update_push_list(
                     self.stats["major_events"],
                     event,
-                    source_id,
+                    source_for_display,
                     event_unique_id,
                     current_time,
                     max_len=50,
                     is_major=True,
+                    persist_db=False,
                 )
 
             # 自动保存
@@ -189,11 +195,11 @@ class StatisticsManager:
         elif isinstance(event.data, WeatherAlarmData):
             # 气象：红色或橙色预警
             level = event.data.alert_level or ""
-            headline = event.data.headline or ""
+            title_text = event.data.title or event.data.headline or ""
             # 检查级别字段或标题中是否包含关键字
             if "红" in level or "橙" in level:
                 return True
-            if "红" in headline or "橙" in headline:
+            if "红" in title_text or "橙" in title_text:
                 return True
         return False
 
@@ -206,6 +212,7 @@ class StatisticsManager:
         current_time: str,
         max_len: int = 100,
         is_major: bool = False,
+        persist_db: bool = True,
     ):
         """更新推送列表 (支持合并更新)"""
         is_merged = False
@@ -254,6 +261,7 @@ class StatisticsManager:
                             record["event_id"] = event.id
                             record["real_event_id"] = real_event_id
                             record["unique_id"] = event_unique_id
+                            record["source_id"] = event.source_id or ""
                             record["description"] = self._get_event_description(event)
                             record["latitude"] = event.data.latitude
                             record["longitude"] = event.data.longitude
@@ -265,6 +273,7 @@ class StatisticsManager:
                                 else None
                             )
                             record["update_count"] = record.get("update_count", 1) + 1
+                            record["level"] = self._get_earthquake_level(event.data)
 
                             # 保存报数信息（如果有）
                             if (
@@ -279,14 +288,76 @@ class StatisticsManager:
                             is_merged = True
 
                             # 同步更新数据库
-                            try:
-                                if is_major:
-                                    updated_record["is_major"] = True
-                                await self.db.update_event(source_id, updated_record)
-                            except Exception as e:
-                                logger.error(f"[灾害预警] 更新数据库事件失败: {e}")
+                            if persist_db:
+                                try:
+                                    if is_major:
+                                        updated_record["is_major"] = True
+                                    await self.db.update_event(
+                                        source_id, updated_record
+                                    )
+                                except Exception as e:
+                                    logger.error(f"[灾害预警] 更新数据库事件失败: {e}")
 
                             break
+
+        elif isinstance(event.data, (WeatherAlarmData, TsunamiData)):
+            # 非地震事件按 source + unique_id 合并去重
+            # 但不累计“更新报数”与 history（气象/海啸没有报次语义）
+            for i, record in enumerate(target_list):
+                rec_source = record.get("source")
+                rec_unique_id = record.get("unique_id")
+                if rec_source != source_id or rec_unique_id != event_unique_id:
+                    continue
+
+                # 仅刷新展示字段，保持 update_count 不增长
+                record["timestamp"] = current_time
+                record["event_id"] = event.id
+                record["unique_id"] = event_unique_id
+                record["source_id"] = event.source_id or ""
+                record["description"] = self._get_event_description(event)
+                record["update_count"] = 1
+                record.pop("history", None)
+
+                if isinstance(event.data, WeatherAlarmData):
+                    record["time"] = (
+                        event.data.issue_time.isoformat()
+                        if event.data.issue_time
+                        else None
+                    )
+                    if event.data.type:
+                        record["weather_type_code"] = event.data.type
+
+                    if event.data.alert_level:
+                        record["level"] = event.data.alert_level
+                    else:
+                        title_text = event.data.title or event.data.headline or ""
+                        for color in ["红色", "橙色", "黄色", "蓝色"]:
+                            if color in title_text:
+                                record["level"] = color
+                                break
+                elif isinstance(event.data, TsunamiData):
+                    record["time"] = (
+                        event.data.issue_time.isoformat()
+                        if event.data.issue_time
+                        else None
+                    )
+                    record["level"] = event.data.level
+
+                # 更新后置顶
+                updated_record = target_list.pop(i)
+                target_list.insert(0, updated_record)
+                is_merged = True
+
+                # 同步更新数据库
+                if persist_db:
+                    try:
+                        if is_major:
+                            updated_record["is_major"] = True
+                        await self.db.update_event(source_id, updated_record)
+                    except Exception as e:
+                        logger.error(f"[灾害预警] 更新数据库事件失败: {e}")
+
+                break
 
         if not is_merged:
             push_record = {
@@ -294,6 +365,7 @@ class StatisticsManager:
                 "event_id": event.id,
                 "type": event.disaster_type.value,
                 "source": source_id,
+                "source_id": event.source_id or "",
                 "description": self._get_event_description(event),
                 "unique_id": event_unique_id,
                 "update_count": 1,
@@ -308,6 +380,7 @@ class StatisticsManager:
                     event.data.shock_time.isoformat() if event.data.shock_time else None
                 )
                 push_record["real_event_id"] = event.data.event_id
+                push_record["level"] = self._get_earthquake_level(event.data)
 
                 # 保存报数信息（如果有）
                 if event.data.report_num:
@@ -323,8 +396,9 @@ class StatisticsManager:
                 if event.data.alert_level:
                     push_record["level"] = event.data.alert_level
                 else:
+                    title_text = event.data.title or event.data.headline or ""
                     for color in ["红色", "橙色", "黄色", "蓝色"]:
-                        if color in (event.data.headline or ""):
+                        if color in title_text:
                             push_record["level"] = color
                             break
             elif isinstance(event.data, TsunamiData):
@@ -336,12 +410,13 @@ class StatisticsManager:
             target_list.insert(0, push_record)
 
             # 同步保存到数据库
-            try:
-                if is_major:
-                    push_record["is_major"] = True
-                await self.db.insert_event(push_record)
-            except Exception as e:
-                logger.debug(f"[灾害预警] 保存到数据库失败（可能已存在）: {e}")
+            if persist_db:
+                try:
+                    if is_major:
+                        push_record["is_major"] = True
+                    await self.db.insert_event(push_record)
+                except Exception as e:
+                    logger.debug(f"[灾害预警] 保存到数据库失败（可能已存在）: {e}")
 
         # 保持记录数量限制
         if len(target_list) > max_len:
@@ -453,12 +528,12 @@ class StatisticsManager:
 
     def _record_weather_stats(self, data: WeatherAlarmData):
         """记录气象预警详细统计"""
-        headline = data.headline or ""
+        title_text = data.title or data.headline or ""
 
         # 1. 预警级别统计
         level = "未知"
         for color, emoji in COLOR_LEVEL_EMOJI.items():
-            if color in headline:
+            if color in title_text:
                 # 存储带 Emoji 的键名，方便展示
                 level = f"{emoji}{color}"
                 break
@@ -467,14 +542,14 @@ class StatisticsManager:
         # 2. 预警类型统计
         w_type = "其他"
         for name in SORTED_WEATHER_TYPES:
-            if name in headline:
+            if name in title_text:
                 w_type = name
                 break
         self.stats["weather_stats"]["by_type"][w_type] += 1
 
-        # 3. 地区统计 (尝试从 headline 提取)
+        # 3. 地区统计 (优先从 title 提取)
         # 简单提取：取前两个字作为省份/地区，或者匹配已知省份
-        region = self._extract_region(headline)
+        region = self._extract_region(title_text)
         self.stats["weather_stats"]["by_region"][region] += 1
 
     def _record_session_stats(
@@ -593,14 +668,33 @@ class StatisticsManager:
         # 比如 "南海海域", "东海海域"
         return text[:2]
 
+    def _get_earthquake_level(self, data: EarthquakeData) -> float | None:
+        """提取可展示的地震震度值（优先 scale / max_scale / intensity）。"""
+        for candidate in (data.scale, data.max_scale, data.intensity):
+            if candidate is None:
+                continue
+            if isinstance(candidate, (int, float)):
+                return float(candidate)
+            parsed = ScaleConverter.parse_jma_cwa_scale(candidate)
+            if parsed is not None:
+                return parsed
+        return None
+
     def _get_event_description(self, event: DisasterEvent) -> str:
         """生成简短的事件描述"""
         if isinstance(event.data, EarthquakeData):
-            return f"M{event.data.magnitude} {event.data.place_name}"
+            place_name = event.data.place_name or "未知地点"
+            if event.data.magnitude is None:
+                return (
+                    "震源参数调查中"
+                    if place_name in ["未知地点", "未知位置"]
+                    else place_name
+                )
+            return f"M{event.data.magnitude:.1f} {place_name}"
         elif isinstance(event.data, TsunamiData):
             return f"{event.data.title} ({event.data.level})"
         elif isinstance(event.data, WeatherAlarmData):
-            return f"{event.data.headline}"
+            return f"{event.data.title or event.data.headline}"
         return "未知事件"
 
     def save_stats(self):

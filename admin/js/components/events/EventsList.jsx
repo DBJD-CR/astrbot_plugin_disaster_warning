@@ -20,18 +20,24 @@ function EventsList() {
     const [total, setTotal] = useState(0);
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(false);
-    const LIMIT = 50;
+    const [pageSize, setPageSize] = useState(50);
+    const [pageInput, setPageInput] = useState('');
+    const [sourceFilterMode, setSourceFilterMode] = useState('single'); // single | multi
+    const [selectedSources, setSelectedSources] = useState([]);
+    const [sourceOptions, setSourceOptions] = useState([]);
 
     // 持有当前进行中请求的 AbortController，新请求发起时 abort 旧请求
     const abortControllerRef = useRef(null);
 
-    const fetchEvents = useCallback((page, type) => {
+    const fetchEvents = useCallback((page, type, limit, sources = []) => {
         // 取消上一个尚未完成的请求
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
         const controller = new AbortController();
         abortControllerRef.current = controller;
+
+        const safeLimit = Number(limit) > 0 ? Number(limit) : 50;
 
         setLoading(true);
         const typeParam = type === 'all' ? '' : type;
@@ -43,12 +49,19 @@ function EventsList() {
             'weather': 'weather_alarm',
         };
         const apiType = typeMap[type] || typeParam;
-        fetch(`/api/events?page=${page}&limit=${LIMIT}${apiType ? `&type=${apiType}` : ''}`, { signal: controller.signal })
+        const normalizedSources = Array.isArray(sources)
+            ? sources.map(s => (s || '').trim()).filter(Boolean)
+            : [];
+        const sourceParam = normalizedSources.length > 0
+            ? `&source=${encodeURIComponent(normalizedSources.join(','))}`
+            : '';
+        fetch(`/api/events?page=${page}&limit=${safeLimit}${apiType ? `&type=${apiType}` : ''}${sourceParam}`, { signal: controller.signal })
             .then(res => res.json())
             .then(data => {
                 setEvents(Array.isArray(data.events) ? data.events : []);
                 setTotal(data.total || 0);
                 setTotalPages(data.total_pages || 0);
+                setSourceOptions(Array.isArray(data.sources) ? data.sources : []);
                 setLoading(false);
             })
             .catch(err => {
@@ -58,29 +71,60 @@ function EventsList() {
             });
     }, []);
 
-    // 切换筛选类型时重置到第1页
+    // 切换筛选类型、每页数量或数据源筛选时重置到第1页
     useEffect(() => {
         setCurrentPage(1);
-        fetchEvents(1, filterType);
-    }, [filterType, fetchEvents]);
+        setPageInput('');
+        fetchEvents(1, filterType, pageSize, selectedSources);
+    }, [filterType, pageSize, selectedSources, fetchEvents]);
 
-    // 用 ref 追踪最新 filterType，供新事件触发的刷新使用，避免引入 filterType 为依赖
-    // 导致 filterType 变化时同时触发本 effect 和上方 effect 的双重请求
+    // 用 ref 追踪最新 filterType / pageSize，供新事件触发的刷新使用，
+    // 避免引入它们为依赖导致双重请求
     const filterTypeRef = useRef(filterType);
+    const pageSizeRef = useRef(pageSize);
+    const selectedSourcesRef = useRef(selectedSources);
     useEffect(() => {
         filterTypeRef.current = filterType;
+        pageSizeRef.current = pageSize;
+        selectedSourcesRef.current = selectedSources;
     });
 
-    // WebSocket 收到新事件时，回到第1页刷新（始终用当前筛选条件）
+    // WebSocket 收到新事件时，回到第1页刷新（始终用当前筛选条件与每页大小）
     useEffect(() => {
         if (!state.wsConnected) return;
         setCurrentPage(1);
-        fetchEvents(1, filterTypeRef.current);
+        setPageInput('');
+        fetchEvents(1, filterTypeRef.current, pageSizeRef.current, selectedSourcesRef.current);
     }, [state.events, state.wsConnected, fetchEvents]);
+
+    const availableSources = useMemo(() => {
+        return (Array.isArray(sourceOptions) ? sourceOptions : [])
+            .map(s => (s || '').trim())
+            .filter(Boolean)
+            .sort((a, b) => {
+                const aName = formatSourceName(a);
+                const bName = formatSourceName(b);
+                return aName.localeCompare(bName, 'zh-CN');
+            });
+    }, [sourceOptions]);
+
+    useEffect(() => {
+        if (selectedSources.length === 0) return;
+        const validSet = new Set(availableSources);
+        const nextSelected = selectedSources.filter(source => validSet.has(source));
+        if (nextSelected.length !== selectedSources.length) {
+            setSelectedSources(nextSelected);
+        }
+    }, [availableSources, selectedSources]);
 
     const filteredEvents = useMemo(() => {
         return Array.isArray(events) ? events : [];
     }, [events]);
+
+    const getEventTimeMs = (event) => {
+        const parsed = parseEventTimeToDate(event?.time || event?.timestamp, event?.source || '');
+        return parsed ? parsed.getTime() : 0;
+    };
 
     // 将扁平的事件列表按照 event_id 进行分组
     // 这样可以将同一事件的多次更新（如：第1报、第2报...最终报）聚合在一起显示
@@ -103,7 +147,7 @@ function EventsList() {
         // 处理每个分组：排序、计算更新数量、合并历史记录
         for (const id in groups) {
             // 按时间倒序排列，最新的在最前
-            groups[id].events.sort((a, b) => new Date(b.time) - new Date(a.time));
+            groups[id].events.sort((a, b) => getEventTimeMs(b) - getEventTimeMs(a));
             groups[id].latestEvent = groups[id].events[0];
             
             // 计算更新总数：
@@ -116,13 +160,47 @@ function EventsList() {
             // 这是一个补充机制，确保即使 WebSocket 只推了最新一条，前端展开时也能看到之前的记录
             if (groups[id].latestEvent.history && Array.isArray(groups[id].latestEvent.history)) {
                 // 过滤掉已存在的事件 (避免重复显示)
-                const existingIds = new Set(groups[id].events.map(e => e.time));
-                const historyEvents = groups[id].latestEvent.history.filter(h => !existingIds.has(h.time));
-                
+                // 注意：不能只按 time 去重。地震多报常共享同一发震时间，
+                // 若仅用 time，会把不同报次（第2报、第3报...）误判为重复。
+                const buildDedupKey = (evt) => {
+                    if (!evt || typeof evt !== 'object') return 'invalid';
+
+                    // 1) 优先使用后端更新表主键（event_updates.id）
+                    if (evt.id !== undefined && evt.id !== null && evt.id !== '') {
+                        return `upd-id:${evt.id}`;
+                    }
+
+                    // 2) 其次使用源事件ID（通常在同一数据源内稳定）
+                    if (evt.source_event_id) {
+                        return `src-evt:${evt.source_event_id}`;
+                    }
+
+                    // 3) 再其次使用 report_num + time（报次语义）
+                    if (evt.report_num !== undefined && evt.report_num !== null && evt.report_num !== '') {
+                        return `report:${evt.report_num}|time:${evt.time || evt.timestamp || ''}`;
+                    }
+
+                    // 4) 最后使用多字段组合兜底，降低误判
+                    return [
+                        evt.time || evt.timestamp || '',
+                        evt.magnitude ?? '',
+                        evt.depth ?? '',
+                        evt.description || ''
+                    ].join('|');
+                };
+
+                const existingKeys = new Set(groups[id].events.map(e => buildDedupKey(e)));
+                const historyEvents = groups[id].latestEvent.history.filter((h) => {
+                    const key = buildDedupKey(h);
+                    if (existingKeys.has(key)) return false;
+                    existingKeys.add(key);
+                    return true;
+                });
+
                 if (historyEvents.length > 0) {
                     groups[id].events.push(...historyEvents);
                     // 合并后再次重新排序
-                    groups[id].events.sort((a, b) => new Date(b.time) - new Date(a.time));
+                    groups[id].events.sort((a, b) => getEventTimeMs(b) - getEventTimeMs(a));
                     // 更新计数
                     groups[id].updateCount = Math.max(groups[id].events.length, backendCount);
                 }
@@ -131,7 +209,7 @@ function EventsList() {
 
         // 将分组转换为数组，并按最新事件的时间倒序排列（最近发生的事件排在列表顶部）
         return Object.values(groups).sort((a, b) =>
-            new Date(b.latestEvent.time) - new Date(a.latestEvent.time)
+            getEventTimeMs(b.latestEvent) - getEventTimeMs(a.latestEvent)
         );
     }, [filteredEvents]);
 
@@ -147,17 +225,261 @@ function EventsList() {
         });
     };
 
+    const goToPage = useCallback((targetPage) => {
+        if (totalPages <= 0) return;
+        const safePage = Math.max(1, Math.min(totalPages, targetPage));
+        if (safePage === currentPage) return;
+
+        setCurrentPage(safePage);
+        setPageInput('');
+        fetchEvents(safePage, filterType, pageSize, selectedSources);
+    }, [currentPage, totalPages, fetchEvents, filterType, pageSize, selectedSources]);
+
+    const paginationItems = useMemo(() => {
+        if (totalPages <= 0) return [];
+
+        if (totalPages <= 7) {
+            return Array.from({ length: totalPages }, (_, idx) => idx + 1);
+        }
+
+        const items = [1];
+        const start = Math.max(2, currentPage - 1);
+        const end = Math.min(totalPages - 1, currentPage + 1);
+
+        if (start > 2) {
+            items.push('ellipsis-left');
+        }
+
+        for (let p = start; p <= end; p += 1) {
+            items.push(p);
+        }
+
+        if (end < totalPages - 1) {
+            items.push('ellipsis-right');
+        }
+
+        items.push(totalPages);
+        return items;
+    }, [currentPage, totalPages]);
+
+    const pageInputNumber = Number(pageInput);
+    const canJump = Number.isInteger(pageInputNumber)
+        && pageInputNumber >= 1
+        && pageInputNumber <= Math.max(totalPages, 1)
+        && pageInputNumber !== currentPage;
+
+    const handlePageJump = () => {
+        if (!canJump) return;
+        goToPage(pageInputNumber);
+    };
+
+    const handleSourceFilterModeChange = (mode) => {
+        setSourceFilterMode(mode);
+        if (mode === 'single' && selectedSources.length > 1) {
+            setSelectedSources([selectedSources[0]]);
+        }
+    };
+
+    const handleSourceSelectChange = (e) => {
+        const value = (e.target.value || '').trim();
+        setSelectedSources(value ? [value] : []);
+    };
+
+    const handleSourceCheckboxToggle = (source) => {
+        setSelectedSources((prev) => {
+            if (prev.includes(source)) {
+                return prev.filter(item => item !== source);
+            }
+            return [...prev, source];
+        });
+    };
+
+    const selectedSourceSummary = useMemo(() => {
+        if (selectedSources.length === 0) return '全部数据源';
+        return `已选 ${selectedSources.length} 个数据源`;
+    }, [selectedSources]);
+
+    const isLikelyJmaSource = (source = '') => {
+        const sourceKey = String(source || '').toLowerCase();
+        if (!sourceKey) return false;
+        return sourceKey.includes('jma') || sourceKey.includes('p2p') || sourceKey.includes('cwa');
+    };
+
+    const normalizeEarthquakeTitle = (evt) => {
+        const rawTitle = String(evt?.description || '').trim();
+        if (!rawTitle) return '未知位置';
+
+        // 识别并剥离前缀震级，避免与左侧震级徽章重复显示
+        // 例如："M5.0 日向滩" -> "日向滩"
+        // 特殊值："MNone 未知地点" / "MNaN 未知地点" -> 进一步语义化处理
+        const magPrefixMatch = rawTitle.match(/^M\s*([^\s]+)\s*(.*)$/i);
+        if (magPrefixMatch) {
+            const [, magTokenRaw, restRaw] = magPrefixMatch;
+            const magToken = String(magTokenRaw || '').toLowerCase();
+            const rest = String(restRaw || '').trim();
+
+            const invalidMagToken = ['none', 'nan', '--', 'null', 'undefined'].includes(magToken);
+            const unknownPlace = !rest || rest === '未知地点' || rest === '未知位置';
+            if (invalidMagToken && unknownPlace) {
+                return isLikelyJmaSource(evt?.source)
+                    ? '震度速报（震源参数调查中）'
+                    : '震源参数调查中';
+            }
+
+            if (rest) return rest;
+        }
+
+        return rawTitle;
+    };
+
+    const formatMagnitudeBadge = (mag) => {
+        if (mag === null || mag === undefined || mag === '') return '--';
+        const num = Number(mag);
+        return Number.isFinite(num) ? num.toFixed(1) : '--';
+    };
+
+    const formatShindoBadge = (level) => {
+        if (level === null || level === undefined || level === '') return null;
+
+        const raw = String(level).trim();
+        if (!raw) return null;
+
+        const normalized = raw
+            .replace(/弱/g, '-')
+            .replace(/強/g, '+')
+            .replace(/强/g, '+')
+            .replace(/\s+/g, '');
+
+        if (['1', '2', '3', '4', '5-', '5+', '6-', '6+', '7'].includes(normalized)) {
+            return normalized;
+        }
+
+        const num = Number(level);
+        if (!Number.isFinite(num)) return null;
+
+        if (num < 1.5) return '1';
+        if (num < 2.5) return '2';
+        if (num < 3.5) return '3';
+        if (num < 4.5) return '4';
+        if (num < 5.0) return '5-';
+        if (num < 5.5) return '5+';
+        if (num < 6.0) return '6-';
+        if (num < 6.5) return '6+';
+        return '7';
+    };
+
+    const formatIntensityBadge = (level) => {
+        if (level === null || level === undefined || level === '') return null;
+        const num = Number(level);
+        if (!Number.isFinite(num)) return null;
+
+        // 烈度通常展示为 1-12
+        const rounded = Math.round(num);
+        if (rounded >= 1 && rounded <= 12) return String(rounded);
+        return num.toFixed(1);
+    };
+
+    const INT_COLOR_MAP = {
+        '1': '#6B7878',
+        '2': '#1E6EE6',
+        '3': '#32B464',
+        '4': '#FFE05D',
+        '5-': '#FFAA13',
+        '5+': '#EF700F',
+        '6-': '#E60000',
+        '6+': '#A00000',
+        '7': '#5D0090',
+        'unknown': '#6B7878'
+    };
+
+    const getIntensityColor = (levelText, isJmaScale) => {
+        if (!levelText) return INT_COLOR_MAP.unknown;
+        if (isJmaScale) {
+            return INT_COLOR_MAP[levelText] || INT_COLOR_MAP.unknown;
+        }
+
+        const n = Number(levelText);
+        if (!Number.isFinite(n)) return INT_COLOR_MAP.unknown;
+        if (n <= 2) return INT_COLOR_MAP['1'];
+        if (n <= 4) return INT_COLOR_MAP['2'];
+        if (n <= 5) return INT_COLOR_MAP['3'];
+        if (n <= 6) return INT_COLOR_MAP['4'];
+        if (n <= 8) return INT_COLOR_MAP['5-'];
+        if (n <= 10) return INT_COLOR_MAP['6-'];
+        return INT_COLOR_MAP['7'];
+    };
+
+    const getEarthquakeBadgeContent = (evt) => {
+        const source = evt?.source || '';
+        const level = evt?.level;
+        const isJmaScale = isLikelyJmaSource(source);
+
+        if (isJmaScale) {
+            const shindo = formatShindoBadge(level);
+            if (shindo) {
+                return {
+                    text: shindo,
+                    label: '震度',
+                    background: getIntensityColor(shindo, true),
+                    color: shindo === '4' ? '#2b2b2b' : '#ffffff'
+                };
+            }
+        } else {
+            const intensity = formatIntensityBadge(level);
+            if (intensity) {
+                const color = Number(intensity) === 6 ? '#2b2b2b' : '#ffffff';
+                return {
+                    text: intensity,
+                    label: '烈度',
+                    background: getIntensityColor(intensity, false),
+                    color
+                };
+            }
+        }
+
+        const mag = evt?.magnitude ?? evt?._groupMagnitude;
+        const magText = formatMagnitudeBadge(mag);
+        return {
+            text: magText,
+            label: '震级',
+            background: '#6B7878',
+            color: '#ffffff'
+        };
+    };
+
+    const buildEarthquakeTitle = (evt) => {
+        const normalizedTitle = normalizeEarthquakeTitle(evt);
+        if (!normalizedTitle) return '未知位置';
+
+        // 对“调查中”类标题不强行追加震级
+        if (normalizedTitle.includes('调查中')) {
+            return normalizedTitle;
+        }
+
+        const mag = evt?.magnitude ?? evt?._groupMagnitude;
+        const magText = formatMagnitudeBadge(mag);
+        if (magText === '--') {
+            return normalizedTitle;
+        }
+
+        return `M ${magText} ${normalizedTitle}`;
+    };
+
     const renderEventCard = (evt, isHistory = false, isExpandable = false, isExpanded = false, reportIndex = null) => {
-        const isEarthquake = evt.type === 'earthquake' || evt.type === 'earthquake_warning';
-        const isTsunami = evt.type === 'tsunami';
-        const isWeather = evt.type === 'weather_alarm';
+        const eventType = evt.type || evt._groupType || '';
+        const isEarthquake = eventType === 'earthquake' || eventType === 'earthquake_warning';
+        const isTsunami = eventType === 'tsunami';
+        const isWeather = eventType === 'weather_alarm';
+        const displayTitle = isEarthquake ? buildEarthquakeTitle(evt) : (evt.description || '未知位置');
 
         let badgeContent = '❓';
         let badgeClass = 'badge-unknown';
         let weatherIconUrl = null;
+        let earthquakeBadgeMeta = null;
 
         if (isEarthquake) {
-            badgeContent = (evt.magnitude || 0).toFixed(1);
+            earthquakeBadgeMeta = getEarthquakeBadgeContent(evt);
+            badgeContent = earthquakeBadgeMeta?.text || '--';
             badgeClass = 'badge-earthquake';
         } else if (isTsunami) {
             badgeContent = '🌊';
@@ -181,9 +503,6 @@ function EventsList() {
         } else if (evt.report_num) {
             // 最新记录：如果后端提供了 report_num，使用它
             reportLabel = `第 ${evt.report_num} 报`;
-        } else if (!isHistory && isExpandable) {
-            // 最新记录但没有 report_num：显示为"最新"
-            reportLabel = '最新';
         }
 
         return (
@@ -196,11 +515,21 @@ function EventsList() {
                     width: isHistory ? '40px' : '56px',
                     height: isHistory ? '40px' : '56px',
                     fontSize: isHistory ? '14px' : '18px',
-                    overflow: 'visible', // 允许溢出，防止图标被切
+                    overflow: earthquakeBadgeMeta ? 'hidden' : 'visible',
                     padding: weatherIconUrl ? 0 : undefined,
-                    borderRadius: weatherIconUrl ? '0' : '50%', // 气象图标完全去圆角
-                    backgroundColor: weatherIconUrl ? 'transparent' : undefined,
-                    boxShadow: weatherIconUrl ? 'none' : undefined
+                    borderRadius: weatherIconUrl
+                        ? '0'
+                        : (earthquakeBadgeMeta ? (isHistory ? '10px' : '12px') : '50%'),
+                    backgroundColor: weatherIconUrl
+                        ? 'transparent'
+                        : (earthquakeBadgeMeta?.background || '#6B7878'),
+                    boxShadow: weatherIconUrl ? 'none' : (earthquakeBadgeMeta ? '0 2px 8px rgba(0,0,0,0.16)' : undefined),
+                    color: earthquakeBadgeMeta?.color || undefined,
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: 1
                 }}>
                     {weatherIconUrl ? (
                         <img
@@ -218,6 +547,33 @@ function EventsList() {
                                 e.target.parentElement.style.backgroundColor = 'var(--md-sys-color-surface-variant)';
                             }}
                         />
+                    ) : earthquakeBadgeMeta ? (
+                        <>
+                            <span style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: isHistory ? '10px' : '12px',
+                                lineHeight: isHistory ? '10px' : '12px',
+                                textAlign: 'center',
+                                fontSize: isHistory ? '8px' : '9px',
+                                fontWeight: 600,
+                                color: 'rgba(255,255,255,0.88)',
+                                background: 'rgba(0,0,0,0.18)',
+                                letterSpacing: '0.2px'
+                            }}>
+                                {earthquakeBadgeMeta.label}
+                            </span>
+                            <span style={{
+                                paddingTop: isHistory ? '6px' : '8px',
+                                fontWeight: 800,
+                                fontSize: isHistory ? '18px' : '28px',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.25)'
+                            }}>
+                                {badgeContent}
+                            </span>
+                        </>
                     ) : (
                         badgeContent
                     )}
@@ -226,7 +582,7 @@ function EventsList() {
                 <div className="event-main">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                         <Typography variant={isHistory ? "body2" : "h6"} sx={{ fontWeight: 700, color: 'text.primary' }}>
-                            {evt.description || '未知位置'}
+                            {displayTitle}
                         </Typography>
                         {reportLabel && (
                             <span style={{
@@ -248,7 +604,7 @@ function EventsList() {
                     </div>
                     <div className="event-meta" style={{ opacity: 0.6, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                            🕒 {formatTimeFriendly(evt.time, displayTimezone)}
+                            🕒 {formatTimeFriendly(evt.time || evt.timestamp, displayTimezone, evt.source || '')}
                         </span>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ opacity: 0.5 }}>•</span>
@@ -269,7 +625,7 @@ function EventsList() {
 
     return (
         <Box sx={{ my: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.5px', color: 'text.primary' }}>
                         最近事件记录
@@ -281,23 +637,154 @@ function EventsList() {
                     )}
                 </Box>
                 
-                <div className="filter-group">
-                    {[
-                        { id: 'all', label: '全部' },
-                        { id: 'earthquake_warning', label: '地震预警' },
-                        { id: 'earthquake', label: '地震情报' },
-                        { id: 'weather', label: '气象预警' },
-                        { id: 'tsunami', label: '海啸预警' }
-                    ].map(item => (
-                        <button
-                            key={item.id}
-                            className={`btn-filter ${filterType === item.id ? 'active' : ''}`}
-                            onClick={() => setFilterType(item.id)}
-                        >
-                            {filterType === item.id && <span style={{ fontSize: '12px' }}>✓</span>}
-                            {item.label}
-                        </button>
-                    ))}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    flexWrap: 'nowrap',
+                    minWidth: 0
+                }}>
+                    <div className="filter-group" style={{ flexWrap: 'nowrap' }}>
+                        {[
+                            { id: 'all', label: '全部' },
+                            { id: 'earthquake_warning', label: '地震预警' },
+                            { id: 'earthquake', label: '地震情报' },
+                            { id: 'weather', label: '气象预警' },
+                            { id: 'tsunami', label: '海啸预警' }
+                        ].map(item => (
+                            <button
+                                key={item.id}
+                                className={`btn-filter ${filterType === item.id ? 'active' : ''}`}
+                                onClick={() => setFilterType(item.id)}
+                            >
+                                {filterType === item.id && <span style={{ fontSize: '12px' }}>✓</span>}
+                                {item.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {availableSources.length > 0 && (
+                        <div className="filter-group" style={{
+                            flexWrap: 'nowrap',
+                            alignItems: 'center',
+                            gap: '8px',
+                            whiteSpace: 'nowrap',
+                            minWidth: 0
+                        }}>
+                            <Typography variant="body2" sx={{ opacity: 0.65, alignSelf: 'center', mr: 0.5 }}>
+                                数据源
+                            </Typography>
+
+                            <select
+                                value={sourceFilterMode}
+                                onChange={(e) => handleSourceFilterModeChange(e.target.value)}
+                                style={{
+                                    border: '1px solid var(--md-sys-color-outline-variant)',
+                                    borderRadius: '8px',
+                                    padding: '6px 10px',
+                                    background: 'var(--md-sys-color-surface)',
+                                    color: 'inherit',
+                                    fontSize: '13px',
+                                    fontWeight: 600,
+                                    minWidth: '76px',
+                                    width: '76px'
+                                }}
+                            >
+                                <option value="single">单选</option>
+                                <option value="multi">多选</option>
+                            </select>
+
+                            {sourceFilterMode === 'single' ? (
+                                <select
+                                    value={selectedSources[0] || ''}
+                                    onChange={handleSourceSelectChange}
+                                    style={{
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        borderRadius: '8px',
+                                        padding: '6px 10px',
+                                        background: 'var(--md-sys-color-surface)',
+                                        color: 'inherit',
+                                        fontSize: '13px',
+                                        width: '220px',
+                                        minWidth: '220px',
+                                        maxWidth: '220px',
+                                        boxSizing: 'border-box'
+                                    }}
+                                >
+                                    <option value="">全部数据源</option>
+                                    {availableSources.map((source) => (
+                                        <option key={source} value={source} title={source}>
+                                            {formatSourceName(source)}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <details style={{
+                                    position: 'relative',
+                                    width: '220px',
+                                    minWidth: '220px',
+                                    maxWidth: '220px',
+                                    flex: '0 0 220px',
+                                    overflow: 'visible',
+                                    zIndex: 5
+                                }}>
+                                    <summary style={{
+                                        listStyle: 'none',
+                                        cursor: 'pointer',
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        borderRadius: '8px',
+                                        padding: '6px 10px',
+                                        background: 'var(--md-sys-color-surface)',
+                                        fontSize: '13px',
+                                        userSelect: 'none',
+                                        width: '100%',
+                                        boxSizing: 'border-box',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        {selectedSourceSummary}
+                                    </summary>
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: 'calc(100% + 6px)',
+                                        left: 0,
+                                        width: '220px',
+                                        minWidth: '220px',
+                                        maxWidth: '220px',
+                                        maxHeight: '260px',
+                                        overflowY: 'auto',
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        borderRadius: '10px',
+                                        padding: '8px 10px',
+                                        boxSizing: 'border-box',
+                                        background: 'var(--md-sys-color-surface)',
+                                        boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
+                                        zIndex: 30
+                                    }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '12px', opacity: 0.8 }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedSources.length === 0}
+                                                onChange={() => setSelectedSources([])}
+                                            />
+                                            全部数据源
+                                        </label>
+                                        {availableSources.map((source) => (
+                                            <label key={source} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '13px' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedSources.includes(source)}
+                                                    onChange={() => handleSourceCheckboxToggle(source)}
+                                                />
+                                                {formatSourceName(source)}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </details>
+                            )}
+                        </div>
+                    )}
                 </div>
             </Box>
 
@@ -315,6 +802,7 @@ function EventsList() {
                 </div>
             ) : (
                 <>
+                <div className="events-scroll-window">
                 <div className="events-list">
                     {groupedEvents.map((group) => {
                         const isExpanded = expandedEvents.has(group.id);
@@ -326,7 +814,12 @@ function EventsList() {
                                 {!isExpanded && (
                                     <div onClick={() => group.updateCount > 1 && toggleEventGroup(group.id)}>
                                         {renderEventCard(
-                                            { ...group.latestEvent, updateCount: group.updateCount },
+                                            {
+                                                ...group.latestEvent,
+                                                updateCount: group.updateCount,
+                                                _groupType: group.latestEvent.type,
+                                                _groupMagnitude: group.latestEvent.magnitude
+                                            },
                                             false,
                                             group.updateCount > 1,
                                             false,
@@ -352,7 +845,7 @@ function EventsList() {
                                         }}>
                                             <div>
                                                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                                                    {group.latestEvent.description || '未知位置'}
+                                                    {buildEarthquakeTitle(group.latestEvent)}
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ opacity: 0.6 }}>
                                                     📡 {formatSourceName(group.latestEvent.source)} · 共 {totalReports} 次更新
@@ -394,8 +887,17 @@ function EventsList() {
                                             {group.events.map((evt, idx) => {
                                                 const reportIndex = totalReports - idx;
                                                 const isLatest = idx === 0;
-                                                const isEarthquake = evt.type === 'earthquake' || evt.type === 'earthquake_warning';
-                                                
+                                                const rowType = evt.type || group.latestEvent.type || '';
+                                                const isEarthquake = rowType === 'earthquake' || rowType === 'earthquake_warning';
+                                                const rowDepth = evt.depth ?? group.latestEvent.depth;
+                                                const rowMagnitude = evt.magnitude ?? group.latestEvent.magnitude;
+                                                const rowMagnitudeText = formatMagnitudeBadge(rowMagnitude);
+                                                const rowBadgeMeta = getEarthquakeBadgeContent({
+                                                    ...group.latestEvent,
+                                                    ...evt,
+                                                    _groupMagnitude: group.latestEvent.magnitude
+                                                });
+
                                                 return (
                                                     <div key={idx} style={{
                                                         position: 'relative',
@@ -424,22 +926,46 @@ function EventsList() {
                                                             gap: '12px',
                                                             alignItems: 'flex-start'
                                                         }}>
-                                                            {/* 震级徽章（只对地震显示） */}
+                                                            {/* 烈度/震度徽章（按数据源自动选择，缺失时回退震级） */}
                                                             {isEarthquake && (
                                                                 <div style={{
                                                                     minWidth: '60px',
                                                                     height: '60px',
                                                                     borderRadius: '12px',
-                                                                    background: 'var(--md-sys-color-error-container)',
+                                                                    backgroundColor: rowBadgeMeta.background || '#6B7878',
                                                                     display: 'flex',
                                                                     alignItems: 'center',
                                                                     justifyContent: 'center',
-                                                                    fontSize: '20px',
-                                                                    fontWeight: 700,
-                                                                    color: 'var(--md-sys-color-on-error-container)',
-                                                                    flexShrink: 0
+                                                                    flexShrink: 0,
+                                                                    position: 'relative',
+                                                                    overflow: 'hidden',
+                                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.16)'
                                                                 }}>
-                                                                    {(evt.magnitude || 0).toFixed(1)}
+                                                                    <span style={{
+                                                                        position: 'absolute',
+                                                                        top: 0,
+                                                                        left: 0,
+                                                                        width: '100%',
+                                                                        height: '14px',
+                                                                        lineHeight: '14px',
+                                                                        textAlign: 'center',
+                                                                        fontSize: '9px',
+                                                                        fontWeight: 600,
+                                                                        color: 'rgba(255,255,255,0.88)',
+                                                                        background: 'rgba(0,0,0,0.2)'
+                                                                    }}>
+                                                                        {rowBadgeMeta.label}
+                                                                    </span>
+                                                                    <span style={{
+                                                                        paddingTop: '10px',
+                                                                        fontWeight: 800,
+                                                                        fontSize: '30px',
+                                                                        color: rowBadgeMeta.color,
+                                                                        textShadow: '0 1px 2px rgba(0,0,0,0.25)',
+                                                                        lineHeight: 1
+                                                                    }}>
+                                                                        {rowBadgeMeta.text}
+                                                                    </span>
                                                                 </div>
                                                             )}
 
@@ -473,13 +999,18 @@ function EventsList() {
                                                                         </span>
                                                                     )}
                                                                     <Typography variant="body2" sx={{ opacity: 0.6, fontSize: '13px' }}>
-                                                                        🕒 {formatTimeFriendly(evt.time, displayTimezone)}
+                                                                        🕒 {formatTimeFriendly(evt.time || evt.timestamp, displayTimezone, evt.source || group.latestEvent.source || '')}
                                                                     </Typography>
                                                                 </div>
                                                                 {isEarthquake && (
-                                                                    <Typography variant="body2" sx={{ opacity: 0.8, fontSize: '13px' }}>
-                                                                        深度: {evt.depth ? `${evt.depth} km` : '未知'}
-                                                                    </Typography>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                                                        <Typography variant="body2" sx={{ opacity: 0.85, fontSize: '13px', fontWeight: 600 }}>
+                                                                            震级: {rowMagnitudeText !== '--' ? `M ${rowMagnitudeText}` : '调查中'}
+                                                                        </Typography>
+                                                                        <Typography variant="body2" sx={{ opacity: 0.8, fontSize: '13px' }}>
+                                                                            深度: {(rowDepth !== undefined && rowDepth !== null) ? `${rowDepth} km` : '未知'}
+                                                                        </Typography>
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -493,53 +1024,143 @@ function EventsList() {
                         );
                     })}
                 </div>
+                </div>
 
                 {/* 分页控件 */}
-                {totalPages > 1 && (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 4, gap: 2 }}>
-                        <button
-                            onClick={() => {
-                                const p = currentPage - 1;
-                                setCurrentPage(p);
-                                fetchEvents(p, filterType);
-                            }}
-                            disabled={currentPage <= 1}
-                            style={{
-                                padding: '8px 20px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--md-sys-color-outline-variant)',
-                                background: 'var(--md-sys-color-surface-variant)',
-                                cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
-                                opacity: currentPage <= 1 ? 0.4 : 1,
-                                fontWeight: 600,
-                                fontSize: '14px'
-                            }}
-                        >
-                            ‹ 上一页
-                        </button>
-                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                            第 {currentPage} / {totalPages} 页
-                        </Typography>
-                        <button
-                            onClick={() => {
-                                const p = currentPage + 1;
-                                setCurrentPage(p);
-                                fetchEvents(p, filterType);
-                            }}
-                            disabled={currentPage >= totalPages}
-                            style={{
-                                padding: '8px 20px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--md-sys-color-outline-variant)',
-                                background: 'var(--md-sys-color-surface-variant)',
-                                cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
-                                opacity: currentPage >= totalPages ? 0.4 : 1,
-                                fontWeight: 600,
-                                fontSize: '14px'
-                            }}
-                        >
-                            下一页 ›
-                        </button>
+                {total > 0 && (
+                    <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="body2" sx={{ opacity: 0.7 }}>每页</Typography>
+                                <select
+                                    value={pageSize}
+                                    onChange={(e) => setPageSize(Number(e.target.value))}
+                                    style={{
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        borderRadius: '8px',
+                                        padding: '6px 10px',
+                                        background: 'var(--md-sys-color-surface)',
+                                        color: 'inherit',
+                                        fontSize: '13px',
+                                        fontWeight: 600
+                                    }}
+                                >
+                                    {[20, 50, 100, 200].map(size => (
+                                        <option key={size} value={size}>{size} 条</option>
+                                    ))}
+                                </select>
+                                <Typography variant="body2" sx={{ opacity: 0.6 }}>
+                                    第 {currentPage} / {Math.max(totalPages, 1)} 页
+                                </Typography>
+                            </Box>
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={Math.max(totalPages, 1)}
+                                    value={pageInput}
+                                    onChange={(e) => setPageInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handlePageJump();
+                                        }
+                                    }}
+                                    placeholder="跳转页码"
+                                    style={{
+                                        width: '92px',
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        borderRadius: '8px',
+                                        padding: '6px 10px',
+                                        background: 'var(--md-sys-color-surface)',
+                                        color: 'inherit',
+                                        fontSize: '13px'
+                                    }}
+                                />
+                                <button
+                                    onClick={handlePageJump}
+                                    disabled={!canJump}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        background: 'var(--md-sys-color-surface-variant)',
+                                        cursor: canJump ? 'pointer' : 'not-allowed',
+                                        opacity: canJump ? 1 : 0.5,
+                                        fontWeight: 600,
+                                        fontSize: '13px'
+                                    }}
+                                >
+                                    跳转
+                                </button>
+                            </Box>
+                        </Box>
+
+                        {totalPages > 1 && (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                                <button
+                                    onClick={() => goToPage(currentPage - 1)}
+                                    disabled={currentPage <= 1}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        background: 'var(--md-sys-color-surface-variant)',
+                                        cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+                                        opacity: currentPage <= 1 ? 0.4 : 1,
+                                        fontWeight: 600,
+                                        fontSize: '13px'
+                                    }}
+                                >
+                                    ‹
+                                </button>
+
+                                {paginationItems.map((item, idx) => (
+                                    typeof item === 'number' ? (
+                                        <button
+                                            key={`page-${item}`}
+                                            onClick={() => goToPage(item)}
+                                            style={{
+                                                minWidth: '34px',
+                                                padding: '6px 10px',
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--md-sys-color-outline-variant)',
+                                                background: item === currentPage
+                                                    ? 'var(--md-sys-color-primary-container)'
+                                                    : 'var(--md-sys-color-surface)',
+                                                color: item === currentPage
+                                                    ? 'var(--md-sys-color-on-primary-container)'
+                                                    : 'inherit',
+                                                cursor: 'pointer',
+                                                fontWeight: item === currentPage ? 700 : 600,
+                                                fontSize: '13px'
+                                            }}
+                                        >
+                                            {item}
+                                        </button>
+                                    ) : (
+                                        <span key={`ellipsis-${idx}`} style={{ opacity: 0.6, padding: '0 2px' }}>…</span>
+                                    )
+                                ))}
+
+                                <button
+                                    onClick={() => goToPage(currentPage + 1)}
+                                    disabled={currentPage >= totalPages}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--md-sys-color-outline-variant)',
+                                        background: 'var(--md-sys-color-surface-variant)',
+                                        cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                                        opacity: currentPage >= totalPages ? 0.4 : 1,
+                                        fontWeight: 600,
+                                        fontSize: '13px'
+                                    }}
+                                >
+                                    ›
+                                </button>
+                            </Box>
+                        )}
                     </Box>
                 )}
                 </>
