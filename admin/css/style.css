@@ -671,7 +671,10 @@ body.dark-theme .connection-item.disconnected {
     align-items: center;
     gap: 24px;
     border: 1px solid var(--glass-border);
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .mag-badge {
@@ -699,9 +702,28 @@ body.dark-theme .badge-tsunami { background: #01579B; color: #B3E5FC; }
 body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
 
 .event-card:hover {
-    background: var(--md-sys-color-surface-variant);
-    border-color: var(--md-sys-color-primary);
-    transform: translateX(6px);
+    background: color-mix(in srgb, var(--md-sys-color-surface) 84%, var(--md-sys-color-primary) 16%);
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 52%, transparent);
+    box-shadow: 0 6px 18px rgba(103, 80, 164, 0.10);
+    transform: translateX(2px);
+}
+
+.event-group-expanded {
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--glass-shadow);
+    transition: background-color 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.event-group-expanded:hover {
+    background: color-mix(in srgb, var(--md-sys-color-surface) 90%, var(--md-sys-color-primary) 10%);
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 46%, transparent);
+    box-shadow: 0 8px 22px rgba(103, 80, 164, 0.10);
+    transform: translateY(-1px);
 }
 
 /* 震级图表 (MD3 风格) */
@@ -1266,6 +1288,16 @@ html.theme-dark .skeleton {
     #loading-skeleton.is-exiting {
         transition: opacity 0.15s linear !important;
         transform: none !important;
+    }
+
+    .event-card,
+    .event-card:hover,
+    .event-group-expanded,
+    .event-group-expanded:hover,
+    .event-group .MuiCollapse-root {
+        transition: none !important;
+        transform: none !important;
+        animation: none !important;
     }
 
     .boot-loader__progress-bar {
