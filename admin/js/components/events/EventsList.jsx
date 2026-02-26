@@ -21,15 +21,29 @@ function EventsList() {
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(false);
     const [pageSize, setPageSize] = useState(50);
+    const [maxPageSize, setMaxPageSize] = useState(200);
     const [pageInput, setPageInput] = useState('');
     const [sourceFilterMode, setSourceFilterMode] = useState('single'); // single | multi
     const [selectedSources, setSelectedSources] = useState([]);
     const [sourceOptions, setSourceOptions] = useState([]);
+    const [magnitudeFilter, setMagnitudeFilter] = useState('all');
+    const [magnitudeOrder, setMagnitudeOrder] = useState('default');
 
     // 持有当前进行中请求的 AbortController，新请求发起时 abort 旧请求
     const abortControllerRef = useRef(null);
+    const eventsScrollRef = useRef(null);
+    const preservedScrollTopRef = useRef(null);
+    const shouldRestoreScrollRef = useRef(false);
 
-    const fetchEvents = useCallback((page, type, limit, sources = []) => {
+    const fetchEvents = useCallback((
+        page,
+        type,
+        limit,
+        sources = [],
+        minMagnitude = null,
+        magnitudeSort = '',
+        options = {}
+    ) => {
         // 取消上一个尚未完成的请求
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -38,8 +52,17 @@ function EventsList() {
         abortControllerRef.current = controller;
 
         const safeLimit = Number(limit) > 0 ? Number(limit) : 50;
+        const preserveScroll = Boolean(options?.preserveScroll);
+        const shouldToggleLoading = !preserveScroll;
 
-        setLoading(true);
+        if (preserveScroll && eventsScrollRef.current) {
+            preservedScrollTopRef.current = eventsScrollRef.current.scrollTop;
+            shouldRestoreScrollRef.current = true;
+        }
+
+        if (shouldToggleLoading) {
+            setLoading(true);
+        }
         const typeParam = type === 'all' ? '' : type;
         // 将前端 filter key 映射为后端的 type 值
         const typeMap = {
@@ -55,46 +78,103 @@ function EventsList() {
         const sourceParam = normalizedSources.length > 0
             ? `&source=${encodeURIComponent(normalizedSources.join(','))}`
             : '';
-        fetch(`/api/events?page=${page}&limit=${safeLimit}${apiType ? `&type=${apiType}` : ''}${sourceParam}`, { signal: controller.signal })
+        const hasMagnitudeFilter = minMagnitude !== null && minMagnitude !== undefined && minMagnitude !== '';
+        const normalizedMagnitude = hasMagnitudeFilter ? Number(minMagnitude) : NaN;
+        const magnitudeParam = hasMagnitudeFilter && Number.isFinite(normalizedMagnitude)
+            ? `&min_magnitude=${encodeURIComponent(normalizedMagnitude)}`
+            : '';
+        const normalizedSort = String(magnitudeSort || '').toLowerCase();
+        const magnitudeOrderParam = ['asc', 'desc'].includes(normalizedSort)
+            ? `&magnitude_order=${encodeURIComponent(normalizedSort)}`
+            : '';
+
+        fetch(`/api/events?page=${page}&limit=${safeLimit}${apiType ? `&type=${apiType}` : ''}${sourceParam}${magnitudeParam}${magnitudeOrderParam}`, { signal: controller.signal })
             .then(res => res.json())
             .then(data => {
                 setEvents(Array.isArray(data.events) ? data.events : []);
                 setTotal(data.total || 0);
                 setTotalPages(data.total_pages || 0);
                 setSourceOptions(Array.isArray(data.sources) ? data.sources : []);
-                setLoading(false);
+                const apiMaxLimit = Number(data.max_limit);
+                if (Number.isFinite(apiMaxLimit) && apiMaxLimit > 0) {
+                    setMaxPageSize(Math.floor(apiMaxLimit));
+                }
+                if (shouldToggleLoading) {
+                    setLoading(false);
+                }
             })
             .catch(err => {
-                if (err.name === 'AbortError') return;
+                if (err.name === 'AbortError') {
+                    if (shouldToggleLoading) {
+                        setLoading(false);
+                    }
+                    return;
+                }
                 console.error('Failed to fetch events:', err);
-                setLoading(false);
+                if (shouldToggleLoading) {
+                    setLoading(false);
+                }
             });
     }, []);
 
-    // 切换筛选类型、每页数量或数据源筛选时重置到第1页
+    // 切换筛选类型、每页数量、数据源、震级阈值或排序时重置到第1页
     useEffect(() => {
         setCurrentPage(1);
         setPageInput('');
-        fetchEvents(1, filterType, pageSize, selectedSources);
-    }, [filterType, pageSize, selectedSources, fetchEvents]);
+        const minMagnitude = magnitudeFilter === 'all' ? null : Number(magnitudeFilter);
+        const magnitudeSort = magnitudeOrder === 'default' ? '' : magnitudeOrder;
+        fetchEvents(1, filterType, pageSize, selectedSources, minMagnitude, magnitudeSort);
+    }, [filterType, pageSize, selectedSources, magnitudeFilter, magnitudeOrder, fetchEvents]);
+
+    useEffect(() => {
+        if (pageSize > maxPageSize) {
+            setPageSize(maxPageSize);
+        }
+    }, [pageSize, maxPageSize]);
+
+    const pageSizeOptions = useMemo(() => {
+        const base = [20, 50, 100, 200].filter(size => size <= maxPageSize);
+        const merged = Array.from(new Set([...base, maxPageSize])).filter(size => size > 0);
+        merged.sort((a, b) => a - b);
+        return merged;
+    }, [maxPageSize]);
 
     // 用 ref 追踪最新 filterType / pageSize，供新事件触发的刷新使用，
     // 避免引入它们为依赖导致双重请求
     const filterTypeRef = useRef(filterType);
     const pageSizeRef = useRef(pageSize);
     const selectedSourcesRef = useRef(selectedSources);
+    const currentPageRef = useRef(currentPage);
+    const magnitudeFilterRef = useRef(magnitudeFilter);
+    const magnitudeOrderRef = useRef(magnitudeOrder);
     useEffect(() => {
         filterTypeRef.current = filterType;
         pageSizeRef.current = pageSize;
         selectedSourcesRef.current = selectedSources;
+        currentPageRef.current = currentPage;
+        magnitudeFilterRef.current = magnitudeFilter;
+        magnitudeOrderRef.current = magnitudeOrder;
     });
 
-    // WebSocket 收到新事件时，回到第1页刷新（始终用当前筛选条件与每页大小）
+    // WebSocket 收到新事件时，保持当前页刷新，并尽量维持列表滚动位置
     useEffect(() => {
         if (!state.wsConnected) return;
-        setCurrentPage(1);
-        setPageInput('');
-        fetchEvents(1, filterTypeRef.current, pageSizeRef.current, selectedSourcesRef.current);
+        const minMagnitude = magnitudeFilterRef.current === 'all'
+            ? null
+            : Number(magnitudeFilterRef.current);
+        const magnitudeSort = magnitudeOrderRef.current === 'default'
+            ? ''
+            : magnitudeOrderRef.current;
+
+        fetchEvents(
+            currentPageRef.current,
+            filterTypeRef.current,
+            pageSizeRef.current,
+            selectedSourcesRef.current,
+            minMagnitude,
+            magnitudeSort,
+            { preserveScroll: true }
+        );
     }, [state.events, state.wsConnected, fetchEvents]);
 
     const availableSources = useMemo(() => {
@@ -120,6 +200,11 @@ function EventsList() {
     const filteredEvents = useMemo(() => {
         return Array.isArray(events) ? events : [];
     }, [events]);
+
+    const parseMagnitudeValue = (mag) => {
+        const num = Number(mag);
+        return Number.isFinite(num) ? num : null;
+    };
 
     const getEventTimeMs = (event) => {
         const parsed = parseEventTimeToDate(event?.time || event?.timestamp, event?.source || '');
@@ -213,6 +298,31 @@ function EventsList() {
         );
     }, [filteredEvents]);
 
+    const displayGroupedEvents = useMemo(() => groupedEvents, [groupedEvents]);
+
+    useEffect(() => {
+        if (!shouldRestoreScrollRef.current) return;
+
+        const targetTop = preservedScrollTopRef.current;
+        if (targetTop === null || targetTop === undefined) {
+            shouldRestoreScrollRef.current = false;
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (eventsScrollRef.current) {
+                    const maxScrollTop = Math.max(
+                        eventsScrollRef.current.scrollHeight - eventsScrollRef.current.clientHeight,
+                        0
+                    );
+                    eventsScrollRef.current.scrollTop = Math.min(targetTop, maxScrollTop);
+                }
+                shouldRestoreScrollRef.current = false;
+            });
+        });
+    }, [groupedEvents, loading]);
+
     const toggleEventGroup = (groupId) => {
         setExpandedEvents(prev => {
             const newSet = new Set(prev);
@@ -232,8 +342,10 @@ function EventsList() {
 
         setCurrentPage(safePage);
         setPageInput('');
-        fetchEvents(safePage, filterType, pageSize, selectedSources);
-    }, [currentPage, totalPages, fetchEvents, filterType, pageSize, selectedSources]);
+        const minMagnitude = magnitudeFilter === 'all' ? null : Number(magnitudeFilter);
+        const magnitudeSort = magnitudeOrder === 'default' ? '' : magnitudeOrder;
+        fetchEvents(safePage, filterType, pageSize, selectedSources, minMagnitude, magnitudeSort);
+    }, [currentPage, totalPages, fetchEvents, filterType, pageSize, selectedSources, magnitudeFilter, magnitudeOrder]);
 
     const paginationItems = useMemo(() => {
         if (totalPages <= 0) return [];
@@ -663,6 +775,59 @@ function EventsList() {
                         ))}
                     </div>
 
+                    <div className="filter-group" style={{
+                        flexWrap: 'nowrap',
+                        alignItems: 'center',
+                        gap: '8px',
+                        whiteSpace: 'nowrap',
+                        minWidth: 0
+                    }}>
+                        <Typography variant="body2" sx={{ opacity: 0.65, alignSelf: 'center', mr: 0.5 }}>
+                            震级
+                        </Typography>
+                        <select
+                            value={magnitudeFilter}
+                            onChange={(e) => setMagnitudeFilter(e.target.value)}
+                            style={{
+                                border: '1px solid var(--md-sys-color-outline-variant)',
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                background: 'var(--md-sys-color-surface)',
+                                color: 'inherit',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                minWidth: '108px'
+                            }}
+                        >
+                            <option value="all">全部震级</option>
+                            <option value="3">M ≥ 3.0</option>
+                            <option value="4">M ≥ 4.0</option>
+                            <option value="5">M ≥ 5.0</option>
+                            <option value="6">M ≥ 6.0</option>
+                            <option value="7">M ≥ 7.0</option>
+                            <option value="8">M ≥ 8.0</option>
+                        </select>
+
+                        <select
+                            value={magnitudeOrder}
+                            onChange={(e) => setMagnitudeOrder(e.target.value)}
+                            style={{
+                                border: '1px solid var(--md-sys-color-outline-variant)',
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                background: 'var(--md-sys-color-surface)',
+                                color: 'inherit',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                minWidth: '108px'
+                            }}
+                        >
+                            <option value="default">默认排序</option>
+                            <option value="desc">震级降序</option>
+                            <option value="asc">震级升序</option>
+                        </select>
+                    </div>
+
                     {availableSources.length > 0 && (
                         <div className="filter-group" style={{
                             flexWrap: 'nowrap',
@@ -792,7 +957,7 @@ function EventsList() {
                 <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
                     <CircularProgress size={32} />
                 </div>
-            ) : groupedEvents.length === 0 ? (
+            ) : displayGroupedEvents.length === 0 ? (
                 <div className="card" style={{ textAlign: 'center', padding: '80px' }}>
                     <Typography variant="h2" sx={{ opacity: 0.1, mb: 2 }}>📭</Typography>
                     <Typography variant="body1" sx={{ opacity: 0.5 }}>暂无该类型的事件记录</Typography>
@@ -802,16 +967,16 @@ function EventsList() {
                 </div>
             ) : (
                 <>
-                <div className="events-scroll-window">
+                <div className="events-scroll-window" ref={eventsScrollRef}>
                 <div className="events-list">
-                    {groupedEvents.map((group) => {
+                    {displayGroupedEvents.map((group) => {
                         const isExpanded = expandedEvents.has(group.id);
                         const totalReports = group.events.length;
                         
                         return (
                             <div key={group.id} className="event-group">
                                 {/* 折叠状态：只显示最新一条 */}
-                                {!isExpanded && (
+                                <Collapse in={!isExpanded} timeout={220} unmountOnExit>
                                     <div onClick={() => group.updateCount > 1 && toggleEventGroup(group.id)}>
                                         {renderEventCard(
                                             {
@@ -826,11 +991,11 @@ function EventsList() {
                                             null
                                         )}
                                     </div>
-                                )}
+                                </Collapse>
 
                                 {/* 展开状态：显示所有报的时间线 */}
-                                {isExpanded && (
-                                    <div className="card" style={{ 
+                                <Collapse in={isExpanded} timeout={260} unmountOnExit>
+                                    <div className="event-group-expanded" style={{
                                         padding: '24px',
                                         position: 'relative'
                                     }}>
@@ -913,8 +1078,8 @@ function EventsList() {
                                                             width: '20px',
                                                             height: '20px',
                                                             borderRadius: '50%',
-                                                            background: isLatest 
-                                                                ? 'var(--md-sys-color-primary)' 
+                                                            background: isLatest
+                                                                ? 'var(--md-sys-color-primary)'
                                                                 : 'var(--md-sys-color-surface-variant)',
                                                             border: `3px solid ${isLatest ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface)'}`,
                                                             boxShadow: isLatest ? '0 2px 8px rgba(103, 80, 164, 0.3)' : 'none'
@@ -977,10 +1142,10 @@ function EventsList() {
                                                                         fontWeight: 700,
                                                                         padding: '3px 10px',
                                                                         borderRadius: '6px',
-                                                                        background: isLatest 
+                                                                        background: isLatest
                                                                             ? 'var(--md-sys-color-primary)'
                                                                             : 'var(--md-sys-color-surface-variant)',
-                                                                        color: isLatest 
+                                                                        color: isLatest
                                                                             ? 'var(--md-sys-color-on-primary)'
                                                                             : 'inherit'
                                                                     }}>
@@ -1019,7 +1184,7 @@ function EventsList() {
                                             })}
                                         </div>
                                     </div>
-                                )}
+                                </Collapse>
                             </div>
                         );
                     })}
@@ -1045,7 +1210,7 @@ function EventsList() {
                                         fontWeight: 600
                                     }}
                                 >
-                                    {[20, 50, 100, 200].map(size => (
+                                    {pageSizeOptions.map(size => (
                                         <option key={size} value={size}>{size} 条</option>
                                     ))}
                                 </select>
