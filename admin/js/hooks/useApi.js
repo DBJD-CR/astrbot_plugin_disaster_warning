@@ -45,10 +45,6 @@ function useApi() {
         return fetchData(url);
     };
 
-    const resetStatistics = () => fetchData('/statistics/reset', {
-        method: 'POST'
-    });
-
     // 会话差异配置相关接口
     const listSessionConfigs = () => fetchData('/session-config/sessions');
     const getSessionConfig = (umo) => fetchData(`/session-config/${encodeURIComponent(umo)}`);
@@ -73,7 +69,6 @@ function useApi() {
         getGeoLocation,
         getTrend,
         getHeatmap,
-        resetStatistics,
         listSessionConfigs,
         getSessionConfig,
         updateSessionConfig,

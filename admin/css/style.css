@@ -646,21 +646,10 @@ body.dark-theme .connection-item.disconnected {
 }
 
 /* 事件列表和卡片 */
-.events-scroll-window {
-    max-height: clamp(360px, 62vh, 760px);
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding-right: 6px;
-    margin-bottom: 8px;
-    scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch;
-}
-
 .events-list {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-height: min-content;
+    display: flex; 
+    flex-direction: column; 
+    gap: 16px; 
 }
 
 .event-card {
@@ -677,7 +666,7 @@ body.dark-theme .connection-item.disconnected {
 .mag-badge {
     width: 56px;
     height: 56px;
-    border-radius: 12px;
+    border-radius: 50% !important;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -685,16 +674,15 @@ body.dark-theme .connection-item.disconnected {
     font-size: 18px;
     flex-shrink: 0;
     box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-    overflow: hidden;
 }
 
 /* 徽章容器颜色 */
-.badge-earthquake { background: transparent; color: inherit; }
+.badge-earthquake { background: #F3E5F5; color: #7B1FA2; }
 .badge-tsunami { background: #E1F5FE; color: #0288D1; }
 .badge-weather { background: #FFF3E0; color: #F57C00; }
 .badge-unknown { background: #F5F5F5; color: #616161; }
 
-body.dark-theme .badge-earthquake { background: transparent; color: inherit; }
+body.dark-theme .badge-earthquake { background: #4A148C; color: #E1BEE7; }
 body.dark-theme .badge-tsunami { background: #01579B; color: #B3E5FC; }
 body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
 
@@ -926,12 +914,6 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     }
 
     /* 事件卡片 */
-    .events-scroll-window {
-        max-height: none;
-        overflow: visible;
-        padding-right: 0;
-    }
-
     .event-card {
         flex-direction: row;
         flex-wrap: wrap;

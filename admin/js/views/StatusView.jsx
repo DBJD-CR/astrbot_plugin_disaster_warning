@@ -5,10 +5,8 @@ function StatusView({ onOpenSimulation }) {
     const { status, wsConnected } = state; // 获取 wsConnected 状态
     const [reconnecting, setReconnecting] = React.useState(false);
     const [refreshing, setRefreshing] = React.useState(false);
-    const [resettingStats, setResettingStats] = React.useState(false);
     const { sendMessage } = useWebSocket(); // 获取 WebSocket 发送消息函数
     const { showToast } = useToast(); // 使用 Toast 提示
-    const api = useApi();
 
     const refreshAll = async () => {
         setRefreshing(true);
@@ -70,28 +68,6 @@ function StatusView({ onOpenSimulation }) {
             console.error('Reconnect failed:', e);
             showToast('请求失败，请检查网络连接', 'error');
             setReconnecting(false);
-        }
-    };
-
-    const handleResetStatistics = async () => {
-        const ok = confirm('⚠️ 确定要清除插件统计数据吗？\n\n该操作会重置统计信息、图表数据、事件列表等（不可恢复）。');
-        if (!ok) return;
-
-        setResettingStats(true);
-        try {
-            const result = await api.resetStatistics();
-            if (result && result.success) {
-                // 清除后主动刷新控制台数据
-                await refreshAll();
-                showToast(result.message || '统计数据已清除', 'success');
-            } else {
-                showToast('清除失败: ' + ((result && result.error) || '未知错误'), 'error');
-            }
-        } catch (e) {
-            console.error('Reset statistics failed:', e);
-            showToast('清除失败，请检查网络连接', 'error');
-        } finally {
-            setResettingStats(false);
         }
     };
 
@@ -183,35 +159,6 @@ function StatusView({ onOpenSimulation }) {
                                     <>
                                         <span style={{ fontSize: '18px' }}>🔄</span>
                                         刷新控制台数据
-                                    </>
-                                )}
-                            </button>
-
-                            <button
-                                className="btn btn-action"
-                                onClick={handleResetStatistics}
-                                disabled={resettingStats || !status.running}
-                                style={{
-                                    opacity: status.running ? 1 : 0.5,
-                                    cursor: status.running ? 'pointer' : 'not-allowed'
-                                }}
-                                title="清除插件统计数据（等价于 /灾害预警统计清除）"
-                            >
-                                {resettingStats ? (
-                                    <>
-                                        <span className="spinner" style={{
-                                            width: '14px',
-                                            height: '14px',
-                                            border: '2px solid rgba(0,0,0,0.2)',
-                                            borderTopColor: 'var(--md-sys-color-primary)',
-                                            borderRadius: '50%'
-                                        }}></span>
-                                        清除中...
-                                    </>
-                                ) : (
-                                    <>
-                                        <span style={{ fontSize: '18px' }}>🧹</span>
-                                        一键清除统计
                                     </>
                                 )}
                             </button>

@@ -39,8 +39,8 @@ function HorizontalTimeline({ style }) {
         return majorEvents
             .slice()
             .sort((a, b) => {
-                const timeA = parseEventTimeToDate(a.time || a.timestamp, a.source || '')?.getTime() || 0;
-                const timeB = parseEventTimeToDate(b.time || b.timestamp, b.source || '')?.getTime() || 0;
+                const timeA = new Date(a.time || a.timestamp).getTime();
+                const timeB = new Date(b.time || b.timestamp).getTime();
                 return timeA - timeB;
             });
     }, [majorEvents]);
@@ -49,79 +49,22 @@ function HorizontalTimeline({ style }) {
     // 用于标记是否是用户触发的滚动，防止自动滚动逻辑干扰
     const isUserScrolling = useRef(false);
 
-    // 导航按钮增强：更大步进、长按连续滚动、双击直达边界
-    const BUTTON_SCROLL_STEP = 420;
-    const HOLD_SCROLL_STEP = 140;
-    const HOLD_SCROLL_INTERVAL = 45;
-    const HOLD_START_DELAY = 220;
-
-    const holdStartTimerRef = useRef(null);
-    const holdIntervalRef = useRef(null);
-
-    const stopContinuousScroll = useCallback(() => {
-        if (holdStartTimerRef.current) {
-            clearTimeout(holdStartTimerRef.current);
-            holdStartTimerRef.current = null;
+    const scrollLeft = () => {
+        if (scrollContainerRef.current) {
+            isUserScrolling.current = true;
+            scrollContainerRef.current.scrollBy({ left: -200, behavior: 'smooth' });
+            // 滚动动画结束后重置标志
+            setTimeout(() => { isUserScrolling.current = false; }, 500);
         }
-        if (holdIntervalRef.current) {
-            clearInterval(holdIntervalRef.current);
-            holdIntervalRef.current = null;
+    };
+
+    const scrollRight = () => {
+        if (scrollContainerRef.current) {
+            isUserScrolling.current = true;
+            scrollContainerRef.current.scrollBy({ left: 200, behavior: 'smooth' });
+            setTimeout(() => { isUserScrolling.current = false; }, 500);
         }
-        // 稍作延迟再释放“用户正在交互”标志，避免和自动滚动互相打架
-        setTimeout(() => {
-            isUserScrolling.current = false;
-        }, 120);
-    }, []);
-
-    const scrollByStep = useCallback((direction) => {
-        if (!scrollContainerRef.current) return;
-        isUserScrolling.current = true;
-        scrollContainerRef.current.scrollBy({
-            left: direction * BUTTON_SCROLL_STEP,
-            behavior: 'smooth'
-        });
-        setTimeout(() => {
-            isUserScrolling.current = false;
-        }, 420);
-    }, []);
-
-    const scrollToEdge = useCallback((toRight) => {
-        if (!scrollContainerRef.current) return;
-        isUserScrolling.current = true;
-        scrollContainerRef.current.scrollTo({
-            left: toRight ? scrollContainerRef.current.scrollWidth : 0,
-            behavior: 'smooth'
-        });
-        setTimeout(() => {
-            isUserScrolling.current = false;
-        }, 520);
-    }, []);
-
-    const startContinuousScroll = useCallback((direction) => {
-        if (!scrollContainerRef.current) return;
-
-        // 防止多次触发导致重复定时器
-        stopContinuousScroll();
-        isUserScrolling.current = true;
-
-        // 长按达到阈值后启动连续滚动
-        holdStartTimerRef.current = setTimeout(() => {
-            holdIntervalRef.current = setInterval(() => {
-                if (!scrollContainerRef.current) return;
-                scrollContainerRef.current.scrollBy({
-                    left: direction * HOLD_SCROLL_STEP,
-                    behavior: 'auto'
-                });
-            }, HOLD_SCROLL_INTERVAL);
-        }, HOLD_START_DELAY);
-    }, [stopContinuousScroll]);
-
-    // 组件卸载时清理定时器
-    useEffect(() => {
-        return () => {
-            stopContinuousScroll();
-        };
-    }, [stopContinuousScroll]);
+    };
 
     // 在数据更新时自动滚动到最右侧
     // 逻辑优化：只在组件首次挂载 或 timelineItems 长度增加（有新事件）时滚动
@@ -161,11 +104,11 @@ function HorizontalTimeline({ style }) {
         );
     }
 
-    const formatTime = (isoString, source) => {
+    const formatTime = (isoString) => {
         if (!isoString) return '';
         try {
             // 使用新的时区处理函数，不包含年份
-            const formatted = formatTimeWithZone(isoString, displayTimezone, false, source || '');
+            const formatted = formatTimeWithZone(isoString, displayTimezone, false);
             // 格式化后的结果已经是 MM-DD HH:mm，这里为了样式紧凑，我们可以把 - 换成 /
             return formatted.replace('-', '/');
         } catch (e) {
@@ -211,10 +154,6 @@ function HorizontalTimeline({ style }) {
         return 'var(--md-sys-color-primary)';
     };
 
-    const getSourceLabel = (event) => {
-        return formatSourceName(event?.source_id || event?.source || 'unknown');
-    };
-
     return (
         <div className="card" style={{ ...style, display: 'flex', flexDirection: 'column', overflowX: 'auto', position: 'relative' }}>
             <div className="chart-card-header" style={{ marginBottom: '24px' }}>
@@ -226,18 +165,7 @@ function HorizontalTimeline({ style }) {
             <>
                 <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
                             <div
-                                onClick={() => scrollByStep(-1)}
-                                onDoubleClick={() => scrollToEdge(false)}
-                                onMouseDown={() => startContinuousScroll(-1)}
-                                onMouseUp={stopContinuousScroll}
-                                onMouseLeave={(e) => {
-                                    stopContinuousScroll();
-                                    e.currentTarget.style.opacity = 0.6;
-                                }}
-                                onTouchStart={() => startContinuousScroll(-1)}
-                                onTouchEnd={stopContinuousScroll}
-                                onTouchCancel={stopContinuousScroll}
-                                title="单击：向左快速移动｜长按：连续移动｜双击：跳到最左"
+                                onClick={scrollLeft}
                                 style={{
                                     width: '32px',
                                     height: '32px',
@@ -254,6 +182,7 @@ function HorizontalTimeline({ style }) {
                                     transition: 'opacity 0.2s',
                                 }}
                                 onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = 0.6}
                             >
                                 <span style={{ fontSize: '18px', fontWeight: 'bold' }}>‹</span>
                             </div>
@@ -261,18 +190,7 @@ function HorizontalTimeline({ style }) {
 
                         <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
                             <div
-                                onClick={() => scrollByStep(1)}
-                                onDoubleClick={() => scrollToEdge(true)}
-                                onMouseDown={() => startContinuousScroll(1)}
-                                onMouseUp={stopContinuousScroll}
-                                onMouseLeave={(e) => {
-                                    stopContinuousScroll();
-                                    e.currentTarget.style.opacity = 0.6;
-                                }}
-                                onTouchStart={() => startContinuousScroll(1)}
-                                onTouchEnd={stopContinuousScroll}
-                                onTouchCancel={stopContinuousScroll}
-                                title="单击：向右快速移动｜长按：连续移动｜双击：跳到最右"
+                                onClick={scrollRight}
                                 style={{
                                     width: '32px',
                                     height: '32px',
@@ -289,6 +207,7 @@ function HorizontalTimeline({ style }) {
                                     transition: 'opacity 0.2s',
                                 }}
                                 onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = 0.6}
                             >
                                 <span style={{ fontSize: '18px', fontWeight: 'bold' }}>›</span>
                             </div>
@@ -371,7 +290,6 @@ function HorizontalTimeline({ style }) {
                             {/* 事件节点 */}
                             {timelineItems.map((item, index) => {
                                 const color = getEventColor(item);
-                                const sourceLabel = getSourceLabel(item);
 
                                 return (
                                     <div key={index} style={{
@@ -400,7 +318,7 @@ function HorizontalTimeline({ style }) {
                                         padding: '2px 6px',
                                         borderRadius: '4px'
                                     }}>
-                                        {formatTime(item.time || item.timestamp, item.source)}
+                                        {formatTime(item.time || item.timestamp)}
                                     </Typography>
                                 </div>
 
@@ -469,18 +387,6 @@ function HorizontalTimeline({ style }) {
                                                     ? (desc.includes(' ') ? desc.split(' ').slice(1).join(' ') : desc.replace(/^M[\d.]+\s*/, ''))
                                                     : (desc.length > 12 ? desc.substring(0, 12) + '...' : desc);
                                             })()}
-                                        </Typography>
-                                        <Typography variant="caption" sx={{
-                                            opacity: 0.45,
-                                            display: 'block',
-                                            fontSize: '10px',
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            maxWidth: '120px',
-                                            mt: 0.25
-                                        }}>
-                                            📡 {sourceLabel}
                                         </Typography>
                                     </div>
                                 </Tooltip>

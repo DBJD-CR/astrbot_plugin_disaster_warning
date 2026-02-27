@@ -211,29 +211,6 @@ class WebAdminServer:
                 logger.error(f"[灾害预警] 获取统计失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
-        @self.app.post("/api/statistics/reset")
-        async def reset_statistics():
-            """清除统计数据（等价于 /灾害预警统计清除）"""
-            try:
-                if (
-                    not self.disaster_service
-                    or not self.disaster_service.statistics_manager
-                ):
-                    return JSONResponse(
-                        {"error": "统计管理器未初始化"}, status_code=503
-                    )
-
-                await self.disaster_service.statistics_manager.reset_stats()
-
-                return {
-                    "success": True,
-                    "message": "统计数据已清除",
-                    "timestamp": datetime.now().isoformat(),
-                }
-            except Exception as e:
-                logger.error(f"[灾害预警] 通过Web端清除统计失败: {e}")
-                return JSONResponse({"error": str(e)}, status_code=500)
-
         @self.app.post("/api/reconnect")
         async def force_reconnect():
             """强制重连所有离线数据源"""
@@ -442,13 +419,8 @@ class WebAdminServer:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/events")
-        async def get_events_paginated(
-            page: int = 1,
-            limit: int = 50,
-            type: str = "",
-            source: str = "",
-        ):
-            """分页获取历史事件记录（支持按类型、数据源过滤）"""
+        async def get_events_paginated(page: int = 1, limit: int = 50, type: str = ""):
+            """分页获取历史事件记录"""
             try:
                 if (
                     not self.disaster_service
@@ -460,22 +432,17 @@ class WebAdminServer:
                         "page": page,
                         "limit": limit,
                         "total_pages": 0,
-                        "sources": [],
                     }
 
                 db = self.disaster_service.statistics_manager.db
                 event_type = type if type else None
-                source_filters = [s.strip() for s in source.split(",") if s.strip()]
                 # 限制每页最多100条
                 limit = min(max(1, limit), 100)
                 page = max(1, page)
 
-                total = await db.get_events_count(event_type, source_filters)
-                events = await db.get_events_paginated(
-                    page, limit, event_type, source_filters
-                )
+                total = await db.get_events_count(event_type)
+                events = await db.get_events_paginated(page, limit, event_type)
                 total_pages = (total + limit - 1) // limit if total > 0 else 0
-                available_sources = await db.get_event_sources(event_type)
 
                 return {
                     "events": events,
@@ -483,28 +450,9 @@ class WebAdminServer:
                     "page": page,
                     "limit": limit,
                     "total_pages": total_pages,
-                    "sources": available_sources,
                 }
             except Exception as e:
                 logger.error(f"[灾害预警] 分页获取事件失败: {e}")
-                return JSONResponse({"error": str(e)}, status_code=500)
-
-        @self.app.get("/api/events/sources")
-        async def get_event_sources(type: str = ""):
-            """获取可筛选的数据源列表"""
-            try:
-                if (
-                    not self.disaster_service
-                    or not self.disaster_service.statistics_manager
-                ):
-                    return {"sources": []}
-
-                db = self.disaster_service.statistics_manager.db
-                event_type = type if type else None
-                sources = await db.get_event_sources(event_type)
-                return {"sources": sources}
-            except Exception as e:
-                logger.error(f"[灾害预警] 获取数据源列表失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/events/major")

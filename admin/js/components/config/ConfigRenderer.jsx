@@ -100,8 +100,13 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
                 >
                     <AccordionSummary
                         expandIcon={
-                            <Box sx={{ fontSize: '14px', lineHeight: 1 }}>
-                                {isExpanded ? '▲' : '▼'}
+                            <Box sx={{
+                                fontSize: '14px',
+                                transform: 'rotate(0deg)',
+                                transition: 'transform 0.2s',
+                                '.Mui-expanded &': { transform: 'rotate(180deg)' }
+                            }}>
+                                ▼
                             </Box>
                         }
                         sx={{
@@ -112,13 +117,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
                             '&:hover': {
                                 bgcolor: depth === 0 ? 'rgba(0, 90, 193, 0.1)' : 'rgba(0, 90, 193, 0.05)'
                             },
-                            transition: 'all 0.2s ease',
-                            '& .MuiAccordionSummary-expandIconWrapper': {
-                                transform: 'none !important'
-                            },
-                            '& .MuiAccordionSummary-expandIconWrapper.Mui-expanded': {
-                                transform: 'none !important'
-                            }
+                            transition: 'all 0.2s ease'
                         }}
                     >
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>

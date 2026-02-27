@@ -167,12 +167,8 @@ class SessionConfigManager:
         if not isinstance(effective_config, dict):
             raise ValueError("effective_config 必须是对象")
 
-        # 仅允许会话级白名单字段参与差异计算，避免会话保存误带入全局字段
-        # 导致会话隔离失效或出现“改会话却影响全局”的错觉。
-        default_conf = self._sanitize_patch(self._default_config_dict()) or {}
-        session_effective = self._sanitize_patch(copy.deepcopy(effective_config)) or {}
-
-        patch = self.compute_diff(default_conf, session_effective)
+        default_conf = self._default_config_dict()
+        patch = self.compute_diff(default_conf, effective_config)
         patch = self._sanitize_patch(patch)
         self.set_override(umo, patch)
 

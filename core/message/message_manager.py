@@ -24,7 +24,6 @@ from ...models.data_source_config import (
     get_eew_sources,
     get_intensity_based_sources,
     get_scale_based_sources,
-    is_source_enabled_in_data_sources,
 )
 from ...models.models import (
     DATA_SOURCE_MAPPING,
@@ -473,26 +472,19 @@ class MessagePushManager:
                     f"[灾害预警] 事件时间过早（{time_diff:.1f}小时前），过滤",
                 )
 
-        source_id = self._get_source_id(event)
-        data_sources_cfg = runtime_config.get("data_sources", {})
-        if not is_source_enabled_in_data_sources(source_id, data_sources_cfg):
-            return reject(
-                "会话数据源开关关闭",
-                f"[灾害预警] 会话 {session_id or 'global'} 已禁用数据源 {source_id}，跳过推送",
-            )
-
         # 2. 非地震事件检查
         if not isinstance(event.data, EarthquakeData):
             # 气象预警事件需要进行过滤
             if isinstance(event.data, WeatherAlarmData):
-                title_text = event.data.title or event.data.headline or ""
-                if runtime_components["weather_filter"].should_filter(title_text):
+                headline = event.data.headline or event.data.title or ""
+                if runtime_components["weather_filter"].should_filter(headline):
                     return reject("气象关键字过滤")
             # 海啸和气象事件通过了过滤，可以推送
             return True
 
         # 3. 地震事件专用过滤逻辑
         earthquake = event.data
+        source_id = self._get_source_id(event)
 
         # 通用关键词过滤 (适用于所有地震事件)
         if runtime_components["keyword_filter"].should_filter(earthquake):

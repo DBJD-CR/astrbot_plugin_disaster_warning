@@ -54,9 +54,7 @@ class DatabaseManager:
         await cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
         )
-        events_exists = bool(await cursor.fetchone())
-
-        if events_exists:
+        if await cursor.fetchone():
             # 旧 schema 特征：含 history 或 raw_data 列
             await cursor.execute("PRAGMA table_info(events)")
             columns = {row[1] for row in await cursor.fetchall()}
@@ -64,10 +62,6 @@ class DatabaseManager:
                 logger.info("[灾害预警] 检测到旧版数据库 schema (v1)，开始迁移到 v2...")
                 await self._migrate_v1_to_v2(cursor)
                 return
-
-            # 关键修复：在创建索引前先补齐缺失列，避免 idx_ev_source_id 创建失败
-            if "source_id" not in columns:
-                await cursor.execute("ALTER TABLE events ADD COLUMN source_id TEXT")
 
         await self._create_tables(cursor)
 
@@ -81,7 +75,6 @@ class DatabaseManager:
                 unique_id       TEXT,
                 type            TEXT NOT NULL,
                 source          TEXT NOT NULL,
-                source_id       TEXT,
                 description     TEXT,
                 latitude        REAL,
                 longitude       REAL,
@@ -118,7 +111,6 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_ev_unique_id ON events(unique_id)",
             "CREATE INDEX IF NOT EXISTS idx_ev_source    ON events(source)",
             "CREATE INDEX IF NOT EXISTS idx_ev_type      ON events(type)",
-            "CREATE INDEX IF NOT EXISTS idx_ev_source_id ON events(source_id)",
             "CREATE INDEX IF NOT EXISTS idx_ev_time      ON events(time)",
             "CREATE INDEX IF NOT EXISTS idx_ev_is_major  ON events(is_major)",
             "CREATE INDEX IF NOT EXISTS idx_upd_event_id ON event_updates(event_id)",
@@ -175,18 +167,17 @@ class DatabaseManager:
                             """
                             INSERT INTO events (
                                 real_event_id, unique_id, type, source,
-                                source_id, description, latitude, longitude,
+                                description, latitude, longitude,
                                 magnitude, depth, report_num,
                                 weather_type_code, level, time,
                                 is_major, update_count, created_at, updated_at
-                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                             """,
                             (
                                 row.get("real_event_id"),
                                 row.get("unique_id"),
                                 row.get("type", "unknown"),
                                 row.get("source", "unknown"),
-                                row.get("source_id"),
                                 row.get("description"),
                                 row.get("latitude"),
                                 row.get("longitude"),
@@ -288,19 +279,18 @@ class DatabaseManager:
             await cursor.execute(
                 """
                 INSERT INTO events (
-                    real_event_id, unique_id, type, source, source_id,
+                    real_event_id, unique_id, type, source,
                     description, latitude, longitude,
                     magnitude, depth, report_num,
                     weather_type_code, level, time,
                     is_major, update_count
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     event_data.get("real_event_id"),
                     event_data.get("unique_id"),
                     event_data.get("type"),
                     event_data.get("source"),
-                    event_data.get("source_id"),
                     event_data.get("description"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
@@ -376,7 +366,6 @@ class DatabaseManager:
             await cursor.execute(
                 """
                 UPDATE events SET
-                    source_id         = ?,
                     description       = ?,
                     latitude          = ?,
                     longitude         = ?,
@@ -392,7 +381,6 @@ class DatabaseManager:
                 WHERE id = ?
                 """,
                 (
-                    event_data.get("source_id"),
                     event_data.get("description"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
@@ -497,32 +485,11 @@ class DatabaseManager:
             return None
 
     async def get_major_events(self, limit: int = 100) -> list[dict[str, Any]]:
-        """获取重大事件（is_major=1），按同源同事件去重后返回最新记录"""
+        """获取重大事件（is_major=1），按事件时间倒序"""
         try:
             cursor = await self.connection.cursor()
             await cursor.execute(
-                """
-                WITH ranked AS (
-                    SELECT
-                        *,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY
-                                source,
-                                COALESCE(real_event_id, unique_id, CAST(id AS TEXT))
-                            ORDER BY
-                                updated_at DESC,
-                                time DESC,
-                                id DESC
-                        ) AS rn
-                    FROM events
-                    WHERE is_major = 1
-                )
-                SELECT *
-                FROM ranked
-                WHERE rn = 1
-                ORDER BY time DESC, updated_at DESC
-                LIMIT ?
-                """,
+                "SELECT * FROM events WHERE is_major=1 ORDER BY time DESC, updated_at DESC LIMIT ?",
                 (limit,),
             )
             events = [dict(row) for row in await cursor.fetchall()]
@@ -531,32 +498,16 @@ class DatabaseManager:
             logger.error(f"[灾害预警] 查询重大事件失败: {e}")
             return []
 
-    async def get_events_count(
-        self,
-        event_type: str | None = None,
-        sources: list[str] | None = None,
-    ) -> int:
-        """获取事件总数（支持按类型、数据源过滤）"""
+    async def get_events_count(self, event_type: str | None = None) -> int:
+        """获取事件总数"""
         try:
             cursor = await self.connection.cursor()
-            clauses = []
-            params: list[Any] = []
-
             if event_type:
-                clauses.append("type=?")
-                params.append(event_type)
-
-            normalized_sources = [s for s in (sources or []) if s]
-            if normalized_sources:
-                placeholders = ",".join(["?"] * len(normalized_sources))
-                clauses.append(f"source IN ({placeholders})")
-                params.extend(normalized_sources)
-
-            where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-            await cursor.execute(
-                f"SELECT COUNT(*) FROM events{where_sql}",
-                tuple(params),
-            )
+                await cursor.execute(
+                    "SELECT COUNT(*) FROM events WHERE type=?", (event_type,)
+                )
+            else:
+                await cursor.execute("SELECT COUNT(*) FROM events")
             row = await cursor.fetchone()
             return row[0] if row else 0
         except Exception as e:
@@ -568,58 +519,25 @@ class DatabaseManager:
         page: int = 1,
         limit: int = 50,
         event_type: str | None = None,
-        sources: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """分页获取事件（含 history，支持按类型与数据源过滤）"""
+        """分页获取事件（含 history）"""
         try:
             offset = (page - 1) * limit
             cursor = await self.connection.cursor()
-
-            clauses = []
-            params: list[Any] = []
-
             if event_type:
-                clauses.append("type=?")
-                params.append(event_type)
-
-            normalized_sources = [s for s in (sources or []) if s]
-            if normalized_sources:
-                placeholders = ",".join(["?"] * len(normalized_sources))
-                clauses.append(f"source IN ({placeholders})")
-                params.extend(normalized_sources)
-
-            where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-            sql = (
-                "SELECT * FROM events"
-                f"{where_sql}"
-                " ORDER BY updated_at DESC, time DESC LIMIT ? OFFSET ?"
-            )
-            params.extend([limit, offset])
-            await cursor.execute(sql, tuple(params))
-
+                await cursor.execute(
+                    "SELECT * FROM events WHERE type=? ORDER BY updated_at DESC, time DESC LIMIT ? OFFSET ?",
+                    (event_type, limit, offset),
+                )
+            else:
+                await cursor.execute(
+                    "SELECT * FROM events ORDER BY updated_at DESC, time DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                )
             events = [dict(row) for row in await cursor.fetchall()]
             return await self._attach_history(events)
         except Exception as e:
             logger.error(f"[灾害预警] 分页查询失败: {e}")
-            return []
-
-    async def get_event_sources(self, event_type: str | None = None) -> list[str]:
-        """获取事件数据源列表（可按类型过滤）"""
-        try:
-            cursor = await self.connection.cursor()
-            if event_type:
-                await cursor.execute(
-                    "SELECT DISTINCT source FROM events WHERE type=? ORDER BY source ASC",
-                    (event_type,),
-                )
-            else:
-                await cursor.execute(
-                    "SELECT DISTINCT source FROM events ORDER BY source ASC"
-                )
-            rows = await cursor.fetchall()
-            return [r[0] for r in rows if r and r[0]]
-        except Exception as e:
-            logger.error(f"[灾害预警] 查询数据源列表失败: {e}")
             return []
 
     async def get_statistics(self) -> dict[str, Any]:

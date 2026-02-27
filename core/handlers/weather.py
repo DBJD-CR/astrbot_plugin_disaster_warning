@@ -47,8 +47,8 @@ class WeatherAlarmHandler(BaseDataHandler):
                 )
                 return None
 
-            # 检查关键字段（标题优先使用 title）
-            required_fields = ["id", "effective", "description"]
+            # 检查关键字段
+            required_fields = ["id", "headline", "effective", "description"]
             missing_fields = [
                 field
                 for field in required_fields
@@ -85,10 +85,10 @@ class WeatherAlarmHandler(BaseDataHandler):
 
             # 验证关键字段，防止空信息推送
             headline = msg_data.get("headline", "")
-            title = msg_data.get("title", "") or headline
+            title = msg_data.get("title", "")
             description = msg_data.get("description", "")
 
-            if not title and not headline and not description:
+            if not headline and not title and not description:
                 # 只有在非心跳包情况下才记录
                 if not self._is_heartbeat_message(msg_data):
                     warning_msg = f"[灾害预警] {self.source_id} 气象预警缺少标题、名称和描述信息，跳过处理"
@@ -115,7 +115,7 @@ class WeatherAlarmHandler(BaseDataHandler):
                 self._processed_weather_ids.append(weather.id)
 
             logger.info(
-                f"[灾害预警] 气象预警解析成功: {weather.title or weather.headline}, 生效时间: {weather.issue_time}"
+                f"[灾害预警] 气象预警解析成功: {weather.headline}, 生效时间: {weather.issue_time}"
             )
 
             return DisasterEvent(

@@ -120,9 +120,7 @@ class WebSocketHandlerRegistry:
                     if isinstance(msg_data, dict):
                         # 特征识别逻辑
                         detected_source = None
-                        if (
-                            "title" in msg_data or "headline" in msg_data
-                        ) and "type" in msg_data:
+                        if "headline" in msg_data and "type" in msg_data:
                             detected_source = "weatheralarm"
                         elif "warningInfo" in msg_data and "code" in msg_data:
                             detected_source = "tsunami"

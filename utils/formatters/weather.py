@@ -123,35 +123,27 @@ class WeatherFormatter(BaseMessageFormatter):
         if options is None:
             options = {}
 
-        # 提取预警类型（优先使用 title，兼容 headline）
-        title = weather.title or ""
+        # 提取预警类型
         headline = weather.headline or ""
-        match_text = title or headline
         emoji = "⛈️"
 
         for name in SORTED_WEATHER_TYPES:
-            if name in match_text:
+            if name in headline:
                 emoji = WEATHER_EMOJI_MAP[name]
                 break
 
         # 提取预警颜色
         color_emoji = ""
         for color, icon in COLOR_LEVEL_EMOJI.items():
-            if color in match_text:
+            if color in headline:
                 color_emoji = icon
                 break
 
         lines = [f"{emoji}[气象预警]"]
 
-        # 标题（优先 title）
-        if title:
-            lines.append(f"📋{title}{color_emoji}")
-        elif headline:
-            lines.append(f"📋{headline}{color_emoji}")
-
-        # 副标题（headline）
-        if headline and headline != title:
-            lines.append(f"🏷️副标题：{headline}")
+        # 标题
+        if weather.headline:
+            lines.append(f"📋{weather.headline}{color_emoji}")
 
         # 描述
         if weather.description:

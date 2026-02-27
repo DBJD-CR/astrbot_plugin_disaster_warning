@@ -5,7 +5,6 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 
 class DataSourceType(Enum):
@@ -293,70 +292,6 @@ DATA_SOURCE_CONFIGS: dict[str, DataSourceConfig] = {
         priority=1,
     ),
 }
-
-
-# 统一的 source_id -> data_sources 配置路径映射
-# 值格式: (一级分组键, 子开关键)
-SOURCE_CONFIG_PATH_MAP: dict[str, tuple[str, str]] = {
-    # FAN Studio
-    EEWDataSource.CEA_FANSTUDIO.value: ("fan_studio", "china_earthquake_warning"),
-    EEWDataSource.CEA_PR_FANSTUDIO.value: (
-        "fan_studio",
-        "china_earthquake_warning_provincial",
-    ),
-    EEWDataSource.CWA_FANSTUDIO.value: ("fan_studio", "taiwan_cwa_earthquake"),
-    EarthquakeInfoSource.CWA_FANSTUDIO_REPORT.value: (
-        "fan_studio",
-        "taiwan_cwa_report",
-    ),
-    EarthquakeInfoSource.CENC_FANSTUDIO.value: ("fan_studio", "china_cenc_earthquake"),
-    EarthquakeInfoSource.USGS_FANSTUDIO.value: ("fan_studio", "usgs_earthquake"),
-    WeatherSource.CHINA_WEATHER_FANSTUDIO.value: ("fan_studio", "china_weather_alarm"),
-    TsunamiSource.CHINA_TSUNAMI_FANSTUDIO.value: ("fan_studio", "china_tsunami"),
-    EEWDataSource.JMA_FANSTUDIO.value: ("fan_studio", "japan_jma_eew"),
-    # P2P
-    EEWDataSource.JMA_P2P.value: ("p2p_earthquake", "japan_jma_eew"),
-    EarthquakeInfoSource.JMA_P2P_INFO.value: ("p2p_earthquake", "japan_jma_earthquake"),
-    TsunamiSource.JMA_TSUNAMI_P2P.value: ("p2p_earthquake", "japan_jma_tsunami"),
-    # Wolfx
-    EEWDataSource.JMA_WOLFX.value: ("wolfx", "japan_jma_eew"),
-    EEWDataSource.CEA_WOLFX.value: ("wolfx", "china_cenc_eew"),
-    EEWDataSource.CWA_WOLFX.value: ("wolfx", "taiwan_cwa_eew"),
-    EarthquakeInfoSource.CENC_WOLFX.value: ("wolfx", "china_cenc_earthquake"),
-    EarthquakeInfoSource.JMA_WOLFX_INFO.value: ("wolfx", "japan_jma_earthquake"),
-    # Global Quake
-    EEWDataSource.GLOBAL_QUAKE.value: ("global_quake", "enabled"),
-}
-
-
-def get_source_config_path(source_id: str) -> tuple[str, str] | None:
-    """获取 source_id 在 data_sources 中对应的配置路径。"""
-    return SOURCE_CONFIG_PATH_MAP.get(source_id)
-
-
-def is_source_enabled_in_data_sources(
-    source_id: str, data_sources: dict[str, Any]
-) -> bool:
-    """判断指定 source_id 在给定 data_sources 配置下是否启用。"""
-    if not isinstance(data_sources, dict):
-        return True
-
-    path = get_source_config_path(source_id)
-    if path is None:
-        # 未注册映射时保持兼容：不在此处拦截
-        return True
-
-    group_key, source_key = path
-    group_cfg = data_sources.get(group_key, {})
-    if not isinstance(group_cfg, dict):
-        return True
-
-    # 一级分组总开关
-    if group_cfg.get("enabled", True) is False:
-        return False
-
-    # 子项开关（global_quake 的 source_key=enabled）
-    return bool(group_cfg.get(source_key, True))
 
 
 def get_data_source_config(source_id: str) -> DataSourceConfig | None:
