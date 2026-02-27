@@ -1122,120 +1122,120 @@ graph TB
     classDef data fill:#FFFDE7,stroke:#F9A825,stroke-width:1.5px,color:#5D4037;
     classDef api fill:#FBE9E7,stroke:#F4511E,stroke-width:2px,color:#BF360C;
     classDef util fill:#ECEFF1,stroke:#546E7A,stroke-width:1.5px,color:#263238;
-    classDef style fill:#F1F8E9,stroke:#7CB342,stroke-width:1.5px,color:#33691E;
+    classDef styling fill:#F1F8E9,stroke:#7CB342,stroke-width:1.5px,color:#33691E;
     classDef infra fill:#EDE7F6,stroke:#5E35B1,stroke-width:1.5px,color:#311B92;
 
     %% ========== 应用装载层 ==========
     subgraph L1["① 应用装载层（Browser Runtime）"]
         direction TB
-        A1["index.html\n脚本顺序加载与首屏骨架"]
-        A2["BootLoader\n主题预初始化 + 平滑退场"]
-        A3["app.jsx\n应用根组件"]
-        A4["ThemeProvider\nMD3 动态主题"]
-        A5["CssBaseline\n全局样式重置"]
-        A6["Layout Shell\nSidebar + Header + MainContent"]
+        A1["index.html<br/>脚本顺序加载与首屏骨架"]
+        A2["BootLoader<br/>主题预初始化 + 平滑退场"]
+        A3["app.jsx<br/>应用根组件"]
+        A4["ThemeProvider<br/>MD3 动态主题"]
+        A5["CssBaseline<br/>全局样式重置"]
+        A6["Layout Shell<br/>Sidebar + Header + MainContent"]
     end
 
     %% ========== 上下文与状态层 ==========
     subgraph L2["② 全局状态与上下文层（State Core）"]
         direction TB
-        B1["AppContext\n全局状态容器"]
-        B2["Reducer\n状态变更收敛"]
-        B3["initialState\nstatus/stats/events/connections"]
-        B4["dispatch(Action)\n统一更新入口"]
-        B5["refreshData()\n刷新运行状态"]
-        B6["fetchConnections()\n刷新连接信息"]
-        B7["fetchConfig()\n拉取显示时区等配置"]
-        B8["TOGGLE_THEME\n亮暗主题切换"]
-        B9["SET_WS_CONNECTED\n实时连接态"]
-        B10["UPDATE_STATS\n统计聚合与排序"]
+        B1["AppContext<br/>全局状态容器"]
+        B2["Reducer<br/>状态变更收敛"]
+        B3["initialState<br/>status/stats/events/connections"]
+        B4["dispatch(Action)<br/>统一更新入口"]
+        B5["refreshData()<br/>刷新运行状态"]
+        B6["fetchConnections()<br/>刷新连接信息"]
+        B7["fetchConfig()<br/>拉取显示时区等配置"]
+        B8["TOGGLE_THEME<br/>亮暗主题切换"]
+        B9["SET_WS_CONNECTED<br/>实时连接态"]
+        B10["UPDATE_STATS<br/>统计聚合与排序"]
     end
 
     %% ========== 视图层 ==========
     subgraph L3["③ 视图路由层（Views）"]
         direction LR
-        C1["StatusView\n运行态与运维操作"]
-        C2["EventsView\n事件时间线 + 列表"]
-        C3["StatsView\n图表与榜单总览"]
-        C4["ConfigView\n配置管理容器"]
+        C1["StatusView<br/>运行态与运维操作"]
+        C2["EventsView<br/>事件时间线 + 列表"]
+        C3["StatsView<br/>图表与榜单总览"]
+        C4["ConfigView<br/>配置管理容器"]
     end
 
     %% ========== 状态页组件 ==========
     subgraph L4S["④-1 状态页组件组（Status Components）"]
         direction TB
-        S1["NewsTicker\n实时动态跑马灯"]
-        S2["StatusCard\n服务状态卡片"]
-        S3["StatsCard\n核心统计卡片"]
-        S4["ConnectionsGrid\n连接矩阵 + 延迟"]
-        S5["SimulationModal\n模拟预警表单"]
-        S6["Quick Actions\n重连/刷新/清除"]
+        S1["NewsTicker<br/>实时动态跑马灯"]
+        S2["StatusCard<br/>服务状态卡片"]
+        S3["StatsCard<br/>核心统计卡片"]
+        S4["ConnectionsGrid<br/>连接矩阵 + 延迟"]
+        S5["SimulationModal<br/>模拟预警表单"]
+        S6["Quick Actions<br/>重连/刷新/清除"]
     end
 
     %% ========== 事件页组件 ==========
     subgraph L4E["④-2 事件页组件组（Events Components）"]
         direction TB
-        E1["HorizontalTimeline\n重大事件横向回溯"]
-        E2["EventsList\n分页 + 筛选 + 折叠"]
-        E3["Event Grouping\n按 event_id 聚合"]
-        E4["History Collapse\n多报展开/收起"]
-        E5["Badge Engine\n震级/震度/烈度语义徽章"]
-        E6["Pagination\n跳页与每页条数"]
+        E1["HorizontalTimeline<br/>重大事件横向回溯"]
+        E2["EventsList<br/>分页 + 筛选 + 折叠"]
+        E3["Event Grouping<br/>按 event_id 聚合"]
+        E4["History Collapse<br/>多报展开/收起"]
+        E5["Badge Engine<br/>震级/震度/烈度语义徽章"]
+        E6["Pagination<br/>跳页与每页条数"]
     end
 
     %% ========== 统计页组件 ==========
     subgraph L4T["④-3 统计页组件组（Stats Components）"]
         direction TB
-        T1["MagnitudeChart\n震级分布"]
-        T2["TrendChart\n趋势图"]
-        T3["CalendarHeatmap\n热力图"]
-        T4["TopListCard\n地区/来源排行"]
-        T5["MaxMagCard\n最大地震"]
-        T6["WeatherLevelCard + LogStatsCard\n气象级别与日志统计"]
+        T1["MagnitudeChart<br/>震级分布"]
+        T2["TrendChart<br/>趋势图"]
+        T3["CalendarHeatmap<br/>热力图"]
+        T4["TopListCard<br/>地区/来源排行"]
+        T5["MaxMagCard<br/>最大地震"]
+        T6["WeatherLevelCard + LogStatsCard<br/>气象级别与日志统计"]
     end
 
     %% ========== 配置页组件 ==========
     subgraph L4C["④-4 配置页组件组（Config Components）"]
         direction TB
-        G1["ConfigRenderer\nSchema 动态渲染"]
-        G2["ConfigField\n字段类型分发器"]
-        G3["Session Mode\n全局/会话差异配置"]
-        G4["Draft Cache\n草稿本地持久化"]
-        G5["Expanded Cache\n折叠状态记忆"]
-        G6["Save Pipeline\n清洗后提交"]
+        G1["ConfigRenderer<br/>Schema 动态渲染"]
+        G2["ConfigField<br/>字段类型分发器"]
+        G3["Session Mode<br/>全局/会话差异配置"]
+        G4["Draft Cache<br/>草稿本地持久化"]
+        G5["Expanded Cache<br/>折叠状态记忆"]
+        G6["Save Pipeline<br/>清洗后提交"]
     end
 
     %% ========== Hooks 层 ==========
     subgraph L5["⑤ Hooks 能力层（Runtime Hooks）"]
         direction TB
-        H1["useWebSocket\n全局单例连接"]
-        H2["ConnectionListeners\n订阅广播机制"]
-        H3["Reconnect Scheduler\n断线重连"]
-        H4["useApi\nREST 请求封装"]
-        H5["usePreservedScroll\n滚动保留恢复"]
-        H6["Custom Effects\n视图切换滚动记忆"]
+        H1["useWebSocket<br/>全局单例连接"]
+        H2["ConnectionListeners<br/>订阅广播机制"]
+        H3["Reconnect Scheduler<br/>断线重连"]
+        H4["useApi<br/>REST 请求封装"]
+        H5["usePreservedScroll<br/>滚动保留恢复"]
+        H6["Custom Effects<br/>视图切换滚动记忆"]
     end
 
     %% ========== 数据与接口层 ==========
     subgraph L6["⑥ 数据接口层（Data Plane）"]
         direction TB
-        D1["/api/status\n运行状态"]
-        D2["/api/connections\n连接详情"]
-        D3["/api/config + /api/full-config\n配置读取/保存"]
-        D4["/api/events + /api/events/major\n事件列表/重大事件"]
-        D5["/api/statistics + /api/trend + /api/heatmap\n统计图表数据"]
-        D6["/api/simulate + /api/simulation-params\n模拟预警链路"]
-        D7["/api/session-config/*\n会话差异配置"]
-        D8["/ws\n实时推送通道"]
+        D1["/api/status<br/>运行状态"]
+        D2["/api/connections<br/>连接详情"]
+        D3["/api/config + /api/full-config<br/>配置读取/保存"]
+        D4["/api/events + /api/events/major<br/>事件列表/重大事件"]
+        D5["/api/statistics + /api/trend + /api/heatmap<br/>统计图表数据"]
+        D6["/api/simulate + /api/simulation-params<br/>模拟预警链路"]
+        D7["/api/session-config/*<br/>会话差异配置"]
+        D8["/ws<br/>实时推送通道"]
     end
 
     %% ========== 工具与样式层 ==========
     subgraph L7["⑦ 工具与样式层（Utilities & Design Tokens）"]
         direction TB
-        U1["formatters.js\n时间/来源/数值格式化"]
-        U2["style.css\n响应式 + 主题变量 + 动画"]
-        U3["Material UI UMD\n组件基础设施"]
-        U4["Emotion\n运行时样式系统"]
-        U5["LocalStorage\n主题/视图/滚动/草稿缓存"]
+        U1["formatters.js<br/>时间/来源/数值格式化"]
+        U2["style.css<br/>响应式 + 主题变量 + 动画"]
+        U3["Material UI UMD<br/>组件基础设施"]
+        U4["Emotion<br/>运行时样式系统"]
+        U5["LocalStorage<br/>主题/视图/滚动/草稿缓存"]
     end
 
     %% ========== 主干连接 ==========
