@@ -82,6 +82,9 @@ class DisasterWarningService:
         # 定时任务
         self.scheduled_tasks = []
 
+        # 服务级后台任务托管（用于统一回收由处理器派发的异步任务）
+        self.background_tasks: set[asyncio.Task] = set()
+
         # Web 管理端服务器引用（用于事件驱动的 WebSocket 推送）
         self.web_admin_server = None
 
@@ -329,6 +332,14 @@ class DisasterWarningService:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+    def register_background_task(self, task: asyncio.Task) -> None:
+        """注册服务级后台任务，确保停机时可统一回收。"""
+        if task is None:
+            return
+
+        self.background_tasks.add(task)
+        task.add_done_callback(self.background_tasks.discard)
+
     async def stop(self):
         """停止服务"""
         async with self._stop_lock:
@@ -355,6 +366,13 @@ class DisasterWarningService:
                 scheduled_tasks = list(self.scheduled_tasks)
                 await self._cancel_and_wait(scheduled_tasks)
                 self.scheduled_tasks.clear()
+
+                # 取消并等待由处理器派发的服务级后台任务
+                background_tasks = [
+                    task for task in self.background_tasks if task and not task.done()
+                ]
+                await self._cancel_and_wait(background_tasks)
+                self.background_tasks.clear()
 
                 # 停止WebSocket管理器
                 await self.ws_manager.stop()

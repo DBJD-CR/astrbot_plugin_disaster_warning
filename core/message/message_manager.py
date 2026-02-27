@@ -486,7 +486,9 @@ class MessagePushManager:
             # 气象预警事件需要进行过滤
             if isinstance(event.data, WeatherAlarmData):
                 title_text = event.data.title or event.data.headline or ""
-                if runtime_components["weather_filter"].should_filter(title_text):
+                if runtime_components["weather_filter"].should_filter(
+                    title_text, event.data.headline or ""
+                ):
                     return reject("气象关键字过滤")
             # 海啸和气象事件通过了过滤，可以推送
             return True
@@ -617,7 +619,10 @@ class MessagePushManager:
         # 策略分支 1: Fan CENC 消息 -> 拦截并等待
         if fusion_enabled and source_id == "cenc_fanstudio":
             return await self._handle_cenc_fan_interception(
-                event, fusion_config.get("timeout", 10)
+                event,
+                fusion_config.get("timeout", 10),
+                target_sessions=target_sessions,
+                session_config_getter=session_config_getter,
             )
 
         # 策略分支 2: Wolfx CENC 消息 -> 尝试融合
@@ -634,7 +639,11 @@ class MessagePushManager:
         )
 
     async def _handle_cenc_fan_interception(
-        self, event: DisasterEvent, timeout: int
+        self,
+        event: DisasterEvent,
+        timeout: int,
+        target_sessions: list[str] | None = None,
+        session_config_getter=None,
     ) -> bool:
         """处理 Fan CENC 消息拦截"""
         logger.info(
@@ -670,16 +679,28 @@ class MessagePushManager:
 
             if result == "timeout":
                 logger.info("[灾害预警] 融合策略: 等待超时，推送原始 Fan 事件")
-                return await self._execute_push(event)
+                return await self._execute_push(
+                    event,
+                    target_sessions=target_sessions,
+                    session_config_getter=session_config_getter,
+                )
             elif result == "fused":
                 logger.info("[灾害预警] 融合策略: 融合完成，推送补充后的 Fan 事件")
                 # event 已经在 _handle_cenc_wolfx_fusion 中被修改了
-                return await self._execute_push(event)
+                return await self._execute_push(
+                    event,
+                    target_sessions=target_sessions,
+                    session_config_getter=session_config_getter,
+                )
 
         except Exception as e:
             logger.error(f"[灾害预警] 融合策略处理异常: {e}")
             # 出错时保底推送
-            return await self._execute_push(event)
+            return await self._execute_push(
+                event,
+                target_sessions=target_sessions,
+                session_config_getter=session_config_getter,
+            )
 
         return False
 

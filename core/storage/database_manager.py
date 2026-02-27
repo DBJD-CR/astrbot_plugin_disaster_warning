@@ -68,6 +68,8 @@ class DatabaseManager:
             # 关键修复：在创建索引前先补齐缺失列，避免 idx_ev_source_id 创建失败
             if "source_id" not in columns:
                 await cursor.execute("ALTER TABLE events ADD COLUMN source_id TEXT")
+            if "subtitle" not in columns:
+                await cursor.execute("ALTER TABLE events ADD COLUMN subtitle TEXT")
 
         await self._create_tables(cursor)
 
@@ -83,6 +85,7 @@ class DatabaseManager:
                 source          TEXT NOT NULL,
                 source_id       TEXT,
                 description     TEXT,
+                subtitle        TEXT,
                 latitude        REAL,
                 longitude       REAL,
                 magnitude       REAL,
@@ -175,11 +178,11 @@ class DatabaseManager:
                             """
                             INSERT INTO events (
                                 real_event_id, unique_id, type, source,
-                                source_id, description, latitude, longitude,
+                                source_id, description, subtitle, latitude, longitude,
                                 magnitude, depth, report_num,
                                 weather_type_code, level, time,
                                 is_major, update_count, created_at, updated_at
-                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                             """,
                             (
                                 row.get("real_event_id"),
@@ -188,6 +191,7 @@ class DatabaseManager:
                                 row.get("source", "unknown"),
                                 row.get("source_id"),
                                 row.get("description"),
+                                row.get("subtitle"),
                                 row.get("latitude"),
                                 row.get("longitude"),
                                 row.get("magnitude"),
@@ -289,11 +293,11 @@ class DatabaseManager:
                 """
                 INSERT INTO events (
                     real_event_id, unique_id, type, source, source_id,
-                    description, latitude, longitude,
+                    description, subtitle, latitude, longitude,
                     magnitude, depth, report_num,
                     weather_type_code, level, time,
                     is_major, update_count
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     event_data.get("real_event_id"),
@@ -302,6 +306,7 @@ class DatabaseManager:
                     event_data.get("source"),
                     event_data.get("source_id"),
                     event_data.get("description"),
+                    event_data.get("subtitle"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
                     event_data.get("magnitude"),
@@ -378,6 +383,7 @@ class DatabaseManager:
                 UPDATE events SET
                     source_id         = ?,
                     description       = ?,
+                    subtitle          = ?,
                     latitude          = ?,
                     longitude         = ?,
                     magnitude         = ?,
@@ -387,13 +393,14 @@ class DatabaseManager:
                     update_count      = ?,
                     weather_type_code = ?,
                     level             = ?,
-                    is_major          = CASE WHEN ? = 1 THEN 1 ELSE is_major END,
+                    is_major          = ?,
                     updated_at        = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
                 (
                     event_data.get("source_id"),
                     event_data.get("description"),
+                    event_data.get("subtitle"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
                     event_data.get("magnitude"),
@@ -463,6 +470,25 @@ class DatabaseManager:
 
         return events
 
+    def _append_source_filter_clause(
+        self,
+        sources: list[str] | None,
+        clauses: list[str],
+        params: list[Any],
+    ) -> None:
+        """追加数据源过滤子句：优先 source_id，兼容历史 source。"""
+        normalized_sources = [s for s in (sources or []) if s]
+        if not normalized_sources:
+            return
+
+        placeholders = ",".join(["?"] * len(normalized_sources))
+        clauses.append(
+            "(COALESCE(NULLIF(source_id, ''), source) "
+            f"IN ({placeholders}) OR source IN ({placeholders}))"
+        )
+        params.extend(normalized_sources)
+        params.extend(normalized_sources)
+
     async def get_recent_events(self, limit: int = 500) -> list[dict[str, Any]]:
         """获取最近事件（含 history），按更新时间倒序"""
         try:
@@ -516,6 +542,20 @@ class DatabaseManager:
                         ) AS rn
                     FROM events
                     WHERE is_major = 1
+                      AND (
+                          type != 'weather_alarm'
+                          OR (
+                              -- 气象预警仅保留红/橙级别：优先 level，缺失时回退 description
+                              (
+                                  COALESCE(TRIM(level), '') != ''
+                                  AND (level LIKE '%红%' OR level LIKE '%橙%')
+                              )
+                              OR (
+                                  COALESCE(TRIM(level), '') = ''
+                                  AND (description LIKE '%红%' OR description LIKE '%橙%')
+                              )
+                          )
+                      )
                 )
                 SELECT *
                 FROM ranked
@@ -535,8 +575,9 @@ class DatabaseManager:
         self,
         event_type: str | None = None,
         sources: list[str] | None = None,
+        min_magnitude: float | None = None,
     ) -> int:
-        """获取事件总数（支持按类型、数据源过滤）"""
+        """获取事件总数（支持按类型、数据源、最小震级过滤）"""
         try:
             cursor = await self.connection.cursor()
             clauses = []
@@ -546,11 +587,13 @@ class DatabaseManager:
                 clauses.append("type=?")
                 params.append(event_type)
 
-            normalized_sources = [s for s in (sources or []) if s]
-            if normalized_sources:
-                placeholders = ",".join(["?"] * len(normalized_sources))
-                clauses.append(f"source IN ({placeholders})")
-                params.extend(normalized_sources)
+            self._append_source_filter_clause(sources, clauses, params)
+
+            if min_magnitude is not None:
+                clauses.append(
+                    "(type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)"
+                )
+                params.append(min_magnitude)
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
             await cursor.execute(
@@ -569,8 +612,10 @@ class DatabaseManager:
         limit: int = 50,
         event_type: str | None = None,
         sources: list[str] | None = None,
+        min_magnitude: float | None = None,
+        magnitude_order: str | None = None,
     ) -> list[dict[str, Any]]:
-        """分页获取事件（含 history，支持按类型与数据源过滤）"""
+        """分页获取事件（含 history，支持按类型、数据源、最小震级过滤与震级排序）"""
         try:
             offset = (page - 1) * limit
             cursor = await self.connection.cursor()
@@ -582,18 +627,28 @@ class DatabaseManager:
                 clauses.append("type=?")
                 params.append(event_type)
 
-            normalized_sources = [s for s in (sources or []) if s]
-            if normalized_sources:
-                placeholders = ",".join(["?"] * len(normalized_sources))
-                clauses.append(f"source IN ({placeholders})")
-                params.extend(normalized_sources)
+            self._append_source_filter_clause(sources, clauses, params)
+
+            if min_magnitude is not None:
+                clauses.append(
+                    "(type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)"
+                )
+                params.append(min_magnitude)
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-            sql = (
-                "SELECT * FROM events"
-                f"{where_sql}"
-                " ORDER BY updated_at DESC, time DESC LIMIT ? OFFSET ?"
-            )
+
+            normalized_order = (magnitude_order or "").lower().strip()
+            if normalized_order in {"asc", "desc"}:
+                order_sql = (
+                    " ORDER BY "
+                    "CASE WHEN magnitude IS NULL THEN 1 ELSE 0 END ASC, "
+                    f"magnitude {normalized_order.upper()}, "
+                    "updated_at DESC, time DESC"
+                )
+            else:
+                order_sql = " ORDER BY updated_at DESC, time DESC"
+
+            sql = f"SELECT * FROM events{where_sql}{order_sql} LIMIT ? OFFSET ?"
             params.extend([limit, offset])
             await cursor.execute(sql, tuple(params))
 
@@ -603,24 +658,59 @@ class DatabaseManager:
             logger.error(f"[灾害预警] 分页查询失败: {e}")
             return []
 
-    async def get_event_sources(self, event_type: str | None = None) -> list[str]:
-        """获取事件数据源列表（可按类型过滤）"""
+    async def get_event_source_options(
+        self, event_type: str | None = None
+    ) -> list[dict[str, str]]:
+        """获取事件数据源选项（value/label），value 优先 source_id，label 兼容 source。"""
         try:
             cursor = await self.connection.cursor()
             if event_type:
                 await cursor.execute(
-                    "SELECT DISTINCT source FROM events WHERE type=? ORDER BY source ASC",
+                    """
+                    SELECT
+                        COALESCE(NULLIF(source_id, ''), source) AS source_value,
+                        MIN(source) AS source_label
+                    FROM events
+                    WHERE type=?
+                    GROUP BY COALESCE(NULLIF(source_id, ''), source)
+                    ORDER BY source_value ASC
+                    """,
                     (event_type,),
                 )
             else:
                 await cursor.execute(
-                    "SELECT DISTINCT source FROM events ORDER BY source ASC"
+                    """
+                    SELECT
+                        COALESCE(NULLIF(source_id, ''), source) AS source_value,
+                        MIN(source) AS source_label
+                    FROM events
+                    GROUP BY COALESCE(NULLIF(source_id, ''), source)
+                    ORDER BY source_value ASC
+                    """
                 )
             rows = await cursor.fetchall()
-            return [r[0] for r in rows if r and r[0]]
+            result: list[dict[str, str]] = []
+            for row in rows:
+                source_value = row[0] if row and row[0] else ""
+                source_label = row[1] if row and row[1] else source_value
+                if source_value:
+                    result.append(
+                        {
+                            "source_value": str(source_value),
+                            "source_label": str(source_label),
+                        }
+                    )
+            return result
         except Exception as e:
-            logger.error(f"[灾害预警] 查询数据源列表失败: {e}")
+            logger.error(f"[灾害预警] 查询数据源选项失败: {e}")
             return []
+
+    async def get_event_sources(self, event_type: str | None = None) -> list[str]:
+        """获取事件数据源列表（可按类型过滤，兼容旧前端）"""
+        options = await self.get_event_source_options(event_type)
+        return [
+            opt.get("source_label", "") for opt in options if opt.get("source_label")
+        ]
 
     async def get_statistics(self) -> dict[str, Any]:
         """获取数据库统计信息"""

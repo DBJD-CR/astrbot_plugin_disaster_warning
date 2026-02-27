@@ -447,8 +447,10 @@ class WebAdminServer:
             limit: int = 50,
             type: str = "",
             source: str = "",
+            min_magnitude: float | None = None,
+            magnitude_order: str = "",
         ):
-            """分页获取历史事件记录（支持按类型、数据源过滤）"""
+            """分页获取历史事件记录（支持按类型、数据源、最小震级过滤与震级排序）"""
             try:
                 if (
                     not self.disaster_service
@@ -461,21 +463,42 @@ class WebAdminServer:
                         "limit": limit,
                         "total_pages": 0,
                         "sources": [],
+                        "max_limit": 200,
                     }
 
                 db = self.disaster_service.statistics_manager.db
                 event_type = type if type else None
                 source_filters = [s.strip() for s in source.split(",") if s.strip()]
-                # 限制每页最多100条
-                limit = min(max(1, limit), 100)
+                max_limit = 200
+                # 限制每页最多 max_limit 条
+                limit = min(max(1, limit), max_limit)
                 page = max(1, page)
 
-                total = await db.get_events_count(event_type, source_filters)
+                normalized_magnitude_order = magnitude_order.lower().strip()
+                if normalized_magnitude_order not in {"", "asc", "desc"}:
+                    normalized_magnitude_order = ""
+
+                total = await db.get_events_count(
+                    event_type,
+                    source_filters,
+                    min_magnitude=min_magnitude,
+                )
                 events = await db.get_events_paginated(
-                    page, limit, event_type, source_filters
+                    page,
+                    limit,
+                    event_type,
+                    source_filters,
+                    min_magnitude=min_magnitude,
+                    magnitude_order=normalized_magnitude_order or None,
                 )
                 total_pages = (total + limit - 1) // limit if total > 0 else 0
-                available_sources = await db.get_event_sources(event_type)
+                source_options = await db.get_event_source_options(event_type)
+                # 兼容旧前端：继续返回字符串数组
+                available_sources = [
+                    item.get("source_label", "")
+                    for item in source_options
+                    if item.get("source_label")
+                ]
 
                 return {
                     "events": events,
@@ -484,6 +507,8 @@ class WebAdminServer:
                     "limit": limit,
                     "total_pages": total_pages,
                     "sources": available_sources,
+                    "source_options": source_options,
+                    "max_limit": max_limit,
                 }
             except Exception as e:
                 logger.error(f"[灾害预警] 分页获取事件失败: {e}")
@@ -501,8 +526,14 @@ class WebAdminServer:
 
                 db = self.disaster_service.statistics_manager.db
                 event_type = type if type else None
-                sources = await db.get_event_sources(event_type)
-                return {"sources": sources}
+                source_options = await db.get_event_source_options(event_type)
+                # 兼容旧前端：继续返回字符串数组
+                sources = [
+                    item.get("source_label", "")
+                    for item in source_options
+                    if item.get("source_label")
+                ]
+                return {"sources": sources, "source_options": source_options}
             except Exception as e:
                 logger.error(f"[灾害预警] 获取数据源列表失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)

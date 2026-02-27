@@ -3,8 +3,12 @@
 支持按省份白名单和颜色级别过滤气象预警
 """
 
+import json
 import re
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from astrbot.api import logger
 
@@ -28,6 +32,7 @@ class WeatherFilter:
         self.provinces = config.get("provinces", [])
         self.min_color_level = config.get("min_color_level", "白色")
         self.min_level_value = COLOR_LEVELS.get(self.min_color_level, 0)
+        self._location_province_cache: dict[str, str | None] = {}
 
         if self.enabled and emit_enable_log:
             filter_info = []
@@ -42,6 +47,90 @@ class WeatherFilter:
             if province in title_text:
                 return province
         return None
+
+    def _normalize_province_name(self, province_name: str) -> str | None:
+        """将API返回省份名称归一为项目内省份简称"""
+        normalized = province_name.strip()
+        if not normalized:
+            return None
+        for province in CHINA_PROVINCES:
+            if province in normalized:
+                return province
+        return None
+
+    def _extract_place_from_headline(self, headline_text: str) -> str | None:
+        """从副标题中提取地名关键词"""
+        if not headline_text:
+            return None
+        matches = re.findall(
+            r"([\u4e00-\u9fa5]{2,30}(?:特别行政区|自治州|自治县|自治旗|地区|盟|市|区|县|旗))",
+            headline_text,
+        )
+        for place in matches:
+            if "气象台" in place:
+                continue
+            return place
+
+        # 兜底：未匹配到标准行政区后缀时，截取“气象站/气象台”前文本用于API模糊搜索
+        fallback_text = re.split(r"气象(?:站|台)", headline_text, maxsplit=1)[0].strip()
+        if fallback_text:
+            fallback_text = re.sub(r"^[^\u4e00-\u9fa5]+", "", fallback_text)
+            fallback_text = re.sub(r"[^\u4e00-\u9fa5]+$", "", fallback_text)
+            if fallback_text:
+                return fallback_text
+        return None
+
+    def _query_province_by_place_name(self, place_name: str) -> str | None:
+        """通过行政区划查询API获取省份"""
+        if place_name in self._location_province_cache:
+            return self._location_province_cache[place_name]
+
+        params = urlencode(
+            {
+                "stName": place_name,
+                "searchType": "模糊",
+                "page": "1",
+                "size": "10",
+            }
+        )
+        request = Request(
+            f"https://dmfw.mca.gov.cn/9095/stname/listPub?{params}",
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        try:
+            with urlopen(request, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as exc:
+            logger.debug(f"[灾害预警] 行政区划查询失败: {place_name}, 错误: {exc}")
+            return None
+
+        for record in payload.get("records", []):
+            province_name = record.get("province_name", "")
+            province = self._normalize_province_name(province_name)
+            if province:
+                self._location_province_cache[place_name] = province
+                return province
+
+        self._location_province_cache[place_name] = None
+        return None
+
+    def extract_province_with_fallback(
+        self, title_text: str, headline_text: str = ""
+    ) -> str | None:
+        """优先从title提取省份，失败后回退到headline地名查询"""
+        province = self.extract_province(title_text)
+        if province is not None:
+            return province
+        place_name = self._extract_place_from_headline(headline_text)
+        if not place_name:
+            return None
+        return self._query_province_by_place_name(place_name)
 
     def extract_color_level(self, title_text: str) -> str:
         """从预警标题文本中提取颜色级别"""
@@ -73,7 +162,7 @@ class WeatherFilter:
         # 这种情况下返回“白色”作为最低级别，通常会被过滤器拦截（除非用户设置阈值为白色）。
         return "白色"
 
-    def should_filter(self, title_text: str) -> bool:
+    def should_filter(self, title_text: str, headline_text: str = "") -> bool:
         """
         判断是否应过滤该预警
         返回 True 表示应过滤（不推送），False 表示不过滤（推送）
@@ -93,7 +182,7 @@ class WeatherFilter:
 
         # 2. 省份过滤
         if self.provinces:
-            province = self.extract_province(title_text)
+            province = self.extract_province_with_fallback(title_text, headline_text)
             if province is None:
                 # 无法识别省份，默认不过滤
                 logger.debug(

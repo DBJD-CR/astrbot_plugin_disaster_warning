@@ -17,6 +17,7 @@ from ...models.models import (
 from ...utils.converters import ScaleConverter, is_major_event
 from ...utils.formatters.weather import COLOR_LEVEL_EMOJI, SORTED_WEATHER_TYPES
 from ...utils.time_converter import TimeConverter
+from ..filters.weather_filter import WeatherFilter
 from ..support.event_deduplicator import EventDeduplicator
 from .database_manager import DatabaseManager
 
@@ -76,6 +77,9 @@ class StatisticsManager:
 
         # 初始化去重器用于生成指纹 (使用默认配置)
         self.deduplicator = EventDeduplicator()
+
+        # 复用气象过滤器中的省份提取/回退查询逻辑（仅用于统计，不启用过滤）
+        self._weather_region_resolver = WeatherFilter({}, emit_enable_log=False)
 
     async def initialize(self):
         """异步初始化数据库并加载历史数据"""
@@ -143,7 +147,11 @@ class StatisticsManager:
                 if isinstance(event.data, EarthquakeData):
                     self._record_earthquake_stats(event.data)
                 elif isinstance(event.data, WeatherAlarmData):
-                    self._record_weather_stats(event.data)
+                    weather_stats_recorded = self._record_weather_stats(event.data)
+                    if not weather_stats_recorded:
+                        logger.warning(
+                            "[灾害预警] 气象预警地区信息无效或缺失，已跳过该次气象详细统计"
+                        )
 
                 # 3. 时间序列统计 (仅统计独立事件)
                 self._record_time_series(event)
@@ -315,10 +323,12 @@ class StatisticsManager:
                 record["unique_id"] = event_unique_id
                 record["source_id"] = event.source_id or ""
                 record["description"] = self._get_event_description(event)
+                record["subtitle"] = ""
                 record["update_count"] = 1
                 record.pop("history", None)
 
                 if isinstance(event.data, WeatherAlarmData):
+                    record["subtitle"] = event.data.headline or ""
                     record["time"] = (
                         event.data.issue_time.isoformat()
                         if event.data.issue_time
@@ -367,6 +377,7 @@ class StatisticsManager:
                 "source": source_id,
                 "source_id": event.source_id or "",
                 "description": self._get_event_description(event),
+                "subtitle": "",
                 "unique_id": event_unique_id,
                 "update_count": 1,
             }
@@ -386,6 +397,7 @@ class StatisticsManager:
                 if event.data.report_num:
                     push_record["report_num"] = event.data.report_num
             elif isinstance(event.data, WeatherAlarmData):
+                push_record["subtitle"] = event.data.headline or ""
                 push_record["time"] = (
                     event.data.issue_time.isoformat() if event.data.issue_time else None
                 )
@@ -526,9 +538,28 @@ class StatisticsManager:
                 if region:
                     self.stats["earthquake_stats"]["by_region"][region] += 1
 
-    def _record_weather_stats(self, data: WeatherAlarmData):
-        """记录气象预警详细统计"""
+    def _record_weather_stats(self, data: WeatherAlarmData) -> bool:
+        """记录气象预警详细统计。
+
+        返回:
+            bool: True=统计成功；False=未获取到有效地区信息，跳过统计。
+        """
         title_text = data.title or data.headline or ""
+        headline_text = data.headline or ""
+
+        # 地区解析：
+        # 1) title 中可直接提取省份 -> 立即统计
+        # 2) title 缺省份时，回退到 headline + 外部 API 查询
+        # 3) 若仍无有效省份，则返回 False，不进行本次气象详细统计
+        direct_region = self._weather_region_resolver.extract_province(title_text)
+        if direct_region:
+            region = direct_region
+        else:
+            region = self._weather_region_resolver.extract_province_with_fallback(
+                title_text, headline_text
+            )
+            if not region:
+                return False
 
         # 1. 预警级别统计
         level = "未知"
@@ -547,10 +578,9 @@ class StatisticsManager:
                 break
         self.stats["weather_stats"]["by_type"][w_type] += 1
 
-        # 3. 地区统计 (优先从 title 提取)
-        # 简单提取：取前两个字作为省份/地区，或者匹配已知省份
-        region = self._extract_region(title_text)
+        # 3. 地区统计
         self.stats["weather_stats"]["by_region"][region] += 1
+        return True
 
     def _record_session_stats(
         self, pushed_sessions: list[str], current_time: str

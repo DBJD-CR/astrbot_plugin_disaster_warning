@@ -1022,6 +1022,7 @@ AstrBot/
          │   │   │
          │   │   ├─ hooks/                     # 自定义 React Hooks
          │   │   │   ├─ useApi.js              # API 请求封装（含多会话差异配置接口）
+         │   │   │   ├─ usePreservedScroll.js  # 列表滚动位置保留 Hook
          │   │   │   └─ useWebSocket.js        # 全局单例 WebSocket Hook（状态广播/重连控制）
          │   │   │
          │   │   ├─ utils/                     # 前端工具函数
