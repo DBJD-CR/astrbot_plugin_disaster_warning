@@ -13,79 +13,141 @@ class TsunamiFormatter(BaseMessageFormatter):
 
     @staticmethod
     def format_message(tsunami: TsunamiData, options: dict = None) -> str:
-        """格式化海啸预警消息"""
+        """格式化海啸预警消息（区分信息/预警）"""
         options = options or {}
-        # 优先使用传入的时区配置
         target_timezone = options.get("timezone")
 
-        lines = ["🌊[海啸预警]"]
+        # 时区推断
+        if not target_timezone:
+            config = get_data_source_config(tsunami.source.value)
+            if config and (
+                "日本" in config.display_name or "日本气象厅" in config.display_name
+            ):
+                target_timezone = "UTC+9"
+            else:
+                target_timezone = "UTC+8"
 
-        # 标题和级别
+        message_type = getattr(tsunami, "message_type", "warning") or "warning"
+        is_info = message_type == "info" or tsunami.level == "信息"
+
+        lines = ["🌊[海啸信息]" if is_info else "🌊[海啸预警]"]
+
+        # 标题与级别
         if tsunami.title:
             lines.append(f"📋{tsunami.title}")
         if tsunami.level:
             lines.append(f"⚠️级别：{tsunami.level}")
 
-        # 发布单位
+        # 发布与时间
         if tsunami.org_unit:
             lines.append(f"🏢发布：{tsunami.org_unit}")
-
-        # 发布时间
         if tsunami.issue_time:
-            # 如果没有指定 target_timezone，则尝试根据数据源智能推断
-            if not target_timezone:
-                config = get_data_source_config(tsunami.source.value)
-                # 判断时区：中国数据源使用UTC+8，日本数据源使用UTC+9
-                if config and (
-                    "中国" in config.display_name
-                    or "中国海啸预警中心" in config.display_name
-                ):
-                    target_timezone = "UTC+8"
-                elif config and (
-                    "日本" in config.display_name or "日本气象厅" in config.display_name
-                ):
-                    target_timezone = "UTC+9"
-                else:
-                    target_timezone = "UTC+8"  # 默认使用中国时区
-
             lines.append(
                 f"⏰发布时间：{TsunamiFormatter.format_time(tsunami.issue_time, target_timezone)}"
             )
+        if getattr(tsunami, "update_time", None):
+            lines.append(
+                f"🕒更新时间：{TsunamiFormatter.format_time(tsunami.update_time, target_timezone)}"
+            )
 
-        # 引发地震信息
-        if tsunami.subtitle:
-            lines.append(f"🌍震源：{tsunami.subtitle}")
+        # 震源事件概览
+        place_name = getattr(tsunami, "place_name", None) or tsunami.subtitle
+        lat = getattr(tsunami, "latitude", None)
+        lon = getattr(tsunami, "longitude", None)
 
-        # 预报区域
+        if place_name:
+            if lat is not None and lon is not None:
+                coords = TsunamiFormatter.format_coordinates(lat, lon)
+                lines.append(f"🌍震源：{place_name} ({coords})")
+            else:
+                lines.append(f"🌍震源：{place_name}")
+
+        magnitude = getattr(tsunami, "magnitude", None)
+        depth = getattr(tsunami, "depth", None)
+
+        shock_parts = []
+        if magnitude is not None:
+            shock_parts.append(f"M {magnitude}")
+        if depth is not None:
+            shock_parts.append(f"深度{depth} km")
+        if shock_parts:
+            lines.append(f"🧭参数：{' / '.join(shock_parts)}")
+
+        # 信息类：给摘要；预警类：给更详尽摘要
         if tsunami.forecasts:
-            # 显示前2个区域
-            for i, forecast in enumerate(tsunami.forecasts[:2]):
-                area_name = forecast.get("name", "")
-                if area_name:
-                    area_info = f"📍{area_name}"
+            lines.append(f"📈沿海预报：{len(tsunami.forecasts)}个区域")
+            show_n = 2 if is_info else 3
+            for forecast in tsunami.forecasts[:show_n]:
+                area_name = (
+                    forecast.get("forecastArea")
+                    or forecast.get("forecastPoint")
+                    or forecast.get("name")
+                    or ""
+                )
+                if not area_name:
+                    continue
+                area_info = f"  • {area_name}"
 
-                    # 警报级别
-                    grade = forecast.get("grade", "")
-                    if grade and grade != tsunami.level:
-                        area_info += f" [{grade}]"
+                grade = forecast.get("warningLevel") or forecast.get("grade")
+                if grade:
+                    area_info += f" [{grade}]"
 
-                    # 预计到达时间
-                    arrival_time = forecast.get("estimatedArrivalTime", "")
-                    if arrival_time:
-                        area_info += f" 预计{arrival_time}到达"
+                arrival_time = forecast.get("estimatedArrivalTime")
+                if arrival_time:
+                    area_info += f" 预计{arrival_time}到达"
 
-                    # 预估波高
-                    max_wave = forecast.get("maxWaveHeight", "")
-                    if max_wave:
-                        area_info += f" 波高{max_wave}cm"
+                max_wave = forecast.get("maxWaveHeight")
+                if max_wave:
+                    area_info += f" 波高 {max_wave}cm"
 
-                    lines.append(area_info)
+                lines.append(area_info)
 
-            # 如果还有更多区域
-            if len(tsunami.forecasts) > 2:
-                lines.append(f"  ...等{len(tsunami.forecasts)}个预报区域")
+            if len(tsunami.forecasts) > show_n:
+                lines.append(f"  ...其余{len(tsunami.forecasts) - show_n}个区域")
 
-        # 事件编码
+        if tsunami.monitoring_stations:
+            lines.append(f"📡监测实况：{len(tsunami.monitoring_stations)}个站点")
+            if not is_info:
+                for station in tsunami.monitoring_stations[:2]:
+                    station_name = (
+                        station.get("stationName") or station.get("name") or "监测站"
+                    )
+                    location = station.get("location") or ""
+                    wave = station.get("maxWaveHeight") or ""
+                    station_line = f"  • {station_name}"
+                    if location:
+                        station_line += f"({location})"
+                    if wave:
+                        station_line += f" 最大波幅 {wave}cm"
+                    lines.append(station_line)
+
+        if getattr(tsunami, "batch", None):
+            lines.append(f"🧾批次：{tsunami.batch}")
+
+        details_url = getattr(tsunami, "details_url", None)
+        if details_url:
+            lines.append(f"🔗详情：{details_url}")
+
+        map_urls = getattr(tsunami, "map_urls", {}) or {}
+        map_name_mapping = {
+            "earthquake": "震中图",
+            "amplitude": "最大波幅图",
+            "coastal": "沿岸预报图",
+        }
+        rendered_any_map = False
+        for map_key, map_url in map_urls.items():
+            if isinstance(map_url, str) and map_url.strip():
+                rendered_any_map = True
+                map_label = map_name_mapping.get(map_key, map_key)
+                lines.append(f"🗺️{map_label}：{map_url}")
+
+        # 兼容 map_urls 结构之外的异常情况：若是列表也尽量展示
+        if not rendered_any_map and isinstance(map_urls, list):
+            for idx, map_url in enumerate(map_urls, start=1):
+                if isinstance(map_url, str) and map_url.strip():
+                    rendered_any_map = True
+                    lines.append(f"🗺️图件{idx}：{map_url}")
+
         if tsunami.code:
             lines.append(f"🔄事件编号：{tsunami.code}")
 

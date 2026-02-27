@@ -95,7 +95,8 @@ class BaseDataHandler:
         # 检测缺少关键字段的空数据
         critical_fields = {
             "usgs_fanstudio": ["id", "magnitude", "placeName"],
-            "china_tsunami_fanstudio": ["warningInfo", "title", "level"],
+            # 海啸新格式中 title/level 位于 warningInfo 内，使用顶层稳定字段避免误判
+            "china_tsunami_fanstudio": ["warningInfo", "code", "timeInfo"],
             "china_weather_fanstudio": ["title", "description"],
         }
 

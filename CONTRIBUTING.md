@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD029 -->
 # 🤝 为 灾害预警插件 (disaster_warning) 做出贡献
 
 感谢您有兴趣为 **AstrBot 灾害预警插件** 做出贡献！无论是修复 Bug、添加新功能，还是改进文档，您的每一次贡献都能让这个项目变得更好。
@@ -40,6 +41,7 @@
 
 ### 开发环境准备
 
+0. 确保你要 开发或修复 的 功能或问题 没有与现有的最新进度重复。
 1. Fork 本仓库到您的 GitHub 账号。
 2. 克隆您的 Fork 仓库到本地：
 
@@ -60,7 +62,7 @@
 
 ### 提交 Pull Request (PR)
 
-1. **创建分支**：从 `main` 分支创建一个新的功能分支。
+1. **创建分支**：从仓库的最新开发分支，在本项目通常是 `dev/X.X.X` 或 `dev/local` 分支创建一个新的功能分支。
 
     ```bash
     git checkout -b feat/your-feature-name
@@ -68,14 +70,17 @@
     git checkout -b fix/your-bug-fix
     ```
 
-2. **提交更改**：编写代码并提交。请使用清晰、描述性的提交信息（推荐遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范）。
-    - `feat`: 新功能
-    - `fix`: 修复 Bug
-    - `docs`: 文档变更
-    - `style`: 代码格式调整（不影响逻辑）
-    - `refactor`: 代码重构
-    - `perf`: 性能优化
-    - `chore`: 杂务
+2. **提交更改**
+
+- 编写代码并提交。我们鼓励您使用 AI 进行编码辅助，但请进行基本的 Review，确保你知道自己在改什么。
+- 提交更改时，请使用**简体中文**撰写清晰、描述性的提交信息（推荐遵循 [Conventional Commits](https://www.conventionalcommits.org/) (约定式提交规范)）。
+  - `feat`: 新功能
+  - `fix`: 修复 Bug
+  - `docs`: 文档变更
+  - `style`: 代码格式调整（不影响逻辑）
+  - `refactor`: 代码重构
+  - `perf`: 性能优化
+  - `chore`: 杂务
 
 3. **推送到远程**：
 
@@ -83,12 +88,15 @@
     git push origin feat/your-feature-name
     ```
 
-4. **发起 PR**：在 GitHub 上发起 Pull Request，详细描述您的更改内容和目的。
+4. **发起 PR**：在 GitHub 上发起 Pull Request，指向目前进度最新的分支，参照模板内容使用**简体中文**详细描述您的更改内容和目的。
 5. **代码审查**：等待维护者审查您的代码。如果有修改建议，请及时响应并更新代码。
+
+> [!TIP]
+> 提交 PR 前和进行开发时与仓库维护者提前交流可以提高你的 PR 被合并的概率 :)
 
 ## 📝 文档贡献
 
-文档与代码同样重要。如果您发现 `README.md` 或其他文档中有错别字、表述不清或过时的内容，欢迎直接提交 PR 进行修正。
+文档与代码同样重要。如果您发现 `README.md`、`CHANGELOG.md` 或其他文档中有错别字、表述不清或过时的内容，欢迎直接提交 PR 进行修正。
 
 ---
 
@@ -107,7 +115,11 @@
 - @Gemini-3.0-Pro
 - @Gemini-3-Pro-Image
 - @Claude Opus 4.5
+- @Claude Opus 4.6
+- @GPT Codex 5.3
 - @Kimi-For-Coding
+- @Kimi K2.5
 - @sourcery-ai[bot]
+- @Copilot-pullrequest-reviewer[bot]
 
 🚀 再次感谢您的贡献！

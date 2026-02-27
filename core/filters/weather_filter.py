@@ -1,6 +1,6 @@
 """
 气象预警过滤器
-支持按省份白名单和颜色级别过滤气象预警
+支持按关键词白名单和颜色级别过滤气象预警
 """
 
 import json
@@ -29,15 +29,21 @@ class WeatherFilter:
 
     def __init__(self, config: dict[str, Any], emit_enable_log: bool = True):
         self.enabled = config.get("enabled", False)
-        self.provinces = config.get("provinces", [])
         self.min_color_level = config.get("min_color_level", "白色")
         self.min_level_value = COLOR_LEVELS.get(self.min_color_level, 0)
+
+        # 关键词白名单：优先读取 keywords，兼容旧配置 provinces
+        raw_keywords = config.get("keywords")
+        if not isinstance(raw_keywords, list):
+            raw_keywords = config.get("provinces", [])
+        self.keywords = [str(k).strip() for k in raw_keywords if str(k).strip()]
+
         self._location_province_cache: dict[str, str | None] = {}
 
         if self.enabled and emit_enable_log:
             filter_info = []
-            if self.provinces:
-                filter_info.append(f"省份白名单: {', '.join(self.provinces)}")
+            if self.keywords:
+                filter_info.append(f"关键词白名单: {', '.join(self.keywords)}")
             filter_info.append(f"最低级别: {self.min_color_level}")
             logger.info(f"[灾害预警] 气象预警过滤器已启用，{', '.join(filter_info)}")
 
@@ -180,20 +186,17 @@ class WeatherFilter:
             )
             return True
 
-        # 2. 省份过滤
-        if self.provinces:
-            province = self.extract_province_with_fallback(title_text, headline_text)
-            if province is None:
-                # 无法识别省份，默认不过滤
-                logger.debug(
-                    f"[灾害预警] 无法从预警标题中识别省份: {title_text[:50]}..."
+        # 2. 关键词白名单过滤（title 优先，title 未命中再检查 headline）
+        if self.keywords:
+            title_hit = any(
+                keyword in title_text for keyword in self.keywords if keyword
+            )
+            if not title_hit:
+                headline_hit = any(
+                    keyword in headline_text for keyword in self.keywords if keyword
                 )
-                return False
-
-            if province not in self.provinces:
-                logger.info(
-                    f"[灾害预警] 气象预警被省份过滤器过滤: {province} 不在白名单中"
-                )
-                return True
+                if not headline_hit:
+                    logger.info("[灾害预警] 气象预警被关键词过滤器过滤")
+                    return True
 
         return False

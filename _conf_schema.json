@@ -571,18 +571,18 @@
       "weather_filter": {
         "description": "气象预警过滤器",
         "type": "object",
-        "hint": "配置省份过滤和级别过滤",
+        "hint": "配置关键词过滤和级别过滤",
         "items": {
           "enabled": {
             "description": "启用气象过滤",
             "type": "bool",
-            "hint": "启用后将应用省份和级别过滤",
+            "hint": "启用后将应用关键词和级别过滤",
             "default": false
           },
-          "provinces": {
-            "description": "省份白名单",
+          "keywords": {
+            "description": "关键词白名单",
             "type": "list",
-            "hint": "留空推送全国，填写省份名称后只推送对应省份（如：北京、上海、广东、香港、台湾等）",
+            "hint": "留空推送全国，填写关键词后只推送对应地区（如：广州、广东、上海、香港、江南区等）",
             "default": []
           },
           "min_color_level": {
@@ -604,7 +604,7 @@
         "description": "气象预警正文描述字数限制",
         "type": "int",
         "hint": "超过此字数的正文将被截断并显示省略号。设置为 0 则不限制字数。",
-        "default": 384,
+        "default": 512,
         "slider": {
           "min": 0,
           "max": 1024,

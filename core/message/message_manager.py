@@ -1165,6 +1165,23 @@ class MessagePushManager:
                 except Exception as e:
                     logger.error(f"[灾害预警] 附加气象预警图标失败: {e}")
 
+        # 5. 海啸图件：优先尝试直接渲染 URL 图片（失败时文本消息中仍保留 URL 兜底）
+        if isinstance(event.data, TsunamiData):
+            map_urls = getattr(event.data, "map_urls", {}) or {}
+            if isinstance(map_urls, dict):
+                for map_key in ["earthquake", "amplitude", "coastal"]:
+                    map_url = map_urls.get(map_key)
+                    if isinstance(map_url, str) and map_url.strip():
+                        try:
+                            chain.chain.append(Comp.Image.fromURL(map_url.strip()))
+                            logger.debug(
+                                f"[灾害预警] 已附加海啸图件: {map_key} -> {map_url}"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"[灾害预警] 附加海啸图件失败 ({map_key}): {e}"
+                            )
+
         return chain
 
     def _build_text_message(

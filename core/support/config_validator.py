@@ -419,7 +419,16 @@ class ConfigValidator:
         # 气象过滤器
         weather_filter = cfg.get("weather_filter", {})
         if isinstance(weather_filter, dict):
-            if not isinstance(weather_filter.get("provinces"), list):
+            # 新字段：keywords
+            if "keywords" in weather_filter and not isinstance(
+                weather_filter.get("keywords"), list
+            ):
+                weather_filter["keywords"] = []
+
+            # 兼容旧字段：provinces
+            if "provinces" in weather_filter and not isinstance(
+                weather_filter.get("provinces"), list
+            ):
                 weather_filter["provinces"] = []
 
             min_level = weather_filter.get("min_color_level")

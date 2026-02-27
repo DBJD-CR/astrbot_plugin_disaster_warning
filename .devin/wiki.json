@@ -1,299 +1,654 @@
 {
   "repo_notes": [
     {
-      "content": "请务必使用简体中文 (Simplified Chinese) 生成所有文档的内容、摘要和解释。我的目标受众是中国开发者。请注意：在生成文档时，请动态分析当前代码库的结构，适时更新新增的内容或添加新的章节目录。请侧重于解释系统的设计理念、模块职责、数据流向以及扩展方式。如果代码库中新增了模块或数据源，文档应能自动涵盖它们，而无需修改此指令。"
+      "content": "请始终使用简体中文生成文档。目标读者为中国开发者与运维人员。文档应优先解释：系统分层、模块职责、关键数据结构、事件流转路径、可靠性策略、配置热重载边界与扩展方式。"
+    },
+    {
+      "content": "请基于当前仓库动态扫描结果自动覆盖文档结构：若新增数据源、处理器、过滤器、Web API、前端视图或存储模块，必须自动在对应章节补充。避免仅按旧目录模板生成，需与最新代码实现保持一致。"
+    },
+    {
+      "content": "对核心机制给出“为什么这样设计”的说明，例如：多源聚合与去重策略、会话差异配置(Default+Override)、EEW报数控制、渲染异步补发、数据库Schema迁移、WebSocket兜底重连与可观测性。"
     }
   ],
   "pages": [
     {
-      "title": "项目概览",
-      "purpose": "介绍灾害预警插件的核心目标、主要功能特性以及整体架构设计理念。",
+      "title": "项目总览",
+      "purpose": "介绍插件定位（AstrBot 多数据源灾害预警中枢）、核心能力边界（地震/海啸/气象）、目标用户、部署形态（命令端+Web控制台）与版本兼容信息。给出全局认知图，帮助读者先建立系统心智模型。",
       "page_notes": [
         {
-          "content": ""
+          "content": "应涵盖：产品目标、典型使用场景、与宿主 AstrBot 的集成方式、插件生命周期概念。"
         }
       ]
     },
     {
-      "title": "快速开始",
-      "purpose": "引导用户完成环境准备、插件安装、初始化配置以及首次运行。",
+      "title": "快速上手",
+      "purpose": "为首次使用者提供从安装到首条预警推送成功的最短路径。强调最小配置集、常见误区和联调检查步骤。",
       "page_notes": [
         {
-          "content": ""
+          "content": "建议以“5分钟可运行”方式组织：安装→配置→验证状态→发送测试。"
         }
       ]
     },
     {
-      "title": "安装指南",
-      "purpose": "详细说明依赖项的安装步骤以及如何将插件集成到宿主机器人框架中。",
-      "parent": "快速开始",
+      "title": "环境与依赖准备",
+      "purpose": "说明 Python/AstrBot 版本、可选依赖（Playwright/FastAPI）以及不同运行环境（Windows/Linux/Docker）下的差异准备项。",
+      "parent": "快速上手",
       "page_notes": [
         {
-          "content": ""
+          "content": "需明确图片渲染功能对内存与系统依赖的影响，标注 remote playwright 的替代方案。"
         }
       ]
     },
     {
-      "title": "配置指南",
-      "purpose": "全面解析配置文件结构，包括数据源选择、过滤规则设定以及消息输出选项。",
-      "parent": "快速开始",
+      "title": "安装与升级",
+      "purpose": "说明插件市场安装、ZIP 安装、版本升级与回滚注意事项；补充依赖缺失时的手动安装流程。",
+      "parent": "快速上手",
       "page_notes": [
         {
-          "content": ""
+          "content": "区分首次安装与升级路径，提示升级后关注配置 schema 新增字段。"
         }
       ]
     },
     {
-      "title": "指令手册",
-      "purpose": "自动扫描并列出所有用户可用的指令，说明其用途、参数格式及使用示例。",
-      "parent": "快速开始",
+      "title": "首次配置与最小可用",
+      "purpose": "给出可立即工作的最小配置模板：启用插件、配置目标会话、开启至少一个数据源，并验证推送链路。",
+      "parent": "快速上手",
       "page_notes": [
         {
-          "content": ""
+          "content": "强调 target_sessions、data_sources 子开关、过滤阈值对“收不到消息”的直接影响。"
         }
       ]
     },
     {
-      "title": "架构设计",
-      "purpose": "阐述系统的整体架构分层以及各模块之间的协作关系。",
+      "title": "常用命令速览",
+      "purpose": "整理用户与管理员命令，说明参数含义、权限模型、典型用例与响应结果。",
+      "parent": "快速上手",
       "page_notes": [
         {
-          "content": ""
+          "content": "命令章节要体现：状态查询、重连、统计清理、日志开关、地震列表查询、模拟预警。"
         }
       ]
     },
     {
-      "title": "系统全景",
-      "purpose": "从宏观角度展示插件的逻辑分层（如数据层、处理层、表现层）及组件交互。",
-      "parent": "架构设计",
+      "title": "故障自检清单",
+      "purpose": "提供“未推送/未渲染/连接离线/过滤过严/日志异常”等高频问题的排查顺序和判定标准。",
+      "parent": "快速上手",
       "page_notes": [
         {
-          "content": ""
+          "content": "建议按链路顺序排查：配置→连接→过滤→推送→渲染→权限。"
         }
       ]
     },
     {
-      "title": "数据流转",
-      "purpose": "详解数据从采集、解析、过滤、去重到最终推送的完整生命周期。",
-      "parent": "架构设计",
+      "title": "架构与设计",
+      "purpose": "从系统级角度解释插件分层：入口层、服务编排层、网络接入层、处理/过滤层、消息渲染层、存储观测层、Web 管理层。",
       "page_notes": [
         {
-          "content": ""
+          "content": "突出“异步优先、模块解耦、可观测、可扩展”的设计原则。"
         }
       ]
     },
     {
-      "title": "核心组件",
-      "purpose": "分析系统中的关键服务模块、连接管理器及消息推送控制器的职责与实现。",
-      "parent": "架构设计",
+      "title": "系统上下文与边界",
+      "purpose": "描述插件与 AstrBot、上游数据源、Web 控制台、存储目录之间的边界关系和职责分工。",
+      "parent": "架构与设计",
       "page_notes": [
         {
-          "content": ""
+          "content": "补充外部依赖责任边界：数据准确性归属上游机构，插件负责聚合、决策与分发。"
         }
       ]
     },
     {
-      "title": "数据源管理",
-      "purpose": "概述目前支持的数据源类型及其集成方式。",
+      "title": "端到端数据流",
+      "purpose": "详解从 WebSocket/HTTP 输入到事件解析、过滤决策、消息构建、会话下发、统计入库、WebSocket 控制台广播的完整流程。",
+      "parent": "架构与设计",
       "page_notes": [
         {
-          "content": ""
+          "content": "建议配套时序图，覆盖 EEW 与非 EEW 两条分支。"
         }
       ]
     },
     {
-      "title": "支持的数据源列表",
-      "purpose": "自动扫描并列出代码库中已实现的所有具体数据源，描述其覆盖区域及特性。",
-      "parent": "数据源管理",
+      "title": "生命周期与任务编排",
+      "purpose": "说明初始化、启动、运行、停机阶段涉及的任务与资源：连接任务、定时任务、后台任务、浏览器池、遥测心跳、Web 服务。",
+      "parent": "架构与设计",
       "page_notes": [
         {
-          "content": ""
+          "content": "强调 stop 流程中的取消顺序与资源回收顺序。"
         }
       ]
     },
     {
-      "title": "连接与网络",
-      "purpose": "说明网络连接的建立方式（如 WebSocket/HTTP）、心跳保活、自动重连及故障转移机制。",
-      "parent": "数据源管理",
+      "title": "可靠性与容错策略",
+      "purpose": "阐述重连策略（短重试+兜底重试）、备用地址切换、心跳保活、异常隔离、静默期、降级回退与失败保护机制。",
+      "parent": "架构与设计",
       "page_notes": [
         {
-          "content": ""
+          "content": "需解释 websocket_manager 的 force_reconnect 与 fallback 设计动机。"
         }
       ]
     },
     {
-      "title": "数据处理器",
-      "purpose": "文档化数据处理器的抽象设计，以及如何解析不同来源的原始数据格式。",
-      "parent": "数据源管理",
+      "title": "性能与资源模型",
+      "purpose": "总结 CPU/内存/网络/磁盘的主要消耗点，尤其是 Playwright 渲染、事件高峰并发、日志轮转与缓存策略。",
+      "parent": "架构与设计",
       "page_notes": [
         {
-          "content": ""
+          "content": "区分轻量文本模式与富媒体渲染模式资源画像。"
         }
       ]
     },
     {
-      "title": "数据处理逻辑",
-      "purpose": "解释灾害事件的统一建模、清洗、过滤及去重策略。",
+      "title": "后端核心",
+      "purpose": "系统梳理 Python 后端模块及其协作关系，覆盖入口、服务编排、网络、处理器、过滤、推送、存储、遥测与支撑服务。",
       "page_notes": [
         {
-          "content": ""
+          "content": "章节应与 core/ models/ utils 目录结构对应。"
         }
       ]
     },
     {
-      "title": "数据模型",
-      "purpose": "文档化系统内部使用的通用数据结构（如地震、海啸、气象预警等对象的定义）。",
-      "parent": "数据处理逻辑",
+      "title": "插件入口与生命周期",
+      "purpose": "解析 main.py：初始化流程、配置校验修正、命令注册、管理员鉴权、异常处理器注入、遥测生命周期与终止清理。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "说明 initialize/terminate/on_astrbot_loaded 钩子职责，避免与 service 层职责混淆。"
         }
       ]
     },
     {
-      "title": "事件过滤机制",
-      "purpose": "解释过滤流水线的工作原理，包括基于阈值、区域或其他条件的筛选逻辑。",
-      "parent": "数据处理逻辑",
+      "title": "核心服务编排",
+      "purpose": "解析 DisasterWarningService 的职责：注册表完整性检查、连接拓扑构建、任务托管、事件总线、状态汇总、手动重连。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "说明 singleton 获取与 stop 回收的全局行为。"
         }
       ]
     },
     {
-      "title": "去重系统",
-      "purpose": "说明如何识别跨数据源或短时间内的重复事件，防止消息轰炸。",
-      "parent": "数据处理逻辑",
+      "title": "网络接入层",
+      "purpose": "讲解 WebSocketManager 与 HTTPDataFetcher：连接建立、消息循环、心跳、重试策略、错误分类、状态聚合。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "强调 aiohttp 实现下的连接上下文、reconnect_tasks 与 heartbeat_tasks 管理。"
         }
       ]
     },
     {
-      "title": "消息系统",
-      "purpose": "文档化预警消息的构建、渲染及多平台分发机制。",
+      "title": "处理器路由注册",
+      "purpose": "讲解 handler_registry 的多源路由策略：Fan Studio initial_all/update、P2P 代码分发、Wolfx type 映射、Global Quake 解码入口。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "应说明连接级别 handler 与 source_id 级 handler 的映射关系。"
         }
       ]
     },
     {
-      "title": "推送控制",
-      "purpose": "解释消息推送的决策逻辑，包括发送频率控制及目标对象选择。",
-      "parent": "消息系统",
+      "title": "数据处理器体系",
+      "purpose": "说明 BaseDataHandler 与各具体处理器的解析契约、心跳识别、异常保护、统一事件产出规范。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "突出 DATA_HANDLERS 注册表作为扩展入口。"
         }
       ]
     },
     {
-      "title": "消息格式化",
-      "purpose": "说明如何将内部数据模型转换为用户可读的文本或富媒体消息模板。",
-      "parent": "消息系统",
+      "title": "过滤与决策链",
+      "purpose": "阐述 should_push_event 决策顺序：时间校验、数据源开关、关键词过滤、烈度/震度过滤、报数控制、本地烈度、会话开关。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "必须覆盖会话级 runtime_config 与全局配置并行生效机制。"
         }
       ]
     },
     {
-      "title": "输出适配",
-      "purpose": "解释如何根据不同平台特性适配消息展示，以及相关链接生成逻辑。",
-      "parent": "消息系统",
+      "title": "报数控制与多报策略",
+      "purpose": "解析 ReportCountController 的第1报保障、N报节流、最终报策略与 ignore_non_final_reports 行为。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "区分 JMA / CEA-CWA / Global Quake 的报数语义差异。"
         }
       ]
     },
     {
-      "title": "高级功能",
-      "purpose": "涵盖除基础预警之外的扩展能力，如计算分析或地理辅助功能。",
+      "title": "事件去重与事件升级",
+      "purpose": "说明 EventDeduplicator 的指纹生成、同源去重、跨源放行、状态升级识别（自动→正式、JMA 情报级别升级）与过期清理。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "阐明“防同源重复，不阻断跨源冗余”策略。"
         }
       ]
     },
     {
-      "title": "烈度计算算法",
-      "purpose": "文档化用于估算本地影响程度的算法逻辑及所采用的标准。",
-      "parent": "高级功能",
+      "title": "消息构建与推送",
+      "purpose": "讲解 MessagePushManager：会话并发推送、构建缓存、CENC 融合策略、文本优先与图片补发、失败隔离。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "强调 CENC Fan/Wolfx 融合等待窗口与超时回退。"
         }
       ]
     },
     {
-      "title": "本地化监测",
-      "purpose": "说明如何基于用户位置进行个性化的预警分析和筛选。",
-      "parent": "高级功能",
+      "title": "渲染与浏览器池",
+      "purpose": "说明地图瓦片、Global Quake 卡片、地震列表卡片的渲染链路，包含 local/remote playwright 模式、缓存键设计、临时文件清理。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "应包含 Base64 发送策略解决 file:// 路径兼容问题。"
         }
       ]
     },
     {
-      "title": "地理信息处理",
-      "purpose": "解释坐标到地名的反向解析或翻译机制。",
-      "parent": "高级功能",
+      "title": "存储层总览",
+      "purpose": "描述统计 JSON、SQLite 事件库、会话覆写文件、日志文件、临时渲染目录的职责边界与读写时机。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "补充 plugin_data 目录结构与保留策略。"
         }
       ]
     },
     {
-      "title": "日志与调试",
-      "purpose": "说明系统的日志记录策略，以及用于排查问题的调试工具。",
-      "parent": "高级功能",
+      "title": "统计与事件时间线",
+      "purpose": "解析 StatisticsManager 与 DatabaseManager 协作：事件聚合、history 更新、重大事件筛选、趋势/热力图数据生成。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "覆盖 events/event_updates 双表模型与分页查询接口。"
         }
       ]
     },
     {
-      "title": "开发者指南",
-      "purpose": "为希望修改或扩展本插件的开发者提供指导。",
+      "title": "数据库迁移与Schema演进",
+      "purpose": "说明 events.db 从 v1 到 v2 的迁移路径、批处理策略、回滚保护与索引设计，确保文档可支撑后续 schema 迭代。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "重点解释 history JSON 拆分为 event_updates 的收益。"
         }
       ]
     },
     {
-      "title": "项目结构",
-      "purpose": "解析代码库的文件组织方式及各模块的职责划分。",
-      "parent": "开发者指南",
+      "title": "会话差异配置系统",
+      "purpose": "讲解 SessionConfigManager 的 Default+Override 模型、白名单字段、深度合并、差异计算、旧格式迁移与会话生效配置获取。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "说明会话隔离实现与“会话改动不污染全局”的保障机制。"
         }
       ]
     },
     {
-      "title": "扩展数据源",
-      "purpose": "提供关于如何实现新数据源接口并注册到系统中的教程。",
-      "parent": "开发者指南",
+      "title": "配置校验与治理",
+      "purpose": "系统说明 ConfigValidator 对各配置分组的类型、范围、默认值、兼容性修正策略。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "应按 local_monitoring/websocket/message_format/weather/debug/data_sources 分节说明。"
         }
       ]
     },
     {
-      "title": "测试与模拟",
-      "purpose": "文档化内置的测试指令及模拟演练功能的使用方法。",
-      "parent": "开发者指南",
+      "title": "遥测与可观测性",
+      "purpose": "说明 TelemetryManager 的匿名上报模型、脱敏策略、事件分类(startup/heartbeat/error/config)与失败不阻断原则。",
+      "parent": "后端核心",
       "page_notes": [
         {
-          "content": ""
+          "content": "强调隐私边界：不上传 target_sessions/admin_users/本地坐标。"
+        }
+      ]
+    },
+    {
+      "title": "模拟与测试服务",
+      "purpose": "说明 simulation_service 与命令/WebAPI 的复用逻辑，如何构建模拟地震并验证全局过滤与本地过滤结果。",
+      "parent": "后端核心",
+      "page_notes": [
+        {
+          "content": "覆盖 resolve_target_session、SimulationBuildResult 与报告字段语义。"
+        }
+      ]
+    },
+    {
+      "title": "前端控制台",
+      "purpose": "从运行时和交互角度描述 admin 前端：无构建 React 运行时、四大视图、实时通道、配置渲染与运维闭环。",
+      "page_notes": [
+        {
+          "content": "应体现“REST 初始化 + WebSocket 增量更新 + 手动刷新校准”的模型。"
+        }
+      ]
+    },
+    {
+      "title": "前端运行时与加载链路",
+      "purpose": "解析 index.html 与 app.jsx：资源加载顺序、首屏骨架、主题预加载、根组件挂载、视图路由切换。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "说明 browser 端 Babel 运行模式的取舍。"
+        }
+      ]
+    },
+    {
+      "title": "全局状态管理",
+      "purpose": "讲解 AppContext 的状态模型、Reducer 动作、启动拉取、运行时长计时器与主题持久化。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "建议列出 UPDATE_STATUS/UPDATE_STATS/UPDATE_CONNECTIONS 等关键 action。"
+        }
+      ]
+    },
+    {
+      "title": "实时通信机制",
+      "purpose": "讲解 useWebSocket 的全局单例连接、监听器广播、断线重连、消息分发与 refresh 指令交互。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "强调“一个连接，多订阅者”的实现价值。"
+        }
+      ]
+    },
+    {
+      "title": "API 封装与数据拉取",
+      "purpose": "说明 useApi 对 REST 接口的统一封装，以及配置、事件、统计、模拟、会话配置等调用面。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "建议提供 API 与页面功能对照表。"
+        }
+      ]
+    },
+    {
+      "title": "视图层设计",
+      "purpose": "说明 StatusView / EventsView / StatsView / ConfigView 的职责划分、数据依赖与交互入口。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "应体现运维操作入口（重连、清统计、模拟）与只读分析入口（趋势、热力、榜单）的分离。"
+        }
+      ]
+    },
+    {
+      "title": "事件列表与时间轴组件",
+      "purpose": "详解 EventsList 与 HorizontalTimeline：分页查询、多维筛选、事件分组、history 展开、滚动位置保持、重大事件时间轴交互。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "说明为何按 event_id 聚合并兼容后端 history。"
+        }
+      ]
+    },
+    {
+      "title": "连接矩阵与状态卡片",
+      "purpose": "说明 ConnectionsGrid、StatusCard、StatsCard 等如何展示连接健康度、子数据源开关状态与延迟信息。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "覆盖在线/离线/未启用三态和 latency 显示策略。"
+        }
+      ]
+    },
+    {
+      "title": "配置渲染引擎",
+      "purpose": "讲解 ConfigRenderer 的 Schema 动态渲染、字段类型分发、会话模式切换、草稿缓存、展开状态记忆和保存流程。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "应明确 global 与 session effective 保存差异。"
+        }
+      ]
+    },
+    {
+      "title": "交互体验与持久化",
+      "purpose": "总结前端在主题、滚动位置、草稿、折叠状态、视图记忆等方面的持久化策略及用户优先原则。",
+      "parent": "前端控制台",
+      "page_notes": [
+        {
+          "content": "可补充 usePreservedScroll 的恢复策略与边界。"
+        }
+      ]
+    },
+    {
+      "title": "数据模型与协议",
+      "purpose": "汇总领域模型、枚举映射、数据源配置元数据与协议文件，帮助读者理解“统一事件模型”如何承接多源异构数据。",
+      "page_notes": [
+        {
+          "content": "优先解释 models/models.py 与 models/data_source_config.py 的关系。"
+        }
+      ]
+    },
+    {
+      "title": "统一领域模型",
+      "purpose": "解释 EarthquakeData/TsunamiData/WeatherAlarmData/DisasterEvent 字段语义、可选字段、source_id 与 DataSource 映射规则。",
+      "parent": "数据模型与协议",
+      "page_notes": [
+        {
+          "content": "需注明时间字段（shock_time/update_time/issue_time）在不同数据源中的意义。"
+        }
+      ]
+    },
+    {
+      "title": "数据源配置元数据",
+      "purpose": "说明 DATA_SOURCE_CONFIGS、SOURCE_CONFIG_PATH_MAP、过滤器类别划分（烈度/震度/报数）的元数据驱动机制。",
+      "parent": "数据模型与协议",
+      "page_notes": [
+        {
+          "content": "强调 source_id 与 data_sources 配置路径的一致性约束。"
+        }
+      ]
+    },
+    {
+      "title": "Protobuf 与消息协议",
+      "purpose": "介绍 websocket_message.proto 与 pb2 的用途，说明 Global Quake 等二进制消息通道的解析背景。",
+      "parent": "数据模型与协议",
+      "page_notes": [
+        {
+          "content": "如协议字段随上游变更，应提示维护方式。"
+        }
+      ]
+    },
+    {
+      "title": "数据源生态",
+      "purpose": "按供应商与类型梳理已支持的数据源、覆盖范围、可靠性特征与适用场景。",
+      "page_notes": [
+        {
+          "content": "建议配合一张“数据源矩阵表”（类型/延迟/正式性/建议用途）。"
+        }
+      ]
+    },
+    {
+      "title": "FAN Studio 数据链路",
+      "purpose": "说明 /all 聚合连接下各子数据源（CEA/CENC/CWA/JMA/USGS/气象/海啸）的路由分发与开关控制。",
+      "parent": "数据源生态",
+      "page_notes": [
+        {
+          "content": "补充 initial_all 与 update 两种消息形态。"
+        }
+      ]
+    },
+    {
+      "title": "P2P 数据链路",
+      "purpose": "讲解 P2P code 551/552/556 的业务含义、解析处理器与 JMA 情报分类。",
+      "parent": "数据源生态",
+      "page_notes": [
+        {
+          "content": "注明 P2P 在日本区域覆盖与特点。"
+        }
+      ]
+    },
+    {
+      "title": "Wolfx 数据链路",
+      "purpose": "说明 Wolfx WebSocket 与地震列表 HTTP 拉取的双通道模式，以及在融合策略中的补充角色。",
+      "parent": "数据源生态",
+      "page_notes": [
+        {
+          "content": "需解释 cenc_eqlist/jma_eqlist 的缓存与查询命令关系。"
+        }
+      ]
+    },
+    {
+      "title": "Global Quake 数据链路",
+      "purpose": "说明 Global Quake 的实时测算特性、数据波动、过滤阈值建议与卡片渲染路径。",
+      "parent": "数据源生态",
+      "page_notes": [
+        {
+          "content": "强调其“时效优先，准确性波动”的定位。"
+        }
+      ]
+    },
+    {
+      "title": "气象与海啸链路",
+      "purpose": "总结气象与海啸数据在解析、过滤、消息格式、附图策略上的差异化处理。",
+      "parent": "数据源生态",
+      "page_notes": [
+        {
+          "content": "应覆盖 weather_filter 与 tsunami map_urls 的处理。"
+        }
+      ]
+    },
+    {
+      "title": "数据源扩展指南",
+      "purpose": "指导如何新增数据源：配置映射、handler 注册、formatter 注册、过滤适配、文档更新与回归测试。",
+      "parent": "数据源生态",
+      "page_notes": [
+        {
+          "content": "需提供最小改动清单，避免遗漏注册表。"
+        }
+      ]
+    },
+    {
+      "title": "运维与接口",
+      "purpose": "面向运维与二次开发者，汇总 Web 管理端接口、实时协议、命令权限、日志与排障能力。",
+      "page_notes": [
+        {
+          "content": "建议按“观测-控制-验证”闭环组织。"
+        }
+      ]
+    },
+    {
+      "title": "Web 管理端 API 总览",
+      "purpose": "按领域分组列出 status/statistics/events/config/session-config/simulate 等接口及其输入输出语义。",
+      "parent": "运维与接口",
+      "page_notes": [
+        {
+          "content": "应注明哪些操作会触发热更新，哪些建议重载插件。"
+        }
+      ]
+    },
+    {
+      "title": "WebSocket 推送协议",
+      "purpose": "说明 /ws 的 full_update/update/event/ping-pong 消息类型与前端消费方式。",
+      "parent": "运维与接口",
+      "page_notes": [
+        {
+          "content": "补充事件驱动推送与周期广播的协同关系。"
+        }
+      ]
+    },
+    {
+      "title": "命令系统与权限模型",
+      "purpose": "说明管理员鉴权（AstrBot 全局管理员 + admin_users）、命令权限边界与安全注意事项。",
+      "parent": "运维与接口",
+      "page_notes": [
+        {
+          "content": "需要覆盖命令端与 Web 端操作等价关系。"
+        }
+      ]
+    },
+    {
+      "title": "日志体系与调试",
+      "purpose": "介绍 raw message 日志、过滤统计、轮转机制、可读性格式化与调试建议。",
+      "parent": "运维与接口",
+      "page_notes": [
+        {
+          "content": "强调日志噪音过滤（心跳/重复/P2P节点状态）的作用。"
+        }
+      ]
+    },
+    {
+      "title": "数据持久化与备份",
+      "purpose": "说明 statistics.json、events.db、session_overrides.json、raw_messages.log 与 temp 的备份和清理建议。",
+      "parent": "运维与接口",
+      "page_notes": [
+        {
+          "content": "建议提供生产环境的保留周期与磁盘容量建议。"
+        }
+      ]
+    },
+    {
+      "title": "开发与贡献",
+      "purpose": "为贡献者提供可执行的开发指南，覆盖代码结构、扩展点、测试、提交流程与质量门禁。",
+      "page_notes": [
+        {
+          "content": "需与 CONTRIBUTING.md 保持一致，但更偏向架构落地。"
+        }
+      ]
+    },
+    {
+      "title": "代码结构索引",
+      "purpose": "以目录维度说明各子系统入口与职责，帮助新贡献者快速定位功能改动点。",
+      "parent": "开发与贡献",
+      "page_notes": [
+        {
+          "content": "建议按 core/admin/models/utils/resources 分组并给出典型文件。"
+        }
+      ]
+    },
+    {
+      "title": "新增处理器指南",
+      "purpose": "给出新增 handler 的标准流程：解析实现、注册、source 映射、过滤适配、消息格式化与回归验证。",
+      "parent": "开发与贡献",
+      "page_notes": [
+        {
+          "content": "特别提醒同步 DATA_HANDLERS/MESSAGE_FORMATTERS/DATA_SOURCE_MAPPING。"
+        }
+      ]
+    },
+    {
+      "title": "新增格式化器与模板",
+      "purpose": "说明如何扩展文本格式化器、卡片模板（Aurora/DarkNight/Base）与地图渲染辅助脚本。",
+      "parent": "开发与贡献",
+      "page_notes": [
+        {
+          "content": "应包含模板上下文字段约定与渲染失败回退策略。"
+        }
+      ]
+    },
+    {
+      "title": "前端功能扩展",
+      "purpose": "指导如何新增视图、组件和 API 对接，并保持 AppContext 与 WebSocket 数据流一致性。",
+      "parent": "开发与贡献",
+      "page_notes": [
+        {
+          "content": "说明无构建前端模式下的脚本加载顺序要求。"
+        }
+      ]
+    },
+    {
+      "title": "测试与回归策略",
+      "purpose": "给出命令模拟、Web 模拟、过滤器边界测试、重连容错测试、渲染回归与数据库迁移验证建议。",
+      "parent": "开发与贡献",
+      "page_notes": [
+        {
+          "content": "建议按单源、多源、异常网络、低资源四个场景组织测试矩阵。"
+        }
+      ]
+    },
+    {
+      "title": "发布与兼容性策略",
+      "purpose": "总结版本发布时的兼容检查：AstrBot 版本、配置 schema、数据库迁移、前端 API 契约与文档同步。",
+      "parent": "开发与贡献",
+      "page_notes": [
+        {
+          "content": "强调 CHANGELOG、README 与 wiki 指南三者同步更新。"
         }
       ]
     }
