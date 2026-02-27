@@ -200,7 +200,7 @@ class TsunamiData:
     code: str
     source: DataSource
     title: str
-    level: str  # 黄色、橙色、红色、解除
+    level: str  # 信息、黄色、橙色、红色、蓝色、解除
 
     # 默认值的字段（必须放在后面）
     disaster_type: DisasterType = DisasterType.TSUNAMI
@@ -209,12 +209,27 @@ class TsunamiData:
 
     # 时间信息
     issue_time: datetime | None = None
+    update_time: datetime | None = None
+    shock_time: datetime | None = None
+
+    # 事件信息
+    message_type: str = "warning"  # warning / info
+    place_name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    depth: float | None = None
+    magnitude: float | None = None
+    batch: str | None = None
 
     # 预报区域
     forecasts: list[dict[str, Any]] = field(default_factory=list)
 
     # 监测站信息
     monitoring_stations: list[dict[str, Any]] = field(default_factory=list)
+
+    # 资源链接
+    details_url: str | None = None
+    map_urls: dict[str, str] = field(default_factory=dict)
 
     # 新增字段
     source_id: str = ""  # 数据源ID
