@@ -11,6 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-AGPL_3.0-blue.svg" alt="License: AGPL-3.0">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/AstrBot-v4.11.2+-orange.svg" alt="AstrBot v4.11.2+">
 </p>
 
 <p align="center">
@@ -34,16 +35,19 @@
 
 <div align="center">
 
-| 🧭 章节 | ℹ️ 内容 | 🧭 章节 | ℹ️ 内容 |
-| :--- | :--- | :--- | :--- |
-| [✨ 功能特性](#-功能特性) | 多源支持与智能推送 | [📒 日志格式](#-增强的可读性日志格式) | 原始数据日志详解 |
-| [🚀 安装与使用](#-安装与使用) | 安装步骤与配置示例 | [📈 性能报告](#-性能报告) | 资源占用与响应速度 |
-| [📊 推送示例](#-推送示例) | 效果展示与格式示例 | [❓ 常见问题](#-常见问题简答) | 故障排查与使用疑问 |
-| [📡 数据源状态](#-数据源状态) | 数据源稳定性概览 | [🚧 已知限制](#-最新版本的已知限制) | 当前版本技术限制 |
-| [📑 配置详解](#-webui-配置详解) | WebUI 配置参数说明 | [🤝 贡献支持](#-贡献与支持) | 加入我们与交流群 |
-| [📋 使用命令](#-使用命令) | 指令说明与模拟功能 | [📢 免责声明](#-免责声明) | 法律效力与使用建议 |
-| [📂 目录结构](#-插件目录与结构) | 插件文件组织方式 | [📄 许可证](#-许可证) | 开源协议详情 |
-| [🏗️ 系统架构](#system-architecture) | 技术架构与核心逻辑 | [🙏 致谢](#-致谢) | 项目致谢与参考 |
+| 左列 | 右列 |
+| :--- | :--- |
+| 1. [✨ 功能特性](#-功能特性) | 12. [📒 增强的可读性日志格式](#-增强的可读性日志格式) |
+| 2. [🚀 安装与使用](#-安装与使用) | 13. [❓ 常见问题简答](#-常见问题简答) |
+| 3. [📊 推送示例](#-推送示例) | 14. [🚧 最新版本的已知限制](#-最新版本的已知限制) |
+| 4. [🖼️ 图片渲染功能](#image-render) | 15. [🤝 贡献与支持](#-贡献与支持) |
+| 5. [💻 现代化 WebUI 控制台](#-现代化-webui-控制台) | 16. [📢 免责声明](#-免责声明) |
+| 6. [📡 数据源状态](#-数据源状态) | 17. [📄 许可证](#-许可证) |
+| 7. [📑 插件配置项详解](#-插件配置项详解) | 18. [🙏 致谢](#-致谢) |
+| 8. [📋 使用命令](#-使用命令) | 19. [📚 推荐阅读](#-推荐阅读) |
+| 9. [📂 插件目录与结构](#-插件目录与结构) | 20. [📊 仓库状态](#-仓库状态) |
+| 10. [🏗️ 系统架构](#system-architecture) | 21. [⭐️ 星星](#️-星星) |
+| 11. [📈 性能报告](#-性能报告) | |
 
 </div>
 
@@ -60,7 +64,7 @@
 >
 > 和[主动消息插件](https://github.com/DBJD-CR/astrbot_plugin_proactive_chat)一样，本插件也是"Vibe Coding"的产物。
 >
-> 所以，**本插件的所有文件内容，全部由 AI 编写完成**，我几乎没有为该插件编写任何一行代码，仅修改了一些文字描述和负责本文档的润色。所以，或许有必要添加下方的声明：
+> 所以，**本插件的所有文件内容，全部由 AI 编写完成**，我几乎没有为该插件编写任何一行代码，仅进行了架构设计与修改部分文字描述和负责本文档的润色。所以，或许有必要添加下方的声明：
 
 > [!WARNING]  
 > 本插件和文档由 AI 生成，内容仅供参考，请仔细甄别。
@@ -77,7 +81,7 @@
 >
 > 在此，我也诚邀各路大佬对本插件进行测试和改进，希望大家多多指点。
 >
-> KIMI & Gemini：如果你被这个"为爱发电"的故事打动了，或者觉得这个插件有帮助或比较实用，**欢迎你为这个插件点个** 🌟 **Star** 🌟，这是对我们的最大认可与鼓励~
+> KIMI & Gemini & GPT：如果你被这个"为爱发电"的故事打动了，或者觉得这个插件有帮助或比较实用，**欢迎你为这个插件点个** 🌟 **Star** 🌟，这是对我们的最大认可与鼓励~
 
 > [!NOTE]
 > 虽然本插件的开发过程中大量使用了 AI 进行辅助，但我保证所有内容都经过了我的严格审查，所有的 AI 生成声明都是形式上的。你可以放心参观本仓库和使用本插件。
@@ -87,23 +91,24 @@
 > [!TIP]
 > 本项目的相关开发数据 (持续更新中)：
 >
-> 开发时长：累计 45 天（主插件部分）
+> 开发时长：累计 59 天（主插件部分）
 >
-> 累计工时：约 220 小时（主插件部分）
+> 累计工时：约 285 小时（主插件部分）
 >
 > 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro、GPT Codex 5.3(With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：614,722,127
+> Tokens Used：953,749,947
 
 ## ✨ 功能特性
 
 ### 🌍 多数据源支持
 
-插件支持四大数据源和多达 17 个可自由选择启用的细粒度数据源，覆盖全球主要地震监测机构：
+插件支持四大数据源和多达 18 个可自由选择启用的细粒度数据源，覆盖全球主要地震监测机构：
 
 - **中国地震网地震预警** (FAN Studio / Wolfx) - 实时地震预警信息。
+- **中国地震网地震预警 (省级)** (FAN Studio) - 省级地震预警网。
 - **台湾中央气象署强震即时警报** (FAN Studio / Wolfx) - 台湾地区地震预警 (EEW)。
 - **台湾中央气象署地震报告** (FAN Studio) - 台湾地区正式地震报告（含图片）。
 - **日本气象厅紧急地震速报** (P2P / Wolfx / FAN Studio) - 日本紧急地震速报。
@@ -114,13 +119,6 @@
 - **中国气象局气象预警** (FAN Studio) - 气象灾害预警。
 - **自然资源部海啸预警中心** (FAN Studio) - 海啸预警信息。
 - **日本气象厅海啸预报** (P2P) - 日本海啸预报信息。
-
-### 🎯 智能推送控制
-
-- **阈值过滤** - 根据震级、烈度、震度设置推送阈值。
-- **频率控制** - 可选的基于报数的智能推送，避免短时间内刷屏。
-- **首报推送保证** - 确保预警信息首次下达时总是推送。
-- **最终报保证** - 确保最终报总是推送。
 
 ### 🔁 事件去重功能
 
@@ -134,21 +132,25 @@
 
 ### 📱 灵活配置
 
-- **WebUI配置** - 支持通过 AstrBot WebUI 界面进行配置，配备了新潮的滑块组件。
-- **自定义推送** - 支持多平台/多实例，配置特定私聊/群聊接收预警（留空则不推送）。
+- **WebUI配置**
+  - 支持通过 AstrBot 原生 WebUI 界面进行配置，配备了新潮的滑块组件。
+  - 还支持通过插件自带的 WebUI 进行更高效的配置管理与状态监控。**进行会话个性化配置请前往此处**。
+- **自定义推送** - 支持多平台/多实例/个性化，配置特定私聊/群聊接收预警（留空则不推送）。
 - **专门格式化** - 针对不同数据源的信息进行专门格式化，确保了良好的信息展示。
 
 ## 🚀 安装与使用
 
 1. **下载插件**: 通过 AstrBot 的插件市场下载。或从本 GitHub 仓库的 Release 下载 `astrbot_plugin_disaster_warning` 的 `.zip` 文件，在 AstrBot WebUI 中的插件页面中选择 `从文件安装` 。
-2. **安装依赖**: 本插件的核心依赖大多已包含在 AstrBot 的默认依赖中，通常无需额外安装。如果你的环境中缺少以下依赖，请安装：
+2. **安装依赖**: 本插件的核心依赖大多已包含在 AstrBot 的默认依赖中，且在插件下载安装时会自动安装插件所需的依赖，通常无需额外安装。如果你的环境中确实缺少相关依赖，请安装：
 
    ```bash
-   pip install python-dateutil asyncio-mqtt jinja2 playwright tzdata
+   pip install python-dateutil asyncio-mqtt jinja2 playwright tzdata fastapi uvicorn protobuf
+   # Python < 3.11 额外安装
+   pip install "tomli>=2.0.1; python_version < '3.11'"
    ```
 
 3. **重启 AstrBot (可选)**: 如果插件没有正常加载或生效，可以尝试重启你的 AstrBot 程序。
-4. **配置插件**: 进入 WebUI，找到 `astrbot_plugin_disaster_warning` 插件，选择 `插件配置` 选项，配置相关参数。
+4. **配置插件**: 进入 AstrBot WebUI，找到 `灾害预警` 插件，选择 `插件配置` 选项，配置相关参数。或者在插件自带的 WebUI 中进行配置。
 
 ## 📊 推送示例
 
@@ -231,7 +233,7 @@
 🗺️地图瓦片:[Image]
 ```
 
-### 海啸预警推送示例
+### 海啸预警推送示例 (仅供参考)
 
 **中国海啸预警示例**：
 
@@ -266,13 +268,14 @@
 
 ```text
 🍃[气象预警]
-📋山东省潍坊市发布大风黄色预警信号🟡
-📝潍坊市气象台2026年01月08日18时42分发布大风黄色预警信号：受气旋和冷空气影响，预计9日夜间到11日白天北风风力较大，滨海区8～9级阵风10级，潍城区、奎文区、坊子区、峡山区、高新区、保税区5～6级阵风8～9级，请注意防范。
-⏰生效时间：2026年01月08日 18时42分00秒 (UTC+8)
+📋云南省昆明市东川区发布大风蓝色预警🔵
+🏷️副标题：东川区气象台发布大风蓝色预警[Ⅳ级/一般]
+📝东川区气象台2026年2月27日16时34分发布大风蓝色预警信号：预计未来12小时我区铜都街道、碧谷街道、阿旺镇、乌龙镇、汤丹镇、红土地镇、拖布卡镇、因民镇将出现8级以上大风，请注意防范。
+⏰生效时间：2026年02月27日 16时39分00秒 (UTC+8)
 ⚠️预警图标:[Image]
 ```
 
-## 🖼️ 图片渲染功能
+## <span id="image-render">🖼️ 图片渲染功能</span>
 
 插件引入了基于 Playwright 的高性能图片渲染引擎，能够将枯燥的纯文本预警数据转化为极具视觉冲击力的可视化卡片。这不仅提升了信息的可读性，更让您的 Bot 显得专业且富有科技感。
 
@@ -344,7 +347,7 @@
     playwright install --with-deps chromium
     ```
 
-  - **推荐方案**：使用 **远程 Playwright** 避免在容器内安装浏览器。在配置中设置：
+  - **远程方案**：使用 **远程 Playwright** 避免在容器内安装浏览器。例如在配置中设置：
 
     ```json
     {
@@ -361,7 +364,7 @@
   - **暗夜主题 (DarkNight)**：单张图片约 **500KB**。
   - **地震列表图片**：单张图片约 **100KB**。
   - **地图瓦片**：单张图片约 **800KB**。
-  - 插件内置了自动清理机制，会每隔 **24 小时** 自动清理 **3 小时前** 生成的图片，无需担心占用过多磁盘空间，但仍建议预留 200-300MB 左右的空间。
+  - 插件内置了自动清理机制，会每隔 **24 小时** 自动清理 **3 小时前** 生成的图片，且如果文件过多也会自动提前清理，无需担心占用过多磁盘空间，但仍建议预留 200MB 左右的空间。
 
 - **渲染延迟 (Latency)**:
   - 生成一张高清卡片通常需要 **0.5-7 秒** 的时间。
@@ -373,15 +376,35 @@
   - 渲染器默认使用宿主系统的字体。
   - 如果您的 Linux 服务器出现中文显示为“方框”或乱码，请安装开源中文字体（如 `fonts-noto-cjk` 或 `wqy-zenhei`）。
 
+## 💻 现代化 WebUI 控制台
+
+从 v1.4.0 版本开始，插件引入了全新的、功能完备的 WebUI 管理端。它不仅仅是一个配置页面，更是一个集“可观测、可操作、可回溯、可配置”于一体的现代化控制台。
+
+<img width="957" height="464" alt="WebUI" src="https://github.com/user-attachments/assets/0e7c87ca-5198-4653-b9ea-7b5a82a2a4f7" />
+
+### ✨ 核心亮点
+
+- **四大核心视图**：
+  - **📊 运行状态**：一屏掌握服务健康度。包含实时动态跑马灯、连接矩阵（展示各数据源在线状态、延迟与重试次数）、快捷运维操作（一键重连、清除统计、模拟预警）。
+  - **🔔 事件列表**：强大的事件回溯能力。支持按类型、震级、数据源多维筛选；同一事件多报次自动折叠聚合，清晰展示事件演进轨迹；内置重大事件横向时间轴，支持拖拽与长按浏览。
+  - **📈 数据统计**：直观的数据分析。提供震级分布图、趋势图、日历热力图、地区与数据源贡献榜单，让灾害数据一目了然。
+  - **⚙️ 配置管理**：基于 Schema 的动态表单。支持全局配置与**会话差异配置**，提供分组折叠、草稿自动保存、一键恢复等高级功能。
+
+- **极致的交互体验**：
+  - **🎨 MD3 视觉体系**：采用 Material Design 3 规范，结合磨砂玻璃态设计，提供亮色/暗色主题无缝切换。
+  - **⚡ 实时数据流**：基于 WebSocket 全局单例连接，实现状态与事件的毫秒级实时推送，告别手动刷新。
+  - **📱 全端适配**：响应式布局完美覆盖桌面、平板与移动端，随时随地掏出手机即可进行运维管理。
+  - **🧠 状态记忆**：智能记忆您的滚动位置、主题偏好与配置草稿，提供丝滑连贯的操作体验。
+
 ## 📡 数据源状态
 
 | 数据源 | 提供者 | 类型 | 状态 |
 | :--- | :--- | :--- | :--- |
-| 中国地震预警网 | FAN Studio | EEW | ✅ |
+| 中国地震预警网 (含省级) | FAN Studio | EEW | ✅ |
 | 中国地震预警网 | Wolfx | EEW | ✅ |
 | 台湾中央气象署 | FAN Studio | EEW | ✅ |
 | 台湾中央气象署 | FAN Studio | Info | ✅ |
-| 台湾中央气象署 | Wolfx | EEW | ⚠️ |
+| 台湾中央气象署 | Wolfx | EEW | ✅ |
 | 日本气象厅紧急地震速报 | P2P | EEW | ✅ |
 | 日本气象厅紧急地震速报 | Wolfx | EEW | ✅ |
 | 日本气象厅紧急地震速报 | FAN Studio | EEW | ✅ |
@@ -414,39 +437,13 @@
 - **美国地质调查局地震测定 (USGS)**：约 0.5-15s
 - **中国气象局气象预警 (CMA)**：约 3-15 分钟
   - 开启地图瓦片渲染 / GQ 卡片还将额外增加约 1-2.5s 的延迟。(地图瓦片仅影响地震情报延迟，不阻塞地震预警类事件的推送)
-  - 不同数据源间的延迟一般为 Fan = P2P ＜ Wolfx ＜ Global Quake
+  - 不同数据源间的**推送**延迟一般为 Fan = P2P ＜ Wolfx ＜ Global Quake
 
-## 📑 WebUI 配置详解
+## 📑 插件配置项详解
 
-本插件在 AstrBot WebUI 中提供了详尽的配置项，采用了分层级、模块化的设计，旨在让用户能针对全球不同地区的灾害信息进行极致的个性化定制。
-
-### ♨️ WebUI 配置热重载说明（重要）
-
-通过插件自带 WebUI（内置管理端）保存配置后，**并非所有配置项都需要重载插件**。
-
-- **可立即生效（热重载）**：主要是消息推送链路中的运行时配置，例如会话差异覆写（override/effective）、地震过滤阈值、推送频率控制、消息格式（文本/地图/模板）等。
-- **通常需要重载插件**：主要是启动期初始化的基础设施配置，例如 `web_admin` 启停与监听参数、部分 WebSocket 连接生命周期参数、浏览器池初始化参数、日志器初始化参数等。
-
-#### ✅ 典型“可热重载”配置
-
-- 会话差异配置（会话级 override / effective）
-- `earthquake_filters`
-- `push_frequency_control`
-- `message_format`（大部分展示参数）
-- `weather_config`（消息显示相关项）
-
-#### ⚠️ 典型“建议重载后生效”配置
-
-- `web_admin`（启用状态、host、port）
-- `websocket_config`（连接生命周期相关参数）
-- `message_format` 中与浏览器池初始化强相关的参数（如 `browser_pool_size`、`playwright_mode`）
-- `debug_config` 中依赖初始化读取的日志器参数
-
-> [!TIP]
-> 实战建议：
+> 本插件在 AstrBot 与插件自带的 WebUI 中提供了详尽的配置项，采用了分层级、模块化的设计，旨在让用户能针对全球不同地区的灾害信息进行极致的个性化定制。
 >
-> 1. 修改“过滤器/会话覆写/消息格式”等业务规则时，可先直接在插件 WebUI 保存并观察推送结果。
-> 2. 修改“服务监听/连接管理/渲染器初始化”相关参数后，建议手动重载插件以确保全部组件按新配置重建。
+> 在插件自带的 WebUI 中，您可以进行会话的差异覆写以实现精细化配置。
 
 ### ⚙️ 1. 基础全局配置 (General)
 
@@ -494,7 +491,7 @@
 
 - **启用 (`enabled`)**: 开启后将订阅来自 FAN Studio 的实时推送。
 - **中国地震预警网 (`china_earthquake_warning`)**: 接入国内地震预警系统（国家级），通常能在地震横波到达前数秒至数十秒下发预警。
-- **中国地震预警网（省级）(`china_earthquake_warning_provincial`)**: FAN Studio 提供的省级地震预警通道，预警推送频率比国家级更高，如果追求高覆盖率只开启省级预警网即可（同时避免重复推送）。
+- **中国地震预警网（省级）(`china_earthquake_warning_provincial`)**: FAN Studio 提供的省级地震预警通道，预警推送阈值比国家级更低，如果追求高覆盖率只开启省级预警网即可（同时避免重复推送）。
 - **台湾中央气象署预警 (`taiwan_cwa_earthquake`)**: 针对台湾地区的强震即时警报 (EEW)，速度快但精度略低。
 - **台湾中央气象署报告 (`taiwan_cwa_report`)**: 台湾地区的正式地震报告，包含震中图、等震度图等详细信息。
 - **中国地震台网 (`china_cenc_earthquake`)**: 接收地震测定正式报，信息包含确切的发震时间、经纬度、深度和震级。
@@ -709,11 +706,12 @@
 
 ---
 
-### ☁️ 8. 气象预警精细过滤 (`weather_config`)
+### ⛈️ 8. 气象预警精细过滤 (`weather_config`)
 
 - **气象预警过滤器 (`weather_filter`)**:
-  - **启用 (`enabled`)**: 开启后将应用省份和级别过滤。
-  - **省份白名单 (`provinces`)**: 输入中文名称列表（如 `["北京", "四川"]`）。留空则推送全国。
+  - **启用 (`enabled`)**: 开启后将应用关键词和级别过滤。
+  - **关键词白名单 (`keywords`)**: 输入关键词列表（如 `["广西", "南宁"]`）。留空则不过滤地区。
+    - 关键词填写应该尽量简短 (避免填写完整的省市名，如 `XX省XX市`，根据过滤范围直接填 `浙江`、`杭州` 即可)。
   - **最低预警级别 (`min_color_level`)**: 等级排序：白色 < 蓝色 < 黄色 < 橙色 < 红色。
 - **正文描述字数限制 (`max_description_length`)**: 超过此字数将被截断。
 - **显示预警图标 (`enable_weather_icon`)**: 根据预警类型自动附加官方图标。
@@ -721,11 +719,11 @@
 ```json
 "weather_config": {
   "weather_filter": {
-    "enabled": true,                  // 是否开启省份和等级过滤
-    "provinces": ["北京", "四川"],    // 仅推送这些省份的预警（留空为全国）
-    "min_color_level": "黄色"        // 推送的最低预警颜色级别要求
+    "enabled": true,                  // 是否开启关键词和等级过滤
+    "keywords": ["广西", "南宁"],     // 仅推送包含这些关键词的地区的预警（留空为全国）
+    "min_color_level": "黄色"         // 推送的最低预警颜色级别要求
   },
-  "max_description_length": 384     // 正文描述信息的截断上限
+  "max_description_length": 384       // 正文描述信息的截断上限
 }
 ```
 
@@ -808,6 +806,36 @@
 
 ---
 
+### ♨️ WebUI 配置热重载说明
+
+通过插件自带 WebUI（内置管理端）保存配置后，**并非所有配置项都需要重载插件**。
+
+- **可立即生效（热重载）**：主要是消息推送链路中的运行时配置，例如会话差异覆写（override/effective）、地震过滤阈值、推送频率控制、消息格式（文本/地图/模板）等。
+- **通常需要重载插件**：主要是启动期初始化的基础设施配置，例如 `web_admin` 启停与监听参数、部分 WebSocket 连接生命周期参数、浏览器池初始化参数、日志器初始化参数等。
+
+#### ✅ 典型“可热重载”配置
+
+- 会话差异配置（会话级 override / effective）
+- `earthquake_filters`
+- `push_frequency_control`
+- `message_format`（大部分展示参数）
+- `weather_config`（消息显示相关项）
+
+#### ⚠️ 典型“建议重载后生效”配置
+
+- `web_admin`（启用状态、host、port）
+- `websocket_config`（连接生命周期相关参数）
+- `message_format` 中与浏览器池初始化强相关的参数（如 `browser_pool_size`、`playwright_mode`）
+- `debug_config` 中依赖初始化读取的日志器参数
+
+> [!TIP]
+> 实战建议：
+>
+> 1. 修改“过滤器/会话覆写/消息格式”等业务规则时，可先直接在插件 WebUI 保存并观察推送结果。
+> 2. 修改“服务监听/连接管理/渲染器初始化”相关参数后，建议手动重载插件以确保全部组件按新配置重建。
+
+---
+
 ## 📋 使用命令
 
 插件提供以下命令：
@@ -816,12 +844,12 @@
 | :--- | :--- |
 | `/灾害预警` | 显示插件帮助信息 |
 | `/灾害预警状态` | 查看服务运行状态 |
-| `/灾害预警重连` | 强制重连所有数据源 **(仅管理员)** |
+| `/灾害预警重连` | 强制重连所有离线数据源 **(仅管理员)** |
 | `/地震列表查询 [数据源] [数量] [格式]` | 查询最新地震列表 (card/text 格式) |
 | `/灾害预警统计` | 查看详细的事件统计报告 |
 | `/灾害预警统计清除` | 清除所有统计信息 **(仅管理员)** |
 | `/灾害预警推送开关` | 开启或关闭当前会话的推送 **(仅管理员)** |
-| `/灾害预警配置 查看 全局/当前/<会话UMO>` | 查看会话配置信息**(仅管理员)** |
+| `/灾害预警配置 查看 全局/当前/<会话UMO>` | 查看会话配置信息 **(仅管理员)** |
 | `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]` | 模拟地震事件测试 |
 | `/灾害预警日志` | 查看原始消息日志统计摘要 **(仅管理员)** |
 | `/灾害预警日志开关` | 开关原始消息日志记录 **(仅管理员)** |
@@ -833,90 +861,6 @@
 ### 命令示例
 
 ```bash
-# 查看服务状态
-/灾害预警状态
-
-# 查看统计信息
-/灾害预警统计
-
-预期效果：
-📊 灾害预警统计报告
-📅 统计开始时间: 2026-01-11 20:51:55
-🔢 记录到的事件总数: 12593
-🚨 去重后的事件总数: 3695
-
-📈 分类统计:
-地震: 3211
-气象: 367
-地震预警: 117
-
-🌍 地震震级分布:
-< M3.0: 2214
-M3.0 - M3.9: 726
-M4.0 - M4.9: 269
-M5.0 - M5.9: 103
-M6.0 - M6.9: 16
-
-📍 地震高发地区 (国内Top 10):
-新疆: 2
-云南: 2
-台湾: 1
-贵州: 1
-青海: 1
-
-🔥 最大地震: M6.3 千岛群岛附近 (fan_studio_usgs)
-
-☁️ 气象预警分布:
-
-类型Top10:
-大风: 106
-道路结冰: 104
-大雾: 51
-寒潮: 48
-低温: 18
-道路冰雪: 13
-寒冷: 5
-沙尘: 5
-霜冻: 4
-暴雪: 4
-
-地区Top10:
-辽宁: 51
-河南: 44
-江西: 40
-湖北: 28
-山东: 26
-内蒙古: 19
-陕西: 19
-安徽: 19
-广西: 18
-吉林: 12
-
-级别分布:
-🔴红色: 3
-🟠橙色: 28
-🟡黄色: 186
-🔵蓝色: 150
-
-📡 数据源事件统计:
-global_quake: 10609
-fan_studio_usgs: 1040
-fan_studio_weather: 369
-fan_studio_jma: 274
-p2p_earthquake: 134
-fan_studio_cenc: 79
-fan_studio_cea: 42
-wolfx_cenc_eq: 29
-fan_studio_cwa: 11
-wolfx_cenc_eew: 6
-
-🛡️ 日志过滤拦截统计:
-• 重复数据拦截: 13129
-• 心跳包过滤: 134763
-• P2P节点状态: 8317
-• 连接状态过滤: 1270
-📊 总计拦截: 157479
-
 # 查询地震列表
 # 格式：/地震列表查询 [数据源] [数量] [格式]
 # 图片格式最大传入参数为 10 ，纯文本格式最大传入参数为 50
@@ -932,6 +876,13 @@ wolfx_cenc_eew: 6
 
 # 4. 以纯文本格式显示 CENC 最近 5 条地震记录
 /地震列表查询 cenc 5 text
+
+# 查看插件配置
+# 格式：/灾害预警配置 查看 全局/当前/<会话UMO>
+# “全局/当前/<会话UMO>” 为可选参数，缺失默认返回全局配置
+
+# 查询平台 default 中群聊 123456789 的配置
+/灾害预警配置 查看 default:GroupMessage:123456789
 
 # 模拟地震事件（用于测试过滤器和本地监控）
 # 格式：/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]
@@ -991,6 +942,8 @@ AstrBot/
    └─ plugins/
       └─ astrbot_plugin_disaster_warning/
          ├─ __init__.py                        # Python 包初始化文件，支持相对导入
+         ├─ .gitattributes                     # Git 属性配置（如行尾符与文本/二进制判定）
+         ├─ .gitignore                         # Git 忽略规则
          ├─ _conf_schema.json                  # AstrBot WebUI 配置界面 schema 定义
          ├─ CHANGELOG.md                       # 插件更新日志，适用于 AstrBot v4.11.2+
          ├─ CONTRIBUTING.md                    # 本插件的贡献指南
@@ -1008,7 +961,7 @@ AstrBot/
          │   ├─ fonts/                         # 字体文件目录
          │   │
          │   ├─ js/                            # 前端逻辑脚本目录
-         │   │   ├─ .syntax_check_config_renderer.js # ConfigRenderer 语法检查辅助脚本（多会话配置页开发辅助）
+         │   │   ├─ .syntax_check_config_renderer.js # 配置渲染器语法检查辅助脚本（开发辅助）
          │   │   │
          │   │   ├─ components/                # UI 组件目录
          │   │   │   ├─ common/                # 通用组件 (Header, Sidebar, Toast等)
@@ -1133,10 +1086,8 @@ AstrBot/
    └─ plugin_data/
       └─ astrbot_plugin_disaster_warning/
          ├─ temp/                              # 临时文件夹，用于存放渲染生成的图片文件
-         │
          ├─ .telemetry_id                      # 匿名遥测实例ID（不包含任何用户信息）
          ├─ earthquake_lists_cache.json        # Wolfx 地震列表数据缓存
-         │
          ├─ events.db                          # SQLite 数据库，存储所有历史灾害事件记录
          ├─ logger_stats.json                  # 日志过滤器统计摘要
          ├─ raw_messages.log                   # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
@@ -1158,204 +1109,577 @@ AstrBot/
 
 ## <span id="system-architecture">🏗️ 系统架构</span>
 
-### 📊 架构图
+### 📊 前端架构图
 
 ```mermaid
-graph TD
-    %% 全局样式定义
-    classDef source fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef manager fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef processor fill:#dfd,stroke:#333,stroke-width:1px;
-    classDef filter fill:#fff4dd,stroke:#d4a017,stroke-width:1px;
-    classDef output fill:#fdd,stroke:#a00,stroke-width:2px;
-    classDef auxiliary fill:#eee,stroke:#999,stroke-dasharray: 5 5;
+graph TB
+    %% ========== 样式定义 ==========
+    classDef entry fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
+    classDef core fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
+    classDef view fill:#FFF3E0,stroke:#FB8C00,stroke-width:2px,color:#E65100;
+    classDef component fill:#F3E5F5,stroke:#8E24AA,stroke-width:1.5px,color:#4A148C;
+    classDef hook fill:#E0F7FA,stroke:#00ACC1,stroke-width:1.5px,color:#006064;
+    classDef data fill:#FFFDE7,stroke:#F9A825,stroke-width:1.5px,color:#5D4037;
+    classDef api fill:#FBE9E7,stroke:#F4511E,stroke-width:2px,color:#BF360C;
+    classDef util fill:#ECEFF1,stroke:#546E7A,stroke-width:1.5px,color:#263238;
+    classDef style fill:#F1F8E9,stroke:#7CB342,stroke-width:1.5px,color:#33691E;
+    classDef infra fill:#EDE7F6,stroke:#5E35B1,stroke-width:1.5px,color:#311B92;
 
-    subgraph INGESTION_LAYER ["1. 接入层"]
+    %% ========== 应用装载层 ==========
+    subgraph L1["① 应用装载层（Browser Runtime）"]
+        direction TB
+        A1["index.html\n脚本顺序加载与首屏骨架"]
+        A2["BootLoader\n主题预初始化 + 平滑退场"]
+        A3["app.jsx\n应用根组件"]
+        A4["ThemeProvider\nMD3 动态主题"]
+        A5["CssBaseline\n全局样式重置"]
+        A6["Layout Shell\nSidebar + Header + MainContent"]
+    end
+
+    %% ========== 上下文与状态层 ==========
+    subgraph L2["② 全局状态与上下文层（State Core）"]
+        direction TB
+        B1["AppContext\n全局状态容器"]
+        B2["Reducer\n状态变更收敛"]
+        B3["initialState\nstatus/stats/events/connections"]
+        B4["dispatch(Action)\n统一更新入口"]
+        B5["refreshData()\n刷新运行状态"]
+        B6["fetchConnections()\n刷新连接信息"]
+        B7["fetchConfig()\n拉取显示时区等配置"]
+        B8["TOGGLE_THEME\n亮暗主题切换"]
+        B9["SET_WS_CONNECTED\n实时连接态"]
+        B10["UPDATE_STATS\n统计聚合与排序"]
+    end
+
+    %% ========== 视图层 ==========
+    subgraph L3["③ 视图路由层（Views）"]
         direction LR
-        subgraph FS_GROUP ["FAN Studio 综合源"]
-            FS_CEA["CEA 地震预警"]
-            FS_CWA["CWA 强震警报"]
-            FS_CWA_R["CWA 地震报告"]
-            FS_JMA["JMA 紧急地震速报"]
-            FS_CENC["CENC 正式测定"]
-            FS_WTR["气象预警"]
-            FS_TSU["海啸预警"]
-        end
-        
-        subgraph P2P_GROUP ["P2P Quake 实时源"]
-            P2P_556["代码 556 (EEW)"]
-            P2P_551["代码 551 (地震情报)"]
-            P2P_552["代码 552 (海啸予報)"]
-        end
-
-        subgraph WOLFX_GROUP ["Wolfx 聚合源"]
-            W_CENC["CENC 预警/测定"]
-            W_JMA["JMA 预警/情报"]
-        end
-
-        GQ_WS["Global Quake WebSocket"]
+        C1["StatusView\n运行态与运维操作"]
+        C2["EventsView\n事件时间线 + 列表"]
+        C3["StatsView\n图表与榜单总览"]
+        C4["ConfigView\n配置管理容器"]
     end
 
-    subgraph CORE_SERVICE ["2. 核心服务层"]
-        DS["灾害预警服务<br/>(单例控制器)"]
-        WSM["WebSocket 管理器<br/>(aiohttp 会话管理)"]
-        
-        subgraph WSM_INTERNAL ["WSM 内部逻辑"]
-            RECONN["重连算法<br/>(指数退避)"]
-            FALLBACK["兜底机制<br/>(30分钟回退)"]
-            HB["心跳监测<br/>(存活检查)"]
-        end
+    %% ========== 状态页组件 ==========
+    subgraph L4S["④-1 状态页组件组（Status Components）"]
+        direction TB
+        S1["NewsTicker\n实时动态跑马灯"]
+        S2["StatusCard\n服务状态卡片"]
+        S3["StatsCard\n核心统计卡片"]
+        S4["ConnectionsGrid\n连接矩阵 + 延迟"]
+        S5["SimulationModal\n模拟预警表单"]
+        S6["Quick Actions\n重连/刷新/清除"]
     end
 
-    subgraph PROCESSING_PIPELINE ["3. 数据处理流水线"]
-        subgraph ROUTING ["路由与解析"]
-            REG["处理器注册表<br/>(模式匹配)"]
-            H_BASE["基础数据处理器"]
-            H_EEW["EEW 处理器群"]
-            H_EQ["地震情报处理器群"]
-            H_TSU["海啸处理器群"]
-        end
-
-        subgraph NORMALIZATION ["数据规范化"]
-            MODEL_EVT["灾害事件模型"]
-            MODEL_DATA["地震/海啸/气象模型"]
-        end
-
-        subgraph DEDUPLICATION ["去重矩阵"]
-            DEDUPE["事件去重器"]
-            FINGERPRINT["指纹算法<br/>(网格+震级+时间)"]
-        end
+    %% ========== 事件页组件 ==========
+    subgraph L4E["④-2 事件页组件组（Events Components）"]
+        direction TB
+        E1["HorizontalTimeline\n重大事件横向回溯"]
+        E2["EventsList\n分页 + 筛选 + 折叠"]
+        E3["Event Grouping\n按 event_id 聚合"]
+        E4["History Collapse\n多报展开/收起"]
+        E5["Badge Engine\n震级/震度/烈度语义徽章"]
+        E6["Pagination\n跳页与每页条数"]
     end
 
-    subgraph FILTER_STATION ["4. 过滤与控制站"]
-        MPM["消息推送管理器"]
-        
-        subgraph GLOBAL_FILTERS ["全局过滤器"]
-            F_INT["烈度过滤器<br/>(烈度阈值)"]
-            F_SCA["震度过滤器<br/>(日本震度阈值)"]
-            F_KW["关键词过滤器<br/>(白/黑名单)"]
-            F_WTR["气象过滤器<br/>(地域/级别过滤)"]
-        end
-
-        subgraph LOCAL_ESTIMATION ["本地化评估"]
-            L_MONITOR["本地烈度过滤器"]
-            CALC["烈度计算器<br/>(距离/烈度衰减计算)"]
-        end
-
-        subgraph PUSH_CONTROL ["报数调度"]
-            RPC["报数控制器<br/>(首报/N报/最终报逻辑)"]
-        end
+    %% ========== 统计页组件 ==========
+    subgraph L4T["④-3 统计页组件组（Stats Components）"]
+        direction TB
+        T1["MagnitudeChart\n震级分布"]
+        T2["TrendChart\n趋势图"]
+        T3["CalendarHeatmap\n热力图"]
+        T4["TopListCard\n地区/来源排行"]
+        T5["MaxMagCard\n最大地震"]
+        T6["WeatherLevelCard + LogStatsCard\n气象级别与日志统计"]
     end
 
-    subgraph PRESENTATION_LAYER ["5. 展现层"]
-        subgraph FORMATTING ["文案格式化"]
-            F_EQ["地震消息格式化器"]
-            F_W["气象消息格式化器"]
-            F_T["海啸消息格式化器"]
-        end
-
-        subgraph RENDERING ["高级渲染"]
-            T_ENG["Jinja2 模板引擎"]
-            PW["Playwright 渲染器<br/>(无头浏览器)"]
-            TEMPLATES["HTML 模板<br/>(Aurora / DarkNight / Base)"]
-        end
-
-        BOT_CTX["AstrBot 上下文<br/>(消息链构建)"]
+    %% ========== 配置页组件 ==========
+    subgraph L4C["④-4 配置页组件组（Config Components）"]
+        direction TB
+        G1["ConfigRenderer\nSchema 动态渲染"]
+        G2["ConfigField\n字段类型分发器"]
+        G3["Session Mode\n全局/会话差异配置"]
+        G4["Draft Cache\n草稿本地持久化"]
+        G5["Expanded Cache\n折叠状态记忆"]
+        G6["Save Pipeline\n清洗后提交"]
     end
 
-    subgraph AUXILIARY_SYSTEM ["6. 辅助系统"]
-        LOG["消息记录器<br/>(原始日志与轮转)"]
-        STATS["统计管理器<br/>(持久化与分析)"]
-        TELE["遥测管理器<br/>(匿名统计)"]
+    %% ========== Hooks 层 ==========
+    subgraph L5["⑤ Hooks 能力层（Runtime Hooks）"]
+        direction TB
+        H1["useWebSocket\n全局单例连接"]
+        H2["ConnectionListeners\n订阅广播机制"]
+        H3["Reconnect Scheduler\n断线重连"]
+        H4["useApi\nREST 请求封装"]
+        H5["usePreservedScroll\n滚动保留恢复"]
+        H6["Custom Effects\n视图切换滚动记忆"]
     end
 
-    %% 连接关系定义
-    INGESTION_LAYER ==> WSM
-    WSM --> DS
-    DS --> REG
-    REG --> H_BASE
-    H_BASE --> H_EEW & H_EQ & H_TSU
-    H_EEW & H_EQ & H_TSU --> MODEL_EVT
-    MODEL_EVT --> DEDUPE
-    DEDUPE --> FINGERPRINT
-    FINGERPRINT --> MPM
-    MPM --> GLOBAL_FILTERS
-    GLOBAL_FILTERS --> LOCAL_ESTIMATION
-    LOCAL_ESTIMATION --> CALC
-    CALC --> RPC
-    RPC --> FORMATTING
-    FORMATTING --> T_ENG
-    T_ENG --> PW
-    PW --> TEMPLATES
-    TEMPLATES --> BOT_CTX
-    BOT_CTX ==> TARGETS[" AstrBot 发送至目标会话 "]
+    %% ========== 数据与接口层 ==========
+    subgraph L6["⑥ 数据接口层（Data Plane）"]
+        direction TB
+        D1["/api/status\n运行状态"]
+        D2["/api/connections\n连接详情"]
+        D3["/api/config + /api/full-config\n配置读取/保存"]
+        D4["/api/events + /api/events/major\n事件列表/重大事件"]
+        D5["/api/statistics + /api/trend + /api/heatmap\n统计图表数据"]
+        D6["/api/simulate + /api/simulation-params\n模拟预警链路"]
+        D7["/api/session-config/*\n会话差异配置"]
+        D8["/ws\n实时推送通道"]
+    end
 
-    %% 辅助关系
-    WSM -.-> LOG
-    MODEL_EVT -.-> STATS
-    DS -.-> TELE
-    RECONN & FALLBACK & HB -.-> WSM
+    %% ========== 工具与样式层 ==========
+    subgraph L7["⑦ 工具与样式层（Utilities & Design Tokens）"]
+        direction TB
+        U1["formatters.js\n时间/来源/数值格式化"]
+        U2["style.css\n响应式 + 主题变量 + 动画"]
+        U3["Material UI UMD\n组件基础设施"]
+        U4["Emotion\n运行时样式系统"]
+        U5["LocalStorage\n主题/视图/滚动/草稿缓存"]
+    end
 
-    %% 样式应用
-    class FS_CEA,FS_CWA,FS_CWA_R,FS_JMA,FS_CENC,FS_WTR,FS_TSU,P2P_556,P2P_551,P2P_552,W_CENC,W_JMA,GQ_WS source;
-    class DS,WSM,MPM manager;
-    class H_BASE,H_EEW,H_EQ,H_TSU,REG,MODEL_EVT,MODEL_DATA processor;
-    class F_INT,F_SCA,F_WTR,F_KW,L_MONITOR,CALC,RPC,DEDUPE,FINGERPRINT filter;
-    class F_EQ,F_W,F_T,T_ENG,PW,TEMPLATES,BOT_CTX output;
-    class LOG,STATS,TELE auxiliary;
+    %% ========== 主干连接 ==========
+    A1 --> A2
+    A2 --> A3
+    A3 --> A4
+    A4 --> A5
+    A5 --> A6
+
+    A3 --> B1
+    B1 --> B2
+    B1 --> B3
+    B2 --> B4
+    B4 --> B8
+    B4 --> B9
+    B4 --> B10
+
+    A6 --> C1
+    A6 --> C2
+    A6 --> C3
+    A6 --> C4
+
+    C1 --> S1
+    C1 --> S2
+    C1 --> S3
+    C1 --> S4
+    C1 --> S5
+    C1 --> S6
+
+    C2 --> E1
+    C2 --> E2
+    E2 --> E3
+    E2 --> E4
+    E2 --> E5
+    E2 --> E6
+
+    C3 --> T1
+    C3 --> T2
+    C3 --> T3
+    C3 --> T4
+    C3 --> T5
+    C3 --> T6
+
+    C4 --> G1
+    G1 --> G2
+    G1 --> G3
+    G1 --> G4
+    G1 --> G5
+    G1 --> G6
+
+    %% ========== Hooks 与上下文耦合 ==========
+    A3 --> H1
+    A3 --> H4
+    E2 --> H5
+    A3 --> H6
+    H1 --> H2
+    H1 --> H3
+
+    H1 --> D8
+    H4 --> D1
+    H4 --> D2
+    H4 --> D3
+    H4 --> D4
+    H4 --> D5
+    H4 --> D6
+    H4 --> D7
+
+    B5 --> D1
+    B6 --> D2
+    B7 --> D3
+
+    %% ========== 状态回流 ==========
+    D8 --> H1
+    H1 --> B4
+    D1 --> B5
+    D2 --> B6
+    D3 --> B7
+    D4 --> E2
+    D4 --> E1
+    D5 --> C3
+    D6 --> S5
+    D7 --> G3
+
+    %% ========== 工具支撑 ==========
+    U1 --> S1
+    U1 --> E1
+    U1 --> E2
+    U1 --> C3
+    U2 --> A6
+    U2 --> C1
+    U2 --> C2
+    U2 --> C3
+    U2 --> C4
+    U3 --> A3
+    U4 --> U3
+    U5 --> A3
+    U5 --> G4
+    U5 --> G5
+    U5 --> H6
+
+    %% ========== 视觉分层样式绑定 ==========
+    class A1,A2,A3,A4,A5,A6 entry;
+    class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10 core;
+    class C1,C2,C3,C4 view;
+    class S1,S2,S3,S4,S5,S6,E1,E2,E3,E4,E5,E6,T1,T2,T3,T4,T5,T6,G1,G2,G3,G4,G5,G6 component;
+    class H1,H2,H3,H4,H5,H6 hook;
+    class D1,D2,D3,D4,D5,D6,D7,D8 api;
+    class U1,U2,U3,U4,U5 util;
+```
+
+### 📊 后端架构图
+
+```mermaid
+graph TB
+    classDef entry fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
+    classDef orchestration fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
+    classDef network fill:#E1F5FE,stroke:#039BE5,stroke-width:1.6px,color:#01579B;
+    classDef handler fill:#F3E5F5,stroke:#8E24AA,stroke-width:1.6px,color:#4A148C;
+    classDef filter fill:#FFF8E1,stroke:#F9A825,stroke-width:1.6px,color:#5D4037;
+    classDef message fill:#FBE9E7,stroke:#F4511E,stroke-width:1.6px,color:#BF360C;
+    classDef storage fill:#ECEFF1,stroke:#546E7A,stroke-width:1.6px,color:#263238;
+    classDef support fill:#EDE7F6,stroke:#5E35B1,stroke-width:1.6px,color:#311B92;
+    classDef external fill:#FFF3E0,stroke:#FB8C00,stroke-width:1.6px,color:#E65100;
+
+    subgraph B1["① 宿主与外部输入"]
+        direction TB
+        U1["宿主系统（AstrBot）"]
+        U2["用户命令与管理员命令"]
+        U3["FAN Studio数据流"]
+        U4["P2P 地震情报数据流"]
+        U5["Wolfx 数据流"]
+        U6["Global Quake 数据流"]
+        U7["Wolfx 地震列表接口"]
+        U8["Web 控制台浏览器"]
+    end
+
+    subgraph B2["② 插件入口层 main.py"]
+        direction TB
+        M1["插件初始化"]
+        M2["配置校验与自动修正"]
+        M3["核心服务单例装配"]
+        M4["核心服务启动"]
+        M5["遥测启动与心跳"]
+        M6["管理端服务启动"]
+        M7["命令分发（状态/重连/统计/模拟）"]
+        M8["插件终止与资源回收"]
+    end
+
+    subgraph B3["③ 服务编排层（核心服务）"]
+        direction TB
+        S1["注册表完整性自检"]
+        S2["消息处理器注册"]
+        S3["连接拓扑构建"]
+        S4["长连接任务建立"]
+        S5["定时拉取地震列表"]
+        S6["定时清理任务"]
+        S7["统一事件处理总线"]
+        S8["服务状态聚合输出"]
+        S9["全源手动重连"]
+        S10["服务停机与任务取消"]
+    end
+
+    subgraph B4["④ 网络接入层"]
+        direction TB
+        N1["连接管理器启动"]
+        N2["连接建立与消息循环"]
+        N3["连接保活心跳"]
+        N4["自动重连调度"]
+        N5["强制立即重连"]
+        N6["HTTP 数据抓取"]
+        N7["原始消息记录"]
+    end
+
+    subgraph B5["⑤ 路由与解析层"]
+        direction TB
+        H1["Fan Studio 消息路由器"]
+        H2["P2P 消息路由器"]
+        H3["Wolfx 消息路由器"]
+        H4["Global Quake 路由器"]
+        H5["处理器实例注册表"]
+        H6["结构化事件输出"]
+        H7["连接上下文注入"]
+    end
+
+    subgraph B6["⑥ 推送决策层"]
+        direction TB
+        P1["推送主入口"]
+        P2["中国地震台网融合分流"]
+        P3["实际推送执行器"]
+        P4["事件去重器"]
+        P5["会话生效配置读取"]
+        P6["推送条件总判定"]
+        P7["多过滤器组合判定"]
+        P8["报数频率控制"]
+        P9["本地烈度估算"]
+        P10["消息异步构建"]
+        P11["多会话并发下发"]
+        P12["地图异步补发"]
+    end
+
+    subgraph B7["⑦ 消息构建与渲染层"]
+        direction TB
+        R1["地震/海啸/气象文本格式化"]
+        R2["浏览器页面池管理"]
+        R3["全球地震卡片渲染"]
+        R4["通用地图卡片渲染"]
+        R5["地震列表卡片渲染"]
+        R6["图片转码封装"]
+        R7["消息发送到会话"]
+    end
+
+    subgraph B8["⑧ 持久化与统计层"]
+        direction TB
+        D1["统计记录入口"]
+        D2["事件主表"]
+        D3["报次更新表"]
+        D4["统计快照文件"]
+        D5["地震列表缓存文件"]
+        D6["会话差异配置文件"]
+        D7["原始日志文件"]
+        D8["日志统计文件"]
+    end
+
+    subgraph B9["⑨ 支撑能力层"]
+        direction TB
+        C1["配置治理器"]
+        C2["匿名遥测器"]
+        C3["模拟预警服务"]
+        C4["数据源语义映射"]
+        C5["统一数据模型"]
+        C6["消息格式工具集"]
+    end
+
+    subgraph B10["⑩ 管理端后端层"]
+        direction TB
+        W1["状态与连接接口"]
+        W2["统计趋势接口"]
+        W3["事件检索接口"]
+        W4["配置读写接口"]
+        W5["会话配置接口"]
+        W6["运维操作接口"]
+        W7["模拟测试接口"]
+        W8["实时广播通道"]
+        W9["事件驱动即时推送"]
+    end
+
+    U1 --> M1
+    U2 --> M7
+    U3 --> N2
+    U4 --> N2
+    U5 --> N2
+    U6 --> N2
+    U7 --> N6
+    U8 --> W8
+
+    M1 --> M2
+    M2 --> M3
+    M3 --> M4
+    M4 --> S1
+    M5 --> C2
+    M6 --> B10
+    M7 --> C3
+    M8 --> S10
+
+    S1 --> S2
+    S2 --> H5
+    S3 --> N1
+    S4 --> N2
+    S5 --> N6
+    S6 --> P4
+    S7 --> P1
+    S7 --> D1
+    S8 --> W1
+    S9 --> N5
+    S10 --> N1
+    S10 --> R2
+    S10 --> C2
+
+    N1 --> N2
+    N2 --> N3
+    N2 --> N7
+    N2 --> H1
+    N2 --> H2
+    N2 --> H3
+    N2 --> H4
+    N2 --> N4
+    N4 --> N2
+    N5 --> N2
+
+    N6 --> H3
+    N7 --> D7
+
+    H5 --> H1
+    H5 --> H2
+    H5 --> H3
+    H5 --> H4
+    H1 --> H6
+    H2 --> H6
+    H3 --> H6
+    H4 --> H6
+    H6 --> H7
+    H6 --> S7
+
+    P1 --> P2
+    P1 --> P3
+    P3 --> P4
+    P3 --> P5
+    P3 --> P6
+    P6 --> P7
+    P6 --> P8
+    P6 --> P9
+    P3 --> P10
+    P3 --> P11
+    P3 --> P12
+
+    P10 --> R1
+    P10 --> R2
+    R2 --> R3
+    R2 --> R4
+    R2 --> R5
+    R3 --> R6
+    R4 --> R6
+    R5 --> R6
+    R6 --> R7
+    P11 --> R7
+    P12 --> R7
+
+    D1 --> D2
+    D1 --> D3
+    D1 --> D4
+    S5 --> D5
+    P5 --> D6
+    N7 --> D8
+
+    C1 --> M2
+    C3 --> M7
+    C4 --> P6
+    C5 --> H6
+    C6 --> R1
+
+    W1 --> S8
+    W2 --> D1
+    W3 --> D2
+    W4 --> C1
+    W5 --> P5
+    W6 --> S9
+    W7 --> C3
+    W8 --> W9
+    W9 --> U8
+    S7 --> W9
+
+    class U1,U2,U3,U4,U5,U6,U7,U8 external;
+    class M1,M2,M3,M4,M5,M6,M7,M8 entry;
+    class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10 orchestration;
+    class N1,N2,N3,N4,N5,N6,N7 network;
+    class H1,H2,H3,H4,H5,H6,H7 handler;
+    class P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12 filter;
+    class R1,R2,R3,R4,R5,R6,R7 message;
+    class D1,D2,D3,D4,D5,D6,D7,D8 storage;
+    class C1,C2,C3,C4,C5,C6 support;
+    class W1,W2,W3,W4,W5,W6,W7,W8,W9 network;
 ```
 
 ### 📋 架构特点与细节
 
 本插件采用了高度模块化、松耦合的工业级架构设计，专注于在高并发灾害数据流下的实时性、鲁棒性与准确性。
 
-#### 🛡️ 1. 并发与异步任务调度
+#### 🧩 一、 前端架构设计与运行机制
 
-插件核心完全基于 `asyncio` 异步框架构建。
+管理端前端采用“**静态资源 + 浏览器端 React 运行时编译**”的轻部署模式，在不引入额外打包流水线的前提下，实现了复杂控制台能力：
 
-- **独立任务协程**: 每个 WebSocket 连接都在独立的协程任务中运行，单个连接的抖动或崩溃不会影响其他数据源。
-- **非阻塞 I/O**: 采用 `aiohttp` 作为底层的网络通信库，无论是大规模的 WebSocket 数据涌入还是 HTTP API 的定时拉取，均不会阻塞 AstrBot 的主线程。
-- **并发解析**: `DisasterWarningService` 调度器能够并发处理来自不同源的多个事件流，确保毫秒级的处理延迟。
+- **分层组织清晰**：按 `context / hooks / views / components / utils` 分层，避免页面逻辑与基础能力耦合。
+- **状态中心化**：通过 `AppContext + Reducer` 统一管理状态、统计、连接、主题与加载态，确保状态流可追踪。
+- **视图容器化**：四大视图（状态/事件/统计/配置）由根容器统一挂载，侧边导航只负责切换，不直接承载业务副作用。
 
-#### 🧬 2. 数据规范化模型 (Normalization)
+在运行机制上，前端形成了“**REST 初始化 + WebSocket 增量更新**”的双通道数据模型：
 
-针对全球不同机构（CEA, JMA, USGS 等）极度异构的原始 JSON 数据，插件设计了一套完整的**中间层建模体系**：
+- **首屏阶段**：先拉取 `/api/status`、`/api/config`、`/api/connections`，快速建立可交互骨架。
+- **实时阶段**：通过 `/ws` 接收增量消息，触发 `UPDATE_STATUS`、`UPDATE_STATS`、`UPDATE_CONNECTIONS` 等动作。
+- **一致性策略**：关键操作（如刷新、重连、统计清空）执行后主动补一次 REST 校准，避免纯流式状态漂移。
 
-- **统一抽象层**: 所有处理器必须将原始报文转换为 `DisasterEvent` 对象，该对象持有标准的 `EarthquakeData` 或 `TsunamiData` 模型。
-- **时区自动对齐**: 架构内部统一采用带时区信息的 `datetime` (Aware Datetime)，根据数据源来源自动识别 UTC、CST (UTC+8) 或 JST (UTC+9)，彻底解决跨国数据的时间对齐难题。
-- **类型安全**: 通过 `Python` 类型注解和模型校验，确保在格式化环节不会因上游字段缺失导致异常。
+为保障高频交互体验，前端在“状态持久化与滚动恢复”上做了专门工程化设计：
 
-#### ⚡ 3. 智能去重矩阵 (Deduplication Matrix)
+- **本地持久化**：主题、当前视图、配置草稿、折叠状态、滚动位置等均落地 `localStorage`。
+- **滚动保留机制**：视图切换与事件列表刷新时，优先恢复用户阅读上下文，减少异步渲染导致的跳动。
+- **用户优先原则**：滚动恢复过程中检测到用户主动操作时立即让渡控制，防止“强制回拉”影响浏览。
 
-插件并未采用简单的 ID 去重，而是实现了一套复杂的**模糊匹配指纹算法**：
+在组件通信与可维护性方面，前端遵循“能力下沉、页面组装”的策略：
 
-- **时空网格碰撞**: 将全球经纬度划分为 20km 的量化网格，结合发震时间窗口，识别出不同机构发布的同一地震事件。
-- **多源冗余策略**: 允许不同数据源推送同一事件，但通过指纹识别技术防止来自同一源的重复报文刷屏。
-- **状态升级监测**: 系统会自动维护事件状态机，能够识别出“自动测定”到“正式测定”或者“JMA 情报信息升级”的情报演进。
+- **Hook 能力沉淀**：`useWebSocket`、`useApi`、`usePreservedScroll` 分别封装连接、请求与交互细节。
+- **通用组件复用**：Header、Sidebar、Toast、卡片类组件在多视图复用，降低样式与逻辑重复。
+- **配置动态渲染**：`ConfigRenderer` 按后端 Schema 自动生成表单，减少硬编码字段维护成本。
 
-#### 🖼️ 4. 浏览器级渲染管线
+在视觉系统上，管理端以 MD3 设计语言为核心并兼顾性能约束：
 
-为了提供极致的视觉体验，插件内置了一套完整的**响应式渲染引擎**：
+- **主题令牌化**：颜色、圆角、层级通过变量统一管理，支持亮暗主题平滑切换。
+- **响应式布局**：覆盖桌面/平板/移动端，导航与网格按断点自适应重排。
+- **加载体验优化**：首屏骨架 + 启动动画 + 渐进隐藏策略，降低“白屏感”和主题闪烁。
 
-- **Headless Browser 隔离**: 采用 `Playwright` 驱动 `Chromium` 内核进行卡片渲染，每个卡片都在隔离的上下文环境中生成，确保样式不互干扰。
-- **Jinja2 + D3.js 混合驱动**: 使用 `Jinja2` 进行后端数据注入，并配合前端 `D3.js` 进行动态波形或烈度分布图的绘制。
-- **高 DPI 优化**: 渲染器配置了 3 倍设备像素比 (Device Scale Factor)，确保生成的预警卡片图片在移动设备上依然清晰锐利。
+#### 🧩 二、 后端架构设计与运行机制
 
-#### ⚙️ 5. 自愈型连接管理器 (Self-healing Connections)
+后端采用“**入口控制 + 服务编排 + 数据接入 + 推送决策 + 持久化观测**”的分层架构，重点围绕“稳定接入、快速决策、可观测运维”三条主线建设。
 
-`WebSocketManager` 实现了复杂的**自愈逻辑**：
+在整体分层上，后端职责边界清晰：
 
-- **双重失效切换**: 对 Fan Studio 源支持主备服务器切换，当主节点连接失败时自动尝试备用节点。
-- **指数退避重连**: 避免在网络波动时频繁重试给上游服务器造成压力。
-- **长效兜底**: 即使遭遇长时间断网，插件也会进入低频轮询模式，在网络恢复后第一时间重新建立实时推送通道。
+- **入口层**：由 `main.py` 负责初始化、配置校验、命令入口与终止回收。
+- **编排层**：由 `DisasterWarningService` 承担连接组织、任务托管、事件总线与状态聚合。
+- **能力层**：由网络、解析、过滤、渲染、存储与支撑模块组成可替换能力单元。
 
-#### 📡 6. 可观测性与遥测 (Observability & Telemetry)
+在运行生命周期上，后端遵循“启动可预热、运行可恢复、停机可回收”的闭环策略：
 
-插件集成了完整的**匿名遥测与诊断系统**：
+- **启动阶段**：先进行 `ConfigValidator` 修正，再装配服务单例、注册处理器、构建连接拓扑。
+- **运行阶段**：连接、心跳、定时拉取、清理任务并行运行，统一由服务层托管。
+- **停机阶段**：按“取消任务 → 关闭连接 → 清理浏览器 → 关闭遥测/管理端”顺序释放资源。
 
-- **隐私优先设计**: 仅收集去敏后的统计数据（如活跃数据源数量、报错模块名），严禁上传任何用户隐私（群号、消息内容）。
-- **全链路追踪**: `TelemetryManager` 能够捕获并在本地脱敏异常堆栈，帮助开发者快速定位跨国网络环境下的边缘情况 Bug。
-- **健康度监控**: 配合 `MessageLogger` 的原始报文记录，构建了从网络层到应用层的完整可观测性视图。
+在数据接入与解析上，后端采用“连接管理器 + 路由注册中心 + 专用处理器”的协议解耦模式：
+
+- **连接治理**：支持心跳保活、短重试、兜底重试与人工强制重连。
+- **路由解耦**：通过 `WebSocketHandlerRegistry` 将不同来源消息映射到对应 Handler。
+- **统一输出**：各处理器最终产出统一 `DisasterEvent`，业务层不感知上游协议差异。
+
+在推送决策链上，后端采用“会话配置驱动 + 组合过滤器”的可扩展模型：
+
+- **会话差异化**：`SessionConfigManager` 使用 default+override 合并，支持多会话独立策略。
+- **过滤组合化**：时间窗、数据源开关、关键词、烈度/震度、报数控制、本地烈度协同判定。
+- **策略增强**：CENC 支持 Fan/Wolfx 融合等待窗口，在时效和完整性之间可配置平衡。
+
+在推送与渲染性能上，后端强调“首报时效优先、富媒体异步补齐”：
+
+- **并发推送**：同一事件对多会话并发发送，减少慢会话拖累。
+- **构建复用**：同事件同渲染参数复用消息构建任务，降低重复开销。
+- **渲染降阻塞**：地图/卡片渲染支持异步补发，文本预警优先送达。
+
+在存储与可观测性上，后端采用“双存储 + 双观测”设计：
+
+- **存储双轨**：SQLite（`events`/`event_updates`）负责历史检索与报次回放，JSON 负责轻量快照与缓存。
+- **日志可读化**：`MessageLogger` 提供结构化中文日志、重复过滤与轮转机制。
+- **遥测脱敏化**：`TelemetryManager` 上报启动/配置/错误/心跳并进行隐私脱敏。
+
+在运维控制面上，后端通过 FastAPI 与 WebSocket 形成完整闭环：
+
+- **REST 面板**：提供状态、连接、统计、事件、配置、重连、模拟等管理接口。
+- **实时通道**：`/ws` 同时支持周期广播与事件驱动即时推送。
+- **运维闭环**：Web 操作可直接驱动服务行为，并将结果实时回流到控制台。
 
 ## 📈 性能报告
 
@@ -1380,106 +1704,7 @@ graph TD
 
 ## 📒 增强的可读性日志格式
 
-插件提供**自动格式化的高可读性日志**，将原始的 JSON 数据转换为易读的中文格式。以下是部分示例：
-
-**FAN Studio All**：
-
-```text
-===================================
-🕐 日志写入时间: 2026-01-08 23:25:54
-📡 来源: websocket_fan_studio_all
-📋 类型: websocket_message
-🔗 连接: URL: wss://ws.fanstudio.tech/all
-
-📊 原始数据:
-    📋 消息类型: initial_all
-    📋 weatheralarm:
-      📋 Data:
-        📋 ID: 23040041600000_20260108221217
-        📋 预警标题: 黑龙江省鹤岗市发布道路冰雪黄色预警信号
-        📋 生效时间: 2026/01/08 22:12
-        📋 详细描述: 鹤岗市气象台2026年1月8日22时15分发布道路冰雪黄色预警信号：受降雪天气影响，预计8日夜...
-        📋 经度: 130.28180
-        📋 纬度: 47.30530
-        📋 消息类型: p0000003
-        📋 标题: 黑龙江省鹤岗市发布道路冰雪黄色预警信号
-      📋 校验码: 38d9bff1147b43d91f061a0c51c4c33a
-    📋 海啸信息:
-      📋 Data:
-      📋 校验码: 99914b932bd37a50b983c5e7c90ae93b
-    📋 cenc:
-      📋 Data:
-        📋 ID: 7112554
-        📋 事件ID: CC.20260107112554.1
-        📋 发震时间: 2026-01-07 11:02:51
-        📋 创建时间: 2026-01-07 11:26:01
-        📋 纬度: 7.45000
-        📋 经度: 126.95000
-        📋 深度(km): 10km
-        📋 震级: M6.20
-        📋 地名: 菲律宾群岛地区
-        📋 信息类型: [正式测定]
-      📋 校验码: 64b9eb8a5bc4fecbfc5f81912f2ac44c
-    📋 cea:
-      📋 Data:
-        📋 ID: bzadztnyhyryy
-        📋 事件ID: 202601071105.0001
-        📋 发震时间: 2026-01-07 11:05:50
-        📋 经度: 104.23600
-        📋 纬度: 25.65900
-        📋 地名: 云南曲靖市富源县
-        📋 震级: M4.30
-        📋 预估烈度: 6.3
-        📋 深度(km): 6km
-        📋 更新次数: 2
-      📋 校验码: dedd9abd96009903f137f014fa278609
-    📋 cwa:
-      📋 Data:
-        📋 ID: 1150002
-        📋 更新次数: 4
-        📋 发震时间: 2026-01-04 03:52:50
-        📋 创建时间: 2026-01-04 03:53:05
-        📋 纬度: 24.70000
-        📋 经度: 121.76000
-        📋 深度(km): 10km
-        📋 震级: M4.60
-        📋 地名: 宜蘭縣羅東鎮
-        📋 预估烈度: 4
-      📋 校验码: 03d6cd1b8cd23f77bad0f16cdba9915a
-    📋 jma:
-      📋 Data:
-        📋 ID: 20260108130200
-        📋 更新次数: 4
-        📋 发震时间: 2026-01-08 13:01:47
-        📋 创建时间: 2026-01-08 13:02:41
-        📋 纬度: 42.80000
-        📋 经度: 143.30000
-        📋 深度(km): 90km
-        📋 震级: M3.80
-        📋 地名: 十勝地方中部
-        📋 预估烈度: 2
-        📋 信息类型: 予報
-        📋 最终报: True
-        📋 取消报: False
-      📋 校验码: 9bca7fa0a7dace0e4e1a0d0d553be4ec
-    📋 usgs:
-      📋 Data:
-        📋 ID: 7000rnfq
-        📋 标题: M 3.1 - 3 km NNW of Edgefield, Louisiana
-        📋 信息类型: reviewed
-        📋 震级: M3.10
-        📋 地名: 3 km NNW of Edgefield, Louisiana
-        📋 发震时间: 2026-01-08 23:06:38
-        📋 更新时间: 2026-01-08 23:22:00
-        📋 经度: -93.34270
-        📋 纬度: 32.08180
-        📋 深度(km): 5km
-        📋 官方链接: https://earthquake.usgs.gov/earthquakes/eventpa...
-      📋 校验码: b64c55bf723727b9b6e1f1a7773027d1
-
-🔧 插件版本: v1.3.0
-===================================
-```
+插件提供**自动格式化的高可读性日志**，将原始的 JSON 数据转换为易读的中文格式。以下是部分数据源的示例：
 
 **P2P地震情報详细震度信息**：
 
@@ -1553,7 +1778,7 @@ graph TD
 
 ```text
 ===================================
-🕐 日志写入时间: 2026-01-09 03:31:23
+🕐 日志写入时间: 2026-02-27 14:28:19
 📡 来源: websocket_global_quake
 📋 类型: websocket_message
 🔗 连接: URL: wss://gqm.aloys23.link/ws
@@ -1561,43 +1786,44 @@ graph TD
 📊 原始数据:
     📋 消息类型: earthquake
     📋 操作: update
-    📋 时间戳: 2026-01-08T19:30:17.782659870Z
+    📋 时间戳: 2026-02-27T06:28:20.942000Z
+    📋 protobuf: True
     📋 data:
-      📋 ID: 4134d591-296b-43e2-aec4-9d1c609d4c40
-      📋 纬度: -39.80106
-      📋 经度: 174.52843
-      📋 深度(km): 127.83km
-      📋 震级: M5.66
-      📋 发震时间(MS): 1767900577591
-      📋 发震时间(ISO): 2026-01-08T19:29:37.591Z
-      📋 最后更新(MS): 1767900617607
-      📋 修订版本号: 8
-      📋 震中: North Island of New Zealand
+      📋 ID: 30f4d3db-c2a7-4f99-8f91-59e5d1158bdc
+      📋 纬度: -21.01333
+      📋 经度: -69.92783
+      📋 深度(km): 47.21km
+      📋 震级: M4.58
+      📋 发震时间(MS): 1772173655755
+      📋 发震时间(ISO): 2026-02-27T06:27:35.755Z
+      📋 最后更新(MS): 1772173700818
+      📋 修订版本号: 3
+      📋 震中: Tarapaca, Chile
       📋 固定深度: False
-      📋 最大地表加速度: 4.723
+      📋 最大地表加速度: 4.606
       📋 烈度: III
       📋 集群信息:
-        📋 ID: f90530fc-bd8e-44fd-b412-fe85627eed99
-        📋 纬度: -39.97759
-        📋 经度: 175.27940
+        📋 ID: 1e95ef3e-7e48-4a62-a0a3-dd1195f66d1a
+        📋 纬度: -21.00617
+        📋 经度: -69.62781
         📋 级别: 3 (3: 极强 (5+台站>10,000计数 或 3+台站>50,000计数))
       📋 质量指标:
-        📋 时间误差: 1.995
-        📋 深度误差: 22.900
-        📋 南北向误差: 4.102
-        📋 东西向误差: 5.117
+        📋 时间误差: 2.116
+        📋 深度误差: 35.700
+        📋 南北向误差: 7.383
+        📋 东西向误差: 17.227
         📋 置信度百分比: 100.000
-        📋 参与定位的台站数: 87
+        📋 参与定位的台站数: 7
       📋 台站统计:
-        📋 总可用台站数: 158
-        📋 被选中参与计算的台站数: 156
-        📋 实际用于定位的台站数: 87
-        📋 匹配度高的台站数: 156
+        📋 总可用台站数: 11
+        📋 被选中参与计算的台站数: 7
+        📋 实际用于定位的台站数: 7
+        📋 匹配度高的台站数: 7
       📋 深度置信度:
-        📋 最小深度: 116.734
-        📋 最大深度: 139.634
+        📋 最小深度: 32.313
+        📋 最大深度: 68.013
 
-🔧 插件版本: v1.3.0
+🔧 插件版本: v1.4.0
 ===================================
 ```
 
@@ -1630,7 +1856,7 @@ graph TD
 > 2. **推送目标**：检查 **推送会话列表 (`target_sessions`)** 是否已正确填写。
 >    - 现在的格式为 `平台名:消息类型:会话ID`。
 >    - 最简单的配置方法：在目标群聊/私聊中发送 `/sid` 指令，直接复制返回的完整会话 ID 填入即可。
-> 3. **连接状态**：使用命令 `/灾害预警状态` 确认 WebSocket 连接是否正常 (🟢)。如果显示 🔴，请尝试重载插件并检查网络或确认上游服务是否宕机。
+> 3. **连接状态**：使用命令 `/灾害预警状态` 确认 WebSocket 连接是否正常 (🟢)。如果显示 🔴，请尝试使用 `/灾害预警重连` 指令重连数据源。也可以重载插件并检查网络或确认上游服务是否宕机。
 > 4. **过滤器拦截**：检查 **地震/气象过滤器** 或 **本地监控** 的阈值设置是否过高。
 > 5. **启动静默期**：确认当前不在插件启动后的 **静默期** 内。
 > 6. **数据源开关**：确保在 `data_sources` 中启用了具体的子数据源。
@@ -1658,7 +1884,7 @@ graph TD
 > 1. **开启过滤**：插件内置了强大的过滤器。您可以前往 **气象预警配置 (`weather_config`)** 或 **地震过滤器 (`earthquake_filters`)** 中开启相应的过滤功能。
 > 2. **本地监控模式**：在 **本地预估烈度 (`local_monitoring`)** 中填入您的位置坐标并开启 **严格过滤模式 (`strict_mode`)**，插件将变身为您的“私人地震卫士”，仅推送您所在地有震感（预估烈度达标）的地震。
 > 3. **设置白名单/黑名单**：
->    - **气象预警**：在 **省份白名单** 中填入您关注的省份名称（如 `["北京", "四川"]`），留空则默认推送全国预警。
+>    - **气象预警**：在 **关键词白名单** 中填入您关注的地区关键词，留空则默认推送全国预警。
 >    - **地震预警**：在 **关键词过滤器** 中配置黑名单（屏蔽特定地区）或白名单（只看特定地区）。
 > 4. **设置阈值**：
 >    - **气象预警**：调整 **最低预警级别**（如设置为“黄色”），过滤掉轻微的气象消息。
@@ -1715,13 +1941,14 @@ graph TD
 
 ## 🚧 最新版本的已知限制
 
-- 暂时不支持对单个会话进行精细化的推送配置，目前统一采用全局配置。
+- 暂时没有影响正常功能使用的限制。
 
 ## 🤝 贡献与支持
 
 欢迎提交 [Issue](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/issues) 和 [Pull Request](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/pulls) 来改进这个插件！
 
 - 对于新功能的添加，请先通过 Issue 等方式讨论。
+- 对于 PR (拉取请求)，请确保你已阅读并同意遵守本项目的 [贡献指南](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/blob/main/CONTRIBUTING.md)。
 
 ### 📞 联系我们
 
@@ -1758,14 +1985,14 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 
 ## 🙏 致谢
 
-感谢以下项目或个人提供的 API 服务和文档：
+感谢以下项目或个人提供的 API 服务，文档和支持：
 
 - [FAN Studio](https://api.fanstudio.tech/) - 提供多源灾害数据。
 - [P2P地震情報](https://www.p2pquake.net/) - 提供日本地震信息。
 - [EPSP](https://github.com/p2pquake/epsp-specifications) - 提供 P2P 区域代码和详细的 API 文档。
 - [Wolfx](https://wolfx.jp/) - 提供地震 API 服务。
 - [Global Quake](https://globalquake.net/) - 提供全球地震监测。
-- [Aloys233](https://github.com/Aloys233) - 为插件提供 Global Quake 数据转译、收发服务，提供遥测数据收集服务，以及参与了多项重要的插件功能开发。
+- [Aloys233](https://github.com/Aloys233) - 为插件提供 Global Quake 数据转译、收发服务，提供遥测数据收集服务，以及参与了多项重要的插件功能如 WebUI 的开发。
 
 ## 📚 推荐阅读
 
