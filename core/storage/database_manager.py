@@ -50,22 +50,16 @@ class DatabaseManager:
             raise
 
     async def _ensure_schema(self, cursor):
-        """检测 schema 版本，必要时执行迁移"""
+        """检测并补齐 schema 列，创建表和索引（幂等）"""
         await cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
         )
         events_exists = bool(await cursor.fetchone())
 
         if events_exists:
-            # 旧 schema 特征：含 history 或 raw_data 列
+            # 补齐早期 v2 版本可能缺失的列，避免建索引失败
             await cursor.execute("PRAGMA table_info(events)")
             columns = {row[1] for row in await cursor.fetchall()}
-            if "history" in columns or "raw_data" in columns:
-                logger.info("[灾害预警] 检测到旧版数据库 schema (v1)，开始迁移到 v2...")
-                await self._migrate_v1_to_v2(cursor)
-                return
-
-            # 关键修复：在创建索引前先补齐缺失列，避免 idx_ev_source_id 创建失败
             if "source_id" not in columns:
                 await cursor.execute("ALTER TABLE events ADD COLUMN source_id TEXT")
             if "subtitle" not in columns:
@@ -127,156 +121,6 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_upd_event_id ON event_updates(event_id)",
         ):
             await cursor.execute(sql)
-
-    async def _migrate_v1_to_v2(self, cursor):
-        """将 v1 schema（含 history JSON blob）迁移到 v2（events + event_updates）
-        使用游标分页，每批 BATCH_SIZE 条，避免一次性将全表载入内存。
-        """
-        BATCH_SIZE = 1000
-
-        try:
-            # 1. 备份旧表，创建新表（先做结构变更，再分批写数据）
-            await cursor.execute("SELECT COUNT(*) FROM events")
-            total = (await cursor.fetchone())[0]
-            logger.info(
-                f"[灾害预警] 开始迁移 {total} 条旧记录（每批 {BATCH_SIZE} 条）..."
-            )
-
-            await cursor.execute("DROP TABLE IF EXISTS events_v1_backup")
-            await cursor.execute("ALTER TABLE events RENAME TO events_v1_backup")
-            await cursor.execute("DROP TABLE IF EXISTS event_updates")
-            await self._create_tables(cursor)
-            await self.connection.commit()
-
-            # 2. 分批迁移（以旧表 id 为游标）
-            migrated = 0
-            last_id = 0
-
-            while True:
-                await cursor.execute(
-                    "SELECT * FROM events_v1_backup WHERE id > ? ORDER BY id ASC LIMIT ?",
-                    (last_id, BATCH_SIZE),
-                )
-                batch = [dict(row) for row in await cursor.fetchall()]
-                if not batch:
-                    break
-
-                for row in batch:
-                    try:
-                        history: list = []
-                        if row.get("history"):
-                            try:
-                                parsed = json.loads(row["history"])
-                                if isinstance(parsed, list):
-                                    history = parsed
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-
-                        is_major = is_major_event(row)
-
-                        await cursor.execute(
-                            """
-                            INSERT INTO events (
-                                real_event_id, unique_id, type, source,
-                                source_id, description, subtitle, latitude, longitude,
-                                magnitude, depth, report_num,
-                                weather_type_code, level, time,
-                                is_major, update_count, created_at, updated_at
-                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                            """,
-                            (
-                                row.get("real_event_id"),
-                                row.get("unique_id"),
-                                row.get("type", "unknown"),
-                                row.get("source", "unknown"),
-                                row.get("source_id"),
-                                row.get("description"),
-                                row.get("subtitle"),
-                                row.get("latitude"),
-                                row.get("longitude"),
-                                row.get("magnitude"),
-                                row.get("depth"),
-                                row.get("report_num"),
-                                row.get("weather_type_code"),
-                                row.get("level"),
-                                row.get("time"),
-                                1 if is_major else 0,
-                                row.get("update_count", 1),
-                                row.get("created_at", datetime.now().isoformat()),
-                                row.get(
-                                    "updated_at",
-                                    row.get("timestamp", datetime.now().isoformat()),
-                                ),
-                            ),
-                        )
-                        new_event_db_id = cursor.lastrowid
-
-                        # 历史报（从旧到新）插入 event_updates
-                        for hist in reversed(history):
-                            await cursor.execute(
-                                """
-                                INSERT INTO event_updates
-                                    (event_id, source_event_id, report_num, magnitude, depth, description, time)
-                                VALUES (?,?,?,?,?,?,?)
-                                """,
-                                (
-                                    new_event_db_id,
-                                    hist.get("event_id"),
-                                    hist.get("report_num"),
-                                    hist.get("magnitude"),
-                                    hist.get("depth"),
-                                    hist.get("description"),
-                                    hist.get("time"),
-                                ),
-                            )
-
-                        # 当前状态作为最新一条 event_update
-                        await cursor.execute(
-                            """
-                            INSERT INTO event_updates
-                                (event_id, source_event_id, report_num, magnitude, depth, description, time)
-                            VALUES (?,?,?,?,?,?,?)
-                            """,
-                            (
-                                new_event_db_id,
-                                row.get("event_id"),
-                                row.get("report_num"),
-                                row.get("magnitude"),
-                                row.get("depth"),
-                                row.get("description"),
-                                row.get("time"),
-                            ),
-                        )
-                        migrated += 1
-                    except Exception as e:
-                        logger.warning(
-                            f"[灾害预警] 迁移单条记录失败 (id={row.get('id')}): {e}"
-                        )
-
-                # 每批提交一次，降低峰值内存并支持失败重试
-                await self.connection.commit()
-                last_id = batch[-1]["id"]
-                logger.info(
-                    f"[灾害预警] 迁移进度：{migrated}/{total}（id > {last_id}）"
-                )
-
-            logger.info(
-                f"[灾害预警] 数据库迁移完成：成功迁移 {migrated}/{total} 条记录"
-            )
-            # events_v1_backup 保留作为安全备份，不立即删除
-
-        except Exception as e:
-            logger.error(f"[灾害预警] 数据库迁移失败: {e}")
-            # 尝试回滚到旧表
-            try:
-                await cursor.execute("DROP TABLE IF EXISTS event_updates")
-                await cursor.execute("DROP TABLE IF EXISTS events")
-                await cursor.execute("ALTER TABLE events_v1_backup RENAME TO events")
-                await self.connection.commit()
-                logger.info("[灾害预警] 已回滚到旧数据库 schema")
-            except Exception as re:
-                logger.error(f"[灾害预警] 回滚失败: {re}")
-            raise
 
     # ──────────────────────────── 写操作 ────────────────────────────
 

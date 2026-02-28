@@ -854,6 +854,20 @@ class StatisticsManager:
                 by_source_from_db = db_stats.get("by_source", {}) if db_stats else {}
                 if by_source_from_db:
                     self.stats["by_source"] = defaultdict(int, by_source_from_db)
+
+                # 若 JSON 仍有 recent_pushes 残留（迁移完成后 save_stats 写回），将其清空
+                # 避免 JSON 文件持续膨胀以及下次启动时触发不必要的迁移判断
+                if json_has_events and self.stats_file.exists():
+                    try:
+                        with open(self.stats_file, encoding="utf-8") as f:
+                            saved_on_disk = json.load(f)
+                        if saved_on_disk.get("recent_pushes"):
+                            saved_on_disk["recent_pushes"] = []
+                            with open(self.stats_file, "w", encoding="utf-8") as f:
+                                json.dump(saved_on_disk, f, ensure_ascii=False, indent=2)
+                            logger.debug("[灾害预警] 已清理 JSON 文件中残留的 recent_pushes")
+                    except Exception as _e:
+                        logger.debug(f"[灾害预警] 清理 JSON recent_pushes 失败（非致命）: {_e}")
             elif json_has_events:
                 # 数据库为空但 JSON 有数据，执行一次性迁移
                 logger.info("[灾害预警] 检测到 JSON 历史记录，开始迁移到数据库...")
@@ -903,7 +917,7 @@ class StatisticsManager:
                     migrated += 1
                 except Exception as e:
                     # 记录失败的记录
-                    logger.debug(f"[灾害预警] 迁移记录失败（可能已存在）: {e}")
+                    logger.warning(f"[灾害预警] 迁移记录失败: {e}")
                     failed_records.append(record)
 
             logger.info(
@@ -923,9 +937,6 @@ class StatisticsManager:
                 f"[灾害预警] 数据库验证成功，从数据库加载了 {len(db_events)} 条记录"
             )
 
-            # 迁移完成后，清空 JSON 中的 recent_pushes 避免重复迁移
-            saved_stats["recent_pushes"] = []
-
             # 创建备份文件（保险措施）
             backup_file = self.stats_file.with_suffix(".json.backup")
             try:
@@ -936,10 +947,20 @@ class StatisticsManager:
             except Exception as be:
                 logger.warning(f"[灾害预警] 创建备份失败: {be}")
 
-            # 清空 JSON 文件中的历史记录
+            # 仅清空已成功迁移的记录；若有失败记录则保留，下次启动可重试
+            if failed_records:
+                logger.warning(
+                    f"[灾害预警] {len(failed_records)} 条记录迁移失败，将保留在 JSON 中等待下次重试"
+                )
+                saved_stats["recent_pushes"] = failed_records
+            else:
+                saved_stats["recent_pushes"] = []
+
+            # 将更新后的 JSON 写回文件
             with open(self.stats_file, "w", encoding="utf-8") as f:
                 json.dump(saved_stats, f, ensure_ascii=False, indent=2)
-            logger.info("[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储")
+            if not failed_records:
+                logger.info("[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储")
 
             # 从数据库加载到内存
             self.stats["recent_pushes"] = db_events
