@@ -55,6 +55,8 @@ const stripLeadingEmoji = (text) => {
  * @param {Function} props.onToggleExpand - 切换展开状态的回调
  */
 function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', expandedKeys = [], onToggleExpand = () => {} }) {
+    if (schema.hidden) return null;
+
     const [localValue, setLocalValue] = useState(value);
 
     useEffect(() => {

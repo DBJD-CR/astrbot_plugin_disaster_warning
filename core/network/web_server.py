@@ -66,6 +66,14 @@ def is_running_in_docker() -> bool:
 class WebAdminServer:
     """Web 管理端服务器"""
 
+    # 数据源内部名称 -> 配置键的映射（两处用到：/api/connections 和 _get_realtime_data）
+    _SOURCE_CONFIG_KEY: dict[str, str] = {
+        "fan_studio_all": "fan_studio",
+        "p2p_main": "p2p_earthquake",
+        "wolfx_all": "wolfx",
+        "global_quake": "global_quake",
+    }
+
     def __init__(self, disaster_service, config: dict[str, Any]):
         self.disaster_service = disaster_service
         self.config = config
@@ -108,8 +116,8 @@ class WebAdminServer:
             # 不需要鉴权的路径
             if path in {"/api/login", "/api/auth-info"}:
                 return await call_next(request)
-            # 只保护 /api/* 和 /ws
-            if not path.startswith("/api") and path != "/ws":
+            # 只保护 /api/*（/ws 由 WebSocket 端点自行校验）
+            if not path.startswith("/api"):
                 return await call_next(request)
             # WebSocket 和 API 均支持 token 查询参数或 Authorization 头
             token = request.query_params.get("token", "")
@@ -323,12 +331,7 @@ class WebAdminServer:
                 expected_sources = self._get_expected_data_sources()
 
                 # 数据源内部名称 -> 配置键的映射
-                source_config_key = {
-                    "fan_studio_all": "fan_studio",
-                    "p2p_main": "p2p_earthquake",
-                    "wolfx_all": "wolfx",
-                    "global_quake": "global_quake",
-                }
+                source_config_key = self._SOURCE_CONFIG_KEY
                 data_sources_config = self.config.get("data_sources", {})
 
                 # 合并：确保所有预期的数据源都显示，未连接的标记为 disconnected
@@ -406,7 +409,10 @@ class WebAdminServer:
                         ),
                     },
                     "display_timezone": self.config.get("display_timezone", "UTC+8"),
-                    "web_admin": self.config.get("web_admin", {}),
+                    "web_admin": {
+                        k: v for k, v in self.config.get("web_admin", {}).items()
+                        if k != "password"
+                    },
                 }
                 return config_summary
             except Exception as e:
@@ -894,8 +900,13 @@ class WebAdminServer:
         async def get_full_config():
             """获取完整配置"""
             try:
-                # 直接返回 Config 对象 (AstrBotConfig 实现了 dict 接口)
-                return dict(self.config)
+                full = dict(self.config)
+                # 剔除 web_admin.password，避免明文密码通过 API 泄露
+                if "web_admin" in full and isinstance(full["web_admin"], dict):
+                    full["web_admin"] = {
+                        k: v for k, v in full["web_admin"].items() if k != "password"
+                    }
+                return full
             except Exception as e:
                 logger.error(f"[灾害预警] 获取完整配置失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
@@ -1065,6 +1076,16 @@ class WebAdminServer:
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """WebSocket 端点 - 实时数据推送"""
+            # 在 accept() 前校验 token，不合法则拒绝握手
+            if self._auth_enabled:
+                token = websocket.query_params.get("token", "")
+                if not token:
+                    token = websocket.headers.get("Authorization", "")
+                    token = token[7:] if token.startswith("Bearer ") else ""
+                if not self._auth_token or not secrets.compare_digest(token, self._auth_token):
+                    await websocket.close(code=1008)  # 1008 = Policy Violation
+                    return
+
             await websocket.accept()
             self._ws_connections.append(websocket)
             logger.info(
@@ -1204,12 +1225,7 @@ class WebAdminServer:
                 expected_sources = self._get_expected_data_sources()
 
                 # WebSocket推送时使用缓存的延迟数据，不执行ping
-                source_config_key = {
-                    "fan_studio_all": "fan_studio",
-                    "p2p_main": "p2p_earthquake",
-                    "wolfx_all": "wolfx",
-                    "global_quake": "global_quake",
-                }
+                source_config_key = self._SOURCE_CONFIG_KEY
                 data_sources_config = self.config.get("data_sources", {})
                 merged_connections = {}
                 for source_name, display_name in expected_sources.items():

@@ -729,7 +729,8 @@
         "description": "访问密码",
         "type": "string",
         "default": "",
-        "hint": "设置后访问管理界面需要输入密码，留空则无需密码"
+        "hint": "设置后访问管理界面需要输入密码，留空则无需密码",
+        "hidden": true
       }
     }
   },

@@ -975,16 +975,23 @@ function EventsList() {
                                         position: 'relative'
                                     }}>
                                         {/* 顶部标题栏：整行可点击收起 */}
-                                        <div
+                                        <button
                                             onClick={() => toggleEventGroup(group.id)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleEventGroup(group.id); } }}
+                                            aria-expanded={true}
                                             style={{
                                                 display: 'flex',
                                                 justifyContent: 'space-between',
                                                 alignItems: 'center',
+                                                width: '100%',
                                                 marginBottom: '20px',
                                                 paddingBottom: '14px',
                                                 borderBottom: '1px solid var(--md-sys-color-outline-variant)',
                                                 cursor: 'pointer',
+                                                background: 'none',
+                                                border: 'none',
+                                                padding: '0 0 14px 0',
+                                                textAlign: 'left',
                                             }}
                                         >
                                             <Typography variant="body2" sx={{ opacity: 0.55, fontSize: '12px' }}>
@@ -994,7 +1001,7 @@ function EventsList() {
                                                 <span>收起</span>
                                                 <span className="update-icon">▲</span>
                                             </div>
-                                        </div>
+                                        </button>
 
                                         {/* 时间线展示所有报 */}
                                         <div style={{ position: 'relative', paddingLeft: '40px' }}>

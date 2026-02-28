@@ -42,6 +42,7 @@ class WeatherFilter:
         # 失败缓存及其过期时间戳，避免网络抖动时反复外请求
         self._cache_expire: dict[str, float] = {}
         self._FAILURE_TTL = 60.0  # 失败结果缓存 60 秒
+        self._session: aiohttp.ClientSession | None = None  # 复用 session，避免重复建连
 
         if self.enabled and emit_enable_log:
             filter_info = []
@@ -89,6 +90,20 @@ class WeatherFilter:
                 return fallback_text
         return None
 
+    def _get_session(self) -> aiohttp.ClientSession:
+        """懒加载并复用 ClientSession（在事件循环已运行后首次调用）"""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+        return self._session
+
+    async def close(self) -> None:
+        """显式释放长生命周期的 ClientSession"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
     async def _query_province_by_place_name(self, place_name: str) -> str | None:
         """通过行政区划查询API获取省份（异步，失败结果缓存 TTL 60 s）"""
         now = time.monotonic()
@@ -108,11 +123,10 @@ class WeatherFilter:
             "size": "10",
         }
         url = "https://dmfw.mca.gov.cn/9095/stname/listPub"
-        headers = {"User-Agent": "Mozilla/5.0"}
         try:
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    payload = await resp.json(content_type=None)
+            session = self._get_session()
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                payload = await resp.json(content_type=None)
         except Exception as exc:
             logger.debug(f"[灾害预警] 行政区划查询失败: {place_name}, 错误: {exc}")
             self._location_province_cache[place_name] = None
