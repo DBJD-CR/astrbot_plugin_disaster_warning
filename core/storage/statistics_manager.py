@@ -147,7 +147,7 @@ class StatisticsManager:
                 if isinstance(event.data, EarthquakeData):
                     self._record_earthquake_stats(event.data)
                 elif isinstance(event.data, WeatherAlarmData):
-                    weather_stats_recorded = self._record_weather_stats(event.data)
+                    weather_stats_recorded = await self._record_weather_stats(event.data)
                     if not weather_stats_recorded:
                         logger.warning(
                             "[灾害预警] 气象预警地区信息无效或缺失，已跳过该次气象详细统计"
@@ -538,7 +538,7 @@ class StatisticsManager:
                 if region:
                     self.stats["earthquake_stats"]["by_region"][region] += 1
 
-    def _record_weather_stats(self, data: WeatherAlarmData) -> bool:
+    async def _record_weather_stats(self, data: WeatherAlarmData) -> bool:
         """记录气象预警详细统计。
 
         返回:
@@ -555,7 +555,7 @@ class StatisticsManager:
         if direct_region:
             region = direct_region
         else:
-            region = self._weather_region_resolver.extract_province_with_fallback(
+            region = await self._weather_region_resolver.extract_province_with_fallback(
                 title_text, headline_text
             )
             if not region:

@@ -16,11 +16,14 @@ function useWebSocket() {
         if (msg.type === 'full_update' || msg.type === 'update' || msg.type === 'event') {
             const data = msg.data;
 
-            // 如果消息没有携带 data,提前返回(例如仅包含 new_event 的 event 消息)
+            // 优先处理 new_event（即使没有 data 也需要 dispatch）
+            if (msg.type === 'event' && msg.new_event) {
+                console.log('[WS] 收到新事件:', msg.new_event);
+                dispatch({ type: 'ADD_EVENT', payload: msg.new_event });
+            }
+
+            // 如果消息没有携带 data，不再继续处理状态更新
             if (!data) {
-                if (msg.type === 'event' && msg.new_event) {
-                    console.log('[WS] 收到新事件:', msg.new_event);
-                }
                 return;
             }
 
@@ -53,11 +56,6 @@ function useWebSocket() {
                 dispatch({ type: 'UPDATE_CONNECTIONS', payload: data.connections });
             }
 
-            // 如果是事件驱动的更新
-            if (msg.type === 'event' && msg.new_event) {
-                console.log('[WS] 收到新事件:', msg.new_event);
-                dispatch({ type: 'ADD_EVENT', payload: msg.new_event });
-            }
         } else if (msg.type === 'pong') {
             // 心跳响应
         }

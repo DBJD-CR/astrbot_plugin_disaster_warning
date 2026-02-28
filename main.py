@@ -99,7 +99,7 @@ class DisasterWarningPlugin(Star):
 
             # 设置全局 asyncio 异常处理器（捕获未处理的 task 异常）
             if self.telemetry.enabled:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 # 保存原有的异常处理器
                 self._original_exception_handler = loop.get_exception_handler()
                 loop.set_exception_handler(self._handle_asyncio_exception)

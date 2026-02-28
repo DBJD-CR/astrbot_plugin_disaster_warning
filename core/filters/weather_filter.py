@@ -5,10 +5,10 @@
 
 import json
 import re
+import time
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+
+import aiohttp
 
 from astrbot.api import logger
 
@@ -39,6 +39,9 @@ class WeatherFilter:
         self.keywords = [str(k).strip() for k in raw_keywords if str(k).strip()]
 
         self._location_province_cache: dict[str, str | None] = {}
+        # 失败缓存及其过期时间戳，避免网络抖动时反复外请求
+        self._cache_expire: dict[str, float] = {}
+        self._FAILURE_TTL = 60.0  # 失败结果缓存 60 秒
 
         if self.enabled and emit_enable_log:
             filter_info = []
@@ -86,34 +89,34 @@ class WeatherFilter:
                 return fallback_text
         return None
 
-    def _query_province_by_place_name(self, place_name: str) -> str | None:
-        """通过行政区划查询API获取省份"""
-        if place_name in self._location_province_cache:
-            return self._location_province_cache[place_name]
+    async def _query_province_by_place_name(self, place_name: str) -> str | None:
+        """通过行政区划查询API获取省份（异步，失败结果缓存 TTL 60 s）"""
+        now = time.monotonic()
 
-        params = urlencode(
-            {
-                "stName": place_name,
-                "searchType": "模糊",
-                "page": "1",
-                "size": "10",
-            }
-        )
-        request = Request(
-            f"https://dmfw.mca.gov.cn/9095/stname/listPub?{params}",
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
+        # 命中缓存：成功结果永久有效；失败结果在 TTL 内有效
+        if place_name in self._location_province_cache:
+            cached = self._location_province_cache[place_name]
+            if cached is not None:
+                return cached
+            if now < self._cache_expire.get(place_name, 0):
+                return None
+
+        params = {
+            "stName": place_name,
+            "searchType": "模糊",
+            "page": "1",
+            "size": "10",
+        }
+        url = "https://dmfw.mca.gov.cn/9095/stname/listPub"
+        headers = {"User-Agent": "Mozilla/5.0"}
         try:
-            with urlopen(request, timeout=5) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except (
-            HTTPError,
-            URLError,
-            TimeoutError,
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-        ) as exc:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    payload = await resp.json(content_type=None)
+        except Exception as exc:
             logger.debug(f"[灾害预警] 行政区划查询失败: {place_name}, 错误: {exc}")
+            self._location_province_cache[place_name] = None
+            self._cache_expire[place_name] = now + self._FAILURE_TTL
             return None
 
         for record in payload.get("records", []):
@@ -124,9 +127,10 @@ class WeatherFilter:
                 return province
 
         self._location_province_cache[place_name] = None
+        self._cache_expire[place_name] = now + self._FAILURE_TTL
         return None
 
-    def extract_province_with_fallback(
+    async def extract_province_with_fallback(
         self, title_text: str, headline_text: str = ""
     ) -> str | None:
         """优先从title提取省份，失败后回退到headline地名查询"""
@@ -136,7 +140,7 @@ class WeatherFilter:
         place_name = self._extract_place_from_headline(headline_text)
         if not place_name:
             return None
-        return self._query_province_by_place_name(place_name)
+        return await self._query_province_by_place_name(place_name)
 
     def extract_color_level(self, title_text: str) -> str:
         """从预警标题文本中提取颜色级别"""

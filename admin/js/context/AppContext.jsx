@@ -36,6 +36,7 @@ const initialState = {
     },
     connections: {},
     events: [],
+    lastEvent: null,
     magnitudeDistribution: {},
     wsConnected: false,
     theme: localStorage.getItem('theme') || 'light',
@@ -119,6 +120,18 @@ function appReducer(state, action) {
             };
         case 'UPDATE_CONNECTIONS':
             return { ...state, connections: action.payload };
+        case 'ADD_EVENT': {
+            const MAX_EVENTS = 100;
+            const newEvent = action.payload;
+            // 去重：以 id 为准，没有 id 则以 event_time+type 组合判断
+            const isDuplicate = state.events.some(e =>
+                newEvent.id ? e.id === newEvent.id
+                            : e.event_time === newEvent.event_time && e.type === newEvent.type
+            );
+            if (isDuplicate) return state;
+            const events = [newEvent, ...state.events].slice(0, MAX_EVENTS);
+            return { ...state, events, lastEvent: newEvent };
+        }
         case 'SET_WS_CONNECTED':
             return { ...state, wsConnected: action.payload };
         case 'TOGGLE_THEME':

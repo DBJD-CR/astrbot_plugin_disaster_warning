@@ -15,7 +15,7 @@ function CalendarHeatmap({ style }) {
     const currentYear = new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState(currentYear);
     const scrollContainerRef = useRef(null);
-    const events = state.events; // 直接从 Context 获取 events，不需要单独调用 useWebSocket
+    const lastEvent = state.lastEvent; // 订阅专用的最新事件字段
     
     // 生成可选年份列表 (从2025开始)
     const startYear = 2025;
@@ -34,11 +34,10 @@ function CalendarHeatmap({ style }) {
 
     // 监听 WebSocket 实时更新
     useEffect(() => {
-        if (!events || !events.lastEvent) return; // 修复：增加对 events 的判空
+        if (!lastEvent) return;
         
         // 只有当收到新事件且事件时间属于当前选中年份时，才重新获取数据
-        // 优化：实际上可以只更新本地状态，但为了数据一致性，重新获取也是可接受的，因为热力图数据量不大
-        const eventTime = new Date(events.lastEvent.time || Date.now());
+        const eventTime = new Date(lastEvent.time || lastEvent.event_time || Date.now());
         if (eventTime.getFullYear() === selectedYear) {
             // 防抖，避免短时间频繁请求
             const timer = setTimeout(() => {
@@ -46,7 +45,7 @@ function CalendarHeatmap({ style }) {
             }, 2000);
             return () => clearTimeout(timer);
         }
-    }, [events, selectedYear]); // 修复：依赖项包含 events 而不是 events.lastEvent (避免深度依赖问题)
+    }, [lastEvent, selectedYear]);
 
     const fetchData = async (year, showLoading = true) => {
         if (showLoading) setLoading(true);
