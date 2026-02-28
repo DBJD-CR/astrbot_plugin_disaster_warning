@@ -33,6 +33,36 @@
     <!-- 自定义 CSS -->
     <link rel="stylesheet" href="css/style.css">
 
+    <!-- 登录表单样式 -->
+    <style>
+        #bl-loading { display: flex; flex-direction: column; align-items: center; }
+        #bl-login { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 320px; padding: 0 20px; box-sizing: border-box; }
+        .bl-input-wrap { position: relative; width: 100%; margin-bottom: 10px; }
+        .bl-input {
+            width: 100%; padding: 11px 44px 11px 14px; box-sizing: border-box;
+            border: 1.5px solid rgba(103,80,164,0.25); border-radius: 12px;
+            font-size: 14px; font-family: inherit;
+            background: rgba(255,255,255,0.75); color: #1C1B1F;
+            outline: none; transition: border-color .2s, box-shadow .2s;
+        }
+        .bl-input:focus { border-color: #6750A4; box-shadow: 0 0 0 3px rgba(103,80,164,0.1); }
+        html.theme-dark .bl-input, body.dark-theme .bl-input { background: rgba(28,27,31,0.85); border-color: rgba(208,188,255,0.2); color: #E6E1E5; }
+        html.theme-dark .bl-input:focus, body.dark-theme .bl-input:focus { border-color: #D0BCFF; box-shadow: 0 0 0 3px rgba(208,188,255,0.1); }
+        .bl-toggle-pw { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px; line-height: 1; }
+        .bl-submit-btn {
+            width: 100%; padding: 11px 0; border: none; border-radius: 100px;
+            background: #6750A4; color: #fff; font-size: 14px; font-weight: 600;
+            cursor: pointer; font-family: inherit; letter-spacing: .025em;
+            transition: background .2s, opacity .2s; margin-top: 4px;
+        }
+        .bl-submit-btn:hover:not(:disabled) { background: #7F67BE; }
+        .bl-submit-btn:disabled { opacity: .6; cursor: default; }
+        html.theme-dark .bl-submit-btn, body.dark-theme .bl-submit-btn { background: #D0BCFF; color: #371E73; }
+        html.theme-dark .bl-submit-btn:hover:not(:disabled), body.dark-theme .bl-submit-btn:hover:not(:disabled) { background: #E8DDFF; }
+        .bl-error { font-size: 12px; color: #B3261E; min-height: 18px; text-align: center; width: 100%; margin-bottom: 4px; }
+        html.theme-dark .bl-error, body.dark-theme .bl-error { color: #F2B8B5; }
+    </style>
+
     <!-- 核心运行时脚本预加载 -->
     <link rel="preload" href="lib/react.production.min.js" as="script">
     <link rel="preload" href="lib/react-dom.production.min.js" as="script">
@@ -54,9 +84,11 @@
 </head>
 
 <body>
-    <div id="root" aria-busy="true" aria-live="polite">
-        <!-- 首屏加载骨架屏 -->
-        <div id="loading-skeleton" class="boot-loader" role="status" aria-live="polite" aria-atomic="true">
+    <!-- 首屏加载骨架屏（position:fixed，独立于 React 根节点之外，避免 React 挂载时被清除） -->
+    <div id="loading-skeleton" class="boot-loader" role="status" aria-live="polite" aria-atomic="true">
+
+        <!-- 加载动画 -->
+        <div id="bl-loading">
             <div class="boot-loader__logo" aria-hidden="true">
                 <img src="../logo.png" alt="" width="56" height="56">
             </div>
@@ -67,9 +99,114 @@
             </div>
             <span class="visually-hidden">应用资源加载中，请稍候</span>
         </div>
+
+        <!-- 登录表单（需要密码时显示） -->
+        <form id="bl-login" onsubmit="window.__BL_HANDLE_LOGIN(event)">
+            <div class="boot-loader__logo" aria-hidden="true" style="animation:none;">
+                <img src="../logo.png" alt="" width="56" height="56">
+            </div>
+            <div class="boot-loader__title">灾害预警管理端</div>
+            <div class="boot-loader__subtitle" style="margin-bottom:20px;">请输入访问密码</div>
+            <div class="bl-error" id="bl-login-error"></div>
+            <div class="bl-input-wrap">
+                <input id="bl-password" class="bl-input" type="password" placeholder="密码" autocomplete="current-password">
+                <button class="bl-toggle-pw" type="button" id="bl-toggle-pw" title="显示/隐藏密码">👁️</button>
+            </div>
+            <button id="bl-submit" class="bl-submit-btn" type="submit">登录</button>
+        </form>
+
     </div>
 
+    <div id="root" aria-busy="true" aria-live="polite"></div>
+
     <!-- 工具函数 -->
+    <script src="js/utils/auth.js"></script>
+
+    <!-- 认证检查：在 React 加载前完成，登录成功后才放行应用启动 -->
+    <script>
+        (function () {
+            // 标记认证检查尚未完成，阻止 React AuthWrapper 渲染应用
+            window.__ASTRBOT_AUTH_PENDING = true;
+
+            function showLogin() {
+                document.getElementById('bl-loading').style.display = 'none';
+                document.getElementById('bl-login').style.display = 'flex';
+                setTimeout(function () {
+                    var pw = document.getElementById('bl-password');
+                    if (pw) pw.focus();
+                }, 80);
+            }
+
+            function showLoading() {
+                document.getElementById('bl-login').style.display = 'none';
+                document.getElementById('bl-loading').style.display = 'flex';
+            }
+
+            // 切换密码可见性
+            document.getElementById('bl-toggle-pw').addEventListener('click', function () {
+                var pw = document.getElementById('bl-password');
+                pw.type = pw.type === 'password' ? 'text' : 'password';
+                this.textContent = pw.type === 'password' ? '👁️' : '🙈';
+            });
+
+            // 登录提交处理（挂载到全局供 form onsubmit 调用）
+            window.__BL_HANDLE_LOGIN = function (e) {
+                e.preventDefault();
+                var password = document.getElementById('bl-password').value;
+                if (!password) return;
+
+                var errorEl = document.getElementById('bl-login-error');
+                var submitBtn = document.getElementById('bl-submit');
+                errorEl.textContent = '';
+                submitBtn.disabled = true;
+                submitBtn.textContent = '登录中...';
+
+                fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                }).then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                }).then(function (result) {
+                    if (result.ok) {
+                        window.AuthUtil.setToken(result.data.token);
+                        window.__ASTRBOT_AUTH_PENDING = false;
+                        window.dispatchEvent(new Event('auth-ready'));
+                        showLoading();
+                    } else {
+                        errorEl.textContent = result.data.error || '密码错误，请重试';
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = '登录';
+                    }
+                }).catch(function () {
+                    errorEl.textContent = '网络错误，请重试';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '登录';
+                });
+            };
+
+            // 检查是否需要认证
+            fetch('/api/auth-info')
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    var token = window.AuthUtil && window.AuthUtil.getToken();
+                    if (!data.auth_required || token) {
+                        // 无需认证或已有令牌，直接放行
+                        window.__ASTRBOT_AUTH_PENDING = false;
+                        window.dispatchEvent(new Event('auth-ready'));
+                    } else {
+                        // 需要认证且无令牌，展示登录界面
+                        showLogin();
+                    }
+                })
+                .catch(function () {
+                    // 无法访问服务端，直接放行
+                    window.__ASTRBOT_AUTH_PENDING = false;
+                    window.dispatchEvent(new Event('auth-ready'));
+                });
+        })();
+    </script>
+
     <script src="js/utils/formatters.js" defer></script>
 
     <!-- Context -->
@@ -150,8 +287,9 @@
                 setTimeout(doHide, delay);
             };
 
-            // 兜底：若应用初始化异常，窗口 load 后仍自动隐藏
+            // 兜底：若应用初始化异常，窗口 load 后仍自动隐藏（登录进行中时跳过）
             window.addEventListener('load', function () {
+                if (window.__ASTRBOT_AUTH_PENDING) return;
                 setTimeout(window.__ASTRBOT_HIDE_BOOTLOADER, 1200);
             }, { once: true });
         })();

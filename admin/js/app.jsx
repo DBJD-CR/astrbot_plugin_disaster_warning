@@ -449,13 +449,42 @@ function App() {
     );
 }
 
+/**
+ * 认证包装器 - 等待骨架屏阶段的认证检查完成后再挂载应用
+ * 若会话令牌过期（收到 auth-required 事件），则重载页面重新登录
+ */
+function AuthWrapper() {
+    // 若认证检查已完成（__ASTRBOT_AUTH_PENDING 为 false）则直接就绪
+    const [ready, setReady] = React.useState(() => !window.__ASTRBOT_AUTH_PENDING);
+
+    React.useEffect(() => {
+        if (ready) return;
+        const handleReady = () => setReady(true);
+        window.addEventListener('auth-ready', handleReady);
+        // 以防事件在 effect 注册前已触发
+        if (!window.__ASTRBOT_AUTH_PENDING) setReady(true);
+        return () => window.removeEventListener('auth-ready', handleReady);
+    }, [ready]);
+
+    React.useEffect(() => {
+        // 令牌过期时重载，让骨架屏登录表单接管
+        const handleAuthRequired = () => window.location.reload();
+        window.addEventListener('auth-required', handleAuthRequired);
+        return () => window.removeEventListener('auth-required', handleAuthRequired);
+    }, []);
+
+    if (!ready) return null;
+
+    return (
+        <AppProvider>
+            <ToastProvider>
+                <App />
+            </ToastProvider>
+        </AppProvider>
+    );
+}
+
 // 渲染应用
 const rootElement = document.getElementById('root');
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-    <AppProvider>
-        <ToastProvider>
-            <App />
-        </ToastProvider>
-    </AppProvider>
-);
+root.render(<AuthWrapper />);

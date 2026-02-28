@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import platform
+import secrets
 import traceback
 from datetime import datetime
 from typing import Any
@@ -75,6 +76,8 @@ class WebAdminServer:
         self._ping_task = None  # 新增：定期ping任务
         self._ws_connections: list[WebSocket] = []  # Active WebSocket connections
         self._latency_cache: dict[str, float | None] = {}  # 新增：延迟缓存
+        self._auth_enabled = False
+        self._auth_token: str | None = None
 
         if not FASTAPI_AVAILABLE:
             return
@@ -89,6 +92,33 @@ class WebAdminServer:
             description="灾害预警插件 Web 管理界面",
             version="1.0.0",
         )
+
+        # 鉴权配置
+        password = self.config.get("web_admin", {}).get("password", "")
+        if password:
+            self._auth_enabled = True
+            self._auth_token = secrets.token_hex(32)
+
+        # 鉴权中间件
+        @self.app.middleware("http")
+        async def auth_middleware(request: Request, call_next):
+            if not self._auth_enabled:
+                return await call_next(request)
+            path = request.url.path
+            # 不需要鉴权的路径
+            if path in {"/api/login", "/api/auth-info"}:
+                return await call_next(request)
+            # 只保护 /api/* 和 /ws
+            if not path.startswith("/api") and path != "/ws":
+                return await call_next(request)
+            # WebSocket 和 API 均支持 token 查询参数或 Authorization 头
+            token = request.query_params.get("token", "")
+            if not token:
+                auth_header = request.headers.get("Authorization", "")
+                token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+            if not self._auth_token or not secrets.compare_digest(token, self._auth_token):
+                return JSONResponse({"error": "未授权，请先登录"}, status_code=401)
+            return await call_next(request)
 
         # CORS 配置
         self.app.add_middleware(
@@ -113,6 +143,21 @@ class WebAdminServer:
 
     def _register_routes(self):
         """注册 API 路由"""
+
+        @self.app.get("/api/auth-info")
+        async def get_auth_info():
+            """返回是否需要密码认证"""
+            return {"auth_required": self._auth_enabled}
+
+        @self.app.post("/api/login")
+        async def login(credentials: dict[str, Any]):
+            """密码登录，返回访问令牌"""
+            if not self._auth_enabled:
+                return {"token": "no-auth", "auth_required": False}
+            password = self.config.get("web_admin", {}).get("password", "")
+            if secrets.compare_digest(credentials.get("password", ""), password):
+                return {"token": self._auth_token, "auth_required": True}
+            return JSONResponse({"error": "密码错误"}, status_code=401)
 
         @self.app.get("/logo.png")
         async def get_logo():

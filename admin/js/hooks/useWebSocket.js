@@ -63,7 +63,9 @@ function useWebSocket() {
 
     const getWsUrl = () => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/ws`;
+        const token = window.AuthUtil && window.AuthUtil.getToken();
+        const tokenParam = (token && token !== 'no-auth') ? `?token=${encodeURIComponent(token)}` : '';
+        return `${protocol}//${window.location.host}/ws${tokenParam}`;
     };
 
     const scheduleReconnect = () => {
