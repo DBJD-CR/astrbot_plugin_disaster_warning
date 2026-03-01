@@ -6,6 +6,31 @@
 import re
 from typing import Any
 
+# 气象预警判定为重大事件的颜色关键词
+_MAJOR_WEATHER_KEYWORDS = ("红", "橙")
+
+
+def is_major_event(record: dict) -> bool:
+    """
+    根据事件字典判断是否为重大事件。
+
+    判定规则：
+    - earthquake / earthquake_warning：震级 >= 5.0
+    - tsunami：始终为重大事件
+    - weather_alarm：level 或 description 中包含"红"或"橙"
+    """
+    t = record.get("type", "")
+    if t in ("earthquake", "earthquake_warning"):
+        mag = record.get("magnitude")
+        return mag is not None and mag >= 5.0
+    if t == "tsunami":
+        return True
+    if t == "weather_alarm":
+        level = record.get("level") or ""
+        desc = record.get("description") or ""
+        return any(kw in s for kw in _MAJOR_WEATHER_KEYWORDS for s in (level, desc))
+    return False
+
 
 def safe_float_convert(value: Any) -> float | None:
     """

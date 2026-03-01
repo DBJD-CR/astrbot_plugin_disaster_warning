@@ -3,11 +3,12 @@ WebSocket消息处理器注册中心
 负责创建和注册各种数据源的WebSocket消息处理器
 """
 
+import asyncio
 import json
 
 from astrbot.api import logger
 
-from .websocket_manager import WebSocketManager
+from ..network.websocket_manager import WebSocketManager
 
 
 class WebSocketHandlerRegistry:
@@ -61,7 +62,10 @@ class WebSocketHandlerRegistry:
                     "tsunami": ("china_tsunami", "china_tsunami_fanstudio"),
                     "cenc": ("china_cenc_earthquake", "cenc_fanstudio"),
                     "cea": ("china_earthquake_warning", "cea_fanstudio"),
-                    "cea-pr": ("china_earthquake_warning", "cea_pr_fanstudio"),
+                    "cea-pr": (
+                        "china_earthquake_warning_provincial",
+                        "cea_pr_fanstudio",
+                    ),
                     "jma": ("japan_jma_eew", "jma_fanstudio"),
                     "cwa": ("taiwan_cwa_report", "cwa_fanstudio_report"),
                     "cwa-eew": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
@@ -117,7 +121,9 @@ class WebSocketHandlerRegistry:
                     if isinstance(msg_data, dict):
                         # 特征识别逻辑
                         detected_source = None
-                        if "headline" in msg_data and "type" in msg_data:
+                        if (
+                            "title" in msg_data or "headline" in msg_data
+                        ) and "type" in msg_data:
                             detected_source = "weatheralarm"
                         elif "warningInfo" in msg_data and "code" in msg_data:
                             detected_source = "tsunami"
@@ -206,7 +212,46 @@ class WebSocketHandlerRegistry:
                                 }
 
                             logger.debug(f"[灾害预警] {source} 解析成功: {event.id}")
-                            await self.service._handle_disaster_event(event)
+
+                            # 关键优化：CENC 融合策略会等待 Wolfx 补充数据，若在此处直接 await
+                            # 将阻塞 FAN Studio 同连接后续消息处理。改为任务调度以避免阻塞。
+                            fusion_enabled = False
+                            try:
+                                message_manager = getattr(
+                                    self.service, "message_manager", None
+                                )
+                                if message_manager and isinstance(
+                                    getattr(message_manager, "config", None), dict
+                                ):
+                                    fusion_enabled = bool(
+                                        message_manager.config.get("strategies", {})
+                                        .get("cenc_fusion", {})
+                                        .get("enabled", False)
+                                    )
+                            except Exception:
+                                fusion_enabled = False
+
+                            if source == "cenc" and fusion_enabled:
+
+                                async def _dispatch_event_non_blocking(disaster_event):
+                                    try:
+                                        await self.service._handle_disaster_event(
+                                            disaster_event
+                                        )
+                                    except Exception as dispatch_err:
+                                        logger.error(
+                                            f"[灾害预警] CENC 异步分发失败: {dispatch_err}"
+                                        )
+
+                                task = asyncio.create_task(
+                                    _dispatch_event_non_blocking(event),
+                                    name=f"dw_fan_cenc_dispatch_{event.id}",
+                                )
+                                if hasattr(self.service, "register_background_task"):
+                                    self.service.register_background_task(task)
+                            else:
+                                await self.service._handle_disaster_event(event)
+
                             processed_count += 1
                     else:
                         logger.warning(f"[灾害预警] 未找到处理器: {handler_id}")

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>灾害预警管理端</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="../logo.png">
+    <link rel="preload" href="../logo.png" as="image" fetchpriority="high">
+
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'dark') {
+                    document.documentElement.classList.add('theme-dark');
+                }
+            } catch (e) {
+                /* 忽略 localStorage 不可用场景 */
+            }
+        })();
+    </script>
+
+    <!-- Fonts - 预加载 -->
+    <link rel="preload" href="fonts/outfit.css" as="style">
+    <link href="fonts/outfit.css" rel="stylesheet">
+
+    <!-- 自定义 CSS -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- 登录表单样式 -->
+    <style>
+        #bl-loading { display: flex; flex-direction: column; align-items: center; }
+        #bl-login { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 320px; padding: 0 20px; box-sizing: border-box; }
+        .bl-input-wrap { position: relative; width: 100%; margin-bottom: 10px; }
+        .bl-input {
+            width: 100%; padding: 11px 44px 11px 14px; box-sizing: border-box;
+            border: 1.5px solid rgba(103,80,164,0.25); border-radius: 12px;
+            font-size: 14px; font-family: inherit;
+            background: rgba(255,255,255,0.75); color: #1C1B1F;
+            outline: none; transition: border-color .2s, box-shadow .2s;
+        }
+        .bl-input:focus { border-color: #6750A4; box-shadow: 0 0 0 3px rgba(103,80,164,0.1); }
+        html.theme-dark .bl-input, body.dark-theme .bl-input { background: rgba(28,27,31,0.85); border-color: rgba(208,188,255,0.2); color: #E6E1E5; }
+        html.theme-dark .bl-input:focus, body.dark-theme .bl-input:focus { border-color: #D0BCFF; box-shadow: 0 0 0 3px rgba(208,188,255,0.1); }
+        .bl-toggle-pw { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px; line-height: 1; }
+        .bl-submit-btn {
+            width: 100%; padding: 11px 0; border: none; border-radius: 100px;
+            background: #6750A4; color: #fff; font-size: 14px; font-weight: 600;
+            cursor: pointer; font-family: inherit; letter-spacing: .025em;
+            transition: background .2s, opacity .2s; margin-top: 4px;
+        }
+        .bl-submit-btn:hover:not(:disabled) { background: #7F67BE; }
+        .bl-submit-btn:disabled { opacity: .6; cursor: default; }
+        html.theme-dark .bl-submit-btn, body.dark-theme .bl-submit-btn { background: #D0BCFF; color: #371E73; }
+        html.theme-dark .bl-submit-btn:hover:not(:disabled), body.dark-theme .bl-submit-btn:hover:not(:disabled) { background: #E8DDFF; }
+        .bl-error { font-size: 12px; color: #B3261E; min-height: 18px; text-align: center; width: 100%; margin-bottom: 4px; }
+        html.theme-dark .bl-error, body.dark-theme .bl-error { color: #F2B8B5; }
+    </style>
+
+    <!-- 核心运行时脚本预加载 -->
+    <link rel="preload" href="lib/react.production.min.js" as="script">
+    <link rel="preload" href="lib/react-dom.production.min.js" as="script">
+    <link rel="preload" href="lib/material-ui.production.min.js" as="script">
+
+    <!-- React 18 (生产环境) - defer加载 -->
+    <script crossorigin src="lib/react.production.min.js" defer></script>
+    <script crossorigin src="lib/react-dom.production.min.js" defer></script>
+
+    <!-- Babel Standalone (用于浏览器实时编译 JSX) -->
+    <script src="lib/babel.min.js" defer></script>
+
+    <!-- Material UI 组件库 - defer加载 -->
+    <script src="lib/material-ui.production.min.js" defer></script>
+
+    <!-- Emotion (Material UI 的 CSS-in-JS 依赖) - defer加载 -->
+    <script src="lib/emotion-react.umd.min.js" defer></script>
+    <script src="lib/emotion-styled.umd.min.js" defer></script>
+</head>
+
+<body>
+    <!-- 首屏加载骨架屏（position:fixed，独立于 React 根节点之外，避免 React 挂载时被清除） -->
+    <div id="loading-skeleton" class="boot-loader" role="status" aria-live="polite" aria-atomic="true">
+
+        <!-- 加载动画 -->
+        <div id="bl-loading">
+            <div class="boot-loader__logo" aria-hidden="true">
+                <img src="../logo.png" alt="" width="56" height="56">
+            </div>
+            <div class="boot-loader__title">灾害预警管理端</div>
+            <div class="boot-loader__subtitle">正在加载...</div>
+            <div class="boot-loader__progress" aria-hidden="true">
+                <div class="boot-loader__progress-bar"></div>
+            </div>
+            <span class="visually-hidden">应用资源加载中，请稍候</span>
+        </div>
+
+        <!-- 登录表单（需要密码时显示） -->
+        <form id="bl-login" onsubmit="window.__BL_HANDLE_LOGIN(event)">
+            <div class="boot-loader__logo" aria-hidden="true" style="animation:none;">
+                <img src="../logo.png" alt="" width="56" height="56">
+            </div>
+            <div class="boot-loader__title">灾害预警管理端</div>
+            <div class="boot-loader__subtitle" style="margin-bottom:20px;">请输入访问密码</div>
+            <div class="bl-error" id="bl-login-error"></div>
+            <div class="bl-input-wrap">
+                <input id="bl-password" class="bl-input" type="password" placeholder="密码" autocomplete="current-password">
+                <button class="bl-toggle-pw" type="button" id="bl-toggle-pw" title="显示/隐藏密码">👁️</button>
+            </div>
+            <button id="bl-submit" class="bl-submit-btn" type="submit">登录</button>
+        </form>
+
+    </div>
+
+    <div id="root" aria-busy="true" aria-live="polite"></div>
+
+    <!-- 工具函数 -->
+    <script src="js/utils/auth.js"></script>
+
+    <!-- 认证检查：在 React 加载前完成，登录成功后才放行应用启动 -->
+    <script>
+        (function () {
+            // 标记认证检查尚未完成，阻止 React AuthWrapper 渲染应用
+            window.__ASTRBOT_AUTH_PENDING = true;
+
+            function showLogin() {
+                document.getElementById('bl-loading').style.display = 'none';
+                document.getElementById('bl-login').style.display = 'flex';
+                setTimeout(function () {
+                    var pw = document.getElementById('bl-password');
+                    if (pw) pw.focus();
+                }, 80);
+            }
+
+            function showLoading() {
+                document.getElementById('bl-login').style.display = 'none';
+                document.getElementById('bl-loading').style.display = 'flex';
+            }
+
+            // 切换密码可见性
+            document.getElementById('bl-toggle-pw').addEventListener('click', function () {
+                var pw = document.getElementById('bl-password');
+                pw.type = pw.type === 'password' ? 'text' : 'password';
+                this.textContent = pw.type === 'password' ? '👁️' : '🙈';
+            });
+
+            // 登录提交处理（挂载到全局供 form onsubmit 调用）
+            window.__BL_HANDLE_LOGIN = function (e) {
+                e.preventDefault();
+                var password = document.getElementById('bl-password').value;
+                if (!password) return;
+
+                var errorEl = document.getElementById('bl-login-error');
+                var submitBtn = document.getElementById('bl-submit');
+                errorEl.textContent = '';
+                submitBtn.disabled = true;
+                submitBtn.textContent = '登录中...';
+
+                fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                }).then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                }).then(function (result) {
+                    if (result.ok) {
+                        window.AuthUtil.setToken(result.data.token);
+                        window.__ASTRBOT_AUTH_PENDING = false;
+                        window.dispatchEvent(new Event('auth-ready'));
+                        showLoading();
+                    } else {
+                        errorEl.textContent = result.data.error || '密码错误，请重试';
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = '登录';
+                    }
+                }).catch(function () {
+                    errorEl.textContent = '网络错误，请重试';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '登录';
+                });
+            };
+
+            function proceedWithAuth() {
+                window.__ASTRBOT_AUTH_PENDING = false;
+                window.dispatchEvent(new Event('auth-ready'));
+            }
+
+            // 检查是否需要认证
+            fetch('/api/auth-info')
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (!data.auth_required) {
+                        // 无需认证，直接放行
+                        proceedWithAuth();
+                        return;
+                    }
+                    var token = window.AuthUtil && window.AuthUtil.getToken();
+                    if (!token) {
+                        // 需要认证且无令牌，展示登录界面
+                        showLogin();
+                        return;
+                    }
+                    // 有令牌但需要认证：先验证令牌是否仍然有效
+                    // 注意：必须使用 XMLHttpRequest 而非 fetch，
+                    // 避免触发 auth.js 的 fetch 拦截器在 401 时派发 auth-required 事件，
+                    // 那会导致 AuthWrapper 在 React 已挂载时触发不必要的 location.reload()。
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('GET', '/api/status', true);
+                    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                    xhr.onreadystatechange = function () {
+                        if (xhr.readyState !== 4) return;
+                        if (xhr.status === 401) {
+                            // 令牌已失效（如插件重载后 token 重置），清除并要求重新登录
+                            window.AuthUtil.clearToken();
+                            showLogin();
+                        } else if (xhr.status === 0) {
+                            // 网络错误，直接放行
+                            proceedWithAuth();
+                        } else {
+                            // 令牌有效，直接放行
+                            proceedWithAuth();
+                        }
+                    };
+                    xhr.send();
+                })
+                .catch(function () {
+                    // 无法访问服务端，直接放行
+                    proceedWithAuth();
+                });
+        })();
+    </script>
+
+    <script src="js/utils/formatters.js" defer></script>
+
+    <!-- Context -->
+    <script type="text/babel" src="js/context/AppContext.jsx" defer></script>
+
+    <!-- Hooks -->
+    <script type="text/babel" src="js/hooks/useWebSocket.js" defer></script>
+    <script type="text/babel" src="js/hooks/usePreservedScroll.js" defer></script>
+    <script type="text/babel" src="js/hooks/useApi.js" defer></script>
+
+    <!-- 组件 (Components) -->
+    <!-- Common -->
+    <script type="text/babel" src="js/components/common/Toast.jsx" defer></script>
+    <script type="text/babel" src="js/components/common/Header.jsx" defer></script>
+    <script type="text/babel" src="js/components/common/Sidebar.jsx" defer></script>
+
+    <!-- Status View Components -->
+    <script type="text/babel" src="js/components/status/StatusCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/ConnectionsGrid.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/NewsTicker.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/SimulationModal.jsx" defer></script>
+
+    <!-- Stats View Components -->
+    <script type="text/babel" src="js/components/stats/StatsCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/MagnitudeChart.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/TrendChart.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/CalendarHeatmap.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/MaxMagCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/TopListCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/WeatherLevelCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/LogStatsCard.jsx" defer></script>
+
+    <!-- Events View Components -->
+    <script type="text/babel" src="js/components/events/HorizontalTimeline.jsx" defer></script>
+    <script type="text/babel" src="js/components/events/EventsList.jsx" defer></script>
+
+    <!-- Config View Components -->
+    <script type="text/babel" src="js/components/config/ConfigRenderer.jsx" defer></script>
+
+    <!-- 视图 (Views) -->
+    <script type="text/babel" src="js/views/StatusView.jsx" defer></script>
+    <script type="text/babel" src="js/views/EventsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/StatsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/ConfigView.jsx" defer></script>
+
+    <!-- 主入口 -->
+    <script type="text/babel" src="js/app.jsx" defer></script>
+    
+    <script>
+        (function () {
+            var hidden = false;
+            var start = (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+            var MIN_VISIBLE_MS = 280;
+
+            function doHide() {
+                if (hidden) return;
+                hidden = true;
+
+                var skeleton = document.getElementById('loading-skeleton');
+                if (!skeleton) return;
+
+                skeleton.classList.add('is-exiting');
+                setTimeout(function () {
+                    if (skeleton && skeleton.parentNode) {
+                        skeleton.parentNode.removeChild(skeleton);
+                    }
+
+                    var root = document.getElementById('root');
+                    if (root) {
+                        root.setAttribute('aria-busy', 'false');
+                    }
+                }, 320);
+            }
+
+            window.__ASTRBOT_HIDE_BOOTLOADER = function () {
+                var now = (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+                var delay = Math.max(0, MIN_VISIBLE_MS - (now - start));
+                setTimeout(doHide, delay);
+            };
+
+            // 兜底：若应用初始化异常，窗口 load 后仍自动隐藏（登录进行中时跳过）
+            window.addEventListener('load', function () {
+                if (window.__ASTRBOT_AUTH_PENDING) return;
+                setTimeout(window.__ASTRBOT_HIDE_BOOTLOADER, 1200);
+            }, { once: true });
+        })();
+    </script>
+</body>
+
+</html>

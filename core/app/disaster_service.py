@@ -14,24 +14,25 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 if TYPE_CHECKING:
-    from .telemetry_manager import TelemetryManager
+    from ..support.telemetry_manager import TelemetryManager
 
-from ..models.data_source_config import DATA_SOURCE_CONFIGS
-from ..models.models import (
+from ...models.data_source_config import DATA_SOURCE_CONFIGS
+from ...models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
 )
-from ..utils.fe_regions import load_data_async
-from ..utils.formatters import MESSAGE_FORMATTERS
-from .handler_registry import WebSocketHandlerRegistry
-from .handlers import DATA_HANDLERS
-from .message_logger import MessageLogger
-from .message_manager import MessagePushManager
-from .statistics_manager import StatisticsManager
-from .websocket_manager import HTTPDataFetcher, WebSocketManager
+from ...utils.fe_regions import load_data_async
+from ...utils.formatters import MESSAGE_FORMATTERS
+from ..handlers import DATA_HANDLERS
+from ..message.message_logger import MessageLogger
+from ..message.message_manager import MessagePushManager
+from ..network.handler_registry import WebSocketHandlerRegistry
+from ..network.websocket_manager import HTTPDataFetcher, WebSocketManager
+from ..storage.session_config_manager import SessionConfigManager
+from ..storage.statistics_manager import StatisticsManager
 
 
 class DisasterWarningService:
@@ -42,15 +43,20 @@ class DisasterWarningService:
         self.context = context
         self.running = False
         self._start_lock = asyncio.Lock()  # 防止并发启动的锁
+        self._stop_lock = asyncio.Lock()  # 防止并发停止导致的竞态
+        self._stopping = False
 
         # 初始化消息记录器
         self.message_logger = MessageLogger(config, "disaster_warning")
 
         # 初始化统计管理器
-        self.statistics_manager = StatisticsManager()
+        self.statistics_manager = StatisticsManager(config)
 
         # 遥测管理器引用 (由 main.py 注入)
         self._telemetry: TelemetryManager | None = None
+
+        # 会话差异配置管理器
+        self.session_config_manager = SessionConfigManager(config)
 
         # 初始化组件（传入 telemetry，但此时可能为 None）
         self.ws_manager = WebSocketManager(
@@ -75,6 +81,12 @@ class DisasterWarningService:
 
         # 定时任务
         self.scheduled_tasks = []
+
+        # 服务级后台任务托管（用于统一回收由处理器派发的异步任务）
+        self.background_tasks: set[asyncio.Task] = set()
+
+        # Web 管理端服务器引用（用于事件驱动的 WebSocket 推送）
+        self.web_admin_server = None
 
         # 地震列表缓存（用于查询指令）
         self.earthquake_lists = {"cenc": {}, "jma": {}}
@@ -182,6 +194,7 @@ class DisasterWarningService:
             # 检查是否启用了至少一个 FAN Studio 子数据源
             fan_sub_sources = [
                 "china_earthquake_warning",
+                "china_earthquake_warning_provincial",
                 "taiwan_cwa_earthquake",
                 "taiwan_cwa_report",
                 "china_cenc_earthquake",
@@ -251,7 +264,7 @@ class DisasterWarningService:
             "enabled", False
         ):
             # GlobalQuake Monitor 服务器地址（硬编码）
-            global_quake_url = "wss://gqm.aloys233.top/ws"
+            global_quake_url = "wss://gqm.aloys23.link/ws"
             self.connections["global_quake"] = {
                 "url": global_quake_url,
                 "handler": "global_quake",
@@ -268,8 +281,12 @@ class DisasterWarningService:
 
             try:
                 self.running = True
+                self._stopping = False
                 self.start_time = datetime.now(timezone.utc)  # 记录启动时间
                 logger.info("[灾害预警] 正在启动灾害预警服务...")
+
+                # 初始化统计管理器的数据库连接
+                await self.statistics_manager.initialize()
 
                 # 加载缓存数据
                 self._load_earthquake_lists_cache()
@@ -308,41 +325,77 @@ class DisasterWarningService:
                     )
                 raise
 
-    async def stop(self):
-        """停止服务"""
-        if not self.running:
+    async def _cancel_and_wait(self, tasks: list[asyncio.Task]) -> None:
+        """取消并等待任务结束。"""
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def register_background_task(self, task: asyncio.Task) -> None:
+        """注册服务级后台任务，确保停机时可统一回收。"""
+        if task is None:
             return
 
-        try:
-            # 保存缓存数据
-            self._save_earthquake_lists_cache()
+        self.background_tasks.add(task)
+        task.add_done_callback(self.background_tasks.discard)
 
-            self.running = False
-            logger.info("[灾害预警] 正在停止灾害预警服务...")
+    async def stop(self):
+        """停止服务"""
+        async with self._stop_lock:
+            if self._stopping:
+                logger.debug("[灾害预警] 停止流程已在执行中，跳过重复调用")
+                return
+            self._stopping = True
+            try:
+                logger.info("[灾害预警] 正在停止灾害预警服务...")
+                # 先标记为停止，阻止新任务进入
+                was_running = self.running
+                self.running = False
 
-            # 取消所有任务
-            for task in self.connection_tasks:
-                task.cancel()
+                # 仅在服务实际运行过时保存缓存
+                if was_running:
+                    self._save_earthquake_lists_cache()
 
-            for task in self.scheduled_tasks:
-                task.cancel()
+                # 取消并等待所有连接任务退出
+                connection_tasks = list(self.connection_tasks)
+                await self._cancel_and_wait(connection_tasks)
+                self.connection_tasks.clear()
 
-            # 停止WebSocket管理器
-            await self.ws_manager.stop()
+                # 取消并等待所有定时任务退出
+                scheduled_tasks = list(self.scheduled_tasks)
+                await self._cancel_and_wait(scheduled_tasks)
+                self.scheduled_tasks.clear()
 
-            # 关闭HTTP获取器
-            if self.http_fetcher:
-                await self.http_fetcher.close()  # 修改点：调用显式的 close()
+                # 取消并等待由处理器派发的服务级后台任务
+                background_tasks = [
+                    task for task in self.background_tasks if task and not task.done()
+                ]
+                await self._cancel_and_wait(background_tasks)
+                self.background_tasks.clear()
 
-            logger.info("[灾害预警] 灾害预警服务已停止")
+                # 停止WebSocket管理器
+                await self.ws_manager.stop()
 
-        except Exception as e:
-            logger.error(f"[灾害预警] 停止服务时出错: {e}")
-            # 上报停止服务错误到遥测
-            if self._telemetry and self._telemetry.enabled:
-                await self._telemetry.track_error(
-                    e, module="core.disaster_service.stop"
-                )
+                # 关闭HTTP获取器
+                if self.http_fetcher:
+                    await self.http_fetcher.close()
+
+                # 关闭数据库连接
+                if self.statistics_manager and self.statistics_manager._db_initialized:
+                    await self.statistics_manager.db.close()
+
+                logger.info("[灾害预警] 灾害预警服务已停止")
+
+            except Exception as e:
+                logger.error(f"[灾害预警] 停止服务时出错: {e}")
+                # 上报停止服务错误到遥测
+                if self._telemetry and self._telemetry.enabled:
+                    await self._telemetry.track_error(
+                        e, module="core.disaster_service.stop"
+                    )
+            finally:
+                self._stopping = False
 
     async def _establish_websocket_connections(self):
         """建立WebSocket连接 - 使用WebSocket管理器功能"""
@@ -379,7 +432,8 @@ class DisasterWarningService:
                 task = asyncio.create_task(
                     _connect_with_timeout(
                         conn_name, conn_config["url"], connection_info
-                    )
+                    ),
+                    name=f"dw_ws_connect_{conn_name}",
                 )
                 self.connection_tasks.append(task)
 
@@ -505,7 +559,7 @@ class DisasterWarningService:
                 except Exception as e:
                     logger.error(f"[灾害预警] 定时HTTP数据获取失败: {e}")
 
-        task = asyncio.create_task(fetch_wolfx_data())
+        task = asyncio.create_task(fetch_wolfx_data(), name="dw_http_fetch_wolfx")
         self.scheduled_tasks.append(task)
 
     async def _start_cleanup_task(self):
@@ -519,7 +573,7 @@ class DisasterWarningService:
                 except Exception as e:
                     logger.error(f"[灾害预警] 清理任务失败: {e}")
 
-        task = asyncio.create_task(cleanup())
+        task = asyncio.create_task(cleanup(), name="dw_cleanup")
         self.scheduled_tasks.append(task)
 
     def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
@@ -737,6 +791,7 @@ class DisasterWarningService:
                 "depth_label": depth_label,
                 "depth_value": depth_value_str,
                 "depth_unit": depth_unit,
+                "is_text_depth": (depth_val == 0.0),
                 "intensity_display": intensity_display,
                 "intensity_class": intensity_class,
                 "raw": item,  # 保留原始数据用于文本模式
@@ -777,15 +832,41 @@ class DisasterWarningService:
             logger.debug(f"[灾害预警] 处理灾害事件: {event.id}")
             self._log_event(event)
 
-            # 记录统计数据 (不管是否推送成功)
-            self.statistics_manager.record_push(event)
-
             # 推送消息 - 使用新消息管理器
-            push_result = await self.message_manager.push_event(event)
+            target_sessions = self.session_config_manager.list_target_sessions()
+            push_result = await self.message_manager.push_event(
+                event,
+                target_sessions=target_sessions,
+                session_config_getter=self.session_config_manager.get_effective_config,
+            )
             if push_result:
                 logger.debug(f"[灾害预警] ✅ 事件推送成功: {event.id}")
             else:
                 logger.debug(f"[灾害预警] 事件推送被过滤: {event.id}")
+
+            # 记录统计数据 (不管是否推送成功)
+            await self.statistics_manager.record_push(
+                event,
+                pushed_sessions=self.message_manager.last_success_sessions,
+            )
+
+            # 实时通知 Web 管理端（如果已配置）
+            if self.web_admin_server:
+                try:
+                    # 构建事件摘要
+                    event_summary = {
+                        "id": event.id,
+                        "type": event.disaster_type.value
+                        if hasattr(event.disaster_type, "value")
+                        else str(event.disaster_type),
+                        "source": event.source.value
+                        if hasattr(event.source, "value")
+                        else str(event.source),
+                        "time": datetime.now().isoformat(),
+                    }
+                    await self.web_admin_server.notify_event(event_summary)
+                except Exception as ws_e:
+                    logger.debug(f"[灾害预警] WebSocket 通知失败: {ws_e}")
 
         except Exception as e:
             logger.error(f"[灾害预警] 处理灾害事件失败: {e}")
@@ -813,9 +894,7 @@ class DisasterWarningService:
                 log_info = f"海啸事件 - 级别: {tsunami.level}, 标题: {tsunami.title}, 数据源: {event.source.value}"
             elif isinstance(event.data, WeatherAlarmData):
                 weather = event.data
-                log_info = (
-                    f"气象事件 - 标题: {weather.headline}, 数据源: {event.source.value}"
-                )
+                log_info = f"气象事件 - 标题: {weather.title or weather.headline}, 数据源: {event.source.value}"
             else:
                 log_info = (
                     f"未知事件类型 - ID: {event.id}, 数据源: {event.source.value}"
@@ -826,6 +905,69 @@ class DisasterWarningService:
             logger.debug(
                 f"[灾害预警] 事件详情: ID={event.id}, 类型={event.disaster_type.value}, 数据源={event.source.value}"
             )
+
+    async def reconnect_all_sources(self) -> dict[str, str]:
+        """
+        强制重连所有已启用但离线的数据源
+        返回: dict {connection_name: status_message}
+        """
+        results = {}
+        if not self.ws_manager:
+            return {"error": "WebSocket管理器未初始化"}
+
+        reconnect_count = 0
+
+        # 遍历 Service 层配置的所有连接
+        for conn_name, conn_config in self.connections.items():
+            # 检查连接状态
+            is_connected = False
+            if conn_name in self.ws_manager.connections:
+                ws = self.ws_manager.connections[conn_name]
+                if not ws.closed:
+                    is_connected = True
+
+            if is_connected:
+                results[conn_name] = "已连接 (跳过)"
+                continue
+
+            # 执行强制重连
+            try:
+                # 确保 connection_info 存在于 ws_manager 中
+                # 如果因为某种原因丢失，尝试修复（通常 start() 后都会有）
+                if conn_name not in self.ws_manager.connection_info:
+                    connection_info = {
+                        "connection_name": conn_name,
+                        "handler_type": conn_config["handler"],
+                        "data_source": self._get_data_source_from_connection(conn_name),
+                        "established_time": None,
+                        "backup_url": conn_config.get("backup_url"),
+                    }
+                    self.ws_manager.connection_info[conn_name] = {
+                        "uri": conn_config["url"],
+                        "headers": None,
+                        "connection_type": "websocket",
+                        "established_time": None,
+                        "retry_count": 0,
+                        **connection_info,
+                    }
+
+                # 调用 WebSocket Manager 的强制重连
+                if hasattr(self.ws_manager, "force_reconnect"):
+                    triggered = await self.ws_manager.force_reconnect(conn_name)
+                    if triggered:
+                        results[conn_name] = "✅ 已触发重连"
+                        reconnect_count += 1
+                    else:
+                        results[conn_name] = "⚠️ 重连未触发"
+                else:
+                    results[conn_name] = "❌ Manager不支持重连"
+
+            except Exception as e:
+                results[conn_name] = f"❌ 失败: {e}"
+                logger.error(f"[灾害预警] 手动重连 {conn_name} 失败: {e}")
+
+        logger.info(f"[灾害预警] 手动重连操作完成，触发了 {reconnect_count} 个重连任务")
+        return results
 
     def get_service_status(self) -> dict[str, Any]:
         """获取服务状态 - 增强版本"""
@@ -843,19 +985,71 @@ class DisasterWarningService:
             for task in self.connection_tasks
         )
 
+        # 获取子数据源启用状态
+        sub_source_status = self._get_sub_source_status()
+
         return {
             "running": self.running,
             "active_websocket_connections": active_websocket_connections,
             "global_quake_connected": global_quake_connected,
             "total_connections": len(connection_status),
             "connection_details": connection_status,
+            "sub_source_status": sub_source_status,  # 新增：子数据源状态
             "statistics_summary": self.statistics_manager.get_summary(),
             "data_sources": self._get_active_data_sources(),
             "message_logger_enabled": self.message_logger.enabled
             if self.message_logger
             else False,
             "uptime": self._get_uptime(),  # 添加运行时间
+            "start_time": self.start_time.isoformat()
+            if hasattr(self, "start_time")
+            else None,
         }
+
+    def _get_sub_source_status(self) -> dict[str, dict[str, bool]]:
+        """获取所有子数据源的启用状态"""
+        status = {
+            "fan_studio": {},
+            "p2p_earthquake": {},
+            "wolfx": {},
+            "global_quake": {},
+        }
+
+        data_sources = self.config.get("data_sources", {})
+
+        # FAN Studio
+        fan_config = data_sources.get("fan_studio", {})
+        if isinstance(fan_config, dict):
+            status["fan_studio"] = {
+                k: v
+                for k, v in fan_config.items()
+                if k != "enabled" and isinstance(v, bool)
+            }
+
+        # P2P
+        p2p_config = data_sources.get("p2p_earthquake", {})
+        if isinstance(p2p_config, dict):
+            status["p2p_earthquake"] = {
+                k: v
+                for k, v in p2p_config.items()
+                if k != "enabled" and isinstance(v, bool)
+            }
+
+        # Wolfx
+        wolfx_config = data_sources.get("wolfx", {})
+        if isinstance(wolfx_config, dict):
+            status["wolfx"] = {
+                k: v
+                for k, v in wolfx_config.items()
+                if k != "enabled" and isinstance(v, bool)
+            }
+
+        # Global Quake (仅总开关)
+        gq_config = data_sources.get("global_quake", {})
+        if isinstance(gq_config, dict):
+            status["global_quake"] = {"enabled": gq_config.get("enabled", False)}
+
+        return status
 
     def _get_uptime(self) -> str:
         """获取服务运行时间"""

@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 from astrbot.api import logger
 
-from ..models.models import DataSource, DisasterEvent, DisasterType, EarthquakeData
-from ..utils.time_converter import TimeConverter
+from ...models.models import DataSource, DisasterEvent, DisasterType, EarthquakeData
+from ...utils.time_converter import TimeConverter
 
 
 class EventDeduplicator:
@@ -151,6 +151,7 @@ class EventDeduplicator:
             # 中国地震预警 (CEA)
             if earthquake.source in [
                 DataSource.FAN_STUDIO_CEA,
+                DataSource.FAN_STUDIO_CEA_PR,
                 DataSource.WOLFX_CENC_EEW,
             ]:
                 if earthquake.event_id:
@@ -170,6 +171,11 @@ class EventDeduplicator:
             event_id = earthquake.event_id or earthquake.id
             if event_id:
                 return f"gq_{event_id}"
+
+        # 台湾 CWA 地震报告使用报告 ID 作为指纹
+        if earthquake.source == DataSource.FAN_STUDIO_CWA_REPORT:
+            if earthquake.event_id:
+                return f"cwa_report_{earthquake.event_id}"
 
         if not earthquake.latitude or not earthquake.longitude:
             return "unknown_location"
@@ -280,8 +286,10 @@ class EventDeduplicator:
         """获取事件的数据源ID"""
         source_mapping = {
             DataSource.FAN_STUDIO_CEA.value: "cea_fanstudio",
+            DataSource.FAN_STUDIO_CEA_PR.value: "cea_pr_fanstudio",
             DataSource.WOLFX_CENC_EEW.value: "cea_wolfx",
             DataSource.FAN_STUDIO_CWA.value: "cwa_fanstudio",
+            DataSource.FAN_STUDIO_CWA_REPORT.value: "cwa_fanstudio_report",
             DataSource.WOLFX_CWA_EEW.value: "cwa_wolfx",
             DataSource.FAN_STUDIO_JMA.value: "jma_fanstudio",
             DataSource.P2P_EEW.value: "jma_p2p",

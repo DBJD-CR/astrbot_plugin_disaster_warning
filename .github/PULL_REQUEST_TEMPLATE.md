@@ -26,3 +26,7 @@
 - [ ] 👀 我的更改经过了良好的测试，**并已在上方提供了“运行截图”或“测试日志”**。/ My changes have been well-tested, **and "Screenshots" or "Test Logs" have been provided above**.
 - [ ] 🤓 我确保没有引入新依赖库，或者引入了新依赖库的同时将其添加到了 `requirements.txt` 文件中。/ I have ensured that no new dependencies are introduced, OR if new dependencies are introduced, they have been added to `requirements.txt`.
 - [ ] 😮 我的更改没有引入恶意代码。/ My changes do not introduce malicious code.
+
+## ❤️ CONTRIBUTING
+
+- [ ] 🥳 我已阅读并同意遵守该项目的 [贡献指南](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/blob/main/CONTRIBUTING.md)

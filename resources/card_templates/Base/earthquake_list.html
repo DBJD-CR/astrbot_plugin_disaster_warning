@@ -293,6 +293,11 @@
             line-height: 1;
         }
 
+        /* 当深度为文字描述（如“极浅”）时，使用较小字号 */
+        .event-item:first-child .depth .value.text-value {
+            font-size: 14px;
+        }
+
         /* =========================================
            4. 震度/烈度颜色定义 (Intensity Colors)
            ========================================= */
@@ -346,7 +351,7 @@
             <div class="meta-box">
                 <div class="magnitude"><span>M</span>{{ event.magnitude }}</div>
                 <div class="depth">
-                    <span class="label">{{ event.depth_label }}: </span><span class="value">{{ event.depth_value }}</span><span class="unit">{{ event.depth_unit }}</span>
+                    <span class="label">{{ event.depth_label }}: </span><span class="value {% if event.is_text_depth %}text-value{% endif %}">{{ event.depth_value }}</span><span class="unit">{{ event.depth_unit }}</span>
                 </div>
             </div>
         </div>

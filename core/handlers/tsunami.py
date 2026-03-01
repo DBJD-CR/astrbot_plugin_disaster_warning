@@ -48,8 +48,12 @@ class TsunamiHandler(BaseDataHandler):
 
             tsunami_data = events[0]
 
-            # 提取真实的时间信息 - 优先使用alarmDate作为发布时间
-            time_info = tsunami_data.get("timeInfo", {})
+            warning_info = tsunami_data.get("warningInfo", {}) or {}
+            time_info = tsunami_data.get("timeInfo", {}) or {}
+            shock_info = tsunami_data.get("shockInfo", {}) or {}
+            details = tsunami_data.get("details", {}) or {}
+
+            # 提取时间信息（新格式优先）
             issue_time_str = (
                 time_info.get("alarmDate")
                 or time_info.get("issueTime")
@@ -57,26 +61,73 @@ class TsunamiHandler(BaseDataHandler):
                 or time_info.get("updateDate")
                 or ""
             )
+            update_time_str = time_info.get("updateDate") or ""
+            shock_time_str = shock_info.get("shockTime") or ""
 
-            if issue_time_str:
-                issue_time = self._parse_datetime(issue_time_str)
-            else:
-                # 后备方案：使用当前时间 (UTC)
-                issue_time = datetime.now(timezone.utc)
+            issue_time = (
+                self._parse_datetime(issue_time_str)
+                if issue_time_str
+                else datetime.now(timezone.utc)
+            )
+            update_time = (
+                self._parse_datetime(update_time_str) if update_time_str else None
+            )
+            shock_time = (
+                self._parse_datetime(shock_time_str) if shock_time_str else None
+            )
 
-            # 验证关键字段，防止空信息推送
-            title = tsunami_data.get("warningInfo", {}).get("title", "")
-            level = tsunami_data.get("warningInfo", {}).get("level", "")
+            # 标题/级别兼容提取（兼容旧格式）
+            level = (
+                warning_info.get("level") or tsunami_data.get("level") or ""
+            ).strip()
+            title = (
+                warning_info.get("title") or tsunami_data.get("title") or ""
+            ).strip()
+
+            # 当缺失 title 时尝试构造（避免空信息丢弃）
+            if not title and level:
+                if level == "信息":
+                    title = "海啸信息"
+                elif level == "解除":
+                    title = "海啸解除通告"
+                else:
+                    title = f"海啸{level}警报"
 
             if not title:
-                # 只有在非心跳包情况下才记录警告，且避免重复警告
-                if not self._is_heartbeat_message(msg_data):
-                    warning_msg = (
-                        f"[灾害预警] {self.source_id} 海啸预警缺少标题信息，跳过处理"
-                    )
-                    if self._should_log_warning("missing_tsunami_title", warning_msg):
-                        logger.debug(warning_msg)
+                warning_msg = f"[灾害预警] {self.source_id} 海啸消息缺少标题，跳过处理"
+                if self._should_log_warning("missing_tsunami_title", warning_msg):
+                    logger.debug(warning_msg)
                 return None
+
+            # 信息/预警类型识别
+            normalized_level = level.replace("级", "") if level else ""
+            message_type = "info"
+            if normalized_level and normalized_level not in {"信息"}:
+                message_type = "warning"
+            if "警报" in title or "预警" in title:
+                message_type = "warning"
+
+            # 字段兼容：新格式 forecasts/waterLevelMonitoring，旧格式 monitoringStations
+            forecasts = tsunami_data.get("forecasts", []) or []
+            monitoring_stations = (
+                tsunami_data.get("waterLevelMonitoring")
+                or tsunami_data.get("monitoringStations")
+                or []
+            )
+
+            maps = details.get("maps", {}) or {}
+            subtitle = (
+                warning_info.get("subtitle")
+                or warning_info.get("caption")
+                or shock_info.get("placeName")
+                or tsunami_data.get("placeName")
+                or ""
+            )
+            org_unit = (
+                warning_info.get("orgUnit")
+                or tsunami_data.get("publishInfo", {}).get("unitName")
+                or "中国自然资源部海啸预警中心"
+            )
 
             tsunami = TsunamiData(
                 id=tsunami_data.get("id", "") or str(int(datetime.now().timestamp())),
@@ -84,14 +135,28 @@ class TsunamiHandler(BaseDataHandler):
                 source=DataSource.FAN_STUDIO_TSUNAMI,
                 title=title,
                 level=level,
-                subtitle=tsunami_data.get("warningInfo", {}).get("caption", ""),
-                org_unit=tsunami_data.get("publishInfo", {}).get(
-                    "unitName", "中国自然资源部海啸预警中心"
-                ),
+                subtitle=subtitle,
+                org_unit=org_unit,
                 issue_time=issue_time,
-                monitoring_stations=tsunami_data.get("monitoringStations", []),
+                update_time=update_time,
+                shock_time=shock_time,
+                message_type=message_type,
+                place_name=shock_info.get("placeName") or tsunami_data.get("placeName"),
+                latitude=shock_info.get("latitude") or tsunami_data.get("latitude"),
+                longitude=shock_info.get("longitude") or tsunami_data.get("longitude"),
+                depth=shock_info.get("depth") or tsunami_data.get("depth"),
+                magnitude=shock_info.get("magnitude") or tsunami_data.get("magnitude"),
+                batch=details.get("batch") or tsunami_data.get("batch"),
+                forecasts=forecasts,
+                monitoring_stations=monitoring_stations,
                 estimated_arrival_time=tsunami_data.get("estimatedArrivalTime"),
                 max_wave_height=tsunami_data.get("maxWaveHeight"),
+                details_url=details.get("htmlUrl") or tsunami_data.get("htmlUrl"),
+                map_urls={
+                    "earthquake": maps.get("earthquakeMapUrl", ""),
+                    "amplitude": maps.get("amplitudeMapUrl", ""),
+                    "coastal": maps.get("coastalMapUrl", ""),
+                },
                 raw_data=tsunami_data,
             )
 

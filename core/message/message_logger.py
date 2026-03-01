@@ -6,6 +6,8 @@
 import asyncio
 import hashlib
 import json
+import re
+import string
 import threading
 import time
 import traceback
@@ -16,7 +18,8 @@ from typing import Any
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-from ..utils.version import get_plugin_version
+from ...models.websocket_message_pb2 import MessageAction, MessageType, WsMessage
+from ...utils.version import get_plugin_version
 
 
 class MessageLogger:
@@ -188,6 +191,17 @@ class MessageLogger:
                             return "内层重复事件"
                     except (json.JSONDecodeError, AttributeError):
                         pass
+
+            elif isinstance(raw_data, (bytes, bytearray, memoryview)):
+                # 二进制消息先尝试解析为结构化数据，再复用既有过滤逻辑
+                parsed_binary = self._try_parse_binary_message(
+                    raw_data,
+                    source=source_id,
+                    message_type="websocket_message",
+                    connection_info={"connection_type": "websocket"},
+                )
+                if isinstance(parsed_binary, dict):
+                    return self._should_filter_message(parsed_binary, source_id)
 
             elif isinstance(raw_data, dict):
                 # 如果raw_data已经是字典
@@ -364,10 +378,10 @@ class MessageLogger:
             return "|".join(hash_parts)
 
         # 2. 组合关键字段作为ID
-        # 标题/Headline
-        headline = data.get("headline") or data.get("title") or ""
-        if headline:
-            hash_parts.append(f"wh:{headline[:30]}")
+        # 标题（优先 title，兼容 headline）
+        title_text = data.get("title") or data.get("headline") or ""
+        if title_text:
+            hash_parts.append(f"wh:{title_text[:30]}")
 
         # 地区/Area
         area = data.get("areaDesc") or data.get("sender") or ""
@@ -591,11 +605,32 @@ class MessageLogger:
                     parsed_data = json.loads(raw_data)
                     log_content += self._format_json_data(parsed_data, indent=2)
                 except json.JSONDecodeError:
-                    # 如果不是JSON，直接显示
-                    log_content += f"  {raw_data}\n"
+                    # 兼容历史占位符格式: <binary:291 bytes>
+                    binary_match = re.match(
+                        r"^<binary:(\d+)\s+bytes>$", raw_data.strip()
+                    )
+                    if binary_match:
+                        log_content += "  📋 二进制消息摘要:\n"
+                        log_content += f"    📋 字节长度: {binary_match.group(1)} (历史占位符，原始二进制不可用)\n"
+                    else:
+                        # 如果不是JSON，直接显示
+                        log_content += f"  {raw_data}\n"
             elif isinstance(raw_data, dict):
                 # 已经是字典格式
                 log_content += self._format_json_data(raw_data, indent=2)
+            elif isinstance(raw_data, (bytes, bytearray, memoryview)):
+                # 尝试将二进制消息解析为结构化数据（如 GlobalQuake protobuf）
+                parsed_binary = self._try_parse_binary_message(
+                    raw_data,
+                    source=source,
+                    message_type=message_type,
+                    connection_info=connection_info,
+                )
+                if isinstance(parsed_binary, dict):
+                    log_content += self._format_json_data(parsed_binary, indent=2)
+                else:
+                    # 解析失败时回退到二进制摘要
+                    log_content += self._format_binary_data(raw_data, indent=2)
             else:
                 # 其他格式
                 log_content += f"  {str(raw_data)}\n"
@@ -612,6 +647,175 @@ class MessageLogger:
             # 如果格式化失败，回退到简单的JSON格式
             logger.warning(f"[灾害预警] 日志格式化失败，使用回退格式: {e}")
             return json.dumps(log_entry, ensure_ascii=False, indent=2) + "\n\n"
+
+    def _format_binary_data(
+        self, data: bytes | bytearray | memoryview, indent: int = 0
+    ) -> str:
+        """格式化二进制数据摘要，提供可读性信息而不写入完整原始内容"""
+        result = ""
+        indent_str = "  " * indent
+
+        # 统一为 bytes，避免重复处理不同二进制容器
+        binary_data = bytes(data)
+
+        # 基础信息
+        result += f"{indent_str}📋 数据类型: binary\n"
+        result += f"{indent_str}📋 字节长度: {len(binary_data)}\n"
+
+        # 哈希信息（便于排查重复包与来源一致性）
+        md5_digest = hashlib.md5(binary_data).hexdigest()
+        sha256_digest = hashlib.sha256(binary_data).hexdigest()
+        result += f"{indent_str}📋 MD5: {md5_digest}\n"
+        result += f"{indent_str}📋 SHA256: {sha256_digest}\n"
+
+        # 十六进制预览（默认前32字节，避免日志膨胀）
+        preview_len = 32
+        hex_preview = binary_data[:preview_len].hex(" ")
+        result += f"{indent_str}📋 十六进制预览(前{min(len(binary_data), preview_len)}字节): {hex_preview}\n"
+
+        # ASCII 可读预览（不可打印字符替换为 .）
+        ascii_preview_len = 64
+        preview_chunk = binary_data[:ascii_preview_len]
+        printable_chars = set(string.printable) - {"\x0b", "\x0c"}
+        ascii_preview = "".join(
+            chr(b) if chr(b) in printable_chars and b >= 32 else "."
+            for b in preview_chunk
+        )
+        result += f"{indent_str}📋 ASCII预览(前{min(len(binary_data), ascii_preview_len)}字节): {ascii_preview}\n"
+
+        return result
+
+    def _format_binary_timestamp(self, timestamp_ms: int) -> str:
+        """格式化二进制消息中的毫秒时间戳"""
+        if timestamp_ms <= 0:
+            return "无数据"
+
+        try:
+            dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+            return dt.isoformat().replace("+00:00", "Z")
+        except (ValueError, OSError, OverflowError):
+            return str(timestamp_ms)
+
+    def _parse_global_quake_protobuf(self, binary_data: bytes) -> dict[str, Any] | None:
+        """解析 GlobalQuake protobuf 二进制数据为可读字典"""
+        ws_msg = WsMessage()
+        ws_msg.ParseFromString(binary_data)
+
+        type_mapping = {
+            MessageType.EARTHQUAKE: "earthquake",
+            MessageType.STATUS: "status",
+            MessageType.HEARTBEAT: "heartbeat",
+        }
+        action_mapping = {
+            MessageAction.UPDATE: "update",
+            MessageAction.CONNECTED: "connected",
+            MessageAction.DISCONNECTED: "disconnected",
+            MessageAction.PING: "ping",
+            MessageAction.PONG: "pong",
+        }
+
+        msg_type = type_mapping.get(ws_msg.type, "unknown")
+        action = action_mapping.get(ws_msg.action, "unspecified")
+
+        parsed: dict[str, Any] = {
+            "type": msg_type,
+            "action": action,
+            "timestamp": self._format_binary_timestamp(ws_msg.timestamp_ms),
+            "protobuf": True,
+        }
+
+        if ws_msg.type == MessageType.EARTHQUAKE:
+            eq = ws_msg.earthquake_data
+            data: dict[str, Any] = {
+                "id": eq.id,
+                "latitude": eq.latitude,
+                "longitude": eq.longitude,
+                "depth": eq.depth,
+                "magnitude": eq.magnitude,
+                "originTimeMs": eq.origin_time_ms,
+                "originTimeIso": eq.origin_time_iso,
+                "lastUpdateMs": eq.last_update_ms,
+                "revisionId": eq.revision_id,
+                "region": eq.region,
+                "fixedDepth": eq.fixed_depth,
+                "maxPGA": eq.max_pga,
+                "intensity": eq.intensity,
+            }
+
+            if eq.HasField("cluster"):
+                data["cluster"] = {
+                    "id": eq.cluster.id,
+                    "latitude": eq.cluster.latitude,
+                    "longitude": eq.cluster.longitude,
+                    "level": eq.cluster.level,
+                }
+
+            if eq.HasField("quality"):
+                data["quality"] = {
+                    "errOrigin": eq.quality.err_origin,
+                    "errDepth": eq.quality.err_depth,
+                    "errNS": eq.quality.err_ns,
+                    "errEW": eq.quality.err_ew,
+                    "pct": eq.quality.pct,
+                    "stations": eq.quality.stations,
+                }
+
+            if eq.HasField("station_count"):
+                data["stationCount"] = {
+                    "total": eq.station_count.total,
+                    "selected": eq.station_count.selected,
+                    "used": eq.station_count.used,
+                    "matching": eq.station_count.matching,
+                }
+
+            if eq.HasField("depth_confidence"):
+                data["depthConfidence"] = {
+                    "minDepth": eq.depth_confidence.min_depth,
+                    "maxDepth": eq.depth_confidence.max_depth,
+                }
+
+            parsed["data"] = data
+
+        elif ws_msg.type == MessageType.STATUS:
+            parsed["data"] = {
+                "status": ws_msg.status_data.server_status,
+            }
+        elif ws_msg.type == MessageType.HEARTBEAT:
+            parsed["data"] = {
+                "serverTime": self._format_binary_timestamp(
+                    ws_msg.heartbeat_data.server_time
+                ),
+            }
+        else:
+            # 未知类型，不强行展示为业务字段
+            return None
+
+        return parsed
+
+    def _try_parse_binary_message(
+        self,
+        data: bytes | bytearray | memoryview,
+        source: str,
+        message_type: str,
+        connection_info: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """尝试解析二进制消息（目前支持 GlobalQuake protobuf）"""
+        binary_data = bytes(data)
+
+        # 优先限制在 websocket 消息场景，避免对其他二进制载荷误判
+        conn_type = (connection_info or {}).get("connection_type", "")
+        if message_type != "websocket_message" and conn_type != "websocket":
+            return None
+
+        # GlobalQuake 连接优先解析 protobuf
+        if "global_quake" not in source.lower():
+            return None
+
+        try:
+            return self._parse_global_quake_protobuf(binary_data)
+        except Exception as e:
+            logger.debug(f"[灾害预警] 二进制消息解析失败，回退为摘要模式: {e}")
+            return None
 
     def _format_json_data(self, data: dict[str, Any], indent: int = 0) -> str:
         """递归格式化JSON数据，增加可读性"""
@@ -890,7 +1094,7 @@ class MessageLogger:
 
         try:
             # 读取真实的区域代码文件
-            csv_path = Path(__file__).parent.parent / "resources/epsp-area.csv"
+            csv_path = Path(__file__).parent.parent.parent / "resources/epsp-area.csv"
             if csv_path.exists():
                 with open(csv_path, encoding="utf-8") as f:
                     # 跳过标题行
@@ -1101,7 +1305,7 @@ class MessageLogger:
                 self.enabled = False
 
     def log_websocket_message(
-        self, connection_name: str, message: str, url: str | None = None
+        self, connection_name: str, message: Any, url: str | None = None
     ):
         """记录WebSocket消息"""
         self.log_raw_message(
@@ -1326,51 +1530,99 @@ class MessageLogger:
             entry_count = 0
             sources = set()
             date_range = {"start": None, "end": None}
-            file_size_mb = self.log_file_path.stat().st_size / (1024 * 1024)
+            current_size_mb = self.log_file_path.stat().st_size / (1024 * 1024)
+            file_size_mb = current_size_mb
 
-            # 读取文件内容
+            # 统计文件数量 (包含当前文件)
+            file_count = 1
+
+            # 定义辅助函数用于解析时间范围
+            def update_date_range(content_to_parse):
+                # 简单提取前1000字符和后1000字符来寻找最早和最晚时间，避免解析整个大文件
+                # 注意：这假设日志是按时间顺序追加的
+                try:
+                    # 查找所有时间戳
+                    # 匹配 "🕐 日志写入时间: YYYY-MM-DD HH:MM:SS"
+                    timestamps = re.findall(
+                        r"🕐 日志写入时间: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})",
+                        content_to_parse,
+                    )
+
+                    if timestamps:
+                        first_ts = timestamps[0]
+                        last_ts = timestamps[-1]
+
+                        dt_first = datetime.strptime(first_ts, "%Y-%m-%d %H:%M:%S")
+                        dt_last = datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S")
+
+                        if date_range["start"] is None or dt_first < datetime.strptime(
+                            date_range["start"], "%Y-%m-%d %H:%M:%S"
+                        ):
+                            date_range["start"] = first_ts
+
+                        if date_range["end"] is None or dt_last > datetime.strptime(
+                            date_range["end"], "%Y-%m-%d %H:%M:%S"
+                        ):
+                            date_range["end"] = last_ts
+
+                except Exception as e:
+                    logger.debug(f"[灾害预警] 解析日志时间范围失败: {e}")
+
+            # 检查是否有轮转的旧日志文件并计算总大小和条目数
+            # 注意：日志轮转通常是从 1 到 N，其中 1 是最新的备份，N 是最旧的
+            # 我们需要遍历所有备份文件来获取完整的时间范围
+            for i in range(1, self.max_files + 1):
+                old_file = self.log_file_path.with_suffix(f".log.{i}")
+                if old_file.exists():
+                    file_count += 1
+                    file_size_mb += old_file.stat().st_size / (1024 * 1024)
+                    # 统计旧日志文件中的条目
+                    try:
+                        with open(old_file, encoding="utf-8") as f:
+                            old_content = f.read()
+                            # 直接统计时间戳标记出现的次数
+                            entry_count += old_content.count("🕐 日志写入时间:")
+                            # 更新时间范围
+                            update_date_range(old_content)
+                    except Exception as e:
+                        logger.debug(f"[灾害预警] 读取旧日志文件 {old_file} 失败: {e}")
+
+            # 读取当前日志文件内容
             with open(self.log_file_path, encoding="utf-8") as f:
                 content = f.read()
 
-            # 按分隔符分割条目
+            # 统计当前日志文件中的条目
+            entry_count += content.count("🕐 日志写入时间:")
+
+            # 按分隔符分割条目 (仅用于提取最近的日志详情，不用于计数)
             entries = content.split(f"\n{'=' * 35}\n")
+
+            # 重新遍历 entries 提取 sources，并更新时间范围
+            update_date_range(content)
 
             for entry in entries:
                 entry = entry.strip()
                 if not entry or not entry.startswith("🕐 日志写入时间:"):
                     continue
 
-                entry_count += 1
-
                 try:
                     # 提取基本信息
                     lines = entry.split("\n")
                     for line in lines:
                         line = line.strip()
-                        if line.startswith("🕐 日志写入时间:"):
-                            timestamp_str = line.replace("🕐 日志写入时间:", "").strip()
-                            try:
-                                dt = datetime.strptime(
-                                    timestamp_str, "%Y-%m-%d %H:%M:%S"
-                                )
-                                if date_range[
-                                    "start"
-                                ] is None or dt < datetime.strptime(
-                                    date_range["start"], "%Y-%m-%d %H:%M:%S"
-                                ):
-                                    date_range["start"] = timestamp_str
-                                if date_range["end"] is None or dt > datetime.strptime(
-                                    date_range["end"], "%Y-%m-%d %H:%M:%S"
-                                ):
-                                    date_range["end"] = timestamp_str
-                            except ValueError:
-                                pass
-                        elif line.startswith("📡 来源:"):
+                        if line.startswith("📡 来源:"):
                             source = line.replace("📡 来源:", "").strip()
                             sources.add(source)
                 except Exception as e:
                     logger.debug(f"[灾害预警] 解析日志条目失败: {e}")
                     continue
+
+            # 计算容量统计
+            # max_files 是备份文件数，加上当前文件就是总允许文件数
+            max_capacity_mb = self.max_size_mb * (self.max_files + 1)
+            usage_percent = (
+                (file_size_mb / max_capacity_mb) * 100 if max_capacity_mb > 0 else 0
+            )
 
             return {
                 "enabled": self.enabled,
@@ -1380,6 +1632,11 @@ class MessageLogger:
                 "data_sources": list(sources),
                 "date_range": date_range,
                 "file_size_mb": file_size_mb,
+                "file_count": file_count,
+                "max_files_limit": self.max_files,
+                "max_single_file_size_mb": self.max_size_mb,
+                "max_total_capacity_mb": max_capacity_mb,
+                "usage_percent": usage_percent,
                 "filter_stats": self.filter_stats.copy(),
                 "format_version": "3.0",  # 新格式版本
             }

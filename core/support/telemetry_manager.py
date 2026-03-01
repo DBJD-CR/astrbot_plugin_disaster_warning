@@ -24,7 +24,7 @@ import aiohttp
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-from ..utils.version import get_astrbot_version
+from ...utils.version import get_astrbot_version
 
 
 class TelemetryManager:
@@ -229,6 +229,7 @@ class TelemetryManager:
         - local_monitoring.latitude
         - local_monitoring.longitude
         - local_monitoring.place_name
+        - web_admin.password
         """
         if not self._enabled:
             return False
@@ -253,6 +254,12 @@ class TelemetryManager:
                         del lm["longitude"]
                     if "place_name" in lm:
                         del lm["place_name"]
+
+            # 移除 WebUI 密码
+            if "web_admin" in config_copy:
+                wa = config_copy["web_admin"]
+                if isinstance(wa, dict) and "password" in wa:
+                    del wa["password"]
 
             return await self.track("config", config_copy)
 

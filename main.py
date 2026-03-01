@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import os
 import re
@@ -8,23 +9,15 @@ from datetime import datetime
 from typing import Any
 
 import astrbot.api.message_components as Comp
-
-# [已移除] Windows平台WebSocket兼容性修复
-# 采用 aiohttp 替代 websockets 库，原生支持 Windows EventLoop，无需修改全局策略
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
-from .core.disaster_service import get_disaster_service, stop_disaster_service
-from .core.telemetry_manager import TelemetryManager
-from .models.models import (
-    DATA_SOURCE_MAPPING,
-    DisasterEvent,
-    DisasterType,
-    EarthquakeData,
-    get_data_source_from_id,
-)
-from .utils.fe_regions import translate_place_name
+from .core.app.disaster_service import get_disaster_service, stop_disaster_service
+from .core.network.web_server import WebAdminServer
+from .core.support.config_validator import ConfigValidator
+from .core.support.simulation_service import build_earthquake_simulation
+from .core.support.telemetry_manager import TelemetryManager
 from .utils.version import get_plugin_version
 
 
@@ -42,6 +35,7 @@ class DisasterWarningPlugin(Star):
         self._telemetry_tasks: set[asyncio.Task[None]] = set()  # 遥测任务引用集合
         self._heartbeat_task: asyncio.Task[None] | None = None  # 心跳定时任务
         self._start_time: float = 0.0  # 插件启动时间
+        self.web_server = None
 
     async def initialize(self):
         """初始化插件"""
@@ -60,6 +54,26 @@ class DisasterWarningPlugin(Star):
                     logger.info(
                         f"[灾害预警] 已自动同步全局管理员到插件配置: {global_admins}"
                     )
+
+            # 执行配置校验与修正
+            try:
+                # 使用深拷贝进行校验，以便检测变化
+                config_copy = copy.deepcopy(dict(self.config))
+                validated_config = ConfigValidator.validate(config_copy)
+
+                # 更新配置对象
+                config_changed = False
+                for key, value in validated_config.items():
+                    # 比较内容是否发生变化
+                    if self.config.get(key) != value:
+                        self.config[key] = value
+                        config_changed = True
+
+                if config_changed:
+                    self.config.save_config()
+                    logger.info("[灾害预警] 配置已自动修正并保存")
+            except Exception as e:
+                logger.error(f"[灾害预警] 配置校验失败: {e}")
 
             # 检查插件是否启用
             if not self.config.get("enabled", True):
@@ -85,7 +99,7 @@ class DisasterWarningPlugin(Star):
 
             # 设置全局 asyncio 异常处理器（捕获未处理的 task 异常）
             if self.telemetry.enabled:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 # 保存原有的异常处理器
                 self._original_exception_handler = loop.get_exception_handler()
                 loop.set_exception_handler(self._handle_asyncio_exception)
@@ -110,6 +124,12 @@ class DisasterWarningPlugin(Star):
                 # 启动心跳定时任务
                 self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
                 logger.debug("[灾害预警] 已启动遥测心跳任务 (间隔: 12小时)")
+
+            if self.config.get("web_admin", {}).get("enabled", False):
+                self.web_server = WebAdminServer(self.disaster_service, self.config)
+                # 注入引用以支持事件驱动的实时推送
+                self.disaster_service.web_admin_server = self.web_server
+                await self.web_server.start()
 
         except Exception as e:
             logger.error(f"[灾害预警] 插件初始化失败: {e}")
@@ -186,6 +206,21 @@ class DisasterWarningPlugin(Star):
                         await self.disaster_service.message_manager.cleanup_browser()
                     except Exception as be:
                         logger.debug(f"[灾害预警] 浏览器清理时出错（已忽略）: {be}")
+                # 关闭气象过滤器复用的 HTTP session
+                try:
+                    await self.disaster_service.message_manager.weather_filter.close()
+                except Exception as wfe:
+                    logger.debug(
+                        f"[灾害预警] 气象过滤器 session 关闭时出错（已忽略）: {wfe}"
+                    )
+
+            if self.disaster_service and self.disaster_service.statistics_manager:
+                try:
+                    await self.disaster_service.statistics_manager._weather_region_resolver.close()
+                except Exception as wfe:
+                    logger.debug(
+                        f"[灾害预警] 统计模块气象 session 关闭时出错（已忽略）: {wfe}"
+                    )
 
             # 关闭遥测会话（best-effort，不影响主要关闭流程）
             if self.telemetry:
@@ -193,6 +228,9 @@ class DisasterWarningPlugin(Star):
                     await self.telemetry.close()
                 except Exception as te:
                     logger.debug(f"[灾害预警] 遥测会话关闭时出错（已忽略）: {te}")
+            # 停止 Web 管理端
+            if self.web_server:
+                await self.web_server.stop()
 
             logger.info("[灾害预警] 灾害预警插件已停止")
 
@@ -323,12 +361,13 @@ class DisasterWarningPlugin(Star):
 📋 可用命令：
 • /灾害预警 - 显示此帮助信息
 • /灾害预警状态 - 查看服务运行状态
+• /灾害预警重连 - 强制重连所有数据源 (仅管理员)
 • /地震列表查询 [数据源] [数量] [格式] - 查询最新地震列表
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息 (仅管理员)
 • /灾害预警推送开关 - 开启或关闭当前会话的推送 (仅管理员)
 • /灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源] - 模拟地震事件
-• /灾害预警配置 查看 - 查看当前配置摘要 (仅管理员)
+• /灾害预警配置 查看 [全局|当前|会话UMO] - 查看配置（会话模式返回差异覆写）(仅管理员)
 • /灾害预警日志 - 查看原始消息日志统计摘要 (仅管理员)
 • /灾害预警日志开关 - 开关原始消息日志记录 (仅管理员)
 • /灾害预警日志清除 - 清除所有原始消息日志 (仅管理员)
@@ -336,6 +375,52 @@ class DisasterWarningPlugin(Star):
 更多信息可参考 README 文档"""
 
         yield event.plain_result(help_text)
+
+    @filter.command("灾害预警重连")
+    async def disaster_reconnect(self, event: AstrMessageEvent):
+        """强制对所有已启用但离线的数据源发起重连"""
+        if not await self.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if not self.disaster_service:
+            yield event.plain_result("❌ 灾害预警服务未启动")
+            return
+
+        yield event.plain_result("🔄 正在尝试重连所有离线数据源...")
+
+        try:
+            results = await self.disaster_service.reconnect_all_sources()
+
+            # 构建结果消息
+            lines = ["🔄 重连操作结果："]
+            success_count = 0
+            fail_count = 0
+            skip_count = 0
+
+            for name, status in results.items():
+                if "已触发" in status:
+                    success_count += 1
+                    icon = "✅"
+                elif "失败" in status:
+                    fail_count += 1
+                    icon = "❌"
+                else:
+                    skip_count += 1
+                    icon = "⏩"
+
+                lines.append(f"  {icon} {name}: {status}")
+
+            lines.append("")
+            lines.append(
+                f"📊 统计: 触发 {success_count}, 跳过 {skip_count}, 失败 {fail_count}"
+            )
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 重连操作失败: {e}")
+            yield event.plain_result(f"❌ 重连操作失败: {str(e)}")
 
     @filter.command("灾害预警状态")
     async def disaster_status(self, event: AstrMessageEvent):
@@ -350,10 +435,12 @@ class DisasterWarningPlugin(Star):
             # --- 基础状态 ---
             running_state = "🟢 运行中" if status["running"] else "🔴 已停止"
             uptime = status.get("uptime", "未知")
+            plugin_version = get_plugin_version()
 
             status_text = [
                 "📊 灾害预警服务状态\n",
                 "\n",
+                f"🔧 插件版本：{plugin_version}\n",
                 f"🔄 运行状态：{running_state} (已运行 {uptime})\n",
                 f"🔗 活跃连接：{status['active_websocket_connections']} / {status['total_connections']}\n",
             ]
@@ -469,11 +556,30 @@ class DisasterWarningPlugin(Star):
                 )
                 return
 
+            usage_percent = log_summary.get("usage_percent", 0)
+            max_capacity = log_summary.get("max_total_capacity_mb", 0)
+            file_count = log_summary.get("file_count", 1)
+
+            # 生成文本进度条
+            bar_length = 15
+            filled_length = int(bar_length * usage_percent / 100)
+            filled_length = max(0, min(filled_length, bar_length))  # Clamp
+            bar = "█" * filled_length + "░" * (bar_length - filled_length)
+
+            # 根据使用率设置颜色指示 (通过emoji模拟)
+            status_icon = "🟢"
+            if usage_percent > 90:
+                status_icon = "🔴"
+            elif usage_percent > 70:
+                status_icon = "🟡"
+
             log_info = f"""📊 原始消息日志统计
 
-📁 日志文件：{log_summary["log_file"]}
+📁 文件路径：{log_summary["log_file"]}
+📄 文件数量：{file_count}
 📈 总条目数：{log_summary["total_entries"]}
-📦 文件大小：{log_summary.get("file_size_mb", 0):.2f} MB
+📦 占用空间：{log_summary.get("file_size_mb", 0):.2f} MB / {max_capacity:.0f} MB
+💾 存储占用：{bar} {usage_percent:.1f}% {status_icon}
 📅 时间范围：{log_summary["date_range"]["start"]} 至 {log_summary["date_range"]["end"]}
 
 📡 数据源统计："""
@@ -555,7 +661,7 @@ class DisasterWarningPlugin(Star):
             return
 
         try:
-            self.disaster_service.statistics_manager.reset_stats()
+            await self.disaster_service.statistics_manager.reset_stats()
             yield event.plain_result(
                 "✅ 统计数据已重置\n\n所有历史统计记录已被清除，新的统计将重新开始。"
             )
@@ -609,14 +715,25 @@ class DisasterWarningPlugin(Star):
             yield event.plain_result(f"❌ 切换推送状态失败: {str(e)}")
 
     @filter.command("灾害预警配置")
-    async def disaster_config(self, event: AstrMessageEvent, action: str = None):
-        """查看当前配置信息"""
+    async def disaster_config(
+        self,
+        event: AstrMessageEvent,
+        action: str = None,
+        target: str = None,
+    ):
+        """查看当前配置信息（支持按会话查看差异覆写）"""
         if not await self.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
 
         if action != "查看":
-            yield event.plain_result("❓ 请使用格式：/灾害预警配置 查看")
+            yield event.plain_result(
+                "❓ 请使用格式：\n"
+                "• /灾害预警配置 查看\n"
+                "• /灾害预警配置 查看 全局\n"
+                "• /灾害预警配置 查看 当前\n"
+                "• /灾害预警配置 查看 <会话UMO>"
+            )
             return
 
         try:
@@ -640,16 +757,10 @@ class DisasterWarningPlugin(Star):
 
                 translated = {}
                 for key, value in config_item.items():
-                    # 获取当前键的 schema 定义
                     item_schema = schema_item.get(key, {}) if schema_item else {}
-
-                    # 获取中文描述，如果没有则使用原键名
-                    # 格式：中文描述
                     description = item_schema.get("description", key)
 
-                    # 处理嵌套结构
                     if isinstance(value, dict):
-                        # 如果 schema 中有 items 定义（通常用于嵌套对象），则传入子 schema
                         sub_schema = item_schema.get("items", {})
                         translated[description] = _translate_recursive(
                             value, sub_schema
@@ -659,15 +770,51 @@ class DisasterWarningPlugin(Star):
 
                 return translated
 
-            # 将配置转换为字典并进行翻译
-            config_data = dict(self.config)
-            translated_config = _translate_recursive(config_data, schema)
+            target_mode = (target or "全局").strip()
+            if target_mode.lower() == "global":
+                target_mode = "全局"
 
-            # 转换为格式化的 JSON 字符串
-            config_str = json.dumps(translated_config, indent=2, ensure_ascii=False)
+            # 默认行为仍为查看全局配置
+            if target_mode == "全局":
+                config_data = dict(self.config)
+                translated_config = _translate_recursive(config_data, schema)
+                config_str = json.dumps(translated_config, indent=2, ensure_ascii=False)
+                yield event.plain_result(f"🔧 当前全局配置详情：{config_str}")
+                return
 
-            # 构造返回消息
-            yield event.plain_result(f"🔧 当前配置详情：{config_str}")
+            # 支持“当前”快捷词：使用当前会话 UMO
+            session_umo = (
+                event.unified_msg_origin
+                if target_mode in ["当前", "本会话", "this", "current"]
+                else target_mode
+            )
+            if not session_umo:
+                yield event.plain_result("❌ 无法解析目标会话 UMO")
+                return
+
+            if not self.disaster_service or not hasattr(
+                self.disaster_service, "session_config_manager"
+            ):
+                yield event.plain_result("❌ 会话配置管理器不可用")
+                return
+
+            mgr = self.disaster_service.session_config_manager
+            override = mgr.get_override(session_umo)
+            effective = mgr.get_effective_config(session_umo)
+
+            translated_override = _translate_recursive(override, schema)
+            translated_effective = _translate_recursive(effective, schema)
+
+            override_str = json.dumps(translated_override, indent=2, ensure_ascii=False)
+            effective_str = json.dumps(
+                translated_effective, indent=2, ensure_ascii=False
+            )
+
+            yield event.plain_result(
+                f"🔧 会话配置详情 ({session_umo})\n"
+                f"\n📌 差异覆写 (override)：\n{override_str}"
+                f"\n\n📘 合并后配置 (effective)：\n{effective_str}"
+            )
 
         except Exception as e:
             logger.error(f"[灾害预警] 获取配置详情失败: {e}")
@@ -701,6 +848,7 @@ class DisasterWarningPlugin(Star):
         source_names = {
             "fan_studio": {
                 "china_earthquake_warning": "中国地震网地震预警",
+                "china_earthquake_warning_provincial": "中国地震网地震预警 (省级)",
                 "taiwan_cwa_earthquake": "台湾中央气象署强震即时警报",
                 "taiwan_cwa_report": "台湾中央气象署地震报告",
                 "china_cenc_earthquake": "中国地震台网地震测定",
@@ -884,118 +1032,29 @@ class DisasterWarningPlugin(Star):
             return
 
         try:
-            # 获取数据源
-            data_source = get_data_source_from_id(source)
-            if not data_source:
-                valid_sources = ", ".join(DATA_SOURCE_MAPPING.keys())
-                yield event.plain_result(
-                    f"❌ 无效的数据源: {source}\n可用数据源: {valid_sources}"
-                )
-                return
-
-            # 1. 构造模拟数据
-            # 自动根据传入的经纬度生成地名
-            final_place_name = translate_place_name("模拟震中", lat, lon)
-
-            earthquake = EarthquakeData(
-                id=f"sim_{int(datetime.now().timestamp())}",
-                event_id=f"sim_{int(datetime.now().timestamp())}",
-                source=data_source,
-                disaster_type=DisasterType.EARTHQUAKE,
-                shock_time=datetime.now(),
-                latitude=lat,
-                longitude=lon,
-                depth=depth,
-                magnitude=magnitude,
-                place_name=final_place_name,
-                source_id=source,
-                raw_data={"test": True, "source_id": source},
-            )
-
-            # 针对USGS等特定数据源的特殊处理
-            if source == "usgs_fanstudio":
-                earthquake.update_time = datetime.now()
-
-            # P2P数据源需要最大震度
-            if source in ["jma_p2p", "jma_wolfx", "jma_p2p_info"]:
-                # 简单估算一个震度用于测试
-                earthquake.max_scale = max(0, min(7, int(magnitude - 2)))
-                earthquake.scale = earthquake.max_scale
-
-            disaster_event = DisasterEvent(
-                id=f"sim_evt_{int(datetime.now().timestamp())}",
-                data=earthquake,
-                source=data_source,
-                disaster_type=DisasterType.EARTHQUAKE,
-                source_id=source,
-            )
-
             manager = self.disaster_service.message_manager
-
-            # 分开的消息构建
-            report_lines = [
-                "🧪 灾害预警模拟报告",
-                f"Input: M{magnitude} @ ({lat}, {lon}), Depth {depth}km\n",
-            ]
-
-            # 2. 检查全局过滤器 (Global Filters)
-            global_pass = True
-            if manager.intensity_filter:
-                if manager.intensity_filter.should_filter(earthquake):
-                    global_pass = False
-                    report_lines.append("❌ 全局过滤: 拦截 (不满足最小震级/烈度要求)")
-                else:
-                    report_lines.append("✅ 全局过滤: 通过")
-
-            # 3. 检查本地监控 (Local Monitor)
-            local_pass = True
-            if manager.local_monitor:
-                # 使用统一的辅助方法，返回 None 表示未启用，返回 dict 表示启用
-                result = manager.local_monitor.inject_local_estimation(earthquake)
-
-                if result is None:
-                    # 未启用
-                    report_lines.append("ℹ️ 本地监控: 未启用")
-                else:
-                    allowed = result.get("is_allowed", True)
-                    dist = result.get("distance")
-                    inte = result.get("intensity")
-
-                    if allowed:
-                        report_lines.append("✅ 本地监控: 触发")
-                    else:
-                        local_pass = False
-                        report_lines.append("❌ 本地监控: 拦截 (严格模式生效中)")
-
-                    report_lines.append(
-                        f"   ⦁ 严格模式: {'开启' if manager.local_monitor.strict_mode else '关闭 (仅计算不拦截)'}"
-                    )
-
-                    # 安全格式化，处理可能的 None 值
-                    dist_str = f"{dist:.1f} km" if dist is not None else "未知"
-                    inte_str = f"{inte:.1f}" if inte is not None else "未知"
-                    report_lines.extend(
-                        [
-                            f"   ⦁ 距本地: {dist_str}",
-                            f"   ⦁ 预估最大本地烈度: {inte_str}",
-                            f"   ⦁ 本地烈度阈值: {manager.local_monitor.threshold}",
-                        ]
-                    )
-            else:
-                report_lines.append("ℹ️ 本地监控: 未配置")
+            simulation_result = build_earthquake_simulation(
+                manager,
+                lat=lat,
+                lon=lon,
+                magnitude=magnitude,
+                depth=depth,
+                source=source,
+            )
 
             # 发送报告
-            yield event.plain_result("\n".join(report_lines))
+            yield event.plain_result("\n".join(simulation_result.report_lines))
 
             # 稍作等待，确保第一条消息发出
             await asyncio.sleep(1)
 
             # 4. 模拟消息构建
-            if global_pass and local_pass:
+            if simulation_result.global_pass and simulation_result.local_pass:
                 try:
                     logger.info("[灾害预警] 开始构建模拟预警消息...")
-                    # 使用异步版本以支持卡片渲染
-                    msg_chain = await manager.build_message_async(disaster_event)
+                    msg_chain = await manager.build_message_async(
+                        simulation_result.disaster_event
+                    )
                     logger.info(
                         f"[灾害预警] 消息构建成功，链长度: {len(msg_chain.chain)}"
                     )
@@ -1021,4 +1080,4 @@ class DisasterWarningPlugin(Star):
     @filter.on_astrbot_loaded()
     async def on_astrbot_loaded(self):
         """AstrBot加载完成时的钩子"""
-        logger.info("[灾害预警] AstrBot已加载完成，灾害预警插件准备就绪")
+        logger.debug("[灾害预警] AstrBot已加载完成，灾害预警插件准备就绪")

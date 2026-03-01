@@ -2,9 +2,9 @@ name: 💩 屎山代码检测
 
 on:
   push:
-    branches: [ main, master, dev/* ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, dev/* ]
 
 jobs:
   shit-check:
@@ -12,25 +12,58 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-      
-      - name: 下载 fuck-u-code
+
+      - name: 下载 fuck-u-code（固定 v1.0.0-beta.1）
         run: |
-          curl -L -o fuck-u-code \
-            https://github.com/Done-0/fuck-u-code/releases/latest/download/fuck-u-code-linux-amd64
+          curl -fL -o fuck-u-code \
+            https://github.com/Done-0/fuck-u-code/releases/download/v1.0.0-beta.1/fuck-u-code-linux-amd64
           chmod +x fuck-u-code
+          ./fuck-u-code --help >/dev/null
 
       - name: 运行屎山分析 & 详细评分
         id: analyze
         run: |
+          # 注意：有管道时需要检查 PIPESTATUS[0]，否则 analyze 失败会被 tee 掩盖成“成功”
           ./fuck-u-code analyze --verbose --lang zh-CN --top 10 2>&1 | tee analysis.log
-          
-          SCORE=$(grep -oP "总体评分:\s*\K[0-9.]+" analysis.log | head -1)
-          if [ -z "$SCORE" ]; then SCORE="0"; fi
-          
+          ANALYZE_EXIT=${PIPESTATUS[0]}
+
+          # 兼容参数兜底（某些版本可能使用 zh）
+          if [ "$ANALYZE_EXIT" -ne 0 ]; then
+            echo "::warning::analyze(--lang zh-CN) 失败，尝试兼容参数 --lang zh"
+            ./fuck-u-code analyze --verbose --lang zh --top 10 2>&1 | tee analysis.log
+            ANALYZE_EXIT=${PIPESTATUS[0]}
+          fi
+
+          if [ "$ANALYZE_EXIT" -ne 0 ]; then
+            echo "::error::fuck-u-code analyze 执行失败，请检查 analysis.log"
+            exit "$ANALYZE_EXIT"
+          fi
+
+          # 优先使用结构化 JSON 字段，避免终端文本格式变化导致解析失败
+          SCORE=""
+          if [ -f analysis.json ]; then
+            SCORE=$(grep -oP '"overallScore"\s*:\s*\K[0-9.]+' analysis.json | head -1)
+          fi
+
+          if [ -z "$SCORE" ]; then
+            SCORE=$(grep -oP '"overallScore"\s*:\s*\K[0-9.]+' analysis.log | head -1)
+          fi
+          if [ -z "$SCORE" ]; then
+            SCORE=$(grep -oP '总体(质量)?评分[:：]\s*\K[0-9.]+' analysis.log | head -1)
+          fi
+          if [ -z "$SCORE" ]; then
+            SCORE=$(grep -oP '(Overall|Issue)\s*Score[:：]\s*\K[0-9.]+' analysis.log | head -1)
+          fi
+
+          if [ -z "$SCORE" ]; then
+            echo "::error::未能从 analysis.json / analysis.log 解析出分数，拒绝回退为 0 以避免误报"
+            exit 1
+          fi
+
           echo "原始分数: $SCORE"
           
           # 11档精细等级（对标源码 QualityLevels）
@@ -45,8 +78,8 @@ jobs:
             EMOJI="🌱"
             STATUS="清洁级"
             COLOR="brightgreen"
-            DESC="代码洁癖者的朝圣地，可以直接拿去当教材"
-            ADVICE="完美！继续保持，甚至可以写篇博客炫耀一下"
+            DESC="代码洁净，令人赏心悦目"
+            ADVICE="继续保持，你是编码界的一股清流，代码洁癖者的骄傲"
             ALLOW_MERGE="true"
             echo "✨ 检测结果：清洁级 - 这是艺术品，不是代码"
             
@@ -54,8 +87,8 @@ jobs:
             EMOJI="🌸"
             STATUS="微臭级"
             COLOR="green"
-            DESC="略有异味，但开窗通风就散了，属于可接受范围"
-            ADVICE="轻微瑕疵，顺手重构一下即可"
+            DESC="基本没事，但是有伤风化"
+            ADVICE="继续保持，你是编码界的一股清流，代码洁癖者的骄傲"
             ALLOW_MERGE="true"
             echo "🌸 检测结果：微臭级 - 空气清新，略有花香"
             
@@ -63,8 +96,8 @@ jobs:
             EMOJI="😐"
             STATUS="中等混乱"
             COLOR="yellowgreen"
-            DESC="代码到了青春期，有点叛逆，但还能管教"
-            ADVICE="建议适当整理，别让混乱积累"
+            DESC="略有异味，建议适量通风"
+            ADVICE="继续保持，你是编码界的一股清流，代码洁癖者的骄傲"
             ALLOW_MERGE="true"
             echo "😐 检测结果：中等混乱 - 青春期的代码，需要适当管教"
             
@@ -72,8 +105,8 @@ jobs:
             EMOJI="😷"
             STATUS="糟糕级"
             COLOR="yellow"
-            DESC="需要戴口罩维护了，混乱度开始影响阅读体验"
-            ADVICE="⚠️ 注意：建议近期安排重构计划，别让债务累积"
+            DESC="代码开始散发气味，谨慎维护"
+            ADVICE="这代码像个叛逆期的青少年，需要适当管教才能成才"
             ALLOW_MERGE="true"
             echo "😷 检测结果：糟糕级 - 建议戴口罩阅读"
             
@@ -93,7 +126,7 @@ jobs:
             EMOJI="💩"
             STATUS="${SUB}屎山级"
             COLOR="orange"
-            ADVICE="💡 **重点优化建议**：\n1. 优先拆分循环复杂度 >15 的函数\n2. 给0注释的函数补文档\n3. 考虑模块拆分，别让文件超过500行"
+            ADVICE="这代码像个叛逆期的青少年，需要适当管教才能成才"
             ALLOW_MERGE="true"
             echo "💩 检测结果：${SUB}屎山级(40-54分档) - 代码开始散发不可描述的气味"
             
@@ -101,8 +134,8 @@ jobs:
             EMOJI="🤕"
             STATUS="灾难级"
             COLOR="red"
-            DESC="维护困难，每次改动都可能引发蝴蝶效应"
-            ADVICE="🚨 **警告**：建议暂停功能开发，先还债\n- 重点关注循环复杂度 >20 的函数\n- 考虑重写部分核心逻辑"
+            DESC="写时一时爽，改时火葬场"
+            ADVICE="删库跑路是唯一出路，或者封印它，等下辈子再维护"
             ALLOW_MERGE="false"
             echo "::warning::🤕 检测结果：灾难级 - 维护像打副本，建议重构"
             
@@ -110,8 +143,8 @@ jobs:
             EMOJI="☣️"
             STATUS="严重灾难"
             COLOR="#DC143C"  # 猩红色
-            DESC="难以维护，代码已成遗迹，只有考古学家能看懂"
-            ADVICE="☣️ **严重警告**：建议大幅重构或重写\n- 当前代码已产生高额技术债务\n- 新功能开发效率将极低"
+            DESC="毒气弥漫，建议戴防毒面具"
+            ADVICE="删库跑路是唯一出路，或者封印它，等下辈子再维护"
             ALLOW_MERGE="false"
             echo "::warning::☣️ 检测结果：严重灾难级 - 代码已成遗迹"
             
@@ -119,8 +152,8 @@ jobs:
             EMOJI="🧟"
             STATUS="非常糟糕"
             COLOR="#8B0000"  # 深红
-            DESC="接近不可救药，每次提交都是一次冒险"
-            ADVICE="💀 **危险**：建议立即停止功能开发，全面重构\n- 考虑使用设计模式解耦\n- 建立完整的单元测试后再重构"
+            DESC="进去的程序员没有一个活着出来"
+            ADVICE="删库跑路是唯一出路，或者封印它，等下辈子再维护"
             ALLOW_MERGE="false"
             echo "::error::🧟 检测结果：非常糟糕级 - 代码像僵尸，死而不僵"
             
@@ -128,8 +161,8 @@ jobs:
             EMOJI="☢️"
             STATUS="极端灾难"
             COLOR="purple"
-            DESC="完全失控，建议重写而非重构"
-            ADVICE="☢️ **极度危险**：建议废弃当前实现，重写比修复更划算"
+            DESC="反人类罪行，建议火化"
+            ADVICE="删库跑路是唯一出路，或者封印它，等下辈子再维护"
             ALLOW_MERGE="false"
             echo "::error::☢️ 检测结果：极端灾难级 - 建议放弃治疗"
             
@@ -137,8 +170,8 @@ jobs:
             EMOJI="🪦"
             STATUS="废弃级"
             COLOR="#4B0082"  # 靛紫
-            DESC="已废弃代码，仅供参观警示后人"
-            ADVICE="🪦 **墓志铭级**：这段代码已经死了，建议立个墓碑然后重写"
+            DESC="历代工程师共创的遗产，无法维护"
+            ADVICE="删库跑路是唯一出路，或者封印它，等下辈子再维护"
             ALLOW_MERGE="false"
             echo "::error::🪦 检测结果：废弃级 - 建议直接删库"
             
@@ -146,8 +179,8 @@ jobs:
             EMOJI="👑💩"
             STATUS="终极灾难"
             COLOR="black"
-            DESC="烂到极致，已超越人类理解范畴，建议申请文化遗产保护"
-            ADVICE="👑💩 **神级屎山**：建议截图留念，做成明信片警示后人，然后删库跑路"
+            DESC="写的时候热血澎湃，改的时候亲妈都不认"
+            ADVICE="删库跑路是唯一出路，或者封印它，等下辈子再维护"
             ALLOW_MERGE="false"
             echo "::error::👑💩 检测结果：终极灾难级 - 这是艺术品，建议送博物馆"
           fi
@@ -172,7 +205,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**💡 优化建议**" >> $GITHUB_STEP_SUMMARY
           echo "$ADVICE" >> $GITHUB_STEP_SUMMARY
-      
+
       # 在 PR 评论里显示详细等级
       - name: PR 评论（氛围版）
         if: github.event_name == 'pull_request'
@@ -189,48 +222,34 @@ jobs:
             let vibe = '';
             let nextMove = '';
             
-            if (score < 5) {
-              vibe = '这代码优雅得像首诗，>Reviewer 可以安心喝茶了。';
-              nextMove = '继续保持，甚至可以申请当开源项目范本。';
-            } else if (score < 15) {
-              vibe = '代码有点小脾气，但还在可控范围内。';
-              nextMove = '顺手修修风格问题，不着急。';
-            } else if (score < 25) {
-              vibe = '代码开始有自己的想法了，需要适当管教。';
-              nextMove = '建议下次迭代时顺便理理逻辑。';
+            if (score < 10) {
+              vibe = '如沐春风，仿佛被天使亲吻过';
+            } else if (score < 20) {
+              vibe = '清新宜人，初闻像早晨的露珠';
+            } else if (score < 30) {
+              vibe = '略带清香，偶尔飘过一丝酸爽';
             } else if (score < 40) {
-              vibe = '读起来需要一点勇气，但还没到劝退地步。';
-              nextMove = '建议安排个技术债务清理日。';
-            } else if (score < 55) {
-              // 屎山级细分氛围
-              if (score < 45) {
-                vibe = '能跑，但别问为什么能跑。问就是玄学。';
-                nextMove = '建议趁还没成为名胜古迹之前优化一下。';
-              } else if (score < 50) {
-                vibe = '开窗已经没用了，建议佩戴心理防毒面具。';
-                nextMove = '重构计划该提上日程了，否则下一个接手的人会想找你聊天。';
-              } else {
-                vibe = '这代码有它自己的坚持，建议别惹它生气。';
-                nextMove = '做功能前先祈祷，改一行测试十遍。';
-              }
-            } else if (score < 65) {
-              vibe = '维护这段代码需要额外的心理建设。';
-              nextMove = '考虑一下：重构 vs 重写 vs 辞职。';
-            } else if (score < 75) {
-              vibe = '代码已成遗迹，建议请考古学家来维护。';
-              nextMove = '别想着优化了，能不动就不动，活着最重要。';
-            } else if (score < 85) {
-              vibe = '每次提交都是一场冒险，建议购买保险。';
-              nextMove = '建议把这段代码供起来，重写比修复划算。';
-            } else if (score < 95) {
-              vibe = '这不是代码，这是行为艺术。';
-              nextMove = '建议截图留念，然后考虑重新投胎（或者重写）。';
-            } else if (score < 100) {
-              vibe = '这段代码已经死了，只是还没埋。';
-              nextMove = '立个墓碑，写上前人教训，然后 rm -rf。';
+              vibe = '有点臭味，但还不至于熏死人';
+            } else if (score < 50) {
+              vibe = '臭气扑鼻，建议佩戴口罩阅读';
+            } else if (score < 60) {
+              vibe = '毒气缭绕，代码审查犹如酷刑';
+            } else if (score < 70) {
+              vibe = '熏天臭气，维护者已开始咳血';
+            } else if (score < 80) {
+              vibe = '生化危机，接手前请立好遗嘱';
+            } else if (score < 90) {
+              vibe = '核废料现场，需穿防护服维护';
             } else {
-              vibe = '登峰造极，史无前例，建议申遗。';
-              nextMove = '删库跑路是最佳选择，或者转行卖煎饼。';
+              vibe = '厄难级毒瘤，看一眼减寿十年';
+            }
+
+            if (score < 30) {
+              nextMove = '继续保持，你是编码界的一股清流，代码洁癖者的骄傲';
+            } else if (score < 60) {
+              nextMove = '这代码像个叛逆期的青少年，需要适当管教才能成才';
+            } else {
+              nextMove = '删库跑路是唯一出路，或者封印它，等下辈子再维护';
             }
             
             const mergeBadge = allowMerge === 'true' 

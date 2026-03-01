@@ -6,7 +6,7 @@
 import re
 from datetime import datetime
 
-from ...core.intensity_calculator import IntensityCalculator
+from ...core.support.intensity_calculator import IntensityCalculator
 from ...models.models import EarthquakeData
 from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
@@ -851,8 +851,8 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
                 if pct is not None:
                     quality_pct = f"{pct}%"
 
-                # 解析误差
-                err_origin = quality.get("errOrigin")
+                # 解析误差（支持 camelCase 和 snake_case）
+                err_origin = quality.get("errOrigin") or quality.get("err_origin")
                 if err_origin is not None:
                     location_error = f"{err_origin:.1f} km"
 

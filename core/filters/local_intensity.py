@@ -7,7 +7,7 @@ from typing import TypedDict
 from astrbot.api import logger
 
 from ...models.models import EarthquakeData
-from ..intensity_calculator import IntensityCalculator
+from ..support.intensity_calculator import IntensityCalculator
 
 
 class LocalEstimationResult(TypedDict):
@@ -49,7 +49,7 @@ class LocalIntensityFilter:
         intensity = IntensityCalculator.calculate_estimated_intensity(
             earthquake.magnitude or 0.0,
             distance,
-            earthquake.depth or 10.0,
+            earthquake.depth if earthquake.depth is not None else 10.0,
             event_longitude=earthquake.longitude,  # 传入经度以区分东西部
         )
 
@@ -73,6 +73,9 @@ class LocalIntensityFilter:
                  如果未启用则返回 None
         """
         if not self.enabled:
+            # 会话级禁用时，清理可能由其他会话写入的本地预估残留，避免跨会话串值
+            if isinstance(getattr(earthquake, "raw_data", None), dict):
+                earthquake.raw_data.pop("local_estimation", None)
             return None
 
         is_allowed, distance, intensity = self.check_event(earthquake)
