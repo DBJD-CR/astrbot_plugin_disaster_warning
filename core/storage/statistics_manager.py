@@ -147,7 +147,9 @@ class StatisticsManager:
                 if isinstance(event.data, EarthquakeData):
                     self._record_earthquake_stats(event.data)
                 elif isinstance(event.data, WeatherAlarmData):
-                    weather_stats_recorded = await self._record_weather_stats(event.data)
+                    weather_stats_recorded = await self._record_weather_stats(
+                        event.data
+                    )
                     if not weather_stats_recorded:
                         logger.warning(
                             "[灾害预警] 气象预警地区信息无效或缺失，已跳过该次气象详细统计"
@@ -864,10 +866,16 @@ class StatisticsManager:
                         if saved_on_disk.get("recent_pushes"):
                             saved_on_disk["recent_pushes"] = []
                             with open(self.stats_file, "w", encoding="utf-8") as f:
-                                json.dump(saved_on_disk, f, ensure_ascii=False, indent=2)
-                            logger.debug("[灾害预警] 已清理 JSON 文件中残留的 recent_pushes")
+                                json.dump(
+                                    saved_on_disk, f, ensure_ascii=False, indent=2
+                                )
+                            logger.debug(
+                                "[灾害预警] 已清理 JSON 文件中残留的 recent_pushes"
+                            )
                     except Exception as _e:
-                        logger.debug(f"[灾害预警] 清理 JSON recent_pushes 失败（非致命）: {_e}")
+                        logger.debug(
+                            f"[灾害预警] 清理 JSON recent_pushes 失败（非致命）: {_e}"
+                        )
             elif json_has_events:
                 # 数据库为空但 JSON 有数据，执行一次性迁移
                 logger.info("[灾害预警] 检测到 JSON 历史记录，开始迁移到数据库...")
@@ -960,7 +968,9 @@ class StatisticsManager:
             with open(self.stats_file, "w", encoding="utf-8") as f:
                 json.dump(saved_stats, f, ensure_ascii=False, indent=2)
             if not failed_records:
-                logger.info("[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储")
+                logger.info(
+                    "[灾害预警] 已清空 JSON 文件中的历史记录，后续将使用数据库存储"
+                )
 
             # 从数据库加载到内存
             self.stats["recent_pushes"] = db_events

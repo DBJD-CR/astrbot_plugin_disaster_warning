@@ -210,13 +210,17 @@ class DisasterWarningPlugin(Star):
                 try:
                     await self.disaster_service.message_manager.weather_filter.close()
                 except Exception as wfe:
-                    logger.debug(f"[灾害预警] 气象过滤器 session 关闭时出错（已忽略）: {wfe}")
+                    logger.debug(
+                        f"[灾害预警] 气象过滤器 session 关闭时出错（已忽略）: {wfe}"
+                    )
 
             if self.disaster_service and self.disaster_service.statistics_manager:
                 try:
                     await self.disaster_service.statistics_manager._weather_region_resolver.close()
                 except Exception as wfe:
-                    logger.debug(f"[灾害预警] 统计模块气象 session 关闭时出错（已忽略）: {wfe}")
+                    logger.debug(
+                        f"[灾害预警] 统计模块气象 session 关闭时出错（已忽略）: {wfe}"
+                    )
 
             # 关闭遥测会话（best-effort，不影响主要关闭流程）
             if self.telemetry:

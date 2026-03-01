@@ -3,7 +3,6 @@
 支持按关键词白名单和颜色级别过滤气象预警
 """
 
-import json
 import re
 import time
 from typing import Any
@@ -93,9 +92,7 @@ class WeatherFilter:
     def _get_session(self) -> aiohttp.ClientSession:
         """懒加载并复用 ClientSession（在事件循环已运行后首次调用）"""
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                headers={"User-Agent": "Mozilla/5.0"}
-            )
+            self._session = aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"})
         return self._session
 
     async def close(self) -> None:
@@ -125,7 +122,9 @@ class WeatherFilter:
         url = "https://dmfw.mca.gov.cn/9095/stname/listPub"
         try:
             session = self._get_session()
-            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+            async with session.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
                 payload = await resp.json(content_type=None)
         except Exception as exc:
             logger.debug(f"[灾害预警] 行政区划查询失败: {place_name}, 错误: {exc}")

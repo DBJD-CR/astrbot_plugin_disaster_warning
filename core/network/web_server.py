@@ -124,7 +124,9 @@ class WebAdminServer:
             if not token:
                 auth_header = request.headers.get("Authorization", "")
                 token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
-            if not self._auth_token or not secrets.compare_digest(token, self._auth_token):
+            if not self._auth_token or not secrets.compare_digest(
+                token, self._auth_token
+            ):
                 return JSONResponse({"error": "未授权，请先登录"}, status_code=401)
             return await call_next(request)
 
@@ -410,7 +412,8 @@ class WebAdminServer:
                     },
                     "display_timezone": self.config.get("display_timezone", "UTC+8"),
                     "web_admin": {
-                        k: v for k, v in self.config.get("web_admin", {}).items()
+                        k: v
+                        for k, v in self.config.get("web_admin", {}).items()
                         if k != "password"
                     },
                 }
@@ -1082,7 +1085,9 @@ class WebAdminServer:
                 if not token:
                     token = websocket.headers.get("Authorization", "")
                     token = token[7:] if token.startswith("Bearer ") else ""
-                if not self._auth_token or not secrets.compare_digest(token, self._auth_token):
+                if not self._auth_token or not secrets.compare_digest(
+                    token, self._auth_token
+                ):
                     await websocket.close(code=1008)  # 1008 = Policy Violation
                     return
 
