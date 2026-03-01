@@ -185,24 +185,52 @@
                 });
             };
 
+            function proceedWithAuth() {
+                window.__ASTRBOT_AUTH_PENDING = false;
+                window.dispatchEvent(new Event('auth-ready'));
+            }
+
             // 检查是否需要认证
             fetch('/api/auth-info')
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
+                    if (!data.auth_required) {
+                        // 无需认证，直接放行
+                        proceedWithAuth();
+                        return;
+                    }
                     var token = window.AuthUtil && window.AuthUtil.getToken();
-                    if (!data.auth_required || token) {
-                        // 无需认证或已有令牌，直接放行
-                        window.__ASTRBOT_AUTH_PENDING = false;
-                        window.dispatchEvent(new Event('auth-ready'));
-                    } else {
+                    if (!token) {
                         // 需要认证且无令牌，展示登录界面
                         showLogin();
+                        return;
                     }
+                    // 有令牌但需要认证：先验证令牌是否仍然有效
+                    // 注意：必须使用 XMLHttpRequest 而非 fetch，
+                    // 避免触发 auth.js 的 fetch 拦截器在 401 时派发 auth-required 事件，
+                    // 那会导致 AuthWrapper 在 React 已挂载时触发不必要的 location.reload()。
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('GET', '/api/status', true);
+                    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                    xhr.onreadystatechange = function () {
+                        if (xhr.readyState !== 4) return;
+                        if (xhr.status === 401) {
+                            // 令牌已失效（如插件重载后 token 重置），清除并要求重新登录
+                            window.AuthUtil.clearToken();
+                            showLogin();
+                        } else if (xhr.status === 0) {
+                            // 网络错误，直接放行
+                            proceedWithAuth();
+                        } else {
+                            // 令牌有效，直接放行
+                            proceedWithAuth();
+                        }
+                    };
+                    xhr.send();
                 })
                 .catch(function () {
                     // 无法访问服务端，直接放行
-                    window.__ASTRBOT_AUTH_PENDING = false;
-                    window.dispatchEvent(new Event('auth-ready'));
+                    proceedWithAuth();
                 });
         })();
     </script>

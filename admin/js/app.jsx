@@ -484,7 +484,10 @@ function AuthWrapper() {
     );
 }
 
-// 渲染应用
-const rootElement = document.getElementById('root');
-const root = ReactDOM.createRoot(rootElement);
-root.render(<AuthWrapper />);
+// 渲染应用（保护锁：防止 Babel 重复执行或 auth 流程触发二次挂载）
+if (!window.__DISASTER_WEBUI_INITIALIZED) {
+    window.__DISASTER_WEBUI_INITIALIZED = true;
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<AuthWrapper />);
+}
