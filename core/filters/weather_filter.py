@@ -32,9 +32,16 @@ class WeatherFilter:
         self.min_level_value = COLOR_LEVELS.get(self.min_color_level, 0)
 
         # 关键词白名单：优先读取 keywords，兼容旧配置 provinces
+        # 注意：AstrBot 启动时会将 schema 默认值 [] 注入配置，导致 keywords=[] 覆盖旧的
+        # provinces 配置。因此需同时处理 "keywords 不存在" 和 "keywords 为空列表" 两种情况。
         raw_keywords = config.get("keywords")
-        if not isinstance(raw_keywords, list):
-            raw_keywords = config.get("provinces", [])
+        if not isinstance(raw_keywords, list) or not raw_keywords:
+            # keywords 不存在或为空时，尝试读取旧字段 provinces 作为兜底
+            legacy_provinces = config.get("provinces", [])
+            if isinstance(legacy_provinces, list) and legacy_provinces:
+                raw_keywords = legacy_provinces
+            else:
+                raw_keywords = raw_keywords if isinstance(raw_keywords, list) else []
         self.keywords = [str(k).strip() for k in raw_keywords if str(k).strip()]
 
         self._location_province_cache: dict[str, str | None] = {}
