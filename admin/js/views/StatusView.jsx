@@ -222,6 +222,10 @@ function StatusView({ onOpenSimulation }) {
                 <div className="span-12">
                     <ConnectionsGrid />
                 </div>
+
+                <div className="span-12">
+                    <EewStatusCard />
+                </div>
             </div>
         </Box>
     );
