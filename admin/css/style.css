@@ -803,6 +803,179 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     transform: translateY(-1px);
 }
 
+/* 气象预警快捷查询 */
+.weather-query-panel {
+    padding: 20px 22px;
+}
+
+.weather-query-form {
+    display: grid;
+    grid-template-columns: minmax(320px, 2.2fr) minmax(150px, 1fr) minmax(132px, 0.8fr) auto auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.weather-query-input {
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: var(--md-sys-color-surface);
+    color: inherit;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.weather-query-input:focus {
+    outline: none;
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 0 0 3px rgba(103, 80, 164, 0.12);
+}
+
+.weather-query-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.weather-query-keyword {
+    min-width: 260px;
+}
+
+.weather-query-btn {
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    min-height: 38px;
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+}
+
+.weather-query-btn:hover:not(:disabled) {
+    filter: brightness(1.04);
+}
+
+.weather-query-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.weather-query-btn-secondary {
+    background: var(--md-sys-color-surface-variant);
+    color: var(--md-sys-color-on-surface);
+    border-color: var(--md-sys-color-outline-variant);
+}
+
+.weather-query-loading {
+    margin-top: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0.86;
+}
+
+.weather-query-error {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(179, 38, 30, 0.25);
+    background: rgba(179, 38, 30, 0.08);
+    color: #B3261E;
+}
+
+body.dark-theme .weather-query-error {
+    border-color: rgba(242, 184, 181, 0.4);
+    background: rgba(242, 184, 181, 0.12);
+    color: #F2B8B5;
+}
+
+.weather-query-result {
+    margin-top: 14px;
+}
+
+.weather-query-result-card {
+    border: 1px solid var(--glass-border);
+    background: var(--md-sys-color-surface);
+    border-radius: 12px;
+    padding: 14px;
+}
+
+.weather-query-result-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.weather-query-result-body {
+    opacity: 0.92;
+}
+
+.weather-query-icon-wrap {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.weather-query-icon-card {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: color-mix(in srgb, var(--md-sys-color-surface) 88%, var(--md-sys-color-primary) 12%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.weather-query-icon {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    image-rendering: -webkit-optimize-contrast;
+}
+
+.weather-query-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.weather-query-list-item {
+    border: 1px solid var(--glass-border);
+    background: var(--md-sys-color-surface);
+    border-radius: 12px;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow: hidden;
+}
+
+.weather-query-list-item-image {
+    width: 120px;
+    min-width: 120px;
+    align-self: stretch;
+    object-fit: contain;
+    object-position: center;
+    padding: 10px;
+    background: color-mix(in srgb, var(--md-sys-color-surface) 84%, var(--md-sys-color-primary) 16%);
+    border-right: 1px solid var(--glass-border);
+    image-rendering: -webkit-optimize-contrast;
+}
+
+.weather-query-list-item-main {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+    padding: 12px 14px;
+}
+
 /* 震级图表 (MD3 风格) */
 .mag-stats-container {
     display: flex;
@@ -1065,6 +1238,38 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
 
     .mag-value {
         font-size: 13px;
+    }
+
+    /* 气象预警查询面板 */
+    .weather-query-panel {
+        padding: 16px;
+    }
+
+    .weather-query-form {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .weather-query-keyword {
+        min-width: 0;
+    }
+
+    .weather-query-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .weather-query-list-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .weather-query-list-item-image {
+        width: 100%;
+        min-width: 0;
+        height: 120px;
+        border-right: none;
+        border-bottom: 1px solid var(--glass-border);
     }
 
     /* 筛选按钮 */
