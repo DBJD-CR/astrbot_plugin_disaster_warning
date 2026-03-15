@@ -12,9 +12,11 @@ function HorizontalTimeline({ style }) {
     const displayTimezone = config.displayTimezone || 'UTC+8';
 
     const [majorEvents, setMajorEvents] = useState([]);
+    const [displayLimit, setDisplayLimit] = useState('50');
 
     const fetchMajorEvents = useCallback(() => {
-        fetch('/api/events/major?limit=100')
+        const query = displayLimit === 'all' ? '?limit=0' : `?limit=${encodeURIComponent(displayLimit)}`;
+        fetch(`/api/events/major${query}`)
             .then(res => res.json())
             .then(data => {
                 if (Array.isArray(data.events)) {
@@ -22,7 +24,7 @@ function HorizontalTimeline({ style }) {
                 }
             })
             .catch(err => console.error('Failed to fetch major events:', err));
-    }, []);
+    }, [displayLimit]);
 
     // 初始加载
     useEffect(() => {
@@ -150,9 +152,34 @@ function HorizontalTimeline({ style }) {
     if (timelineItems.length === 0) {
         return (
             <div className="card" style={{ ...style, display: 'flex', flexDirection: 'column', minHeight: '180px' }}>
-                <div className="chart-card-header">
-                    <span style={{ fontSize: '20px' }}>⏳</span>
-                    <Typography variant="h6">重大事件回溯</Typography>
+                <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>⏳</span>
+                        <Typography variant="h6">重大事件回溯</Typography>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>展示</Typography>
+                        <select
+                            value={displayLimit}
+                            onChange={(e) => setDisplayLimit(e.target.value)}
+                            style={{
+                                border: '1px solid var(--md-sys-color-outline-variant)',
+                                borderRadius: '8px',
+                                padding: '4px 8px',
+                                background: 'var(--md-sys-color-surface)',
+                                color: 'inherit',
+                                fontSize: '12px',
+                                fontWeight: 600
+                            }}
+                        >
+                            <option value="20">20 条</option>
+                            <option value="50">50 条</option>
+                            <option value="100">100 条</option>
+                            <option value="200">200 条</option>
+                            <option value="500">500 条</option>
+                            <option value="all">不限</option>
+                        </select>
+                    </div>
                 </div>
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.5 }}>
                     <Typography variant="body2">近期无重大事件</Typography>
@@ -217,9 +244,34 @@ function HorizontalTimeline({ style }) {
 
     return (
         <div className="card" style={{ ...style, display: 'flex', flexDirection: 'column', overflowX: 'auto', position: 'relative' }}>
-            <div className="chart-card-header" style={{ marginBottom: '24px' }}>
-                <span style={{ fontSize: '20px' }}>⏳</span>
-                <Typography variant="h6">重大事件回溯</Typography>
+            <div className="chart-card-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>⏳</span>
+                    <Typography variant="h6">重大事件回溯</Typography>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>展示</Typography>
+                    <select
+                        value={displayLimit}
+                        onChange={(e) => setDisplayLimit(e.target.value)}
+                        style={{
+                            border: '1px solid var(--md-sys-color-outline-variant)',
+                            borderRadius: '8px',
+                            padding: '4px 8px',
+                            background: 'var(--md-sys-color-surface)',
+                            color: 'inherit',
+                            fontSize: '12px',
+                            fontWeight: 600
+                        }}
+                    >
+                        <option value="20">20 条</option>
+                        <option value="50">50 条</option>
+                        <option value="100">100 条</option>
+                        <option value="200">200 条</option>
+                        <option value="500">500 条</option>
+                        <option value="all">不限</option>
+                    </select>
+                </div>
             </div>
 
             {/* 左右导航按钮 */}
