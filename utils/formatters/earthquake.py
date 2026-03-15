@@ -275,7 +275,17 @@ class CWAEEWFormatter(BaseMessageFormatter):
         # 预估最大震度
         if earthquake.scale is not None:
             emoji = _get_intensity_emoji(earthquake.scale, is_eew=True, is_shindo=True)
-            lines.append(f"💥预估最大震度：{earthquake.scale} {emoji}")
+            scale_line = f"💥预估最大震度：{earthquake.scale} {emoji}"
+
+            # CWA 融合策略：尝试将 Wolfx 影响区域追加到预估震度后
+            wolfx_impact_area = None
+            if isinstance(getattr(earthquake, "raw_data", None), dict):
+                wolfx_impact_area = earthquake.raw_data.get("wolfx_impact_area")
+
+            if isinstance(wolfx_impact_area, str) and wolfx_impact_area.strip():
+                scale_line += f"（影响区域：{wolfx_impact_area.strip()}）"
+
+            lines.append(scale_line)
 
         # 影响区域 (locationDesc)
         if earthquake.province:
