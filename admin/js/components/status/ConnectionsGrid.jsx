@@ -8,6 +8,7 @@ const { useMemo } = React;
 function ConnectionsGrid() {
     const { state } = useAppContext();
     const { connections, dataLoaded } = state;
+    const isDark = state.theme === 'dark';
 
     const displayConnections = useMemo(() => {
         // 定义需要监控的目标数据源及其匹配规则
@@ -243,9 +244,13 @@ function ConnectionsGrid() {
                                                 alignItems: 'center',
                                                 p: 1,
                                                 borderRadius: '8px',
-                                                bgcolor: enabled ? 'var(--md-sys-color-surface)' : 'rgba(0,0,0,0.03)',
+                                                bgcolor: enabled
+                                                    ? 'var(--md-sys-color-surface)'
+                                                    : (isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0,0,0,0.03)'),
                                                 border: '1px solid',
-                                                borderColor: enabled ? 'rgba(76, 175, 80, 0.15)' : 'transparent',
+                                                borderColor: enabled
+                                                    ? 'rgba(76, 175, 80, 0.15)'
+                                                    : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'transparent'),
                                                 transition: 'all 0.2s'
                                             }}>
                                                 <Box sx={{
@@ -268,12 +273,15 @@ function ConnectionsGrid() {
                                                 {!enabled && (
                                                     <Typography sx={{
                                                         fontSize: '10px',
-                                                        color: 'text.disabled',
-                                                        fontWeight: 600,
-                                                        bgcolor: 'rgba(0,0,0,0.05)',
+                                                        color: isDark ? '#E6E1E5' : 'text.disabled',
+                                                        fontWeight: 700,
+                                                        bgcolor: isDark ? 'rgba(208, 188, 255, 0.18)' : 'rgba(0,0,0,0.05)',
+                                                        border: isDark ? '1px solid rgba(208, 188, 255, 0.35)' : '1px solid transparent',
+                                                        boxShadow: isDark ? '0 2px 6px rgba(0, 0, 0, 0.25)' : 'none',
                                                         px: 0.8,
                                                         py: 0.2,
-                                                        borderRadius: '4px'
+                                                        borderRadius: '6px',
+                                                        letterSpacing: '0.3px'
                                                     }}>
                                                         OFF
                                                     </Typography>
