@@ -18,18 +18,7 @@ from .core.network.web_server import WebAdminServer
 from .core.support.config_validator import ConfigValidator
 from .core.support.simulation_service import build_earthquake_simulation
 from .core.support.telemetry_manager import TelemetryManager
-from .core.support.weather_query_service import (
-    build_weather_type_line,
-    detect_weather_color,
-    detect_weather_type,
-    extract_weather_org,
-    extract_weather_warning_core,
-    format_cn_time,
-    normalize_weather_color,
-    parse_event_time_to_utc,
-    parse_weather_query_filters,
-    query_weather_alarm_data,
-)
+from .core.support.weather_query_service import query_weather_alarm_data
 from .utils.version import get_plugin_version
 
 
@@ -892,58 +881,6 @@ class DisasterWarningPlugin(Star):
             },
         }
         return source_names.get(service, {}).get(source, source_key)
-
-    @staticmethod
-    def _normalize_weather_color(color_token: str | None) -> str | None:
-        """规范化预警颜色关键词。"""
-        return normalize_weather_color(color_token)
-
-    @staticmethod
-    def _parse_weather_query_filters(
-        token_a: str | None,
-        token_b: str | None,
-    ) -> tuple[str | None, str | None]:
-        """解析可选参数中的预警类型与预警颜色（顺序无关）。"""
-        return parse_weather_query_filters(token_a, token_b)
-
-    @staticmethod
-    def _parse_event_time_to_utc(time_value: Any) -> datetime | None:
-        """将事件时间解析并转换为 UTC（naive 视为 UTC+8）。"""
-        return parse_event_time_to_utc(time_value)
-
-    @staticmethod
-    def _format_cn_time(dt_utc: datetime | None) -> str:
-        """将 UTC 时间格式化为北京时间中文样式。"""
-        return format_cn_time(dt_utc)
-
-    @staticmethod
-    def _extract_weather_org(title_text: str, headline_text: str) -> str:
-        """提取发布机构。"""
-        return extract_weather_org(title_text, headline_text)
-
-    @staticmethod
-    def _detect_weather_type(title_text: str, weather_type_code: str | None) -> str:
-        """识别预警类型。"""
-        return detect_weather_type(title_text, weather_type_code)
-
-    @staticmethod
-    def _detect_weather_color(level_text: str, title_text: str) -> str:
-        """识别预警颜色。"""
-        return detect_weather_color(level_text, title_text)
-
-    @staticmethod
-    def _extract_weather_warning_core(title_text: str) -> str | None:
-        """从完整标题中提取“XX(颜色)预警(信号)”核心短语。"""
-        return extract_weather_warning_core(title_text)
-
-    @staticmethod
-    def _build_weather_type_line(
-        weather_type: str,
-        weather_color: str,
-        title_text: str,
-    ) -> str:
-        """构建“预警类型”展示文案（仅保留类型信息，不含地区前缀）。"""
-        return build_weather_type_line(weather_type, weather_color, title_text)
 
     @staticmethod
     def _with_quote_reply(
