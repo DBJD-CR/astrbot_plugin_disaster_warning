@@ -10,7 +10,7 @@ from typing import Any
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star
 
 from .core.app.disaster_service import get_disaster_service, stop_disaster_service
@@ -364,8 +364,8 @@ class DisasterWarningPlugin(Star):
 • /灾害预警状态 - 查看服务运行状态
 • /灾害预警重连 - 强制重连所有数据源 (仅管理员)
 • /地震列表查询 [数据源] [数量] [格式] - 查询最新地震列表
-• /地震预警查询 - 查询各机构 EEW 状态与无 EEW 计时
-• /气象预警查询 <省份/地名> <预警类型> <预警颜色> 或 <预警ID>
+• /地震预警查询 或 /地震预警 - 查询各机构 EEW 状态与无 EEW 计时
+• /气象预警查询 或 /气象预警 <省份/地名|全国> [预警类型] [预警颜色] 或 <预警ID>
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息 (仅管理员)
 • /灾害预警推送开关 - 开启或关闭当前会话的推送 (仅管理员)
@@ -908,9 +908,110 @@ class DisasterWarningPlugin(Star):
         /气象预警查询 <省份/地名> <预警类型> <预警颜色>
         /气象预警查询 <预警ID>
         """
+        async for result in self._query_weather_alarm_impl(
+            event, keyword=keyword, optional_a=optional_a, optional_b=optional_b
+        ):
+            yield result
+
+    @filter.command("气象预警")
+    async def query_weather_alarm_alias(
+        self,
+        event: AstrMessageEvent,
+        keyword: str = None,
+        optional_a: str = None,
+        optional_b: str = None,
+    ):
+        """气象预警查询别名：/气象预警"""
+        async for result in self._query_weather_alarm_impl(
+            event, keyword=keyword, optional_a=optional_a, optional_b=optional_b
+        ):
+            yield result
+
+    async def _query_weather_alarm_impl(
+        self,
+        event: AstrMessageEvent,
+        keyword: str = None,
+        optional_a: str = None,
+        optional_b: str = None,
+    ):
+        """气象预警查询实现"""
 
         def _quoted_plain_result(text: str):
             return event.chain_result(self._with_quote_reply(event, [Comp.Plain(text)]))
+
+        def _build_forward_nodes(
+            blocks: list[str],
+            total_blocks: int,
+            batch_index: int,
+            batch_total: int,
+            include_header: bool = True,
+        ) -> Comp.Nodes | None:
+            if not blocks:
+                return None
+
+            bot_id = event.get_self_id() or "0"
+            bot_name = "灾害预警"
+
+            nodes = Comp.Nodes([])
+            if include_header:
+                header = (
+                    f"📋 全国气象预警列表（共 {total_blocks} 段）"
+                    f"\n📦 分段发送：{batch_index + 1}/{batch_total}"
+                )
+                nodes.nodes.append(
+                    Comp.Node(uin=bot_id, name=bot_name, content=[Comp.Plain(header)])
+                )
+
+            for block in blocks:
+                nodes.nodes.append(
+                    Comp.Node(
+                        uin=bot_id,
+                        name=bot_name,
+                        content=[Comp.Plain(block)],
+                    )
+                )
+
+            return nodes
+
+        async def _send_forward_batches(blocks: list[str]) -> bool:
+            if not blocks:
+                return False
+
+            max_nodes_per_forward = 8
+            total_blocks = len(blocks)
+            batches = [
+                blocks[i : i + max_nodes_per_forward]
+                for i in range(0, total_blocks, max_nodes_per_forward)
+            ]
+
+            for idx, batch in enumerate(batches):
+                nodes = _build_forward_nodes(
+                    batch,
+                    total_blocks=total_blocks,
+                    batch_index=idx,
+                    batch_total=len(batches),
+                    include_header=idx == 0,
+                )
+                if not nodes:
+                    continue
+                chain = MessageChain([nodes])
+                await self.context.send_message(event.unified_msg_origin, chain)
+
+            return True
+
+        async def _send_text_blocks(blocks: list[str], total_count: int) -> None:
+            if not blocks:
+                return
+
+            for idx, block in enumerate(blocks):
+                prefix = f"📋 气象预警列表（共 {total_count} 条）\n" if idx == 0 else ""
+                if idx == 0:
+                    chain = MessageChain(
+                        self._with_quote_reply(event, [Comp.Plain(prefix + block)])
+                    )
+                else:
+                    chain = MessageChain([Comp.Plain(block)])
+                await self.context.send_message(event.unified_msg_origin, chain)
 
         if not self.disaster_service:
             yield _quoted_plain_result("❌ 灾害预警服务未启动")
@@ -920,7 +1021,8 @@ class DisasterWarningPlugin(Star):
             yield _quoted_plain_result(
                 "❌ 参数不足。\n"
                 "用法：\n"
-                "• /气象预警查询 <省份/地名> <预警类型> <预警颜色>\n"
+                "• /气象预警查询 <省份/地名> [<预警类型>] [<预警颜色>]\n"
+                "• /气象预警查询 全国 [<预警类型>] [<预警颜色>]\n"
                 "• /气象预警查询 <预警ID>"
             )
             return
@@ -931,6 +1033,8 @@ class DisasterWarningPlugin(Star):
 
             if not result.get("success"):
                 error_text = str(result.get("error") or "查询失败")
+                if "官方渠道" not in error_text:
+                    error_text = f"{error_text} 可尝试通过其他官方渠道进行查询"
                 filters = result.get("filters")
                 if isinstance(filters, dict) and result.get("query_mode") == "search":
                     desc = [f"地区={filters.get('location')}"]
@@ -999,7 +1103,28 @@ class DisasterWarningPlugin(Star):
                 return
 
             items = result.get("items") or []
-            lines = []
+            text_blocks = result.get("text_blocks") or []
+            is_nationwide = bool(result.get("is_nationwide"))
+            total = result.get("total", len(items))
+
+            if is_nationwide and text_blocks:
+                try:
+                    ok = await _send_forward_batches(text_blocks)
+                    if ok:
+                        return
+                except Exception as forward_error:
+                    logger.warning(
+                        f"[灾害预警] 合并转发送失败，回退文本: {forward_error}"
+                    )
+                    try:
+                        await _send_text_blocks(text_blocks, total)
+                        return
+                    except Exception as text_error:
+                        logger.warning(
+                            f"[灾害预警] 文本回退发送失败: {text_error}"
+                        )
+
+            lines = [f"📋 气象预警列表（共 {total} 条）"]
             for idx, item in enumerate(items):
                 lines.append(f"发布时间：{item.get('issue_time') or '未知时间'}")
                 lines.append(f"ID：{item.get('alarm_id') or '未知ID'}")
@@ -1019,6 +1144,17 @@ class DisasterWarningPlugin(Star):
     @filter.command("地震预警查询")
     async def query_earthquake_warning(self, event: AstrMessageEvent):
         """查询各机构地震预警（EEW）状态"""
+        async for result in self._query_earthquake_warning_impl(event):
+            yield result
+
+    @filter.command("地震预警")
+    async def query_earthquake_warning_alias(self, event: AstrMessageEvent):
+        """地震预警查询别名：/地震预警"""
+        async for result in self._query_earthquake_warning_impl(event):
+            yield result
+
+    async def _query_earthquake_warning_impl(self, event: AstrMessageEvent):
+        """地震预警查询实现"""
 
         def _quoted_plain_result(text: str):
             return event.chain_result(self._with_quote_reply(event, [Comp.Plain(text)]))

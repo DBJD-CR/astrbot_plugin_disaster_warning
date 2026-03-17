@@ -80,9 +80,16 @@ def extract_weather_org(title_text: str, headline_text: str) -> str:
     if not candidate:
         return "未知发布机构"
 
-    match = re.search(r"^(.+?)发布", candidate)
+    match = re.search(r"^(.+?)(?:发布|更新)", candidate)
     if match:
         return match.group(1)
+
+    time_match = re.search(
+        r"^(.*?)(?:\d{4}年\d{1,2}月\d{1,2}日\d{1,2}时\d{1,2}分(?:\d{1,2}秒)?)$",
+        candidate,
+    )
+    if time_match:
+        return time_match.group(1)
 
     return candidate
 
@@ -159,6 +166,45 @@ def build_weather_type_line(
     return f"未知类型预警{color_emoji}"
 
 
+def build_weather_list_blocks(items: list[dict[str, Any]]) -> list[str]:
+    """将列表项整理为独立文本块（用于合并转发或分段发送）。"""
+    blocks: list[str] = []
+    for item in items:
+        lines = [
+            f"发布时间：{item.get('issue_time') or '未知时间'}",
+            f"ID：{item.get('alarm_id') or '未知ID'}",
+            f"发布机构：{item.get('publish_org') or '未知发布机构'}",
+            f"预警类型：{item.get('weather_type_line') or '未知类型预警'}",
+        ]
+        blocks.append("\n".join(lines))
+    return blocks
+
+
+def chunk_weather_blocks(blocks: list[str], max_chars: int = 1024) -> list[str]:
+    """将文本块按长度分组，避免单段过长。"""
+    if not blocks:
+        return []
+
+    chunks: list[str] = []
+    bucket: list[str] = []
+    bucket_len = 0
+
+    for block in blocks:
+        block_len = len(block)
+        if bucket and (bucket_len + block_len + 2 > max_chars):
+            chunks.append("\n\n".join(bucket))
+            bucket = [block]
+            bucket_len = block_len
+        else:
+            bucket.append(block)
+            bucket_len += block_len + 2
+
+    if bucket:
+        chunks.append("\n\n".join(bucket))
+
+    return chunks
+
+
 async def query_weather_alarm_data(
     db,
     keyword: str,
@@ -172,7 +218,8 @@ async def query_weather_alarm_data(
             "success": False,
             "error": "参数不足",
             "usage": [
-                "/气象预警查询 <省份/地名> <预警类型> <预警颜色>",
+                "/气象预警查询 <省份/地名> [<预警类型>] [<预警颜色>]",
+                "/气象预警查询 全国 [<预警类型>] [<预警颜色>]",
                 "/气象预警查询 <预警ID>",
             ],
         }
@@ -185,7 +232,7 @@ async def query_weather_alarm_data(
             return {
                 "success": False,
                 "query_mode": "id",
-                "error": f"未找到预警ID为 {target_id} 的气象预警记录。请通过其他官方渠道进行查询",
+                "error": f"未找到预警ID为 {target_id} 的气象预警记录。可尝试通过其他官方渠道进行查询",
             }
 
         title_text = str(matched.get("description") or "").strip()
@@ -232,11 +279,14 @@ async def query_weather_alarm_data(
         return {
             "success": False,
             "query_mode": "search",
-            "error": "暂无可查询的气象预警历史数据，请稍后重试。",
+            "error": "暂无可查询的气象预警历史数据，请稍后重试。也可尝试通过其他官方渠道进行查询",
         }
 
     location_keyword = normalized_keyword
     query_type, query_color = parse_weather_query_filters(optional_a, optional_b)
+    is_nationwide = normalized_keyword in {"全国", "全國"}
+    if is_nationwide:
+        location_keyword = None
 
     now_utc = datetime.now(timezone.utc)
     threshold_utc = now_utc - timedelta(hours=72)
@@ -253,7 +303,7 @@ async def query_weather_alarm_data(
         weather_type_code = str(item.get("weather_type_code") or "").strip()
         haystack = f"{title_text} {headline_text}"
 
-        if location_keyword not in haystack:
+        if location_keyword and location_keyword not in haystack:
             continue
 
         detected_type = detect_weather_type(title_text, weather_type_code)
@@ -286,9 +336,9 @@ async def query_weather_alarm_data(
         return {
             "success": False,
             "query_mode": "search",
-            "error": "未查询到符合条件的气象预警（仅检索近72小时内数据）。",
+            "error": "未查询到符合条件的气象预警（仅检索近72小时内数据）。可尝试通过其他官方渠道进行查询",
             "filters": {
-                "location": location_keyword,
+                "location": location_keyword or "全国",
                 "type": query_type,
                 "color": query_color,
             },
@@ -328,14 +378,20 @@ async def query_weather_alarm_data(
             }
         )
 
+    blocks = build_weather_list_blocks(items)
+    chunked_blocks = chunk_weather_blocks(blocks, max_chars=900)
+
     return {
         "success": True,
         "query_mode": "search",
         "filters": {
-            "location": location_keyword,
+            "location": location_keyword or "全国",
             "type": query_type,
             "color": query_color,
             "time_window_hours": 72,
         },
         "items": items,
+        "text_blocks": chunked_blocks,
+        "total": len(items),
+        "is_nationwide": is_nationwide,
     }
