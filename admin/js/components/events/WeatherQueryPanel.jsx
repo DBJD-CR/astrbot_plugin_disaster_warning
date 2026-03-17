@@ -1,5 +1,5 @@
 const { Box, Typography, CircularProgress } = MaterialUI;
-const { useState, useMemo } = React;
+const { useState, useMemo, useEffect } = React;
 
 /**
  * 气象预警快捷查询面板
@@ -14,8 +14,14 @@ function WeatherQueryPanel() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [result, setResult] = useState(null);
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
 
     const isIdQuery = useMemo(() => /^\d+_\d{12,14}$/.test((keyword || '').trim()), [keyword]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [result, pageSize]);
 
     const handleSearch = async () => {
         const kw = (keyword || '').trim();
@@ -42,7 +48,10 @@ function WeatherQueryPanel() {
             }
 
             if (!data?.success) {
-                const baseError = String(data?.error || '未查询到结果');
+                let baseError = String(data?.error || '未查询到结果');
+                if (!baseError.includes('官方渠道')) {
+                    baseError = `${baseError} 可尝试通过其他官方渠道进行查询`;
+                }
                 if (data?.query_mode === 'search' && data?.filters) {
                     const segments = [`地区=${data.filters.location || ''}`].filter(Boolean);
                     if (data.filters.type) segments.push(`预警类型=${data.filters.type}`);
@@ -71,6 +80,7 @@ function WeatherQueryPanel() {
         setOptionalB('');
         setError('');
         setResult(null);
+        setPage(1);
     };
 
     const renderIdResult = () => {
@@ -124,10 +134,34 @@ function WeatherQueryPanel() {
 
     const renderSearchResult = () => {
         const items = Array.isArray(result?.items) ? result.items : [];
+        const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+        const currentPage = Math.min(page, totalPages);
+        const startIndex = (currentPage - 1) * pageSize;
+        const pagedItems = items.slice(startIndex, startIndex + pageSize);
+
         return (
             <div className="weather-query-list">
-                {items.map((item, index) => (
-                    <div className="weather-query-list-item" key={`${item.alarm_id || 'unknown'}-${index}`}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                        共 {items.length} 条，当前第 {currentPage} / {totalPages} 页
+                    </Typography>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>每页</Typography>
+                        <select
+                            value={pageSize}
+                            onChange={(e) => setPageSize(Number(e.target.value) || 20)}
+                            className="weather-query-input"
+                            style={{ padding: '4px 8px' }}
+                        >
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={50}>50</option>
+                        </select>
+                    </div>
+                </div>
+
+                {pagedItems.map((item, index) => (
+                    <div className="weather-query-list-item" key={`${item.alarm_id || 'unknown'}-${startIndex + index}`}>
                         {item.icon_url && (
                             <img
                                 src={item.icon_url}
@@ -147,6 +181,28 @@ function WeatherQueryPanel() {
                         </div>
                     </div>
                 ))}
+
+                {items.length > pageSize && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '16px' }}>
+                        <button
+                            className="btn weather-query-btn weather-query-btn-secondary"
+                            onClick={() => setPage(Math.max(1, currentPage - 1))}
+                            disabled={currentPage <= 1}
+                        >
+                            上一页
+                        </button>
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                            第 {currentPage} / {totalPages} 页
+                        </Typography>
+                        <button
+                            className="btn weather-query-btn weather-query-btn-secondary"
+                            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                            disabled={currentPage >= totalPages}
+                        >
+                            下一页
+                        </button>
+                    </div>
+                )}
             </div>
         );
     };
