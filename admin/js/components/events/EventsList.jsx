@@ -227,6 +227,24 @@ function EventsList() {
         return parsed ? parsed.getTime() : 0;
     };
 
+    const compareEvents = (a, b) => {
+        const reportA = Number(a?.report_num);
+        const reportB = Number(b?.report_num);
+        const hasA = Number.isFinite(reportA);
+        const hasB = Number.isFinite(reportB);
+
+        if (hasA && hasB && reportA !== reportB) {
+            return reportB - reportA;
+        }
+
+        const updateA = parseEventTimeToDate(getDisplayTimeValue(a, true), a?.source || '');
+        const updateB = parseEventTimeToDate(getDisplayTimeValue(b, true), b?.source || '');
+        const diffUpdate = (updateB ? updateB.getTime() : 0) - (updateA ? updateA.getTime() : 0);
+        if (diffUpdate !== 0) return diffUpdate;
+
+        return getEventTimeMs(b) - getEventTimeMs(a);
+    };
+
     // 将扁平的事件列表按照 event_id 进行分组
     // 这样可以将同一事件的多次更新（如：第1报、第2报...最终报）聚合在一起显示
     const groupedEvents = useMemo(() => {
@@ -249,23 +267,7 @@ function EventsList() {
         for (const id in groups) {
             // 组内排序：优先按 report_num（报次）倒序；
             // 若报次缺失或相同，再按“更新时间”倒序；最后按事件时间兜底。
-            groups[id].events.sort((a, b) => {
-                const reportA = Number(a?.report_num);
-                const reportB = Number(b?.report_num);
-                const hasA = Number.isFinite(reportA);
-                const hasB = Number.isFinite(reportB);
-
-                if (hasA && hasB && reportA !== reportB) {
-                    return reportB - reportA;
-                }
-
-                const updateA = parseEventTimeToDate(getDisplayTimeValue(a, true), a?.source || '');
-                const updateB = parseEventTimeToDate(getDisplayTimeValue(b, true), b?.source || '');
-                const diffUpdate = (updateB ? updateB.getTime() : 0) - (updateA ? updateA.getTime() : 0);
-                if (diffUpdate !== 0) return diffUpdate;
-
-                return getEventTimeMs(b) - getEventTimeMs(a);
-            });
+            groups[id].events.sort(compareEvents);
             groups[id].latestEvent = groups[id].events[0];
             
             // 计算更新总数：
@@ -318,23 +320,7 @@ function EventsList() {
                 if (historyEvents.length > 0) {
                     groups[id].events.push(...historyEvents);
                     // 合并后再次按“报次优先、更新时间次之”排序
-                    groups[id].events.sort((a, b) => {
-                        const reportA = Number(a?.report_num);
-                        const reportB = Number(b?.report_num);
-                        const hasA = Number.isFinite(reportA);
-                        const hasB = Number.isFinite(reportB);
-
-                        if (hasA && hasB && reportA !== reportB) {
-                            return reportB - reportA;
-                        }
-
-                        const updateA = parseEventTimeToDate(getDisplayTimeValue(a, true), a?.source || '');
-                        const updateB = parseEventTimeToDate(getDisplayTimeValue(b, true), b?.source || '');
-                        const diffUpdate = (updateB ? updateB.getTime() : 0) - (updateA ? updateA.getTime() : 0);
-                        if (diffUpdate !== 0) return diffUpdate;
-
-                        return getEventTimeMs(b) - getEventTimeMs(a);
-                    });
+                    groups[id].events.sort(compareEvents);
                     // 更新计数
                     groups[id].updateCount = Math.max(groups[id].events.length, backendCount);
                 }
