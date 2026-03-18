@@ -7,7 +7,7 @@ import asyncio
 import json
 import os
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
 from astrbot.api import logger
@@ -16,16 +16,21 @@ from astrbot.api.star import StarTools
 if TYPE_CHECKING:
     from ..support.telemetry_manager import TelemetryManager
 
-from ...models.data_source_config import DATA_SOURCE_CONFIGS
+from ...models.data_source_config import (
+    DATA_SOURCE_CONFIGS,
+    is_source_enabled_in_data_sources,
+)
 from ...models.models import (
     DATA_SOURCE_MAPPING,
     DisasterEvent,
+    DisasterType,
     EarthquakeData,
     TsunamiData,
     WeatherAlarmData,
 )
 from ...utils.fe_regions import load_data_async
 from ...utils.formatters import MESSAGE_FORMATTERS
+from ...utils.time_converter import TimeConverter
 from ..handlers import DATA_HANDLERS
 from ..message.message_logger import MessageLogger
 from ..message.message_manager import MessagePushManager
@@ -37,6 +42,27 @@ from ..storage.statistics_manager import StatisticsManager
 
 class DisasterWarningService:
     """灾害预警核心服务"""
+
+    EEW_VALID_DURATION_SECONDS = 300
+
+    # 机构级归一化配置：同机构不同数据源共享状态与重置逻辑
+    _EEW_QUERY_INSTITUTIONS: dict[str, dict[str, Any]] = {
+        "china": {
+            "display_name": "中国地震预警网 EEW",
+            "active_name": "中国地震预警网",
+            "source_ids": ["cea_fanstudio", "cea_pr_fanstudio", "cea_wolfx"],
+        },
+        "japan": {
+            "display_name": "日本気象庁 EEW",
+            "active_name": "日本気象庁",
+            "source_ids": ["jma_fanstudio", "jma_p2p", "jma_wolfx"],
+        },
+        "taiwan": {
+            "display_name": "中央氣象署 EEW",
+            "active_name": "中央氣象署",
+            "source_ids": ["cwa_fanstudio", "cwa_wolfx"],
+        },
+    }
 
     def __init__(self, config: dict[str, Any], context):
         self.config = config
@@ -70,6 +96,8 @@ class DisasterWarningService:
         self.message_manager = MessagePushManager(
             config, context, telemetry=self._telemetry
         )
+        # 消息限流 (数据源离线通知)
+        self._offline_notification_state: dict[str, dict[str, float]] = {}
 
         # 数据处理器
         self.handlers = {}
@@ -94,6 +122,12 @@ class DisasterWarningService:
         # 数据持久化路径
         self.storage_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
         self.cache_file = os.path.join(self.storage_dir, "earthquake_lists_cache.json")
+
+        # EEW 查询状态缓存（机构级）
+        self.eew_query_cache_file = os.path.join(
+            self.storage_dir, "eew_query_cache.json"
+        )
+        self.eew_query_state: dict[str, dict[str, Any]] = {}
 
     def _initialize_handlers(self):
         """初始化数据处理器"""
@@ -175,6 +209,8 @@ class DisasterWarningService:
         """注册消息处理器"""
         registry = WebSocketHandlerRegistry(self)
         registry.register_all(self.ws_manager)
+        # 注册离线通知回调
+        self.ws_manager.set_offline_notify_callback(self._handle_offline_notification)
 
     def _configure_connections(self):
         """配置连接 - 适配数据源配置"""
@@ -290,6 +326,7 @@ class DisasterWarningService:
 
                 # 加载缓存数据
                 self._load_earthquake_lists_cache()
+                self._load_eew_query_cache()
 
                 # 启动WebSocket管理器
                 await self.ws_manager.start()
@@ -356,6 +393,7 @@ class DisasterWarningService:
                 # 仅在服务实际运行过时保存缓存
                 if was_running:
                     self._save_earthquake_lists_cache()
+                    self._save_eew_query_cache()
 
                 # 取消并等待所有连接任务退出
                 connection_tasks = list(self.connection_tasks)
@@ -817,6 +855,12 @@ class DisasterWarningService:
 
     async def _handle_disaster_event(self, event: DisasterEvent):
         """处理灾害事件"""
+        # 先更新 EEW 查询状态（与推送过滤解耦）
+        try:
+            self._update_eew_query_state(event)
+        except Exception as e:
+            logger.debug(f"[灾害预警] 更新 EEW 查询状态失败（已忽略）: {e}")
+
         # 检查静默期
         if self.is_in_silence_period():
             debug_config = self.config.get("debug_config", {})
@@ -905,6 +949,78 @@ class DisasterWarningService:
             logger.debug(
                 f"[灾害预警] 事件详情: ID={event.id}, 类型={event.disaster_type.value}, 数据源={event.source.value}"
             )
+
+    async def _handle_offline_notification(self, payload: dict[str, Any]) -> None:
+        """处理 WebSocket 管理器离线通知回调"""
+        await self.notify_data_source_offline(
+            connection_name=payload.get("connection_name", "unknown"),
+            data_source=payload.get("data_source", "unknown"),
+            stage=payload.get("stage", "unknown"),
+            reason=payload.get("reason", "未知原因"),
+            next_retry_in=payload.get("next_retry_in"),
+            retry_count=payload.get("retry_count"),
+            fallback_count=payload.get("fallback_count"),
+        )
+
+    async def notify_data_source_offline(
+        self,
+        connection_name: str,
+        data_source: str,
+        stage: str,
+        reason: str,
+        next_retry_in: str | None = None,
+        retry_count: int | None = None,
+        fallback_count: int | None = None,
+    ) -> bool:
+        """推送数据源离线通知（兜底重试/停止重连）"""
+        if not self.message_manager:
+            return False
+
+        # 生成去重键
+        key = f"{connection_name}:{stage}"
+        now = asyncio.get_running_loop().time()
+        state = self._offline_notification_state.get(key, {})
+        last_ts = state.get("last_ts", 0.0)
+        # 兜底重试与停止重连为高优先级，但仍避免过频刷屏（默认 30 分钟）
+        ttl_seconds = 1800
+        if now - last_ts < ttl_seconds:
+            return False
+
+        # 组装消息
+        stage_map = {
+            "fallback": "进入兜底重试",
+            "stop": "停止重连",
+        }
+        stage_text = stage_map.get(stage, stage)
+        retry_part = (
+            f"短时重试: {retry_count}" if retry_count is not None else "短时重试: 未知"
+        )
+        fallback_part = (
+            f"兜底重试: {fallback_count}"
+            if fallback_count is not None
+            else "兜底重试: 未知"
+        )
+        next_retry_part = (
+            f"下一次重试: {next_retry_in}" if next_retry_in else "下一次重试: 未知"
+        )
+
+        message_lines = [
+            "⚠️ 数据源离线通知",
+            f"📡 连接: {connection_name}",
+            f"🧩 数据源: {data_source}",
+            f"⛔ 状态: {stage_text}",
+            f"📝 原因: {reason}",
+            f"🔁 {retry_part}",
+            f"🛟 {fallback_part}",
+        ]
+        if stage == "fallback":
+            message_lines.append(f"⏳ {next_retry_part}")
+
+        message = "\n".join(message_lines)
+        success = await self.message_manager.push_system_message(message)
+        if success:
+            self._offline_notification_state[key] = {"last_ts": now}
+        return bool(success)
 
     async def reconnect_all_sources(self) -> dict[str, str]:
         """
@@ -1092,6 +1208,373 @@ class DisasterWarningService:
                         active_sources.append(f"{service_name}.{source_name}")
 
         return active_sources
+
+    def _get_source_id_from_event(self, event: DisasterEvent) -> str:
+        """将事件 source 枚举反向映射为 source_id。"""
+        reverse_mapping = {v.value: k for k, v in DATA_SOURCE_MAPPING.items()}
+        source_value = event.source.value if hasattr(event.source, "value") else ""
+        return reverse_mapping.get(source_value, source_value)
+
+    def _resolve_event_publish_time_utc(
+        self, event: DisasterEvent, source_id: str
+    ) -> datetime:
+        """解析事件发布时间并归一化为 UTC（优先发布时间，其次接收时间）。"""
+        data = event.data
+        candidate = None
+
+        if isinstance(data, EarthquakeData):
+            candidate = data.create_time or data.update_time or data.shock_time
+
+        if candidate is None:
+            candidate = event.receive_time if hasattr(event, "receive_time") else None
+
+        if candidate is None:
+            return datetime.now(timezone.utc)
+
+        if candidate.tzinfo is not None:
+            return candidate.astimezone(timezone.utc)
+
+        # Naive 时间按来源推断时区
+        if "jma" in source_id or "p2p" in source_id:
+            inferred_tz = TimeConverter._get_timezone("Asia/Tokyo")
+        elif source_id == "global_quake":
+            inferred_tz = timezone.utc
+        else:
+            inferred_tz = TimeConverter._get_timezone("Asia/Shanghai")
+
+        return candidate.replace(tzinfo=inferred_tz).astimezone(timezone.utc)
+
+    def _normalize_eew_query_institution(self, source_id: str) -> str | None:
+        """将 source_id 归一化到机构维度。"""
+        for institution_key, meta in self._EEW_QUERY_INSTITUTIONS.items():
+            if source_id in meta.get("source_ids", []):
+                return institution_key
+        return None
+
+    def _build_eew_query_fingerprint(self, data: EarthquakeData, source_id: str) -> str:
+        """构建机构内去重指纹（跨数据源）。"""
+        event_key = data.event_id or data.id or ""
+        place = (data.place_name or "未知地点").strip()
+        magnitude = "?" if data.magnitude is None else f"{float(data.magnitude):.1f}"
+        shock_time = self._resolve_event_publish_time_utc(
+            DisasterEvent(
+                id=data.id,
+                data=data,
+                source=data.source,
+                disaster_type=data.disaster_type,
+            ),
+            source_id,
+        )
+        minute_bucket = shock_time.strftime("%Y%m%d%H%M")
+        return f"{event_key}|{place}|{magnitude}|{minute_bucket}"
+
+    def _should_replace_eew_query_state(
+        self, current: dict[str, Any], candidate: dict[str, Any]
+    ) -> bool:
+        """判断候选 EEW 状态是否应覆盖当前状态。"""
+        current_fp = current.get("fingerprint", "")
+        candidate_fp = candidate.get("fingerprint", "")
+
+        # 同一事件：优先更高报次或更晚发布时间
+        if current_fp and candidate_fp and current_fp == candidate_fp:
+            current_updates = int(current.get("updates", 1) or 1)
+            candidate_updates = int(candidate.get("updates", 1) or 1)
+            if candidate_updates > current_updates:
+                return True
+            if candidate_updates < current_updates:
+                return False
+
+        # 不同事件：以发布时间新者覆盖
+        current_issued = TimeConverter.parse_datetime(current.get("issued_at"))
+        candidate_issued = TimeConverter.parse_datetime(candidate.get("issued_at"))
+        if current_issued is None:
+            return True
+        if candidate_issued is None:
+            return False
+        if current_issued.tzinfo is None:
+            current_issued = current_issued.replace(tzinfo=timezone.utc)
+        if candidate_issued.tzinfo is None:
+            candidate_issued = candidate_issued.replace(tzinfo=timezone.utc)
+        return candidate_issued >= current_issued
+
+    def _update_eew_query_state(self, event: DisasterEvent) -> None:
+        """更新地震预警查询状态（机构级，跨源去重）。"""
+        if event.disaster_type != DisasterType.EARTHQUAKE_WARNING:
+            return
+        if not isinstance(event.data, EarthquakeData):
+            return
+
+        source_id = self._get_source_id_from_event(event)
+        institution_key = self._normalize_eew_query_institution(source_id)
+        if not institution_key:
+            return
+
+        issued_at = self._resolve_event_publish_time_utc(event, source_id)
+        expires_at = issued_at + timedelta(seconds=self.EEW_VALID_DURATION_SECONDS)
+        data = event.data
+
+        # 机构内去重：同一事件多来源仅保留一份
+        event_key = data.event_id or data.id or ""
+        place = (data.place_name or "未知地点").strip()
+        magnitude = data.magnitude
+        magnitude_text = "未知" if magnitude is None else f"{float(magnitude):.1f}"
+        minute_bucket = issued_at.strftime("%Y%m%d%H%M")
+        fingerprint = f"{event_key}|{place}|{magnitude_text}|{minute_bucket}"
+
+        candidate = {
+            "source_id": source_id,
+            "event_id": event_key,
+            "display_place": place,
+            "display_magnitude": magnitude,
+            "updates": int(getattr(data, "updates", 1) or 1),
+            "issued_at": issued_at.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "fingerprint": fingerprint,
+        }
+
+        current = self.eew_query_state.get(institution_key)
+        if current and not self._should_replace_eew_query_state(current, candidate):
+            return
+
+        self.eew_query_state[institution_key] = candidate
+
+    @staticmethod
+    def _format_elapsed_seconds(total_seconds: int) -> str:
+        """将秒数格式化为“X天Y时Z分W秒”样式。"""
+        total_seconds = max(0, int(total_seconds))
+        days, rem = divmod(total_seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, seconds = divmod(rem, 60)
+
+        if days > 0:
+            return f"{days}天{hours}时{minutes}分{seconds}秒"
+        if hours > 0:
+            return f"{hours}时{minutes}分{seconds}秒"
+        if minutes > 0:
+            return f"{minutes}分{seconds}秒"
+        return f"{seconds}秒"
+
+    def _get_enabled_eew_sources_by_institution(self) -> dict[str, list[str]]:
+        """返回每个机构当前启用的 source_id 列表。"""
+        data_sources_cfg = self.config.get("data_sources", {})
+        result: dict[str, list[str]] = {}
+
+        for institution_key, meta in self._EEW_QUERY_INSTITUTIONS.items():
+            enabled_sources = [
+                source_id
+                for source_id in meta.get("source_ids", [])
+                if is_source_enabled_in_data_sources(source_id, data_sources_cfg)
+            ]
+            result[institution_key] = enabled_sources
+
+        return result
+
+    @staticmethod
+    def _parse_utc_datetime(value: Any) -> datetime | None:
+        """将字符串时间解析为 UTC aware datetime。"""
+        dt = TimeConverter.parse_datetime(value)
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    def get_eew_query_status_data(self) -> dict[str, Any]:
+        """获取地震预警查询的结构化状态数据（供 Web 与指令复用）。"""
+        now_utc = datetime.now(timezone.utc)
+        enabled_sources_map = self._get_enabled_eew_sources_by_institution()
+
+        institutions: list[dict[str, Any]] = []
+        for institution_key, meta in self._EEW_QUERY_INSTITUTIONS.items():
+            enabled_sources = enabled_sources_map.get(institution_key, [])
+            display_name = meta.get("display_name", institution_key)
+            active_name = meta.get("active_name", display_name)
+
+            item: dict[str, Any] = {
+                "institution_key": institution_key,
+                "display_name": display_name,
+                "active_name": active_name,
+                "enabled": bool(enabled_sources),
+                "enabled_sources": enabled_sources,
+                "status": "unavailable",
+                "elapsed_seconds": None,
+                "issued_at": None,
+                "expires_at": None,
+                "magnitude": None,
+                "place": None,
+            }
+
+            if not enabled_sources:
+                institutions.append(item)
+                continue
+
+            state = self.eew_query_state.get(institution_key)
+            if not isinstance(state, dict):
+                item["status"] = "no_data"
+                institutions.append(item)
+                continue
+
+            issued_at = self._parse_utc_datetime(state.get("issued_at"))
+            expires_at = self._parse_utc_datetime(state.get("expires_at"))
+            if issued_at is None:
+                item["status"] = "no_data"
+                institutions.append(item)
+                continue
+
+            if expires_at is None:
+                expires_at = issued_at + timedelta(
+                    seconds=self.EEW_VALID_DURATION_SECONDS
+                )
+
+            item["issued_at"] = issued_at.isoformat()
+            item["expires_at"] = expires_at.isoformat()
+            item["magnitude"] = state.get("display_magnitude")
+            item["place"] = state.get("display_place") or "未知地点"
+
+            elapsed = int((now_utc - issued_at).total_seconds())
+            item["elapsed_seconds"] = max(0, elapsed)
+            item["status"] = "active" if now_utc < expires_at else "inactive"
+            institutions.append(item)
+
+        return {
+            "timestamp": now_utc.isoformat(),
+            "valid_duration_seconds": self.EEW_VALID_DURATION_SECONDS,
+            "institutions": institutions,
+        }
+
+    def get_eew_query_text(self) -> str:
+        """生成 /地震预警查询 文本。"""
+        status_data = self.get_eew_query_status_data()
+        institutions = status_data.get("institutions", [])
+
+        active_lines: list[str] = []
+        inactive_items: list[tuple[int, str]] = []
+        no_data_lines: list[str] = []
+        unavailable_lines: list[str] = []
+
+        for item in institutions:
+            display_name = item.get("display_name", "未知机构")
+            active_name = item.get("active_name", display_name)
+            status = item.get("status")
+
+            if status == "unavailable":
+                unavailable_lines.append(
+                    f"- {display_name}：未启用对应数据源开关，无法计算无 EEW 时间"
+                )
+                continue
+
+            if status == "no_data":
+                no_data_lines.append(
+                    f"- {display_name}：已启用数据源，但暂无可计算历史数据"
+                )
+                continue
+
+            if status == "active":
+                magnitude = item.get("magnitude")
+                place = item.get("place") or "未知地点"
+                if magnitude is None:
+                    mag_text = "?"
+                else:
+                    try:
+                        mag_text = f"{float(magnitude):.1f}"
+                    except Exception:
+                        mag_text = str(magnitude)
+                active_lines.append(
+                    f"[{active_name}] 当前正在发布地震预警：M {mag_text} {place}"
+                )
+                continue
+
+            elapsed = int(item.get("elapsed_seconds") or 0)
+            inactive_items.append(
+                (elapsed, f"{self._format_elapsed_seconds(elapsed)} 无 {display_name}")
+            )
+
+        inactive_lines = [
+            line for _, line in sorted(inactive_items, key=lambda item: item[0])
+        ]
+
+        lines: list[str] = []
+        if active_lines:
+            lines.extend(active_lines)
+            if inactive_lines:
+                lines.append("")
+                lines.extend(inactive_lines)
+        else:
+            lines.append("当前没有正在生效的地震预警")
+            if inactive_lines:
+                lines.append("")
+                lines.extend(inactive_lines)
+
+        if no_data_lines:
+            lines.append("")
+            lines.append("以下机构暂无可计算的历史 EEW 数据：")
+            lines.extend(no_data_lines)
+
+        if unavailable_lines:
+            lines.append("")
+            lines.append("以下机构因数据源开关未启用，无法参与计算：")
+            lines.extend(unavailable_lines)
+
+        # 兜底：避免空文本
+        if not lines:
+            lines.append("当前没有正在生效的地震预警")
+
+        return "\n".join(lines)
+
+    def _load_eew_query_cache(self):
+        """从文件加载 EEW 查询状态缓存。"""
+        try:
+            if not os.path.exists(self.eew_query_cache_file):
+                logger.debug("[灾害预警] EEW 查询缓存文件不存在，将使用空状态")
+                return
+
+            with open(self.eew_query_cache_file, encoding="utf-8") as f:
+                data = json.load(f)
+
+            if not isinstance(data, dict):
+                logger.warning("[灾害预警] EEW 查询缓存格式无效，已忽略")
+                return
+
+            restored: dict[str, dict[str, Any]] = {}
+            for key, value in data.items():
+                if key not in self._EEW_QUERY_INSTITUTIONS:
+                    continue
+                if not isinstance(value, dict):
+                    continue
+                if not value.get("issued_at"):
+                    continue
+                restored[key] = value
+
+            self.eew_query_state = restored
+            if restored:
+                logger.debug("[灾害预警] 已恢复 EEW 查询缓存")
+
+        except Exception as e:
+            logger.warning(f"[灾害预警] 加载 EEW 查询缓存失败: {e}")
+
+    def _save_eew_query_cache(self):
+        """保存 EEW 查询状态缓存到文件。"""
+        temp_file = self.eew_query_cache_file + ".tmp"
+        try:
+            if not os.path.exists(self.storage_dir):
+                os.makedirs(self.storage_dir, exist_ok=True)
+
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(self.eew_query_state, f, ensure_ascii=False)
+
+            if os.path.exists(self.eew_query_cache_file):
+                os.replace(temp_file, self.eew_query_cache_file)
+            else:
+                os.rename(temp_file, self.eew_query_cache_file)
+
+            logger.debug("[灾害预警] EEW 查询缓存已保存")
+        except Exception as e:
+            logger.error(f"[灾害预警] 保存 EEW 查询缓存失败: {e}")
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
 
 
 # 服务实例

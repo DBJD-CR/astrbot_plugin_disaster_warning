@@ -63,6 +63,20 @@ class DatabaseManager:
                 await cursor.execute("ALTER TABLE events ADD COLUMN source_id TEXT")
             if "subtitle" not in columns:
                 await cursor.execute("ALTER TABLE events ADD COLUMN subtitle TEXT")
+            if "weather_detail" not in columns:
+                await cursor.execute(
+                    "ALTER TABLE events ADD COLUMN weather_detail TEXT"
+                )
+
+        await cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='event_updates'"
+        )
+        updates_exists = bool(await cursor.fetchone())
+        if updates_exists:
+            await cursor.execute("PRAGMA table_info(event_updates)")
+            updates_columns = {row[1] for row in await cursor.fetchall()}
+            if "level" not in updates_columns:
+                await cursor.execute("ALTER TABLE event_updates ADD COLUMN level TEXT")
 
         await self._create_tables(cursor)
 
@@ -79,6 +93,7 @@ class DatabaseManager:
                 source_id       TEXT,
                 description     TEXT,
                 subtitle        TEXT,
+                weather_detail  TEXT,
                 latitude        REAL,
                 longitude       REAL,
                 magnitude       REAL,
@@ -104,6 +119,7 @@ class DatabaseManager:
                 magnitude       REAL,
                 depth           REAL,
                 description     TEXT,
+                level           TEXT,
                 time            TEXT,
                 recorded_at     TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -136,11 +152,11 @@ class DatabaseManager:
                 """
                 INSERT INTO events (
                     real_event_id, unique_id, type, source, source_id,
-                    description, subtitle, latitude, longitude,
+                    description, subtitle, weather_detail, latitude, longitude,
                     magnitude, depth, report_num,
                     weather_type_code, level, time,
                     is_major, update_count
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     event_data.get("real_event_id"),
@@ -150,6 +166,7 @@ class DatabaseManager:
                     event_data.get("source_id"),
                     event_data.get("description"),
                     event_data.get("subtitle"),
+                    event_data.get("weather_detail"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
                     event_data.get("magnitude"),
@@ -167,8 +184,8 @@ class DatabaseManager:
             await cursor.execute(
                 """
                 INSERT INTO event_updates
-                    (event_id, source_event_id, report_num, magnitude, depth, description, time)
-                VALUES (?,?,?,?,?,?,?)
+                    (event_id, source_event_id, report_num, magnitude, depth, description, level, time)
+                VALUES (?,?,?,?,?,?,?,?)
                 """,
                 (
                     new_id,
@@ -177,6 +194,7 @@ class DatabaseManager:
                     event_data.get("magnitude"),
                     event_data.get("depth"),
                     event_data.get("description"),
+                    event_data.get("level"),
                     event_data.get("time"),
                 ),
             )
@@ -227,6 +245,7 @@ class DatabaseManager:
                     source_id         = ?,
                     description       = ?,
                     subtitle          = ?,
+                    weather_detail    = ?,
                     latitude          = ?,
                     longitude         = ?,
                     magnitude         = ?,
@@ -244,6 +263,7 @@ class DatabaseManager:
                     event_data.get("source_id"),
                     event_data.get("description"),
                     event_data.get("subtitle"),
+                    event_data.get("weather_detail"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
                     event_data.get("magnitude"),
@@ -261,8 +281,8 @@ class DatabaseManager:
             await cursor.execute(
                 """
                 INSERT INTO event_updates
-                    (event_id, source_event_id, report_num, magnitude, depth, description, time)
-                VALUES (?,?,?,?,?,?,?)
+                    (event_id, source_event_id, report_num, magnitude, depth, description, level, time)
+                VALUES (?,?,?,?,?,?,?,?)
                 """,
                 (
                     db_id,
@@ -271,6 +291,7 @@ class DatabaseManager:
                     event_data.get("magnitude"),
                     event_data.get("depth"),
                     event_data.get("description"),
+                    event_data.get("level"),
                     event_data.get("time"),
                 ),
             )
@@ -369,6 +390,54 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"[灾害预警] 查找事件失败: {e}")
             return None
+
+    async def find_weather_event_by_alarm_id(
+        self, alarm_id: str
+    ) -> dict[str, Any] | None:
+        """按气象预警 ID（unique_id/real_event_id）查找事件。"""
+        try:
+            cursor = await self.connection.cursor()
+            await cursor.execute(
+                """
+                SELECT *
+                FROM events
+                WHERE type='weather_alarm'
+                  AND (unique_id=? OR real_event_id=?)
+                ORDER BY updated_at DESC, time DESC, id DESC
+                LIMIT 1
+                """,
+                (alarm_id, alarm_id),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            events = await self._attach_history([dict(row)])
+            return events[0]
+        except Exception as e:
+            logger.error(f"[灾害预警] 按预警ID查找气象事件失败: {e}")
+            return None
+
+    async def get_recent_weather_events(
+        self, limit: int = 5000
+    ) -> list[dict[str, Any]]:
+        """获取最近气象预警事件（含 history），按更新时间倒序。"""
+        try:
+            cursor = await self.connection.cursor()
+            await cursor.execute(
+                """
+                SELECT *
+                FROM events
+                WHERE type='weather_alarm'
+                ORDER BY updated_at DESC, time DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            events = [dict(row) for row in await cursor.fetchall()]
+            return await self._attach_history(events)
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询最近气象事件失败: {e}")
+            return []
 
     async def get_major_events(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取重大事件（is_major=1），按同源同事件去重后返回最新记录"""

@@ -10,7 +10,7 @@ from typing import Any
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star
 
 from .core.app.disaster_service import get_disaster_service, stop_disaster_service
@@ -18,6 +18,7 @@ from .core.network.web_server import WebAdminServer
 from .core.support.config_validator import ConfigValidator
 from .core.support.simulation_service import build_earthquake_simulation
 from .core.support.telemetry_manager import TelemetryManager
+from .core.support.weather_query_service import query_weather_alarm_data
 from .utils.version import get_plugin_version
 
 
@@ -363,6 +364,8 @@ class DisasterWarningPlugin(Star):
 • /灾害预警状态 - 查看服务运行状态
 • /灾害预警重连 - 强制重连所有数据源 (仅管理员)
 • /地震列表查询 [数据源] [数量] [格式] - 查询最新地震列表
+• /地震预警查询 或 /地震预警 - 查询各机构 EEW 状态与无 EEW 计时
+• /气象预警查询 或 /气象预警 <省份/地名|全国> [预警类型] [预警颜色] 或 <预警ID>
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息 (仅管理员)
 • /灾害预警推送开关 - 开启或关闭当前会话的推送 (仅管理员)
@@ -500,8 +503,12 @@ class DisasterWarningPlugin(Star):
     @filter.command("灾害预警统计")
     async def disaster_stats(self, event: AstrMessageEvent):
         """查看灾害预警详细统计"""
+
+        def _quoted_plain_result(text: str):
+            return event.chain_result(self._with_quote_reply(event, [Comp.Plain(text)]))
+
         if not self.disaster_service:
-            yield event.plain_result("❌ 灾害预警服务未启动")
+            yield _quoted_plain_result("❌ 灾害预警服务未启动")
             return
 
         try:
@@ -525,10 +532,10 @@ class DisasterWarningPlugin(Star):
                         f"📊 总计拦截: {filter_stats.get('total_filtered', 0)}"
                     )
 
-            yield event.plain_result(stats_summary)
+            yield _quoted_plain_result(stats_summary)
         except Exception as e:
             logger.error(f"[灾害预警] 获取统计信息失败: {e}")
-            yield event.plain_result(f"❌ 获取统计信息失败: {str(e)}")
+            yield _quoted_plain_result(f"❌ 获取统计信息失败: {str(e)}")
 
     @filter.command("灾害预警日志")
     async def disaster_logs(self, event: AstrMessageEvent):
@@ -875,12 +882,298 @@ class DisasterWarningPlugin(Star):
         }
         return source_names.get(service, {}).get(source, source_key)
 
+    @staticmethod
+    def _with_quote_reply(
+        event: AstrMessageEvent,
+        chain: list[Any],
+    ) -> list[Any]:
+        """为消息链添加引用回复段（若可用）。"""
+        message_obj = getattr(event, "message_obj", None)
+        message_id = getattr(message_obj, "message_id", None) if message_obj else None
+        if not message_id:
+            return chain
+        return [Comp.Reply(id=str(message_id)), *chain]
+
+    @filter.command("气象预警查询")
+    async def query_weather_alarm(
+        self,
+        event: AstrMessageEvent,
+        keyword: str = None,
+        optional_a: str = None,
+        optional_b: str = None,
+    ):
+        """气象预警查询
+
+        语法：
+        /气象预警查询 <省份/地名> <预警类型> <预警颜色>
+        /气象预警查询 <预警ID>
+        """
+        async for result in self._query_weather_alarm_impl(
+            event, keyword=keyword, optional_a=optional_a, optional_b=optional_b
+        ):
+            yield result
+
+    @filter.command("气象预警")
+    async def query_weather_alarm_alias(
+        self,
+        event: AstrMessageEvent,
+        keyword: str = None,
+        optional_a: str = None,
+        optional_b: str = None,
+    ):
+        """气象预警查询别名：/气象预警"""
+        async for result in self._query_weather_alarm_impl(
+            event, keyword=keyword, optional_a=optional_a, optional_b=optional_b
+        ):
+            yield result
+
+    async def _query_weather_alarm_impl(
+        self,
+        event: AstrMessageEvent,
+        keyword: str = None,
+        optional_a: str = None,
+        optional_b: str = None,
+    ):
+        """气象预警查询实现"""
+
+        def _quoted_plain_result(text: str):
+            return event.chain_result(self._with_quote_reply(event, [Comp.Plain(text)]))
+
+        def _build_forward_nodes(
+            blocks: list[str],
+            total_blocks: int,
+            batch_index: int,
+            batch_total: int,
+            include_header: bool = True,
+        ) -> Comp.Nodes | None:
+            if not blocks:
+                return None
+
+            bot_id = event.get_self_id() or "0"
+            bot_name = "灾害预警"
+
+            nodes = Comp.Nodes([])
+            if include_header:
+                header = (
+                    f"📋 全国气象预警列表（共 {total_blocks} 段）"
+                    f"\n📦 分段发送：{batch_index + 1}/{batch_total}"
+                )
+                nodes.nodes.append(
+                    Comp.Node(uin=bot_id, name=bot_name, content=[Comp.Plain(header)])
+                )
+
+            for block in blocks:
+                nodes.nodes.append(
+                    Comp.Node(
+                        uin=bot_id,
+                        name=bot_name,
+                        content=[Comp.Plain(block)],
+                    )
+                )
+
+            return nodes
+
+        async def _send_forward_batches(blocks: list[str]) -> bool:
+            if not blocks:
+                return False
+
+            max_nodes_per_forward = 8
+            total_blocks = len(blocks)
+            batches = [
+                blocks[i : i + max_nodes_per_forward]
+                for i in range(0, total_blocks, max_nodes_per_forward)
+            ]
+
+            for idx, batch in enumerate(batches):
+                nodes = _build_forward_nodes(
+                    batch,
+                    total_blocks=total_blocks,
+                    batch_index=idx,
+                    batch_total=len(batches),
+                    include_header=idx == 0,
+                )
+                if not nodes:
+                    continue
+                chain = MessageChain([nodes])
+                await self.context.send_message(event.unified_msg_origin, chain)
+
+            return True
+
+        async def _send_text_blocks(blocks: list[str], total_count: int) -> None:
+            if not blocks:
+                return
+
+            for idx, block in enumerate(blocks):
+                prefix = f"📋 气象预警列表（共 {total_count} 条）\n" if idx == 0 else ""
+                if idx == 0:
+                    chain = MessageChain(
+                        self._with_quote_reply(event, [Comp.Plain(prefix + block)])
+                    )
+                else:
+                    chain = MessageChain([Comp.Plain(block)])
+                await self.context.send_message(event.unified_msg_origin, chain)
+
+        if not self.disaster_service:
+            yield _quoted_plain_result("❌ 灾害预警服务未启动")
+            return
+
+        if not keyword:
+            yield _quoted_plain_result(
+                "❌ 参数不足。\n"
+                "用法：\n"
+                "• /气象预警查询 <省份/地名> [<预警类型>] [<预警颜色>]\n"
+                "• /气象预警查询 全国 [<预警类型>] [<预警颜色>]\n"
+                "• /气象预警查询 <预警ID>"
+            )
+            return
+
+        try:
+            db = self.disaster_service.statistics_manager.db
+            result = await query_weather_alarm_data(db, keyword, optional_a, optional_b)
+
+            if not result.get("success"):
+                error_text = str(result.get("error") or "查询失败")
+                if "官方渠道" not in error_text:
+                    error_text = f"{error_text} 可尝试通过其他官方渠道进行查询"
+                filters = result.get("filters")
+                if isinstance(filters, dict) and result.get("query_mode") == "search":
+                    desc = [f"地区={filters.get('location')}"]
+                    if filters.get("type"):
+                        desc.append(f"预警类型={filters.get('type')}")
+                    if filters.get("color"):
+                        desc.append(f"预警颜色={filters.get('color')}")
+                    if desc:
+                        error_text = f"❌ {error_text}\n检索条件：{'，'.join(desc)}"
+                    else:
+                        error_text = f"❌ {error_text}"
+                else:
+                    error_text = f"❌ {error_text}"
+
+                if result.get("usage"):
+                    usage_lines = "\n".join(f"• {line}" for line in result["usage"])
+                    error_text = f"{error_text}\n用法：\n{usage_lines}"
+
+                yield _quoted_plain_result(error_text)
+                return
+
+            if result.get("query_mode") == "id":
+                detail = result.get("data") or {}
+                title_text = str(detail.get("title_text") or "").strip()
+                headline_text = str(detail.get("headline_text") or "").strip()
+                body_text = str(detail.get("body_text") or "").strip()
+                color_emoji = str(detail.get("color_emoji") or "")
+
+                if title_text:
+                    title_line = f"📋{title_text}{color_emoji}"
+                elif headline_text:
+                    title_line = f"📋{headline_text}{color_emoji}"
+                else:
+                    title_line = "📋气象预警详情"
+
+                lines = [title_line]
+                if body_text:
+                    lines.append(f"📝{body_text}")
+                else:
+                    lines.append("📝暂无详细描述")
+
+                guideline_text = str(detail.get("guideline_text") or "").strip()
+                if guideline_text:
+                    lines.append(guideline_text)
+
+                detail_text = "\n".join(lines)
+                icon_url = detail.get("icon_url")
+                if icon_url:
+                    try:
+                        yield event.chain_result(
+                            self._with_quote_reply(
+                                event,
+                                [
+                                    Comp.Plain(detail_text),
+                                    Comp.Image.fromURL(str(icon_url)),
+                                ],
+                            )
+                        )
+                    except Exception as icon_error:
+                        logger.warning(
+                            f"[灾害预警] 发送气象预警图标失败，已回退文本: {icon_error}"
+                        )
+                        yield _quoted_plain_result(detail_text)
+                else:
+                    yield _quoted_plain_result(detail_text)
+                return
+
+            items = result.get("items") or []
+            text_blocks = result.get("text_blocks") or []
+            is_nationwide = bool(result.get("is_nationwide"))
+            total = result.get("total", len(items))
+
+            if is_nationwide and text_blocks:
+                try:
+                    ok = await _send_forward_batches(text_blocks)
+                    if ok:
+                        return
+                except Exception as forward_error:
+                    logger.warning(
+                        f"[灾害预警] 合并转发送失败，回退文本: {forward_error}"
+                    )
+                    try:
+                        await _send_text_blocks(text_blocks, total)
+                        return
+                    except Exception as text_error:
+                        logger.warning(f"[灾害预警] 文本回退发送失败: {text_error}")
+
+            lines = [f"📋 气象预警列表（共 {total} 条）"]
+            for idx, item in enumerate(items):
+                lines.append(f"发布时间：{item.get('issue_time') or '未知时间'}")
+                lines.append(f"ID：{item.get('alarm_id') or '未知ID'}")
+                lines.append(f"发布机构：{item.get('publish_org') or '未知发布机构'}")
+                lines.append(
+                    f"预警类型：{item.get('weather_type_line') or '未知类型预警'}"
+                )
+                if idx != len(items) - 1:
+                    lines.append("")
+
+            yield _quoted_plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询气象预警失败: {e}")
+            yield _quoted_plain_result(f"❌ 查询失败: {e}")
+
+    @filter.command("地震预警查询")
+    async def query_earthquake_warning(self, event: AstrMessageEvent):
+        """查询各机构地震预警（EEW）状态"""
+        async for result in self._query_earthquake_warning_impl(event):
+            yield result
+
+    @filter.command("地震预警")
+    async def query_earthquake_warning_alias(self, event: AstrMessageEvent):
+        """地震预警查询别名：/地震预警"""
+        async for result in self._query_earthquake_warning_impl(event):
+            yield result
+
+    async def _query_earthquake_warning_impl(self, event: AstrMessageEvent):
+        """地震预警查询实现"""
+
+        def _quoted_plain_result(text: str):
+            return event.chain_result(self._with_quote_reply(event, [Comp.Plain(text)]))
+
+        if not self.disaster_service:
+            yield _quoted_plain_result("❌ 灾害预警服务未启动")
+            return
+
+        try:
+            text = self.disaster_service.get_eew_query_text()
+            yield _quoted_plain_result(text)
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询地震预警状态失败: {e}")
+            yield _quoted_plain_result(f"❌ 查询失败: {e}")
+
     @filter.command("地震列表查询")
     async def query_earthquake_list(
         self,
         event: AstrMessageEvent,
         source: str = "cenc",
-        count: int = 5,
+        count: int = 9,
         mode: str = "card",
     ):
         """查询最新的地震列表
@@ -888,16 +1181,20 @@ class DisasterWarningPlugin(Star):
         Args:
             event: 消息事件对象
             source: 数据源 (cenc/jma)，默认为 cenc
-            count: 返回的事件数量，默认为 5
+            count: 返回的事件数量，默认为 9
             mode: 显示模式 (card/text)，默认为 card
         """
+
+        def _quoted_plain_result(text: str):
+            return event.chain_result(self._with_quote_reply(event, [Comp.Plain(text)]))
+
         if not self.disaster_service:
-            yield event.plain_result("❌ 灾害预警服务未启动")
+            yield _quoted_plain_result("❌ 灾害预警服务未启动")
             return
 
         source = source.lower()
         if source not in ["cenc", "jma"]:
-            yield event.plain_result("❌ 无效的数据源，仅支持 cenc 或 jma")
+            yield _quoted_plain_result("❌ 无效的数据源，仅支持 cenc 或 jma")
             return
 
         try:
@@ -905,11 +1202,11 @@ class DisasterWarningPlugin(Star):
             show_card = mode.lower() != "text"
 
             # 限制数量
-            # 文本模式最大 50，卡片模式最大 10
-            max_count = 10 if show_card else 50
+            # 文本模式最大 50，卡片模式最大 50
+            max_count = 50 if show_card else 50
             if count > max_count:
                 count = max_count
-                yield event.plain_result(
+                yield _quoted_plain_result(
                     f"⚠️ 提示：{'卡片' if show_card else '文本'}模式最多支持显示 {max_count} 条记录"
                 )
             elif count < 1:
@@ -923,7 +1220,7 @@ class DisasterWarningPlugin(Star):
             )
 
             if not formatted_list:
-                yield event.plain_result(
+                yield _quoted_plain_result(
                     f"❌ 未找到 {source.upper()} 的地震列表数据，可能是因为服务刚启动，尚未获取到数据。"
                 )
                 return
@@ -941,10 +1238,14 @@ class DisasterWarningPlugin(Star):
                 )
 
                 if img_path:
-                    yield event.chain_result([Comp.Image.fromFileSystem(img_path)])
+                    yield event.chain_result(
+                        self._with_quote_reply(
+                            event, [Comp.Image.fromFileSystem(img_path)]
+                        )
+                    )
                 else:
                     # 如果卡片渲染失败，回退到文本模式
-                    yield event.plain_result(
+                    yield _quoted_plain_result(
                         "⚠️ 卡片渲染失败，转为文本显示\n"
                         + DisasterWarningPlugin._format_list_text(
                             formatted_list[:count], source
@@ -953,13 +1254,13 @@ class DisasterWarningPlugin(Star):
             else:
                 # 文本模式
                 display_list = formatted_list[:count]
-                yield event.plain_result(
+                yield _quoted_plain_result(
                     DisasterWarningPlugin._format_list_text(display_list, source)
                 )
 
         except Exception as e:
             logger.error(f"[灾害预警] 查询地震列表失败: {e}")
-            yield event.plain_result(f"❌ 查询失败: {e}")
+            yield _quoted_plain_result(f"❌ 查询失败: {e}")
 
     @staticmethod
     def _format_list_text(data_list: list[dict], source: str) -> str:
@@ -1017,18 +1318,13 @@ class DisasterWarningPlugin(Star):
     ):
         """模拟地震事件测试预警响应
         格式：/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]
-
-        常用数据源ID：
-        • cea_fanstudio (中国地震预警网 - 默认)
-        • cenc_fanstudio (中国地震台网 - 正式)
-        • jma_p2p (日本气象厅P2P - 预警)
-        • jma_p2p_info (日本气象厅P2P - 情报)
-        • cwa_fanstudio (台湾中央气象署)
-        • usgs_fanstudio (USGS)
-        • global_quake (Global Quake)
         """
+
+        def _quoted_plain_result(text: str):
+            return event.chain_result(self._with_quote_reply(event, [Comp.Plain(text)]))
+
         if not self.disaster_service or not self.disaster_service.message_manager:
-            yield event.plain_result("❌ 服务未启动")
+            yield _quoted_plain_result("❌ 服务未启动")
             return
 
         try:
@@ -1043,7 +1339,7 @@ class DisasterWarningPlugin(Star):
             )
 
             # 发送报告
-            yield event.plain_result("\n".join(simulation_result.report_lines))
+            yield _quoted_plain_result("\n".join(simulation_result.report_lines))
 
             # 稍作等待，确保第一条消息发出
             await asyncio.sleep(1)
@@ -1060,14 +1356,15 @@ class DisasterWarningPlugin(Star):
                     )
 
                     # 直接使用context发送消息，绕过command generator
+                    msg_chain.chain = self._with_quote_reply(event, msg_chain.chain)
                     await self.context.send_message(event.unified_msg_origin, msg_chain)
                 except Exception as build_e:
                     logger.error(
                         f"[灾害预警] 消息构建失败: {build_e}\n{traceback.format_exc()}"
                     )
-                    yield event.plain_result(f"❌ 消息构建失败: {build_e}")
+                    yield _quoted_plain_result(f"❌ 消息构建失败: {build_e}")
             else:
-                yield event.plain_result("\n⛔ 结论: 该事件不会触发预警推送。")
+                yield _quoted_plain_result("\n⛔ 结论: 该事件不会触发预警推送。")
 
         except Exception as e:
             error_trace = traceback.format_exc()
@@ -1075,7 +1372,7 @@ class DisasterWarningPlugin(Star):
             # 上报模拟测试错误到遥测
             if self.telemetry and self.telemetry.enabled:
                 await self.telemetry.track_error(e, module="main.simulate_earthquake")
-            yield event.plain_result(f"❌ 模拟失败: {e}")
+            yield _quoted_plain_result(f"❌ 模拟失败: {e}")
 
     @filter.on_astrbot_loaded()
     async def on_astrbot_loaded(self):

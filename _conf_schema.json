@@ -265,6 +265,29 @@
             }
           }
         }
+      },
+      "cwa_eew_fusion": {
+        "description": "CWA 地震预警融合策略",
+        "type": "object",
+        "hint": "Fan (主) + Wolfx (副) 融合模式。优先使用 Fan 的数据，并尝试等待 Wolfx 的补充字段（如影响区域）。",
+        "items": {
+          "enabled": {
+            "description": "启用融合策略",
+            "type": "bool",
+            "default": true
+          },
+          "timeout": {
+            "description": "等待超时时间",
+            "type": "int",
+            "hint": "单位：秒。等待 Wolfx 数据补充的最大时间。",
+            "default": 6,
+            "slider": {
+              "min": 1,
+              "max": 60,
+              "step": 1
+            }
+          }
+        }
       }
     }
   },

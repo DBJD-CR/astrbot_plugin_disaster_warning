@@ -192,8 +192,21 @@ class MessagePushManager:
             asyncio.create_task(self.browser_manager.initialize())
 
         # CENC 融合策略 Pending 列表
-        # key: event_id (Fan), value: {'event': event, 'task': asyncio.Task}
+        # key: pending_key, value: {'event': event, 'future': asyncio.Future, 'event_key': str, 'report_num': int, 'created_at': float}
         self.cenc_pending = {}
+        # CENC Wolfx 缓存
+        # key: event_key, value: {report_num: {'intensity': float, 'created_at': float}}
+        self.cenc_wolfx_cache = {}
+
+        # CWA EEW 融合策略 Pending 列表
+        # key: pending_key, value: {'event': event, 'future': asyncio.Future, 'event_key': str, 'report_num': int, 'created_at': float}
+        self.cwa_eew_pending = {}
+        # CWA Wolfx 缓存
+        # key: event_key, value: {report_num: {'impact_area': str, 'created_at': float}}
+        self.cwa_eew_wolfx_cache = {}
+
+        # 融合缓存生命周期（秒）
+        self._fusion_cache_ttl_seconds = 120
 
         # 会话级报数控制器缓存
         self._session_report_controllers: dict[
@@ -612,22 +625,43 @@ class MessagePushManager:
         """推送事件入口"""
         source_id = self._get_source_id(event)
 
-        # 检查是否启用了 CENC 融合策略
-        fusion_config = self.config.get("strategies", {}).get("cenc_fusion", {})
-        fusion_enabled = fusion_config.get("enabled", False)
+        strategies_cfg = self.config.get("strategies", {})
+
+        # CENC 融合策略配置
+        cenc_fusion_config = strategies_cfg.get("cenc_fusion", {})
+        cenc_fusion_enabled = cenc_fusion_config.get("enabled", False)
+
+        # CWA EEW 融合策略配置
+        cwa_eew_fusion_config = strategies_cfg.get("cwa_eew_fusion", {})
+        cwa_eew_fusion_enabled = cwa_eew_fusion_config.get("enabled", False)
 
         # 策略分支 1: Fan CENC 消息 -> 拦截并等待
-        if fusion_enabled and source_id == "cenc_fanstudio":
+        if cenc_fusion_enabled and source_id == "cenc_fanstudio":
             return await self._handle_cenc_fan_interception(
                 event,
-                fusion_config.get("timeout", 10),
+                cenc_fusion_config.get("timeout", 10),
                 target_sessions=target_sessions,
                 session_config_getter=session_config_getter,
             )
 
         # 策略分支 2: Wolfx CENC 消息 -> 尝试融合
-        if fusion_enabled and source_id == "cenc_wolfx":
+        if cenc_fusion_enabled and source_id == "cenc_wolfx":
             self._handle_cenc_wolfx_fusion(event)
+            # 无论是否融合成功，Wolfx 消息本身不再推送（因为它只作为补充数据或被视为重复）
+            return False
+
+        # 策略分支 3: Fan CWA EEW 消息 -> 拦截并等待
+        if cwa_eew_fusion_enabled and source_id == "cwa_fanstudio":
+            return await self._handle_cwa_fan_interception(
+                event,
+                cwa_eew_fusion_config.get("timeout", 6),
+                target_sessions=target_sessions,
+                session_config_getter=session_config_getter,
+            )
+
+        # 策略分支 4: Wolfx CWA EEW 消息 -> 尝试融合
+        if cwa_eew_fusion_enabled and source_id == "cwa_wolfx":
+            self._handle_cwa_wolfx_fusion(event)
             # 无论是否融合成功，Wolfx 消息本身不再推送（因为它只作为补充数据或被视为重复）
             return False
 
@@ -638,6 +672,98 @@ class MessagePushManager:
             session_config_getter=session_config_getter,
         )
 
+    @staticmethod
+    def _get_fusion_event_key(data: EarthquakeData) -> str:
+        """融合事件键：优先 event_id，回退 id。"""
+        return str(getattr(data, "event_id", "") or getattr(data, "id", "")).strip()
+
+    @staticmethod
+    def _get_fusion_report_num(data: EarthquakeData) -> int:
+        """融合报次：非正整数时回退为 1。"""
+        raw = getattr(data, "updates", 1)
+        try:
+            report_num = int(raw)
+        except (TypeError, ValueError):
+            return 1
+        return report_num if report_num > 0 else 1
+
+    @staticmethod
+    def _select_cached_report_payload(
+        reports: dict[int, dict[str, Any]], target_report: int
+    ) -> dict[str, Any] | None:
+        """按报次精确匹配缓存（仅同报次融合）。"""
+        if not reports:
+            return None
+
+        return reports.get(target_report)
+
+    def _find_best_pending_key(
+        self, pending_dict: dict[str, dict[str, Any]], event_key: str, report_num: int
+    ) -> str | None:
+        """在同 event_key 的 pending 中按报次精确匹配。"""
+        exact = [
+            (k, v)
+            for k, v in pending_dict.items()
+            if isinstance(v, dict)
+            and v.get("event_key") == event_key
+            and int(v.get("report_num", 1) or 1) == report_num
+        ]
+        if not exact:
+            return None
+
+        exact.sort(key=lambda item: float(item[1].get("created_at", 0.0)))
+        return exact[0][0]
+
+    def _prune_fusion_states(self) -> None:
+        """清理融合 pending 与缓存中过期条目。"""
+        now_ts = time.time()
+        ttl = self._fusion_cache_ttl_seconds
+
+        # 1) 清理 pending（过期视为超时）
+        for pending_dict in [self.cenc_pending, self.cwa_eew_pending]:
+            expired_keys = []
+            for pending_key, item in pending_dict.items():
+                if not isinstance(item, dict):
+                    expired_keys.append(pending_key)
+                    continue
+                created_at = float(item.get("created_at", 0.0) or 0.0)
+                if created_at > 0 and (now_ts - created_at) > ttl:
+                    future = item.get("future")
+                    if (
+                        future is not None
+                        and hasattr(future, "done")
+                        and not future.done()
+                    ):
+                        future.set_result("timeout")
+                    expired_keys.append(pending_key)
+            for pending_key in expired_keys:
+                pending_dict.pop(pending_key, None)
+
+        # 2) 清理 Wolfx 缓存
+        for cache_dict in [self.cenc_wolfx_cache, self.cwa_eew_wolfx_cache]:
+            expired_event_keys = []
+            for event_key, reports in cache_dict.items():
+                if not isinstance(reports, dict):
+                    expired_event_keys.append(event_key)
+                    continue
+
+                expired_reports = []
+                for report_num, payload in reports.items():
+                    created_at = 0.0
+                    if isinstance(payload, dict):
+                        created_at = float(payload.get("created_at", 0.0) or 0.0)
+                    if created_at > 0 and (now_ts - created_at) > ttl:
+                        expired_reports.append(report_num)
+
+                for report_num in expired_reports:
+                    reports.pop(report_num, None)
+
+                if not reports:
+                    expired_event_keys.append(event_key)
+
+            for event_key in expired_event_keys:
+                cache_dict.pop(event_key, None)
+
     async def _handle_cenc_fan_interception(
         self,
         event: DisasterEvent,
@@ -645,17 +771,52 @@ class MessagePushManager:
         target_sessions: list[str] | None = None,
         session_config_getter=None,
     ) -> bool:
-        """处理 Fan CENC 消息拦截"""
+        """处理 Fan CENC 消息拦截（支持 Wolfx 先到缓存）。"""
+        if not isinstance(event.data, EarthquakeData):
+            return await self._execute_push(
+                event,
+                target_sessions=target_sessions,
+                session_config_getter=session_config_getter,
+            )
+
+        self._prune_fusion_states()
+
+        event_key = self._get_fusion_event_key(event.data)
+        report_num = self._get_fusion_report_num(event.data)
+
+        # 先尝试命中已缓存 Wolfx 数据（处理 Wolfx 先到场景）
+        cached_payload = self._select_cached_report_payload(
+            self.cenc_wolfx_cache.get(event_key, {}), report_num
+        )
+        if (
+            isinstance(cached_payload, dict)
+            and cached_payload.get("intensity") is not None
+        ):
+            event.data.intensity = cached_payload["intensity"]
+            logger.info(
+                f"[灾害预警] 融合策略: Fan CENC 事件 {event.id} 命中 Wolfx 缓存并补充烈度: {event.data.intensity}"
+            )
+            return await self._execute_push(
+                event,
+                target_sessions=target_sessions,
+                session_config_getter=session_config_getter,
+            )
+
         logger.info(
-            f"[灾害预警] 融合策略: 拦截 Fan CENC 事件 {event.id}，等待 Wolfx 补充 ({timeout}s)..."
+            f"[灾害预警] 融合策略: 拦截 Fan CENC 事件 {event.id} (event_key={event_key}, report={report_num})，等待 Wolfx 补充 ({timeout}s)..."
         )
 
-        # 创建 Future 以便在融合成功时手动 set_result
         loop = asyncio.get_running_loop()
         future = loop.create_future()
+        pending_key = f"{event_key}#{report_num}#{event.id}#{int(time.time() * 1000)}"
 
-        # 存储到 pending
-        self.cenc_pending[event.id] = {"event": event, "future": future}
+        self.cenc_pending[pending_key] = {
+            "event": event,
+            "future": future,
+            "event_key": event_key,
+            "report_num": report_num,
+            "created_at": time.time(),
+        }
 
         async def wait_timeout():
             try:
@@ -666,27 +827,21 @@ class MessagePushManager:
                 if not future.done():
                     future.set_exception(e)
 
-        # 启动超时计时器
         asyncio.create_task(wait_timeout())
 
         try:
-            # 等待结果（超时或被融合唤醒）
             result = await future
-
-            # 从 pending 移除（如果是超时的情况）
-            if event.id in self.cenc_pending:
-                del self.cenc_pending[event.id]
+            self.cenc_pending.pop(pending_key, None)
 
             if result == "timeout":
-                logger.info("[灾害预警] 融合策略: 等待超时，推送原始 Fan 事件")
+                logger.info("[灾害预警] 融合策略: CENC 等待超时，推送原始 Fan 事件")
                 return await self._execute_push(
                     event,
                     target_sessions=target_sessions,
                     session_config_getter=session_config_getter,
                 )
-            elif result == "fused":
-                logger.info("[灾害预警] 融合策略: 融合完成，推送补充后的 Fan 事件")
-                # event 已经在 _handle_cenc_wolfx_fusion 中被修改了
+            if result == "fused":
+                logger.info("[灾害预警] 融合策略: CENC 融合完成，推送补充后的 Fan 事件")
                 return await self._execute_push(
                     event,
                     target_sessions=target_sessions,
@@ -694,8 +849,7 @@ class MessagePushManager:
                 )
 
         except Exception as e:
-            logger.error(f"[灾害预警] 融合策略处理异常: {e}")
-            # 出错时保底推送
+            logger.error(f"[灾害预警] CENC 融合策略处理异常: {e}")
             return await self._execute_push(
                 event,
                 target_sessions=target_sessions,
@@ -705,37 +859,264 @@ class MessagePushManager:
         return False
 
     def _handle_cenc_wolfx_fusion(self, wolfx_event: DisasterEvent):
-        """处理 Wolfx CENC 消息融合"""
-        if not self.cenc_pending:
+        """处理 Wolfx CENC 消息融合（缓存优先 + 精确匹配）。"""
+        if not isinstance(wolfx_event.data, EarthquakeData):
             return
 
-        if (
-            not isinstance(wolfx_event.data, EarthquakeData)
-            or wolfx_event.data.intensity is None
-        ):
+        intensity = getattr(wolfx_event.data, "intensity", None)
+        if intensity is None:
             return
 
-        # 简单策略：取第一个 pending 的 Fan 事件进行融合
+        self._prune_fusion_states()
+
+        event_key = self._get_fusion_event_key(wolfx_event.data)
+        report_num = self._get_fusion_report_num(wolfx_event.data)
+        if not event_key:
+            return
+
+        event_cache = self.cenc_wolfx_cache.setdefault(event_key, {})
+        event_cache[report_num] = {"intensity": intensity, "created_at": time.time()}
+
+        pending_key = self._find_best_pending_key(
+            self.cenc_pending, event_key, report_num
+        )
+        if not pending_key:
+            return
+
         try:
-            target_id, item = next(iter(self.cenc_pending.items()))
-            fan_event = item["event"]
-            future = item["future"]
+            item = self.cenc_pending.get(pending_key)
+            if not isinstance(item, dict):
+                return
 
-            # 补充数据
-            fan_event.data.intensity = wolfx_event.data.intensity
+            fan_event = item.get("event")
+            future = item.get("future")
+            if not isinstance(fan_event, DisasterEvent) or not isinstance(
+                fan_event.data, EarthquakeData
+            ):
+                return
+
+            fan_event.data.intensity = intensity
             logger.info(
-                f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan 事件 {target_id} 的烈度: {wolfx_event.data.intensity}"
+                f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan CENC 事件 {pending_key} 的烈度: {intensity}"
             )
 
-            # 标记 Future 完成，唤醒 _handle_cenc_fan_interception
-            if not future.done():
+            if future is not None and hasattr(future, "done") and not future.done():
                 future.set_result("fused")
 
-            # 从 pending 移除
-            del self.cenc_pending[target_id]
+            self.cenc_pending.pop(pending_key, None)
 
         except Exception as e:
-            logger.error(f"[灾害预警] 融合操作失败: {e}")
+            logger.error(f"[灾害预警] CENC 融合操作失败: {e}")
+
+    async def _handle_cwa_fan_interception(
+        self,
+        event: DisasterEvent,
+        timeout: int,
+        target_sessions: list[str] | None = None,
+        session_config_getter=None,
+    ) -> bool:
+        """处理 Fan CWA EEW 消息拦截（支持 Wolfx 先到缓存与报次错位补充）。"""
+        if not isinstance(event.data, EarthquakeData):
+            return await self._execute_push(
+                event,
+                target_sessions=target_sessions,
+                session_config_getter=session_config_getter,
+            )
+
+        self._prune_fusion_states()
+
+        event_key = self._get_fusion_event_key(event.data)
+        report_num = self._get_fusion_report_num(event.data)
+
+        # 先尝试命中已缓存 Wolfx 数据（处理 Wolfx 先到场景）
+        cached_payload = self._select_cached_report_payload(
+            self.cwa_eew_wolfx_cache.get(event_key, {}), report_num
+        )
+        if isinstance(cached_payload, dict) and cached_payload.get("impact_area"):
+            impact_area = str(cached_payload["impact_area"]).strip()
+            if impact_area:
+                if not isinstance(event.data.raw_data, dict):
+                    event.data.raw_data = {}
+                event.data.raw_data["wolfx_impact_area"] = impact_area
+                if not getattr(event.data, "province", None):
+                    event.data.province = impact_area
+                logger.info(
+                    f"[灾害预警] 融合策略: Fan CWA EEW 事件 {event.id} 命中 Wolfx 缓存并补充影响区域: {impact_area}"
+                )
+                return await self._execute_push(
+                    event,
+                    target_sessions=target_sessions,
+                    session_config_getter=session_config_getter,
+                )
+
+        logger.info(
+            f"[灾害预警] 融合策略: 拦截 Fan CWA EEW 事件 {event.id} (event_key={event_key}, report={report_num})，等待 Wolfx 补充 ({timeout}s)..."
+        )
+
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        pending_key = f"{event_key}#{report_num}#{event.id}#{int(time.time() * 1000)}"
+
+        self.cwa_eew_pending[pending_key] = {
+            "event": event,
+            "future": future,
+            "event_key": event_key,
+            "report_num": report_num,
+            "created_at": time.time(),
+        }
+
+        async def wait_timeout():
+            try:
+                await asyncio.sleep(timeout)
+                if not future.done():
+                    future.set_result("timeout")
+            except Exception as e:
+                if not future.done():
+                    future.set_exception(e)
+
+        asyncio.create_task(wait_timeout())
+
+        try:
+            result = await future
+            self.cwa_eew_pending.pop(pending_key, None)
+
+            if result == "timeout":
+                logger.info("[灾害预警] 融合策略: CWA EEW 等待超时，推送原始 Fan 事件")
+                return await self._execute_push(
+                    event,
+                    target_sessions=target_sessions,
+                    session_config_getter=session_config_getter,
+                )
+            if result == "fused":
+                logger.info(
+                    "[灾害预警] 融合策略: CWA EEW 融合完成，推送补充后的 Fan 事件"
+                )
+                return await self._execute_push(
+                    event,
+                    target_sessions=target_sessions,
+                    session_config_getter=session_config_getter,
+                )
+
+        except Exception as e:
+            logger.error(f"[灾害预警] CWA EEW 融合策略处理异常: {e}")
+            return await self._execute_push(
+                event,
+                target_sessions=target_sessions,
+                session_config_getter=session_config_getter,
+            )
+
+        return False
+
+    def _extract_cwa_wolfx_impact_area(
+        self, wolfx_earthquake: EarthquakeData
+    ) -> str | None:
+        """提取 Wolfx CWA EEW 影响区域字段。"""
+        raw_data = getattr(wolfx_earthquake, "raw_data", {})
+        if not isinstance(raw_data, dict):
+            raw_data = {}
+
+        def _normalize_area(value: Any) -> str:
+            if isinstance(value, list):
+                parts = [str(x).strip() for x in value if str(x).strip()]
+                return "、".join(parts)
+            if isinstance(value, str):
+                return value.strip()
+            return ""
+
+        if getattr(wolfx_earthquake, "province", None):
+            province_text = str(wolfx_earthquake.province).strip()
+            if province_text:
+                return province_text
+
+        candidates: list[Any] = [
+            raw_data.get("locationDesc"),
+            raw_data.get("impactArea"),
+            raw_data.get("ImpactArea"),
+            raw_data.get("affectedArea"),
+            raw_data.get("AffectedArea"),
+            raw_data.get("area"),
+            raw_data.get("Area"),
+        ]
+
+        warn_area = raw_data.get("WarnArea")
+        if isinstance(warn_area, dict):
+            candidates.extend(
+                [
+                    warn_area.get("Chiiki"),
+                    warn_area.get("Area"),
+                    warn_area.get("AreaName"),
+                    warn_area.get("Name"),
+                    warn_area.get("County"),
+                ]
+            )
+        else:
+            candidates.append(warn_area)
+
+        for candidate in candidates:
+            normalized = _normalize_area(candidate)
+            if normalized:
+                return normalized
+
+        return None
+
+    def _handle_cwa_wolfx_fusion(self, wolfx_event: DisasterEvent):
+        """处理 Wolfx CWA EEW 消息融合（缓存优先 + 精确匹配）。"""
+        if not isinstance(wolfx_event.data, EarthquakeData):
+            return
+
+        impact_area = self._extract_cwa_wolfx_impact_area(wolfx_event.data)
+        if not impact_area:
+            return
+
+        self._prune_fusion_states()
+
+        event_key = self._get_fusion_event_key(wolfx_event.data)
+        report_num = self._get_fusion_report_num(wolfx_event.data)
+        if not event_key:
+            return
+
+        event_cache = self.cwa_eew_wolfx_cache.setdefault(event_key, {})
+        event_cache[report_num] = {
+            "impact_area": impact_area,
+            "created_at": time.time(),
+        }
+
+        pending_key = self._find_best_pending_key(
+            self.cwa_eew_pending, event_key, report_num
+        )
+        if not pending_key:
+            return
+
+        try:
+            item = self.cwa_eew_pending.get(pending_key)
+            if not isinstance(item, dict):
+                return
+
+            fan_event = item.get("event")
+            future = item.get("future")
+            if not isinstance(fan_event, DisasterEvent) or not isinstance(
+                fan_event.data, EarthquakeData
+            ):
+                return
+
+            if not isinstance(fan_event.data.raw_data, dict):
+                fan_event.data.raw_data = {}
+
+            fan_event.data.raw_data["wolfx_impact_area"] = impact_area
+            if not getattr(fan_event.data, "province", None):
+                fan_event.data.province = impact_area
+
+            logger.info(
+                f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan CWA EEW 事件 {pending_key} 的影响区域: {impact_area}"
+            )
+
+            if future is not None and hasattr(future, "done") and not future.done():
+                future.set_result("fused")
+
+            self.cwa_eew_pending.pop(pending_key, None)
+
+        except Exception as e:
+            logger.error(f"[灾害预警] CWA EEW 融合操作失败: {e}")
 
     async def _execute_push(
         self,
@@ -1182,6 +1563,27 @@ class MessagePushManager:
                                 f"[灾害预警] 附加海啸图件失败 ({map_key}): {e}"
                             )
 
+        # 6. CWA 地震报告图件：优先尝试直接渲染 URL 图片（失败时文本消息中仍保留 URL 兜底）
+        if source_id == "cwa_fanstudio_report" and isinstance(
+            event.data, EarthquakeData
+        ):
+            report_image_urls: list[str] = []
+            for image_url in [
+                getattr(event.data, "image_uri", None),
+                getattr(event.data, "shakemap_uri", None),
+            ]:
+                if isinstance(image_url, str):
+                    normalized_url = image_url.strip()
+                    if normalized_url and normalized_url not in report_image_urls:
+                        report_image_urls.append(normalized_url)
+
+            for image_url in report_image_urls:
+                try:
+                    chain.chain.append(Comp.Image.fromURL(image_url))
+                    logger.debug(f"[灾害预警] 已附加 CWA 地震报告图件: {image_url}")
+                except Exception as e:
+                    logger.warning(f"[灾害预警] 附加 CWA 地震报告图件失败: {e}")
+
         return chain
 
     def _build_text_message(
@@ -1361,6 +1763,32 @@ class MessagePushManager:
     async def _send_message(self, session: str, message: MessageChain):
         """发送消息到指定会话"""
         await self.context.send_message(session, message)
+
+    async def push_system_message(
+        self, message: str, target_sessions: list[str] | None = None
+    ) -> int:
+        """推送系统提示消息（不走事件过滤）"""
+        sessions = (
+            target_sessions
+            if target_sessions is not None
+            else self.config.get("target_sessions", [])
+        )
+        if not sessions:
+            logger.warning("[灾害预警] 没有配置目标会话，系统提示消息未发送")
+            return 0
+
+        msg_chain = MessageChain([Comp.Plain(message)])
+        success_count = 0
+        for session in sessions:
+            try:
+                await self._send_message(session, msg_chain)
+                success_count += 1
+            except Exception as e:
+                logger.error(f"[灾害预警] 系统提示消息发送到 {session} 失败: {e}")
+
+        if success_count > 0:
+            logger.info(f"[灾害预警] 系统提示消息已发送到 {success_count} 个会话")
+        return success_count
 
     async def cleanup_browser(self):
         """清理浏览器资源"""
