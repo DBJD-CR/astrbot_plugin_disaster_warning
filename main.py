@@ -1120,9 +1120,7 @@ class DisasterWarningPlugin(Star):
                         await _send_text_blocks(text_blocks, total)
                         return
                     except Exception as text_error:
-                        logger.warning(
-                            f"[灾害预警] 文本回退发送失败: {text_error}"
-                        )
+                        logger.warning(f"[灾害预警] 文本回退发送失败: {text_error}")
 
             lines = [f"📋 气象预警列表（共 {total} 条）"]
             for idx, item in enumerate(items):
