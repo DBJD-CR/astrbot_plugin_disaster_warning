@@ -69,46 +69,55 @@ class ConfigValidator:
         # 8. 推送列表校验
         if "target_sessions" in config:
             config["target_sessions"] = ConfigValidator._validate_target_sessions(
-                config["target_sessions"]
+                config["target_sessions"], key_name="target_sessions"
             )
 
-        # 9. 管理员列表校验
+        # 9. 离线通知会话列表校验
+        if "offline_notification_sessions" in config:
+            config["offline_notification_sessions"] = (
+                ConfigValidator._validate_target_sessions(
+                    config["offline_notification_sessions"],
+                    key_name="offline_notification_sessions",
+                )
+            )
+
+        # 10. 管理员列表校验
         if "admin_users" in config:
             config["admin_users"] = ConfigValidator._validate_admin_users(
                 config["admin_users"]
             )
 
-        # 10. 消息格式配置校验
+        # 11. 消息格式配置校验
         if "message_format" in config:
             config["message_format"] = ConfigValidator._validate_message_format(
                 config["message_format"]
             )
 
-        # 11. 推送频率控制校验
+        # 12. 推送频率控制校验
         if "push_frequency_control" in config:
             config["push_frequency_control"] = ConfigValidator._validate_push_frequency(
                 config["push_frequency_control"]
             )
 
-        # 12. 时区配置校验
+        # 13. 时区配置校验
         if "display_timezone" in config:
             config["display_timezone"] = ConfigValidator._validate_timezone(
                 config["display_timezone"]
             )
 
-        # 13. 遥测配置校验
+        # 14. 遥测配置校验
         if "telemetry_config" in config:
             config["telemetry_config"] = ConfigValidator._validate_telemetry(
                 config["telemetry_config"]
             )
 
-        # 14. 数据源配置结构校验
+        # 15. 数据源配置结构校验
         if "data_sources" in config:
             config["data_sources"] = ConfigValidator._validate_data_sources(
                 config["data_sources"]
             )
 
-        # 15. 顶层开关校验
+        # 16. 顶层开关校验
         if "enabled" in config and not isinstance(config["enabled"], bool):
             config["enabled"] = True
 
@@ -551,11 +560,13 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
-    def _validate_target_sessions(sessions: Any) -> list[str]:
+    def _validate_target_sessions(
+        sessions: Any, key_name: str = "target_sessions"
+    ) -> list[str]:
         """校验推送会话列表"""
         if not isinstance(sessions, list):
             logger.warning(
-                "[灾害预警] 配置警告: target_sessions 不是列表，已重置为空列表。"
+                f"[灾害预警] 配置警告: {key_name} 不是列表，已重置为空列表。"
             )
             return []
 
@@ -563,7 +574,7 @@ class ConfigValidator:
         valid_sessions = [s for s in sessions if isinstance(s, str) and s.strip()]
         if len(valid_sessions) != len(sessions):
             logger.warning(
-                "[灾害预警] 配置警告: target_sessions 中包含无效项，已自动过滤。"
+                f"[灾害预警] 配置警告: {key_name} 中包含无效项，已自动过滤。"
             )
 
         return valid_sessions

@@ -1017,7 +1017,25 @@ class DisasterWarningService:
             message_lines.append(f"⏳ {next_retry_part}")
 
         message = "\n".join(message_lines)
-        success = await self.message_manager.push_system_message(message)
+
+        # 离线通知专用会话：优先使用 offline_notification_sessions，留空则回退到 target_sessions
+        # 注：使用 ConfigValidator._validate_target_sessions 进行统一校验
+        from ..support.config_validator import ConfigValidator
+
+        offline_sessions = ConfigValidator._validate_target_sessions(
+            self.config.get("offline_notification_sessions", []),
+            key_name="offline_notification_sessions",
+        )
+
+        if not offline_sessions:
+            offline_sessions = ConfigValidator._validate_target_sessions(
+                self.config.get("target_sessions", []), key_name="target_sessions"
+            )
+
+        success = await self.message_manager.push_system_message(
+            message,
+            target_sessions=offline_sessions,
+        )
         if success:
             self._offline_notification_state[key] = {"last_ts": now}
         return bool(success)
