@@ -6,6 +6,7 @@ function NewsTicker({ style }) {
     const { events, config, dataLoaded } = state;
     const displayTimezone = config.displayTimezone || 'UTC+8';
     const [paused, setPaused] = useState(false);
+    const isDark = state.theme === 'dark';
 
     // 获取最新的 5 条事件，并处理数据格式
     // 默认 events 数组通常是按时间倒序排列的（最新的在前面）
@@ -164,8 +165,8 @@ function NewsTicker({ style }) {
                         const isLastInGroup = (index + 1) % tickerItems.length === 0;
                         return (
                             <div key={`${item.id}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginRight: isLastInGroup ? '24px' : '48px' }}>
-                                <span style={{ opacity: 0.7, fontSize: '13px', fontWeight: 600 }}>{formatTime(item.time, item.source)}</span>
-                                <span style={{ fontSize: '16px' }}>{getIcon(item.type)}</span>
+                                <span style={{ opacity: 0.7, fontSize: '13px', fontWeight: 600, lineHeight: '22px', display: 'inline-flex', alignItems: 'center' }}>{formatTime(item.time, item.source)}</span>
+                                <span style={{ fontSize: '16px', lineHeight: '22px', display: 'inline-flex', alignItems: 'center' }}>{getIcon(item.type)}</span>
                                 
                                 {/* 震级标签挪到前面 */}
                                 {item.mag && (
@@ -173,12 +174,14 @@ function NewsTicker({ style }) {
                                         label={Number.isInteger(item.mag) ? `M ${item.mag}.0` : `M ${item.mag}`}
                                         size="small"
                                         sx={{
-                                            height: '22px', // 稍微增高
-                                            fontSize: '12px', // 增大字号
+                                            height: '22px',
+                                            fontSize: '12px',
                                             fontWeight: 700,
-                                            background: 'rgba(0,0,0,0.08)', // 稍微调淡背景，突出文字
-                                            color: 'inherit',
-                                            '& .MuiChip-label': { // 修正 Chip 内部 padding 导致的垂直不居中
+                                            background: isDark ? 'rgba(208, 188, 255, 0.22)' : 'rgba(0, 0, 0, 0.08)',
+                                            color: isDark ? '#EADDFF' : 'inherit',
+                                            border: isDark ? '1px solid rgba(208, 188, 255, 0.45)' : '1px solid rgba(0, 0, 0, 0.06)',
+                                            boxShadow: isDark ? '0 0 0 1px rgba(208, 188, 255, 0.2), 0 6px 14px rgba(0, 0, 0, 0.25)' : '0 2px 6px rgba(0, 0, 0, 0.08)',
+                                            '& .MuiChip-label': {
                                                 padding: '0 8px',
                                                 lineHeight: 1
                                             }
@@ -186,14 +189,34 @@ function NewsTicker({ style }) {
                                     />
                                 )}
 
-                                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1, marginTop: '2px' }}>
+                                <Typography
+                                    component="span"
+                                    variant="body2"
+                                    sx={{
+                                        fontWeight: 600,
+                                        lineHeight: '26px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        verticalAlign: 'middle',
+                                        paddingTop: 0,
+                                        paddingBottom: 0
+                                    }}
+                                >
                                     {/* 移除标题开头可能存在的震级描述 */}
                                     {item.desc.replace(/^M[\d.]+\s*/, '')}
                                 </Typography>
 
                                 {isLastInGroup && (
                                     // 调整 margin-left 使分隔符向左偏移几个像素 (24px -> 20px)
-                                    <span style={{ marginLeft: '20px', opacity: 0.3, fontWeight: 300, fontSize: '18px' }}>|</span>
+                                    <span style={{
+                                        marginLeft: '20px',
+                                        opacity: 0.3,
+                                        fontWeight: 300,
+                                        fontSize: '18px',
+                                        lineHeight: '30px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center'
+                                    }}>|</span>
                                 )}
                             </div>
                         );

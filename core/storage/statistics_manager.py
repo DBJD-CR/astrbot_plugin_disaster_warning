@@ -213,6 +213,23 @@ class StatisticsManager:
                 return True
         return False
 
+    def _resolve_report_num(self, event: DisasterEvent) -> int | None:
+        """统一解析地震报数：优先 report_num，缺失时回退 updates。"""
+        if not isinstance(event.data, EarthquakeData):
+            return None
+
+        for candidate in (
+            getattr(event.data, "report_num", None),
+            getattr(event.data, "updates", None),
+        ):
+            try:
+                value = int(candidate)
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                return value
+        return None
+
     async def _update_push_list(
         self,
         target_list: list,
@@ -285,12 +302,10 @@ class StatisticsManager:
                             record["update_count"] = record.get("update_count", 1) + 1
                             record["level"] = self._get_earthquake_level(event.data)
 
-                            # 保存报数信息（如果有）
-                            if (
-                                hasattr(event.data, "report_num")
-                                and event.data.report_num
-                            ):
-                                record["report_num"] = event.data.report_num
+                            # 保存报数信息（优先 report_num，回退 updates）
+                            resolved_report_num = self._resolve_report_num(event)
+                            if resolved_report_num is not None:
+                                record["report_num"] = resolved_report_num
 
                             # 3. 将更新后的记录移动到列表顶部
                             updated_record = target_list.pop(i)
@@ -326,11 +341,13 @@ class StatisticsManager:
                 record["source_id"] = event.source_id or ""
                 record["description"] = self._get_event_description(event)
                 record["subtitle"] = ""
+                record["weather_detail"] = ""
                 record["update_count"] = 1
                 record.pop("history", None)
 
                 if isinstance(event.data, WeatherAlarmData):
                     record["subtitle"] = event.data.headline or ""
+                    record["weather_detail"] = event.data.description or ""
                     record["time"] = (
                         event.data.issue_time.isoformat()
                         if event.data.issue_time
@@ -381,6 +398,7 @@ class StatisticsManager:
                 "description": self._get_event_description(event),
                 "subtitle": "",
                 "unique_id": event_unique_id,
+                "weather_detail": "",
                 "update_count": 1,
             }
 
@@ -395,11 +413,13 @@ class StatisticsManager:
                 push_record["real_event_id"] = event.data.event_id
                 push_record["level"] = self._get_earthquake_level(event.data)
 
-                # 保存报数信息（如果有）
-                if event.data.report_num:
-                    push_record["report_num"] = event.data.report_num
+                # 保存报数信息（优先 report_num，回退 updates）
+                resolved_report_num = self._resolve_report_num(event)
+                if resolved_report_num is not None:
+                    push_record["report_num"] = resolved_report_num
             elif isinstance(event.data, WeatherAlarmData):
                 push_record["subtitle"] = event.data.headline or ""
+                push_record["weather_detail"] = event.data.description or ""
                 push_record["time"] = (
                     event.data.issue_time.isoformat() if event.data.issue_time else None
                 )

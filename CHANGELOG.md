@@ -5,6 +5,60 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+# 2026/03/20 v1.4.5
+
+本版本主要新增了两个新指令，新增了数据源离线通知，增强了融合策略的处理逻辑并修复了前端中事件列表的部分展示问题。
+
+## 🚀 What's Changed
+
+### ✨ New Features (新功能)
+
+- 新增 `/地震预警查询` 指令及对应的 WebUI 状态卡片，用于查看各机构地震预警状态及无预警时长 by @DBJD-CR in #98
+- 新增 `/气象预警查询` 指令及对应的 WebUI 快捷查询面板，支持按地区、类型、颜色查询气象预警，或按 ID 查询详情 by @DBJD-CR in #98
+  - 也支持通过别名 `/地震预警` 和 `/气象预警` 触发
+- 现在触发部分插件指令时将会使用引用回复消息 by @DBJD-CR in #98
+- 数据源离线通知: 当数据源进入兜底重试或停止重连时，会推送系统消息，提高系统运维的可见性 by @DBJD-CR in #98
+  - 支持配置专门用于接收离线通知的会话 by @DBJD-CR in #99
+- 新增 CWA EEW (台湾中央气象署地震预警) 融合策略，支持 Fan (主) + Wolfx (副) 模式，可补充影响区域字段 by @DBJD-CR in #98
+- 为前端中的重大事件回溯卡片添加可选的展示数量选择器 by @DBJD-CR in #98
+
+### ♻️ Refactor (重构)
+
+- 重构融合策略，实现精确匹配和双向缓存，融合结果更加健壮和准确 by @DBJD-CR in #98
+
+### 🐛 Bug Fixes (修复)
+
+- 修复了事件列表的排序逻辑 by @DBJD-CR in #98
+- 修复了前端事件列表中历史报数的烈度/震度信息被覆盖的问题 by @DBJD-CR in #98
+- 修复了前端事件列表中历史报数丢失时间信息的问题 by @DBJD-CR in #98
+
+### 📚 Documentation (文档)
+
+- 更新适用于 v1.4.5 的 README 文档和更新日志 by @DBJD-CR in #99
+
+### 🔧 Chore (杂项)
+
+- 更新 GitHub Actions 工作流程，以在代码检出、Python 环境设置和 GitHub 脚本执行等核心操作上使用最新的大版本 by @dependabot[bot] in #96
+- 优化了部分 WebUI 组件在暗色模式下的视觉效果 by @DBJD-CR in #98
+- 优化了海啸信息的去重逻辑 by @DBJD-CR in #98
+- 更新数据库结构以支持新的查询功能和展示优化 by @DBJD-CR in #98
+- 更新 `/地震列表查询` 指令在图片模式下的默认参数为 9，并解限最大传入参数至 50 条 by @DBJD-CR in #98
+- SVG 元数据更新 by @DBJD-CR in #99
+
+---
+
+## ❤️ New Contributors
+
+@dependabot[bot] made their first contribution in #96
+@gemini-code-assist[bot] made their first contribution in #98
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.4.0...v1.4.5
+
+---
+
+<details>
+<summary>点击查看历史更新内容</summary>
+
 # 2026/03/01 v1.4.0
 
 本版本为插件 WebUI 的首次完整发布并全面支持精细化配置，更新重点聚焦于“可观测、可操作、可回溯、可配置”的一体化前端管理体验。现在可统一通过 Web 控制台完成绝大部分日常操作并实现在不同会话中的个性化配置，彻底告别共用一套全局配置的窘境。
@@ -111,9 +165,6 @@
 **Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.3.9...v1.4.0
 
 ---
-
-<details>
-<summary>点击查看历史更新内容</summary>
 
 # 2026/02/05 v1.3.9
 

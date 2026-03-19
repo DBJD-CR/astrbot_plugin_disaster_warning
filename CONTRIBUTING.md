@@ -56,7 +56,7 @@
 
 为了保持代码的一致性和可读性，请遵循以下规范：
 
-- **格式化**：使用 `ruff` 进行代码格式化和检查。
+- **格式化**：使用 `ruff` 进行代码格式化和检查。如果您是 Windows 开发者，可以使用插件根目录提供的 `run_ruff.bat` 脚本来快速进行代码格式化检查。
 - **类型注解**：尽可能为函数和类添加 Python 类型提示 (Type Hints)。
 - **文档字符串**：为模块、类和函数编写清晰的 Docstring。
 
@@ -88,7 +88,7 @@
     git push origin feat/your-feature-name
     ```
 
-4. **发起 PR**：在 GitHub 上发起 Pull Request，指向目前进度最新的分支，参照模板内容使用**简体中文**详细描述您的更改内容和目的。
+4. **发起 PR**：在 GitHub 上发起 Pull Request，指向目前进度最新的分支，参照模板内容使用**简体中文**详细描述您的更改内容和目的。如果您的更改内容涉及 WebUI 等视觉效果的调整，请提供截图或视频演示等信息。
 5. **代码审查**：等待维护者审查您的代码。如果有修改建议，请及时响应并更新代码。
 
 > [!TIP]
@@ -113,13 +113,18 @@
 
 - @Gemini-3.0-Flash
 - @Gemini-3.0-Pro
+- @Gemini-3.1-Pro
 - @Gemini-3-Pro-Image
 - @Claude Opus 4.5
 - @Claude Opus 4.6
+- @GPT Codex 5.2
 - @GPT Codex 5.3
 - @Kimi-For-Coding
 - @Kimi K2.5
+- @DeepSeek V3.2
 - @sourcery-ai[bot]
+- @gemini-code-assist[bot]
 - @Copilot-pullrequest-reviewer[bot]
+- @dependabot[bot]
 
 🚀 再次感谢您的贡献！

@@ -22,7 +22,7 @@ function StatsCard({ style }) {
     // 骨架屏
     if (!dataLoaded) {
         return (
-            <div className="card" style={style}>
+            <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', ...(style || {}) }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                     <div style={{ 
                         width: '40px', 
@@ -36,7 +36,7 @@ function StatsCard({ style }) {
                     }}>📊</div>
                     <Typography variant="h6" sx={{ fontWeight: 700 }}>事件统计</Typography>
                 </Box>
-                <Box sx={{ py: 1 }}>
+                <Box sx={{ py: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                     <div className="skeleton" style={{ height: '48px', borderRadius: '8px', marginBottom: '12px' }}></div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
                         <div className="skeleton" style={{ height: '64px', borderRadius: '8px' }}></div>
@@ -50,7 +50,7 @@ function StatsCard({ style }) {
     }
 
     return (
-        <div className="card" style={style}>
+        <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', ...(style || {}) }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                 <div style={{ 
                     width: '40px', 
@@ -65,7 +65,7 @@ function StatsCard({ style }) {
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>事件统计</Typography>
             </Box>
 
-            <Box sx={{ py: 1 }}>
+            <Box sx={{ py: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <Typography variant="h2" sx={{
                     fontWeight: 800,
                     color: 'var(--md-sys-color-primary)',

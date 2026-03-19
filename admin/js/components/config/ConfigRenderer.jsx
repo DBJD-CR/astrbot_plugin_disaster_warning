@@ -19,6 +19,7 @@ const CONFIG_ICONS = {
     enabled: '🔌',
     admin_users: '👥',
     target_sessions: '📨',
+    offline_notification_sessions: '⚠️',
     display_timezone: '🌍',
     data_sources: '📡',
     local_monitoring: '📍',

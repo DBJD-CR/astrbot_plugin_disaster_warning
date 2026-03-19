@@ -18,7 +18,8 @@ const initialState = {
         startTime: null,
         activeConnections: 0,
         totalConnections: 0,
-        version: '未知版本'
+        version: '未知版本',
+        eewQueryStatus: null
     },
     stats: {
         totalEvents: 0,
@@ -168,7 +169,8 @@ function AppProvider({ children }) {
                     activeConnections: data.active_connections,
                     totalConnections: data.total_connections,
                     uptime: data.uptime,
-                    subSourceStatus: data.sub_source_status // 新增：子数据源状态
+                    subSourceStatus: data.sub_source_status, // 新增：子数据源状态
+                    eewQueryStatus: data.eew_query_status || null
                 };
 
                 // version 可能不存在于旧版接口返回中，但在新版应该有

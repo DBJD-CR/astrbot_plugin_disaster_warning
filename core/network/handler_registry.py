@@ -213,9 +213,10 @@ class WebSocketHandlerRegistry:
 
                             logger.debug(f"[灾害预警] {source} 解析成功: {event.id}")
 
-                            # 关键优化：CENC 融合策略会等待 Wolfx 补充数据，若在此处直接 await
+                            # 关键优化：融合策略会等待 Wolfx 补充数据，若在此处直接 await
                             # 将阻塞 FAN Studio 同连接后续消息处理。改为任务调度以避免阻塞。
-                            fusion_enabled = False
+                            cenc_fusion_enabled = False
+                            cwa_eew_fusion_enabled = False
                             try:
                                 message_manager = getattr(
                                     self.service, "message_manager", None
@@ -223,15 +224,28 @@ class WebSocketHandlerRegistry:
                                 if message_manager and isinstance(
                                     getattr(message_manager, "config", None), dict
                                 ):
-                                    fusion_enabled = bool(
-                                        message_manager.config.get("strategies", {})
-                                        .get("cenc_fusion", {})
-                                        .get("enabled", False)
+                                    strategies_cfg = message_manager.config.get(
+                                        "strategies", {}
+                                    )
+                                    cenc_fusion_enabled = bool(
+                                        strategies_cfg.get("cenc_fusion", {}).get(
+                                            "enabled", False
+                                        )
+                                    )
+                                    cwa_eew_fusion_enabled = bool(
+                                        strategies_cfg.get("cwa_eew_fusion", {}).get(
+                                            "enabled", False
+                                        )
                                     )
                             except Exception:
-                                fusion_enabled = False
+                                cenc_fusion_enabled = False
+                                cwa_eew_fusion_enabled = False
 
-                            if source == "cenc" and fusion_enabled:
+                            requires_non_blocking_dispatch = (
+                                source == "cenc" and cenc_fusion_enabled
+                            ) or (source == "cwa-eew" and cwa_eew_fusion_enabled)
+
+                            if requires_non_blocking_dispatch:
 
                                 async def _dispatch_event_non_blocking(disaster_event):
                                     try:
@@ -240,12 +254,12 @@ class WebSocketHandlerRegistry:
                                         )
                                     except Exception as dispatch_err:
                                         logger.error(
-                                            f"[灾害预警] CENC 异步分发失败: {dispatch_err}"
+                                            f"[灾害预警] {source} 异步分发失败: {dispatch_err}"
                                         )
 
                                 task = asyncio.create_task(
                                     _dispatch_event_non_blocking(event),
-                                    name=f"dw_fan_cenc_dispatch_{event.id}",
+                                    name=f"dw_fan_{source}_dispatch_{event.id}",
                                 )
                                 if hasattr(self.service, "register_background_task"):
                                     self.service.register_background_task(task)
