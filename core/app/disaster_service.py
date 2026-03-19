@@ -1017,7 +1017,27 @@ class DisasterWarningService:
             message_lines.append(f"⏳ {next_retry_part}")
 
         message = "\n".join(message_lines)
-        success = await self.message_manager.push_system_message(message)
+
+        # 离线通知专用会话：优先使用 offline_notification_sessions，留空则回退到 target_sessions
+        offline_sessions_cfg = self.config.get("offline_notification_sessions", [])
+        if isinstance(offline_sessions_cfg, list):
+            offline_sessions = [
+                s for s in offline_sessions_cfg if isinstance(s, str) and s.strip()
+            ]
+        else:
+            offline_sessions = []
+
+        if not offline_sessions:
+            target_sessions_cfg = self.config.get("target_sessions", [])
+            if isinstance(target_sessions_cfg, list):
+                offline_sessions = [
+                    s for s in target_sessions_cfg if isinstance(s, str) and s.strip()
+                ]
+
+        success = await self.message_manager.push_system_message(
+            message,
+            target_sessions=offline_sessions,
+        )
         if success:
             self._offline_notification_state[key] = {"last_ts": now}
         return bool(success)
