@@ -69,14 +69,15 @@ class ConfigValidator:
         # 8. 推送列表校验
         if "target_sessions" in config:
             config["target_sessions"] = ConfigValidator._validate_target_sessions(
-                config["target_sessions"]
+                config["target_sessions"], key_name="target_sessions"
             )
 
         # 9. 离线通知会话列表校验
         if "offline_notification_sessions" in config:
             config["offline_notification_sessions"] = (
                 ConfigValidator._validate_target_sessions(
-                    config["offline_notification_sessions"]
+                    config["offline_notification_sessions"],
+                    key_name="offline_notification_sessions",
                 )
             )
 
@@ -559,11 +560,13 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
-    def _validate_target_sessions(sessions: Any) -> list[str]:
+    def _validate_target_sessions(
+        sessions: Any, key_name: str = "target_sessions"
+    ) -> list[str]:
         """校验推送会话列表"""
         if not isinstance(sessions, list):
             logger.warning(
-                "[灾害预警] 配置警告: target_sessions 不是列表，已重置为空列表。"
+                f"[灾害预警] 配置警告: {key_name} 不是列表，已重置为空列表。"
             )
             return []
 
@@ -571,7 +574,7 @@ class ConfigValidator:
         valid_sessions = [s for s in sessions if isinstance(s, str) and s.strip()]
         if len(valid_sessions) != len(sessions):
             logger.warning(
-                "[灾害预警] 配置警告: target_sessions 中包含无效项，已自动过滤。"
+                f"[灾害预警] 配置警告: {key_name} 中包含无效项，已自动过滤。"
             )
 
         return valid_sessions
