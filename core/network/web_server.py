@@ -1470,7 +1470,7 @@ class WebAdminServer:
 
     async def _background_ping_loop(self):
         """后台定期更新延迟缓存"""
-        logger.info("[灾害预警] 启动后台延迟检测任务")
+        logger.debug("[灾害预警] 启动后台延迟检测任务")
 
         # 新增：记录连续失败次数
         ping_failures = {}
