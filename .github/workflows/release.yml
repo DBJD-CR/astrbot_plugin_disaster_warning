@@ -1,0 +1,105 @@
+name: 📦 Draft Release (Tag with v)
+
+on:
+  push:
+    tags:
+      - "*v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: 编译 WebUI 并打包插件
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PACKAGE_NAME="astrbot_plugin_disaster_warning"
+          BUILD_ROOT="${RUNNER_TEMP}/plugin-build"
+          STAGE_DIR="${BUILD_ROOT}/${PACKAGE_NAME}"
+          ZIP_NAME="${PACKAGE_NAME}-${GITHUB_REF_NAME}.zip"
+
+          rm -rf "${BUILD_ROOT}"  
+          mkdir -p "${STAGE_DIR}"
+
+          rsync -a \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.idea/' \
+            --exclude '.devin/' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude '*.pyo' \
+            --exclude '.DS_Store' \
+            ./ "${STAGE_DIR}/"
+
+          pushd "${STAGE_DIR}"
+
+          if [[ ! -d "admin/js" ]]; then
+            echo "::error::未找到 admin/js，无法编译 WebUI"
+            exit 1
+          fi
+
+          BUILD_JS_DIR="admin/.js-build"
+          rm -rf "${BUILD_JS_DIR}"
+          mkdir -p "${BUILD_JS_DIR}"
+
+          npx --yes \
+            --package @babel/core \
+            --package @babel/cli \
+            --package @babel/preset-react \
+            babel admin/js \
+              --extensions ".js,.jsx" \
+              --out-dir "${BUILD_JS_DIR}" \
+              --presets @babel/preset-react \
+              --no-babelrc
+
+          rm -rf admin/js
+          mv "${BUILD_JS_DIR}" admin/js
+
+          sed -i 's|<script type="text/babel" src="js/\([^"]*\)\.jsx" defer></script>|<script src="js/\1.js" defer></script>|g' admin/index.html
+          sed -i 's|<script type="text/babel" src="js/\([^"]*\)\.js" defer></script>|<script src="js/\1.js" defer></script>|g' admin/index.html
+          sed -i '/lib\/babel\.min\.js/d' admin/index.html
+          rm -f admin/lib/babel.min.js
+
+          if grep -q 'text/babel' admin/index.html; then
+            echo "::error::WebUI 编译后 index.html 仍包含 text/babel 引用"
+            exit 1
+          fi
+
+          if find admin/js -type f -name '*.jsx' | grep -q .; then
+            echo "::error::WebUI 编译后仍存在 .jsx 源文件"
+            exit 1
+          fi
+
+          popd
+
+          mkdir -p "${GITHUB_WORKSPACE}/dist"
+          cd "${BUILD_ROOT}"
+          zip -r "${GITHUB_WORKSPACE}/dist/${ZIP_NAME}" "${PACKAGE_NAME}"
+
+      - name: 上传打包产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-zip-${{ github.ref_name }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+      - name: 发布 Draft Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/*.zip
