@@ -69,8 +69,8 @@
     <link rel="preload" href="lib/material-ui.production.min.js" as="script">
 
     <!-- React 18 (生产环境) - defer加载 -->
-    <script crossorigin src="lib/react.production.min.js" defer></script>
-    <script crossorigin src="lib/react-dom.production.min.js" defer></script>
+    <script src="lib/react.production.min.js" defer></script>
+    <script src="lib/react-dom.production.min.js" defer></script>
 
     <!-- Babel Standalone (用于浏览器实时编译 JSX) -->
     <script src="lib/babel.min.js" defer></script>
@@ -108,6 +108,14 @@
             <div class="boot-loader__title">灾害预警管理端</div>
             <div class="boot-loader__subtitle" style="margin-bottom:20px;">请输入访问密码</div>
             <div class="bl-error" id="bl-login-error"></div>
+            <input
+                id="bl-username"
+                type="text"
+                autocomplete="username"
+                tabindex="-1"
+                aria-hidden="true"
+                style="position:absolute;opacity:0;pointer-events:none;height:0;width:0;border:0;padding:0;"
+            >
             <div class="bl-input-wrap">
                 <input id="bl-password" class="bl-input" type="password" placeholder="密码" autocomplete="current-password">
                 <button class="bl-toggle-pw" type="button" id="bl-toggle-pw" title="显示/隐藏密码">👁️</button>
