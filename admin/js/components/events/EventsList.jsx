@@ -197,9 +197,52 @@ function EventsList() {
         return Array.isArray(events) ? events : [];
     }, [events]);
 
+    const normalizeDbUtcTime = (rawTime) => {
+        if (!rawTime) return '';
+        const text = String(rawTime).trim();
+        if (!text) return '';
+        // SQLite CURRENT_TIMESTAMP 通常为 "YYYY-MM-DD HH:MM:SS"（UTC、无时区）
+        // 为避免按 sourceHint 被误判为本地时区，这里显式补上 Z。
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) {
+            return `${text.replace(' ', 'T')}Z`;
+        }
+        return text;
+    };
+
+    const getDisplayTimeValue = (event, preferUpdateTime = false) => {
+        if (!event || typeof event !== 'object') return '';
+
+        const updateTime = normalizeDbUtcTime(event.recorded_at || event.updated_at || event.timestamp);
+        const eventTime = event.time || event.timestamp || '';
+
+        if (preferUpdateTime) {
+            return updateTime || eventTime || '';
+        }
+
+        return eventTime || updateTime || '';
+    };
+
     const getEventTimeMs = (event) => {
-        const parsed = parseEventTimeToDate(event?.time || event?.timestamp, event?.source || '');
+        const parsed = parseEventTimeToDate(getDisplayTimeValue(event, false), event?.source || '');
         return parsed ? parsed.getTime() : 0;
+    };
+
+    const compareEvents = (a, b) => {
+        const reportA = Number(a?.report_num);
+        const reportB = Number(b?.report_num);
+        const hasA = Number.isFinite(reportA);
+        const hasB = Number.isFinite(reportB);
+
+        if (hasA && hasB && reportA !== reportB) {
+            return reportB - reportA;
+        }
+
+        const updateA = parseEventTimeToDate(getDisplayTimeValue(a, true), a?.source || '');
+        const updateB = parseEventTimeToDate(getDisplayTimeValue(b, true), b?.source || '');
+        const diffUpdate = (updateB ? updateB.getTime() : 0) - (updateA ? updateA.getTime() : 0);
+        if (diffUpdate !== 0) return diffUpdate;
+
+        return getEventTimeMs(b) - getEventTimeMs(a);
     };
 
     // 将扁平的事件列表按照 event_id 进行分组
@@ -222,8 +265,9 @@ function EventsList() {
 
         // 处理每个分组：排序、计算更新数量、合并历史记录
         for (const id in groups) {
-            // 按时间倒序排列，最新的在最前
-            groups[id].events.sort((a, b) => getEventTimeMs(b) - getEventTimeMs(a));
+            // 组内排序：优先按 report_num（报次）倒序；
+            // 若报次缺失或相同，再按“更新时间”倒序；最后按事件时间兜底。
+            groups[id].events.sort(compareEvents);
             groups[id].latestEvent = groups[id].events[0];
             
             // 计算更新总数：
@@ -275,8 +319,8 @@ function EventsList() {
 
                 if (historyEvents.length > 0) {
                     groups[id].events.push(...historyEvents);
-                    // 合并后再次重新排序
-                    groups[id].events.sort((a, b) => getEventTimeMs(b) - getEventTimeMs(a));
+                    // 合并后再次按“报次优先、更新时间次之”排序
+                    groups[id].events.sort(compareEvents);
                     // 更新计数
                     groups[id].updateCount = Math.max(groups[id].events.length, backendCount);
                 }
@@ -1018,6 +1062,11 @@ function EventsList() {
                                             {/* 所有报的列表（倒序：最新在上） */}
                                             {group.events.map((evt, idx) => {
                                                 const reportIndex = totalReports - idx;
+                                                const actualReportNum = Number(evt?.report_num);
+                                                const hasValidReportNum = Number.isInteger(actualReportNum) && actualReportNum > 0;
+                                                const displayReportNum = hasValidReportNum
+                                                    ? actualReportNum
+                                                    : reportIndex;
                                                 const isLatest = idx === 0;
                                                 const rowType = evt.type || group.latestEvent.type || '';
                                                 const isEarthquake = rowType === 'earthquake' || rowType === 'earthquake_warning';
@@ -1116,7 +1165,7 @@ function EventsList() {
                                                                             ? 'var(--md-sys-color-on-primary)'
                                                                             : 'inherit'
                                                                     }}>
-                                                                        第 {reportIndex} 报
+                                                                        第 {displayReportNum} 报
                                                                     </span>
                                                                     {isLatest && (
                                                                         <span style={{
@@ -1131,7 +1180,11 @@ function EventsList() {
                                                                         </span>
                                                                     )}
                                                                     <Typography variant="body2" sx={{ opacity: 0.6, fontSize: '13px' }}>
-                                                                        🕒 {formatTimeFriendly(evt.time || evt.timestamp, displayTimezone, evt.source || group.latestEvent.source || '')}
+                                                                        🕒 {formatTimeFriendly(
+                                                                            getDisplayTimeValue(evt, true),
+                                                                            displayTimezone,
+                                                                            evt.source || group.latestEvent.source || ''
+                                                                        )}
                                                                     </Typography>
                                                                 </div>
                                                                 {isEarthquake && (

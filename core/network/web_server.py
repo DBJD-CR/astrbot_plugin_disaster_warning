@@ -22,6 +22,7 @@ from ..support.simulation_service import (
     get_simulation_params,
     resolve_target_session,
 )
+from ..support.weather_query_service import query_weather_alarm_data
 
 try:
     import uvicorn
@@ -191,6 +192,7 @@ class WebAdminServer:
                     return JSONResponse({"error": "服务未初始化"}, status_code=503)
 
                 status = self.disaster_service.get_service_status()
+                eew_status = self.disaster_service.get_eew_query_status_data()
                 return {
                     "running": status.get("running", False),
                     "uptime": status.get("uptime", "未知"),
@@ -204,6 +206,7 @@ class WebAdminServer:
                     "message_logger_enabled": status.get(
                         "message_logger_enabled", False
                     ),
+                    "eew_query_status": eew_status,
                     "timestamp": datetime.now().isoformat(),
                     "start_time": status.get("start_time"),
                 }
@@ -608,7 +611,7 @@ class WebAdminServer:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/events/major")
-        async def get_major_events(limit: int = 100):
+        async def get_major_events(limit: int = 50):
             """获取重大事件列表（用于时间轴）"""
             try:
                 if (
@@ -618,12 +621,48 @@ class WebAdminServer:
                     return {"events": []}
 
                 db = self.disaster_service.statistics_manager.db
-                limit = min(max(1, limit), 200)
-                events = await db.get_major_events(limit)
+                # 约定：limit<=0 视为“不限”（使用 SQLite 可接受的超大 LIMIT 近似无限）
+                if limit <= 0:
+                    safe_limit = 9223372036854775807
+                else:
+                    safe_limit = min(max(1, limit), 500)
+
+                events = await db.get_major_events(safe_limit)
                 return {"events": events}
             except Exception as e:
                 logger.error(f"[灾害预警] 获取重大事件失败: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/weather/query")
+        async def query_weather_alarm(
+            keyword: str = "",
+            optional_a: str = "",
+            optional_b: str = "",
+        ):
+            """查询气象预警（与 /气象预警查询 逻辑保持一致）。"""
+            try:
+                if (
+                    not self.disaster_service
+                    or not self.disaster_service.statistics_manager
+                ):
+                    return JSONResponse(
+                        {"success": False, "error": "统计管理器未初始化"},
+                        status_code=503,
+                    )
+
+                db = self.disaster_service.statistics_manager.db
+                result = await query_weather_alarm_data(
+                    db,
+                    keyword,
+                    optional_a or None,
+                    optional_b or None,
+                )
+                return result
+            except Exception as e:
+                logger.error(f"[灾害预警] Web端查询气象预警失败: {e}")
+                return JSONResponse(
+                    {"success": False, "error": str(e)}, status_code=500
+                )
 
         @self.app.get("/api/earthquakes")
         async def get_earthquakes():
@@ -1171,6 +1210,7 @@ class WebAdminServer:
                     "sub_source_status": status.get(
                         "sub_source_status", {}
                     ),  # 新增：子数据源状态
+                    "eew_query_status": self.disaster_service.get_eew_query_status_data(),
                     "start_time": status.get("start_time"),
                     "version": get_plugin_version(),
                 }
@@ -1430,7 +1470,7 @@ class WebAdminServer:
 
     async def _background_ping_loop(self):
         """后台定期更新延迟缓存"""
-        logger.info("[灾害预警] 启动后台延迟检测任务")
+        logger.debug("[灾害预警] 启动后台延迟检测任务")
 
         # 新增：记录连续失败次数
         ping_failures = {}

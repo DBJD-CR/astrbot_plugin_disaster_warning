@@ -6,7 +6,7 @@ WebSocket连接管理器
 
 import asyncio
 import traceback
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import aiohttp
@@ -34,6 +34,9 @@ class WebSocketManager:
         self.last_heartbeat_time: dict[str, float] = {}  # 最后心跳时间
         self._stop_lock = asyncio.Lock()
         self._stopping = False
+        self._offline_notify_callback: (
+            Callable[[dict[str, Any]], Awaitable[None]] | None
+        ) = None
 
     def register_handler(self, connection_name: str, handler: Callable):
         """注册消息处理器"""
@@ -335,6 +338,13 @@ class WebSocketManager:
         error_msg = str(error).lower()
         if "ssl" in error_msg or "certificate" in error_msg:
             logger.warning(f"[灾害预警] {name} 遇到SSL配置错误，停止重连: {error}")
+            self._emit_offline_notification(
+                connection_name=name,
+                stage="stop",
+                reason=f"SSL/证书错误: {error}",
+                retry_count=self.connection_retry_counts.get(name, 0),
+                fallback_count=self.fallback_retry_counts.get(name, 0),
+            )
             return
 
         # 检查是否是关键错误（认证、协议错误等），这种情况下直接进入兜底重连
@@ -458,12 +468,26 @@ class WebSocketManager:
                     logger.error(
                         f"[灾害预警] {name} 重连失败，已达到最大重试次数 ({total_max_retries})，停止重连"
                     )
+                    self._emit_offline_notification(
+                        connection_name=name,
+                        stage="stop",
+                        reason="短时重连次数已达上限且未启用兜底重试",
+                        retry_count=current_retry,
+                        fallback_count=current_fallback,
+                    )
                     return
 
                 # 检查兜底重试次数是否达到上限
                 if fallback_max_count != -1 and current_fallback >= fallback_max_count:
                     logger.error(
                         f"[灾害预警] {name} 兜底重试失败，已达到最大兜底重试次数 ({fallback_max_count})，停止重连"
+                    )
+                    self._emit_offline_notification(
+                        connection_name=name,
+                        stage="stop",
+                        reason="兜底重试次数已达上限",
+                        retry_count=current_retry,
+                        fallback_count=current_fallback,
                     )
                     return
 
@@ -488,6 +512,14 @@ class WebSocketManager:
                 logger.warning(
                     f"[灾害预警] {name} 短时重连失败，将在 {fallback_interval_display} 后进行兜底重试 "
                     f"({fallback_display}/{fallback_max_display})"
+                )
+                self._emit_offline_notification(
+                    connection_name=name,
+                    stage="fallback",
+                    reason="短时重连失败，进入兜底重试",
+                    next_retry_in=fallback_interval_display,
+                    retry_count=current_retry,
+                    fallback_count=self.fallback_retry_counts.get(name, 0),
                 )
 
                 await asyncio.sleep(fallback_interval)
@@ -764,6 +796,39 @@ class WebSocketManager:
                 logger.info("[灾害预警] WebSocket管理器已停止")
             finally:
                 self._stopping = False
+
+    def set_offline_notify_callback(
+        self, callback: Callable[[dict[str, Any]], Awaitable[None]] | None
+    ) -> None:
+        """设置离线通知回调"""
+        self._offline_notify_callback = callback
+
+    def _emit_offline_notification(
+        self,
+        connection_name: str,
+        stage: str,
+        reason: str,
+        next_retry_in: str | None = None,
+        retry_count: int | None = None,
+        fallback_count: int | None = None,
+    ) -> None:
+        """触发离线通知回调（异步安全）"""
+        if not self._offline_notify_callback:
+            return
+
+        info = self.connection_info.get(connection_name, {})
+        payload = {
+            "connection_name": connection_name,
+            "data_source": info.get("data_source")
+            or info.get("connection_name")
+            or "unknown",
+            "stage": stage,
+            "reason": reason,
+            "next_retry_in": next_retry_in,
+            "retry_count": retry_count,
+            "fallback_count": fallback_count,
+        }
+        asyncio.create_task(self._offline_notify_callback(payload))
 
     def _find_handler_by_prefix(self, connection_name: str) -> str | None:
         """通过前缀匹配查找处理器名称"""

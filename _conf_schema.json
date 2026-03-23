@@ -17,6 +17,12 @@
     "hint": "请输入完整的 UMO，可通过 /sid 指令快捷获取。格式: {platform_name}:{message_type}:{session_id}。{platform_name} 就是你在 WebUI 中的 机器人 一栏自定义的机器人名称。{message_type} 可选参数为“GroupMessage”和“FriendMessage”。例如 aiocqhttp:GroupMessage:123456 或 aiocqhttp:FriendMessage:123456",
     "default": []
   },
+  "offline_notification_sessions": {
+    "description": "离线通知接收会话列表",
+    "type": "list",
+    "hint": "用于接收数据源离线通知，留空时将沿用推送会话列表。如果你配置了多会话的推送，建议单独配置一个运维群，避免打扰业务群。",
+    "default": []
+  },
   "display_timezone": {
     "description": "默认显示时区",
     "type": "string",
@@ -258,6 +264,29 @@
             "type": "int",
             "hint": "单位：秒。等待 Wolfx 数据补充的最大时间。",
             "default": 10,
+            "slider": {
+              "min": 1,
+              "max": 60,
+              "step": 1
+            }
+          }
+        }
+      },
+      "cwa_eew_fusion": {
+        "description": "CWA 地震预警融合策略",
+        "type": "object",
+        "hint": "Fan (主) + Wolfx (副) 融合模式。优先使用 Fan 的数据，并尝试等待 Wolfx 的补充字段（如影响区域）。",
+        "items": {
+          "enabled": {
+            "description": "启用融合策略",
+            "type": "bool",
+            "default": true
+          },
+          "timeout": {
+            "description": "等待超时时间",
+            "type": "int",
+            "hint": "单位：秒。等待 Wolfx 数据补充的最大时间。",
+            "default": 6,
             "slider": {
               "min": 1,
               "max": 60,

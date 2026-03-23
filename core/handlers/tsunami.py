@@ -129,8 +129,28 @@ class TsunamiHandler(BaseDataHandler):
                 or "中国自然资源部海啸预警中心"
             )
 
+            event_id = str(tsunami_data.get("id", "") or "").strip()
+            if not event_id:
+                stable_parts = [
+                    str(tsunami_data.get("code", "") or "").strip(),
+                    str(
+                        details.get("batch") or tsunami_data.get("batch") or ""
+                    ).strip(),
+                    str(title or "").strip(),
+                    str(issue_time_str or "").strip(),
+                ]
+                stable_parts = [part for part in stable_parts if part]
+                if stable_parts:
+                    event_id = "tsunami_" + "|".join(stable_parts)
+                else:
+                    # 极端兜底：避免使用“当前时间戳”导致每条都被视为新事件
+                    event_id = "tsunami_unknown"
+                logger.debug(
+                    f"[灾害预警] {self.source_id} 海啸消息缺少稳定id，已使用回退事件ID: {event_id}"
+                )
+
             tsunami = TsunamiData(
-                id=tsunami_data.get("id", "") or str(int(datetime.now().timestamp())),
+                id=event_id,
                 code=tsunami_data.get("code", ""),
                 source=DataSource.FAN_STUDIO_TSUNAMI,
                 title=title,

@@ -6,6 +6,9 @@ function EventsView() {
             <div style={{ marginBottom: '24px' }}>
                 <HorizontalTimeline />
             </div>
+            <div style={{ marginBottom: '24px' }}>
+                <WeatherQueryPanel />
+            </div>
             <EventsList />
         </Box>
     );
