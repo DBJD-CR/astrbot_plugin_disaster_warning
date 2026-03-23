@@ -61,14 +61,21 @@ jobs:
           mkdir -p "${BABEL_TOOLS_DIR}"
           pushd "${BABEL_TOOLS_DIR}"
           npm init -y >/dev/null 2>&1
-          npm install --no-save @babel/core @babel/cli @babel/preset-react
+          npm install --no-save @babel/core @babel/cli @babel/preset-react @babel/plugin-transform-block-scoping
           popd
 
+          # 说明：
+          # WebUI 当前采用多文件全局脚本结构，很多文件会重复声明 `const { ... } = React/MaterialUI`。
+          # 浏览器按普通 script 执行时，const/let 不允许重声明，会触发
+          # "Identifier has already been declared" 并导致白屏。
+          # 仅使用 preset-react（JSX 编译）+ plugin-transform-block-scoping（const/let → var），
+          # 不使用 preset-env，避免其对现代浏览器目标跳过 block-scoping 转换导致 const 残留。
           NODE_PATH="${BABEL_TOOLS_DIR}/node_modules" \
           "${BABEL_TOOLS_DIR}/node_modules/.bin/babel" admin/js \
             --extensions ".js,.jsx" \
             --out-dir "${BUILD_JS_DIR}" \
             --presets @babel/preset-react \
+            --plugins @babel/plugin-transform-block-scoping \
             --no-babelrc
 
           rm -rf admin/js
@@ -86,6 +93,11 @@ jobs:
 
           if find admin/js -type f -name '*.jsx' | grep -q .; then
             echo "::error::WebUI 编译后仍存在 .jsx 源文件"
+            exit 1
+          fi
+
+          if grep -R -n -E '^[[:space:]]*const[[:space:]]+\{[^}]+\}[[:space:]]*=[[:space:]]*(React|MaterialUI)[[:space:]]*;' admin/js >/dev/null; then
+            echo "::error::WebUI 编译后仍包含顶层 const 解构，可能导致浏览器全局重声明"
             exit 1
           fi
 
