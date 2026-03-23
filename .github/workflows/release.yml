@@ -53,18 +53,23 @@ jobs:
           fi
 
           BUILD_JS_DIR="admin/.js-build"
+          BABEL_TOOLS_DIR="${RUNNER_TEMP}/babel-tools"
           rm -rf "${BUILD_JS_DIR}"
           mkdir -p "${BUILD_JS_DIR}"
 
-          npx --yes \
-            --package @babel/core \
-            --package @babel/cli \
-            --package @babel/preset-react \
-            babel admin/js \
-              --extensions ".js,.jsx" \
-              --out-dir "${BUILD_JS_DIR}" \
-              --presets @babel/preset-react \
-              --no-babelrc
+          rm -rf "${BABEL_TOOLS_DIR}"
+          mkdir -p "${BABEL_TOOLS_DIR}"
+          pushd "${BABEL_TOOLS_DIR}"
+          npm init -y >/dev/null 2>&1
+          npm install --no-save @babel/core @babel/cli @babel/preset-react
+          popd
+
+          NODE_PATH="${BABEL_TOOLS_DIR}/node_modules" \
+          "${BABEL_TOOLS_DIR}/node_modules/.bin/babel" admin/js \
+            --extensions ".js,.jsx" \
+            --out-dir "${BUILD_JS_DIR}" \
+            --presets @babel/preset-react \
+            --no-babelrc
 
           rm -rf admin/js
           mv "${BUILD_JS_DIR}" admin/js
