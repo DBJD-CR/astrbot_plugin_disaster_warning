@@ -253,10 +253,19 @@ class WebSocketManager:
                             )
                         elif close_code == 1006:
                             # Abnormal Closure - 异常关闭（连接意外断开）
-                            # 这是最常见的网络故障，应该重连
-                            raise Exception(
-                                f"WebSocket异常关闭（连接中断），代码 {close_code}"
+                            # 这是最常见的网络故障，降级为警告并走重连逻辑，不进入错误遥测
+                            logger.warning(
+                                f"[灾害预警] WebSocket异常关闭，准备重连: {name}, code={close_code}"
                             )
+                            self._handle_connection_error(
+                                name,
+                                uri,
+                                headers,
+                                RuntimeError(
+                                    f"WebSocket异常关闭（连接中断），代码 {close_code}"
+                                ),
+                            )
+                            return
                         else:
                             # 其他未知关闭代码，尝试重连
                             raise Exception(f"WebSocket意外关闭，代码 {close_code}")
