@@ -126,7 +126,8 @@ class TsunamiFormatter(BaseMessageFormatter):
 
         details_url = getattr(tsunami, "details_url", None)
         if details_url:
-            lines.append(f"🔗详情：{details_url}")
+            lines.append("🔗详情：")
+            lines.append(str(details_url).strip())
 
         map_urls = getattr(tsunami, "map_urls", {}) or {}
         map_name_mapping = {
@@ -139,14 +140,16 @@ class TsunamiFormatter(BaseMessageFormatter):
             if isinstance(map_url, str) and map_url.strip():
                 rendered_any_map = True
                 map_label = map_name_mapping.get(map_key, map_key)
-                lines.append(f"🗺️{map_label}：{map_url}")
+                lines.append(f"🗺️{map_label}：")
+                lines.append(map_url.strip())
 
         # 兼容 map_urls 结构之外的异常情况：若是列表也尽量展示
         if not rendered_any_map and isinstance(map_urls, list):
             for idx, map_url in enumerate(map_urls, start=1):
                 if isinstance(map_url, str) and map_url.strip():
                     rendered_any_map = True
-                    lines.append(f"🗺️图件{idx}：{map_url}")
+                    lines.append(f"🗺️图件{idx}：")
+                    lines.append(map_url.strip())
 
         if tsunami.code:
             lines.append(f"🔄事件编号：{tsunami.code}")

@@ -894,7 +894,7 @@ class DisasterWarningPlugin(Star):
             return chain
         return [Comp.Reply(id=str(message_id)), *chain]
 
-    @filter.command("气象预警查询")
+    @filter.command("气象预警查询", alias={"气象预警"})
     async def query_weather_alarm(
         self,
         event: AstrMessageEvent,
@@ -908,20 +908,6 @@ class DisasterWarningPlugin(Star):
         /气象预警查询 <省份/地名> <预警类型> <预警颜色>
         /气象预警查询 <预警ID>
         """
-        async for result in self._query_weather_alarm_impl(
-            event, keyword=keyword, optional_a=optional_a, optional_b=optional_b
-        ):
-            yield result
-
-    @filter.command("气象预警")
-    async def query_weather_alarm_alias(
-        self,
-        event: AstrMessageEvent,
-        keyword: str = None,
-        optional_a: str = None,
-        optional_b: str = None,
-    ):
-        """气象预警查询别名：/气象预警"""
         async for result in self._query_weather_alarm_impl(
             event, keyword=keyword, optional_a=optional_a, optional_b=optional_b
         ):
@@ -1139,15 +1125,9 @@ class DisasterWarningPlugin(Star):
             logger.error(f"[灾害预警] 查询气象预警失败: {e}")
             yield _quoted_plain_result(f"❌ 查询失败: {e}")
 
-    @filter.command("地震预警查询")
+    @filter.command("地震预警查询", alias={"地震预警"})
     async def query_earthquake_warning(self, event: AstrMessageEvent):
         """查询各机构地震预警（EEW）状态"""
-        async for result in self._query_earthquake_warning_impl(event):
-            yield result
-
-    @filter.command("地震预警")
-    async def query_earthquake_warning_alias(self, event: AstrMessageEvent):
-        """地震预警查询别名：/地震预警"""
         async for result in self._query_earthquake_warning_impl(event):
             yield result
 

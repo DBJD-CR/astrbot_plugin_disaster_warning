@@ -347,10 +347,12 @@ class CWAReportFormatter(BaseMessageFormatter):
 
         # 图片链接 (如果有)
         if earthquake.image_uri:
-            lines.append(f"🖼️报告图片：{earthquake.image_uri}")
+            lines.append("🖼️报告图片：")
+            lines.append(str(earthquake.image_uri).strip())
 
         if earthquake.shakemap_uri:
-            lines.append(f"🗺️等震度图：{earthquake.shakemap_uri}")
+            lines.append("🗺️等震度图：")
+            lines.append(str(earthquake.shakemap_uri).strip())
 
         return "\n".join(lines)
 

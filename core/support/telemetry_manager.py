@@ -286,8 +286,15 @@ class TelemetryManager:
             exception: 捕获的异常对象
             module: 发生错误的模块名
         """
-        # 先脱敏再截断，防止截断导致脱敏正则匹配失败
         raw_message = str(exception)
+        if self._should_skip_error_telemetry(exception, raw_message, module):
+            logger.debug(
+                "[灾害预警] 命中遥测噪声过滤规则，跳过错误上报: "
+                f"{type(exception).__name__} | module={module} | message={raw_message[:200]}"
+            )
+            return False
+
+        # 先脱敏再截断，防止截断导致脱敏正则匹配失败
         sanitized_message = self._sanitize_message(raw_message)
 
         data = {
@@ -306,6 +313,42 @@ class TelemetryManager:
         data["stack"] = self._sanitize_stack(stack)[:4000]
 
         return await self.track("error", data)
+
+    def _should_skip_error_telemetry(
+        self,
+        exception: Exception,
+        raw_message: str,
+        module: str | None = None,
+    ) -> bool:
+        """判断是否应跳过高频低价值错误的遥测上报。"""
+        error_type = type(exception).__name__
+        message = (raw_message or "").lower()
+        module_name = (module or "").lower()
+
+        # Playwright 目标页/上下文/浏览器关闭类错误：常见于关闭时序或环境瞬态
+        if error_type == "TargetClosedError":
+            return True
+        if "target page, context or browser has been closed" in message:
+            return True
+
+        # Playwright 浏览器二进制缺失：属于环境依赖问题，不属于插件逻辑错误
+        if (
+            "executable doesn't exist" in message
+            or "playwright install" in message
+            or "ms-playwright" in message
+        ):
+            return True
+
+        # WebSocket 1006 异常关闭：高频网络抖动噪声，已由重连逻辑处理
+        if "websocket异常关闭" in message and "1006" in message:
+            return True
+        if (
+            module_name.startswith("core.websocket_manager.connect")
+            and "1006" in message
+        ):
+            return True
+
+        return False
 
     def _sanitize_stack(self, stack: str) -> str:
         """
