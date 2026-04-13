@@ -798,28 +798,32 @@ class DisasterWarningService:
 
             elif source_type == "jma":
                 # JMA 使用 shindo (震度)
-                shindo = str(item.get("shindo", ""))
-                intensity_display = shindo
+                shindo = str(item.get("shindo", "")).strip()
+                if shindo:
+                    intensity_display = shindo
 
-                # 映射颜色类
-                if shindo == "1":
-                    intensity_class = "int-1"
-                elif shindo == "2":
-                    intensity_class = "int-2"
-                elif shindo == "3":
-                    intensity_class = "int-3"
-                elif shindo == "4":
-                    intensity_class = "int-4"
-                elif shindo in ["5-", "5弱"]:
-                    intensity_class = "int-5-weak"
-                elif shindo in ["5+", "5強", "5强"]:
-                    intensity_class = "int-5-strong"
-                elif shindo in ["6-", "6弱"]:
-                    intensity_class = "int-6-weak"
-                elif shindo in ["6+", "6強", "6强"]:
-                    intensity_class = "int-6-strong"
-                elif shindo == "7":
-                    intensity_class = "int-7"
+                    # 映射颜色类
+                    if shindo == "1":
+                        intensity_class = "int-1"
+                    elif shindo == "2":
+                        intensity_class = "int-2"
+                    elif shindo == "3":
+                        intensity_class = "int-3"
+                    elif shindo == "4":
+                        intensity_class = "int-4"
+                    elif shindo in ["5-", "5弱"]:
+                        intensity_class = "int-5-weak"
+                    elif shindo in ["5+", "5強", "5强"]:
+                        intensity_class = "int-5-strong"
+                    elif shindo in ["6-", "6弱"]:
+                        intensity_class = "int-6-weak"
+                    elif shindo in ["6+", "6強", "6强"]:
+                        intensity_class = "int-6-strong"
+                    elif shindo == "7":
+                        intensity_class = "int-7"
+                else:
+                    intensity_display = "---"
+                    intensity_class = "int-unknown"
 
             return {
                 "location": location,
