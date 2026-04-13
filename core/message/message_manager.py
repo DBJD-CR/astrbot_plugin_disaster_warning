@@ -7,12 +7,15 @@ import asyncio
 import base64
 import glob
 import json
+import mimetypes
 import os
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlparse
 
+import aiohttp
 from jinja2 import Template
 
 import astrbot.api.message_components as Comp
@@ -223,6 +226,171 @@ class MessagePushManager:
         self._render_inflight_tasks: dict[str, asyncio.Task[str | None]] = {}
         self._render_cache_lock = asyncio.Lock()
         self._render_cache_ttl_seconds = 180
+
+    @staticmethod
+    def _is_http_url(url: str | None) -> bool:
+        """判断是否为可抓取的 HTTP(S) URL。"""
+        if not isinstance(url, str):
+            return False
+        normalized = url.strip()
+        return normalized.startswith("http://") or normalized.startswith("https://")
+
+    @staticmethod
+    def _is_image_content_type(content_type: str | None) -> bool:
+        """判断响应 Content-Type 是否为图片。"""
+        if not isinstance(content_type, str):
+            return False
+        mime = content_type.split(";", 1)[0].strip().lower()
+        return mime.startswith("image/")
+
+    @staticmethod
+    def _guess_image_content_type(url: str) -> str | None:
+        """根据 URL 后缀猜测图片 MIME。"""
+        guessed_type, _ = mimetypes.guess_type(url)
+        if isinstance(guessed_type, str) and guessed_type.startswith("image/"):
+            return guessed_type
+        return None
+
+    async def _fetch_remote_media(
+        self,
+        url: str,
+        *,
+        expected_kind: str,
+        timeout_seconds: int = 15,
+        max_bytes: int = 15 * 1024 * 1024,
+    ) -> dict[str, Any] | None:
+        """抓取远程媒体并返回结构化结果。"""
+        normalized_url = url.strip()
+        timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+        result: dict[str, Any] = {
+            "source_url": normalized_url,
+            "final_url": normalized_url,
+            "status": None,
+            "content_type": None,
+            "content_length": None,
+            "bytes": None,
+            "error": None,
+            "exception_type": None,
+        }
+
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    normalized_url, allow_redirects=True
+                ) as response:
+                    result["status"] = response.status
+                    result["final_url"] = str(response.url)
+                    result["content_type"] = response.headers.get("Content-Type")
+                    content_length = response.headers.get("Content-Length")
+                    if content_length and content_length.isdigit():
+                        result["content_length"] = int(content_length)
+                        if result["content_length"] > max_bytes:
+                            result["error"] = (
+                                f"响应体过大: {result['content_length']} bytes > {max_bytes} bytes"
+                            )
+                            return result
+
+                    if response.status != 200:
+                        result["error"] = f"HTTP {response.status}"
+                        return result
+
+                    body = await response.read()
+                    result["bytes"] = len(body)
+                    if len(body) > max_bytes:
+                        result["error"] = (
+                            f"下载体过大: {len(body)} bytes > {max_bytes} bytes"
+                        )
+                        return result
+
+                    content_type = result[
+                        "content_type"
+                    ] or self._guess_image_content_type(result["final_url"])
+                    result["content_type"] = content_type
+                    if expected_kind == "image" and not self._is_image_content_type(
+                        content_type
+                    ):
+                        result["error"] = (
+                            f"响应类型不是图片: {content_type or 'unknown'}"
+                        )
+                        return result
+
+                    result["data"] = body
+                    return result
+        except Exception as e:
+            result["error"] = str(e)
+            result["exception_type"] = type(e).__name__
+            return result
+
+    async def _append_remote_image_component(
+        self,
+        chain: MessageChain,
+        image_url: str,
+        *,
+        media_label: str,
+        allow_url_fallback: bool = True,
+    ) -> bool:
+        """将远程图片优先转为 Base64 附加到消息链，失败时可回退 URL。"""
+        normalized_url = image_url.strip()
+        if not self._is_http_url(normalized_url):
+            logger.debug(
+                f"[灾害预警] 跳过非 HTTP 图片链接 ({media_label}): {normalized_url}"
+            )
+            return False
+
+        fetch_result = await self._fetch_remote_media(
+            normalized_url,
+            expected_kind="image",
+        )
+        if fetch_result and fetch_result.get("data"):
+            try:
+                b64_data = base64.b64encode(fetch_result["data"]).decode()
+                chain.chain.append(Comp.Image.fromBase64(b64_data))
+                logger.debug(
+                    "[灾害预警] 已附加远程图片(Base64) "
+                    f"{media_label}: source={fetch_result.get('source_url')}, "
+                    f"final={fetch_result.get('final_url')}, "
+                    f"content_type={fetch_result.get('content_type')}, "
+                    f"bytes={fetch_result.get('bytes')}"
+                )
+                return True
+            except Exception as e:
+                logger.warning(
+                    "[灾害预警] 远程图片转Base64失败 "
+                    f"({media_label}): source={fetch_result.get('source_url')}, "
+                    f"final={fetch_result.get('final_url')}, "
+                    f"content_type={fetch_result.get('content_type')}, "
+                    f"bytes={fetch_result.get('bytes')}, "
+                    f"error={type(e).__name__}: {e}"
+                )
+
+        if fetch_result:
+            logger.warning(
+                "[灾害预警] 远程图片抓取失败 "
+                f"({media_label}): source={fetch_result.get('source_url')}, "
+                f"final={fetch_result.get('final_url')}, "
+                f"status={fetch_result.get('status')}, "
+                f"content_type={fetch_result.get('content_type')}, "
+                f"content_length={fetch_result.get('content_length')}, "
+                f"bytes={fetch_result.get('bytes')}, "
+                f"error={fetch_result.get('exception_type') or 'FetchError'}: {fetch_result.get('error')}"
+            )
+
+        if allow_url_fallback:
+            try:
+                chain.chain.append(Comp.Image.fromURL(normalized_url))
+                logger.debug(
+                    f"[灾害预警] 远程图片已回退为URL发送 ({media_label}): {normalized_url}"
+                )
+                return True
+            except Exception as e:
+                parsed = urlparse(normalized_url)
+                logger.warning(
+                    "[灾害预警] 远程图片URL回退发送失败 "
+                    f"({media_label}): scheme={parsed.scheme}, host={parsed.netloc}, "
+                    f"url={normalized_url}, error={type(e).__name__}: {e}"
+                )
+
+        return False
 
     def _build_runtime_components(
         self,
@@ -457,14 +625,34 @@ class MessagePushManager:
         session_id: str | None = None,
         filter_reason_out: list[str] | None = None,
         emit_filter_log: bool = True,
+        commit_state: bool = True,
     ) -> bool:
-        """判断是否应该推送事件"""
+        """判断是否应该推送事件。
+
+        参数:
+            commit_state: 是否提交过滤器内部状态。
+                多会话候选筛选阶段应为 False，真正进入发送阶段时再提交，
+                避免有状态过滤器在预检查时造成跨会话副作用。
+        """
         runtime_config = runtime_config or self.config
         runtime_components = self._build_runtime_components(runtime_config, session_id)
 
         def reject(reason: str, log_message: str | None = None) -> bool:
             if filter_reason_out is not None:
                 filter_reason_out.append(reason)
+            if emit_filter_log and log_message:
+                logger.info(log_message)
+            return False
+
+        def reject_with_detail(
+            reason: str,
+            detail: str | None = None,
+            log_message: str | None = None,
+        ) -> bool:
+            if filter_reason_out is not None:
+                filter_reason_out.append(reason)
+                if detail:
+                    filter_reason_out.append(detail)
             if emit_filter_log and log_message:
                 logger.info(log_message)
             return False
@@ -499,10 +687,15 @@ class MessagePushManager:
             # 气象预警事件需要进行过滤
             if isinstance(event.data, WeatherAlarmData):
                 title_text = event.data.title or event.data.headline or ""
-                if runtime_components["weather_filter"].should_filter(
-                    title_text, event.data.headline or ""
-                ):
-                    return reject("气象关键字过滤")
+                weather_decision = runtime_components["weather_filter"].evaluate(
+                    title_text,
+                    event.data.headline or "",
+                )
+                if weather_decision.get("filtered"):
+                    return reject_with_detail(
+                        str(weather_decision.get("reason") or "气象预警过滤"),
+                        str(weather_decision.get("detail") or ""),
+                    )
             # 海啸和气象事件通过了过滤，可以推送
             return True
 
@@ -544,7 +737,9 @@ class MessagePushManager:
                 return reject("USGS过滤器", "[灾害预警] 事件被USGS过滤器过滤")
 
         # 报数控制（仅EEW数据源）
-        if not runtime_components["report_controller"].should_push_report(event):
+        if not runtime_components["report_controller"].should_push_report(
+            event, commit_state=commit_state
+        ):
             return reject(
                 "报数控制器",
                 f"[灾害预警] 事件被报数控制器过滤: {source_id}",
@@ -1174,12 +1369,19 @@ class MessagePushManager:
                     session_id=session,
                     filter_reason_out=filter_reasons,
                     emit_filter_log=False,
+                    commit_state=False,
                 ):
                     reason = filter_reasons[0] if filter_reasons else "未通过推送条件"
+                    reason_detail = filter_reasons[1] if len(filter_reasons) > 1 else ""
                     filter_reason_stats[reason] = filter_reason_stats.get(reason, 0) + 1
-                    logger.debug(
-                        f"[灾害预警] 事件 {event.id} 未通过会话 {session} 的推送条件检查: {reason}"
-                    )
+                    if reason_detail:
+                        logger.debug(
+                            f"[灾害预警] 事件 {event.id} 在会话 {session} 的预筛选阶段被拦截，原因：{reason}（{reason_detail}）"
+                        )
+                    else:
+                        logger.debug(
+                            f"[灾害预警] 事件 {event.id} 在会话 {session} 的预筛选阶段被拦截，原因：{reason}"
+                        )
                     continue
 
                 push_candidates.append((session, runtime_config))
@@ -1210,9 +1412,37 @@ class MessagePushManager:
                 runtime_config: dict[str, Any],
             ) -> tuple[bool, str, dict[str, Any] | None]:
                 try:
+                    filter_reasons: list[str] = []
+                    if not self.should_push_event(
+                        event,
+                        runtime_config=runtime_config,
+                        session_id=session,
+                        filter_reason_out=filter_reasons,
+                        emit_filter_log=False,
+                        commit_state=True,
+                    ):
+                        reason = (
+                            filter_reasons[0] if filter_reasons else "未通过推送条件"
+                        )
+                        reason_detail = (
+                            filter_reasons[1] if len(filter_reasons) > 1 else ""
+                        )
+                        if reason_detail:
+                            logger.debug(
+                                f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{reason}（{reason_detail}）"
+                            )
+                        else:
+                            logger.debug(
+                                f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{reason}"
+                            )
+                        return False, session, None
+
+                    logger.debug(
+                        f"[灾害预警] 事件 {event.id} 通过会话 {session} 的发送前复核，准备发送消息"
+                    )
                     message = await get_or_build_message(runtime_config)
                     await self._send_message(session, message)
-                    logger.info(f"[灾害预警] 消息已推送到 {session}")
+                    logger.debug(f"[灾害预警] 事件 {event.id} 已推送到 {session}")
                     return True, session, runtime_config.get("message_format", {})
                 except Exception as e:
                     logger.error(f"[灾害预警] 推送到 {session} 失败: {e}")
@@ -1281,21 +1511,32 @@ class MessagePushManager:
                             )
                         )
 
+            if filter_reason_stats:
+                summary = "，".join(
+                    f"{reason} {count} 个会话"
+                    for reason, count in sorted(filter_reason_stats.items())
+                )
+                if push_success_count > 0:
+                    logger.info(
+                        f"[灾害预警] 事件 {event.id} 已完成会话筛选，{push_success_count} 个会话通过，另有 {summary} 被拦截"
+                    )
+                else:
+                    logger.info(
+                        f"[灾害预警] 事件 {event.id} 未通过任何会话的推送条件，拦截情况：{summary}"
+                    )
+            elif push_success_count > 0:
+                logger.info(
+                    f"[灾害预警] 事件 {event.id} 已通过全部会话的推送条件，共 {push_success_count} 个会话"
+                )
+
             # 7. 记录推送
             self.last_success_sessions = list(passed_sessions)
-            if filter_reason_stats:
+            if filter_reason_stats and push_success_count > 0:
                 summary = "，".join(
                     f"{reason}×{count}"
                     for reason, count in sorted(filter_reason_stats.items())
                 )
-                if push_success_count > 0:
-                    logger.debug(
-                        f"[灾害预警] 事件 {event.id} 部分会话被过滤: {summary}"
-                    )
-                else:
-                    logger.info(
-                        f"[灾害预警] 事件 {event.id} 已被会话过滤拦截: {summary}"
-                    )
+                logger.debug(f"[灾害预警] 事件 {event.id} 部分会话被过滤: {summary}")
             if push_success_count > 0:
                 logger.info(
                     f"[灾害预警] 事件 {event.id} 推送完成，成功推送到 {push_success_count} 个会话"
@@ -1546,24 +1787,21 @@ class MessagePushManager:
                 except Exception as e:
                     logger.error(f"[灾害预警] 附加气象预警图标失败: {e}")
 
-        # 5. 海啸图件：优先尝试直接渲染 URL 图片（失败时文本消息中仍保留 URL 兜底）
+        # 5. 海啸图件：优先下载并转为 Base64；失败时回退 URL 发送，文本中保留原始链接兜底
         if isinstance(event.data, TsunamiData):
             map_urls = getattr(event.data, "map_urls", {}) or {}
             if isinstance(map_urls, dict):
                 for map_key in ["earthquake", "amplitude", "coastal"]:
                     map_url = map_urls.get(map_key)
                     if isinstance(map_url, str) and map_url.strip():
-                        try:
-                            chain.chain.append(Comp.Image.fromURL(map_url.strip()))
-                            logger.debug(
-                                f"[灾害预警] 已附加海啸图件: {map_key} -> {map_url}"
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                f"[灾害预警] 附加海啸图件失败 ({map_key}): {e}"
-                            )
+                        await self._append_remote_image_component(
+                            chain,
+                            map_url,
+                            media_label=f"海啸图件/{map_key}",
+                            allow_url_fallback=True,
+                        )
 
-        # 6. CWA 地震报告图件：优先尝试直接渲染 URL 图片（失败时文本消息中仍保留 URL 兜底）
+        # 6. CWA 地震报告图件：优先下载并转为 Base64；失败时回退 URL 发送，文本中保留原始链接兜底
         if source_id == "cwa_fanstudio_report" and isinstance(
             event.data, EarthquakeData
         ):
@@ -1577,12 +1815,13 @@ class MessagePushManager:
                     if normalized_url and normalized_url not in report_image_urls:
                         report_image_urls.append(normalized_url)
 
-            for image_url in report_image_urls:
-                try:
-                    chain.chain.append(Comp.Image.fromURL(image_url))
-                    logger.debug(f"[灾害预警] 已附加 CWA 地震报告图件: {image_url}")
-                except Exception as e:
-                    logger.warning(f"[灾害预警] 附加 CWA 地震报告图件失败: {e}")
+            for idx, image_url in enumerate(report_image_urls, start=1):
+                await self._append_remote_image_component(
+                    chain,
+                    image_url,
+                    media_label=f"CWA地震报告图件/{idx}",
+                    allow_url_fallback=True,
+                )
 
         return chain
 
