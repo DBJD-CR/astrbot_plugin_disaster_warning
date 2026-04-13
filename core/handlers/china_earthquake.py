@@ -100,9 +100,35 @@ class CENCEarthquakeWolfxHandler(BaseDataHandler):
             if not eq_info:
                 return None
 
+            event_id = str(
+                eq_info.get("eventId")
+                or eq_info.get("EventID")
+                or eq_info.get("id")
+                or eq_info.get("ID")
+                or eq_info.get("originId")
+                or eq_info.get("OriginID")
+                or eq_info.get("md5")
+                or ""
+            ).strip()
+
+            raw_report_num = (
+                eq_info.get("updates")
+                or eq_info.get("reportNum")
+                or eq_info.get("ReportNum")
+                or eq_info.get("serial")
+                or eq_info.get("Serial")
+                or 1
+            )
+            try:
+                report_num = int(raw_report_num)
+            except (TypeError, ValueError):
+                report_num = 1
+            if report_num <= 0:
+                report_num = 1
+
             earthquake = EarthquakeData(
                 id=eq_info.get("md5", ""),
-                event_id=eq_info.get("md5", ""),
+                event_id=event_id,
                 source=DataSource.WOLFX_CENC_EQ,
                 disaster_type=DisasterType.EARTHQUAKE,
                 shock_time=self._parse_datetime(eq_info.get("time", "")),
@@ -112,6 +138,8 @@ class CENCEarthquakeWolfxHandler(BaseDataHandler):
                 magnitude=safe_float_convert(eq_info.get("magnitude")),
                 intensity=safe_float_convert(eq_info.get("intensity")),
                 place_name=eq_info.get("location", ""),
+                updates=report_num,
+                report_num=report_num,
                 info_type=eq_info.get("type", ""),
                 raw_data=data,
             )
