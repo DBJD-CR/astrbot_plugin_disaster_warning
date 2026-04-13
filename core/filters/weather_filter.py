@@ -192,35 +192,75 @@ class WeatherFilter:
         # 这种情况下返回“白色”作为最低级别，通常会被过滤器拦截（除非用户设置阈值为白色）。
         return "白色"
 
+    def evaluate(
+        self,
+        title_text: str,
+        headline_text: str = "",
+    ) -> dict[str, Any]:
+        """评估气象预警过滤结果并返回结构化决策信息。"""
+        result: dict[str, Any] = {
+            "filtered": False,
+            "reason": "通过",
+            "detail": "气象预警通过过滤条件",
+            "context": {
+                "enabled": self.enabled,
+                "detected_color": None,
+                "min_color_level": self.min_color_level,
+                "keywords": list(self.keywords),
+                "title_hits": [],
+                "headline_hits": [],
+            },
+        }
+
+        if not self.enabled:
+            result["detail"] = "气象预警过滤器未启用"
+            return result
+
+        # 1. 级别过滤
+        current_color = self.extract_color_level(title_text)
+        current_level_value = COLOR_LEVELS.get(current_color, 0)
+        result["context"]["detected_color"] = current_color
+
+        if current_level_value < self.min_level_value:
+            result["filtered"] = True
+            result["reason"] = "气象颜色级别过滤"
+            result["detail"] = (
+                f"当前颜色 {current_color} 低于最低要求 {self.min_color_level}"
+            )
+            return result
+
+        # 2. 关键词白名单过滤（title 优先，title 未命中再检查 headline）
+        if self.keywords:
+            title_hits = [
+                keyword
+                for keyword in self.keywords
+                if keyword and keyword in title_text
+            ]
+            headline_hits = [
+                keyword
+                for keyword in self.keywords
+                if keyword and keyword in headline_text
+            ]
+            result["context"]["title_hits"] = title_hits
+            result["context"]["headline_hits"] = headline_hits
+
+            if not title_hits and not headline_hits:
+                result["filtered"] = True
+                result["reason"] = "气象关键词白名单过滤"
+                result["detail"] = "title/headline 均未命中关键词白名单"
+                return result
+
+            hit_source = "title" if title_hits else "headline"
+            hit_keywords = title_hits if title_hits else headline_hits
+            result["detail"] = (
+                f"气象预警命中{hit_source}关键词: {', '.join(hit_keywords)}"
+            )
+
+        return result
+
     def should_filter(self, title_text: str, headline_text: str = "") -> bool:
         """
         判断是否应过滤该预警
         返回 True 表示应过滤（不推送），False 表示不过滤（推送）
         """
-        if not self.enabled:
-            return False
-
-        # 1. 级别过滤
-        current_color = self.extract_color_level(title_text)
-        current_level_value = COLOR_LEVELS.get(current_color, 0)
-
-        if current_level_value < self.min_level_value:
-            logger.info(
-                f"[灾害预警] 气象预警被级别过滤器过滤: {current_color} 低于最低要求 {self.min_color_level}"
-            )
-            return True
-
-        # 2. 关键词白名单过滤（title 优先，title 未命中再检查 headline）
-        if self.keywords:
-            title_hit = any(
-                keyword in title_text for keyword in self.keywords if keyword
-            )
-            if not title_hit:
-                headline_hit = any(
-                    keyword in headline_text for keyword in self.keywords if keyword
-                )
-                if not headline_hit:
-                    logger.info("[灾害预警] 气象预警被关键词过滤器过滤")
-                    return True
-
-        return False
+        return bool(self.evaluate(title_text, headline_text).get("filtered", False))
