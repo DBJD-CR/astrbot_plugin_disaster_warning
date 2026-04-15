@@ -1,0 +1,202 @@
+"""
+地震列表查询服务。
+负责 Wolfx 地震列表缓存更新与卡片渲染所需的展示数据格式化。
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from astrbot.api import logger
+
+
+class EarthquakeListService:
+    """地震列表查询与格式化服务。"""
+
+    def __init__(self, earthquake_lists: dict[str, dict[str, Any]] | None = None):
+        self.earthquake_lists = earthquake_lists or {"cenc": {}, "jma": {}}
+
+    def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
+        """更新内存中的地震列表。"""
+        if list_type in self.earthquake_lists:
+            self.earthquake_lists[list_type] = data
+            logger.debug(f"[灾害预警] 已更新 {list_type} 地震列表缓存")
+
+    def get_formatted_list_data(
+        self, source_type: str, count: int
+    ) -> list[dict[str, Any]]:
+        """获取格式化后的地震列表数据（用于卡片渲染）。"""
+        data = self.earthquake_lists.get(source_type, {})
+        if not data:
+            return []
+
+        # Wolfx 列表以 No1/No2... 形式编号，这里按编号顺序取前 N 项用于展示。
+        sorted_keys = sorted(
+            [k for k in data.keys() if k.startswith("No")],
+            key=lambda x: int(x[2:]) if x[2:].isdigit() else 999,
+        )
+
+        result: list[dict[str, Any]] = []
+        for key in sorted_keys[:count]:
+            item = data[key]
+            formatted_item = self._format_list_item(source_type, item)
+            if formatted_item:
+                result.append(formatted_item)
+
+        return result
+
+    def _format_list_item(
+        self, source_type: str, item: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """格式化单个列表项。"""
+        try:
+            location = item.get("location", "未知地点")
+            time_str = item.get("time", "")
+            magnitude = item.get("magnitude", "0.0")
+            depth = item.get("depth", "0")
+
+            depth_val = -1.0
+            try:
+                # 深度原始值可能混有字符串单位，这里先尽量规整成数值，便于统一做“极浅/ごく浅い”等展示判断。
+                if isinstance(depth, (int, float)):
+                    depth_val = float(depth)
+                elif isinstance(depth, str):
+                    clean_depth = depth.lower().replace("km", "").strip()
+                    if clean_depth:
+                        depth_val = float(clean_depth)
+            except Exception:
+                depth_val = -1.0
+
+            depth_label = "深度"
+            depth_value_str = str(depth).replace("km", "").strip()
+            depth_unit = "km"
+
+            if source_type == "jma":
+                depth_label = "深さ"
+                if depth_val == 0.0:
+                    depth_value_str = "ごく浅い"
+                    depth_unit = ""
+                    depth = "ごく浅い"
+                else:
+                    if depth_val >= 0:
+                        formatted_val = (
+                            f"{int(depth_val)}"
+                            if depth_val.is_integer()
+                            else f"{depth_val}"
+                        )
+                        depth = f"{formatted_val} km"
+                        depth_value_str = formatted_val
+                    else:
+                        clean_d = str(depth).replace("km", "").strip()
+                        depth = f"{clean_d} km"
+            else:
+                depth_label = "深度"
+                if depth_val == 0.0:
+                    depth_value_str = "极浅"
+                    depth_unit = ""
+                    depth = "极浅"
+                else:
+                    if depth_val >= 0:
+                        formatted_val = (
+                            f"{int(depth_val)}"
+                            if depth_val.is_integer()
+                            else f"{depth_val}"
+                        )
+                        depth = f"{formatted_val} km"
+                        depth_value_str = formatted_val
+                    else:
+                        clean_d = str(depth).replace("km", "").strip()
+                        depth = f"{clean_d} km"
+
+            intensity_display = "-"
+            intensity_class = "int-unknown"
+
+            if source_type == "cenc":
+                intensity = item.get("intensity")
+                if intensity is None or intensity == "":
+                    try:
+                        mag_val = float(magnitude)
+                        if mag_val < 3:
+                            intensity = "1"
+                        elif mag_val < 5:
+                            intensity = "3"
+                        elif mag_val < 6:
+                            intensity = "5"
+                        elif mag_val < 7:
+                            intensity = "7"
+                        elif mag_val < 8:
+                            intensity = "9"
+                        else:
+                            intensity = "11"
+                    except Exception:
+                        intensity = "0"
+
+                intensity_display = str(intensity)
+
+                try:
+                    int_val = float(intensity)
+                    if int_val < 3:
+                        intensity_class = "int-1"
+                    elif int_val < 5:
+                        intensity_class = "int-2"
+                    elif int_val < 6:
+                        intensity_class = "int-3"
+                    elif int_val < 7:
+                        intensity_class = "int-4"
+                    elif int_val < 8:
+                        intensity_class = "int-5-weak"
+                    elif int_val < 9:
+                        intensity_class = "int-5-strong"
+                    elif int_val < 10:
+                        intensity_class = "int-6-weak"
+                    elif int_val < 11:
+                        intensity_class = "int-6-strong"
+                    else:
+                        intensity_class = "int-7"
+                except Exception:
+                    pass
+
+            elif source_type == "jma":
+                shindo = str(item.get("shindo", "")).strip()
+                if shindo:
+                    intensity_display = shindo
+
+                    if shindo == "1":
+                        intensity_class = "int-1"
+                    elif shindo == "2":
+                        intensity_class = "int-2"
+                    elif shindo == "3":
+                        intensity_class = "int-3"
+                    elif shindo == "4":
+                        intensity_class = "int-4"
+                    elif shindo in ["5-", "5弱"]:
+                        intensity_class = "int-5-weak"
+                    elif shindo in ["5+", "5強", "5强"]:
+                        intensity_class = "int-5-strong"
+                    elif shindo in ["6-", "6弱"]:
+                        intensity_class = "int-6-weak"
+                    elif shindo in ["6+", "6強", "6强"]:
+                        intensity_class = "int-6-strong"
+                    elif shindo == "7":
+                        intensity_class = "int-7"
+                else:
+                    intensity_display = "---"
+                    intensity_class = "int-unknown"
+
+            return {
+                "location": location,
+                "time": time_str,
+                "magnitude": magnitude,
+                "depth": depth,
+                "depth_label": depth_label,
+                "depth_value": depth_value_str,
+                "depth_unit": depth_unit,
+                "is_text_depth": (depth_val == 0.0),
+                "intensity_display": intensity_display,
+                "intensity_class": intensity_class,
+                "raw": item,
+            }
+
+        except Exception as e:
+            logger.error(f"[灾害预警] 格式化列表项失败: {e}")
+            return None
