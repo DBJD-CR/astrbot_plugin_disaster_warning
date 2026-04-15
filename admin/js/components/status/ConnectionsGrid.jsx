@@ -64,8 +64,17 @@ function ConnectionsGrid() {
                 }
             });
 
-            // 获取延迟信息（取第一个匹配项的延迟）
-            const latency = matchedEntries.length > 0 ? matchedEntries[0][1].latency : undefined;
+            // 获取延迟信息，兼容 latency / latency_ms / ping 等旧新字段，并规范为 number|null|undefined
+            const rawLatency = matchedEntries.length > 0
+                ? (matchedEntries[0][1].latency ?? matchedEntries[0][1].latency_ms ?? matchedEntries[0][1].ping)
+                : undefined;
+            let latency = undefined;
+            if (rawLatency === null) {
+                latency = null;
+            } else if (rawLatency !== undefined && rawLatency !== '') {
+                const normalizedLatency = Number(rawLatency);
+                latency = Number.isFinite(normalizedLatency) ? normalizedLatency : null;
+            }
 
             return {
                 name: target.displayName,
@@ -193,30 +202,28 @@ function ConnectionsGrid() {
                             </Typography>
                             
                             {/* 延迟显示 */}
-                            {conn.latency !== undefined && conn.latency !== null && (
+                            {conn.status !== 'disabled' && (
                                 <Typography sx={{
-                                    color: 'text.secondary',
+                                    color: conn.latency === undefined ? 'text.disabled' : 'text.secondary',
                                     fontSize: '0.85rem',
                                     mt: 0.5,
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: 0.5
+                                    gap: 0.5,
+                                    fontStyle: conn.latency === undefined || conn.latency === null ? 'italic' : 'normal'
                                 }}>
                                     <span style={{ fontSize: '0.75rem' }}>⏱</span>
-                                    延迟: <span style={{ 
-                                        fontWeight: 600,
-                                        color: conn.latency < 150 ? '#4CAF50' : conn.latency < 460 ? '#FF9800' : '#F44336'
-                                    }}>{conn.latency.toFixed(0)}ms</span>
-                                </Typography>
-                            )}
-                            {conn.latency === null && conn.status !== 'disabled' && (
-                                <Typography sx={{
-                                    color: 'text.disabled',
-                                    fontSize: '0.85rem',
-                                    mt: 0.5,
-                                    fontStyle: 'italic'
-                                }}>
-                                    延迟: 无法测量
+                                    延迟:
+                                    {conn.latency !== undefined && conn.latency !== null ? (
+                                        <span style={{
+                                            fontWeight: 600,
+                                            color: conn.latency < 150 ? '#4CAF50' : conn.latency < 460 ? '#FF9800' : '#F44336'
+                                        }}>{conn.latency.toFixed(0)}ms</span>
+                                    ) : conn.latency === null ? (
+                                        <span>无法测量</span>
+                                    ) : (
+                                        <span>测量中...</span>
+                                    )}
                                 </Typography>
                             )}
                         </Box>
@@ -236,8 +243,45 @@ function ConnectionsGrid() {
                                     {Object.entries(conn.sub_sources)
                                         .sort(([, a], [, b]) => (a === b ? 0 : a ? -1 : 1))
                                         .map(([key, enabled]) => {
-                                        const friendlyName = window.formatSourceName ? window.formatSourceName(key) : key;
-                                        
+                                        const getScopedSourceName = (sourceKey, connectionName) => {
+                                            const rawKey = String(sourceKey || '').trim();
+                                            if (!rawKey) return rawKey;
+
+                                            const scopedSourceMap = {
+                                                'FAN Studio': {
+                                                    china_earthquake_warning: '中国地震预警网 (CEA)',
+                                                    china_earthquake_warning_provincial: '中国地震预警网 (省级)',
+                                                    taiwan_cwa_earthquake: '台湾中央气象署: 强震即时警报',
+                                                    taiwan_cwa_report: '台湾中央气象署: 地震报告',
+                                                    china_cenc_earthquake: '中国地震台网 (CENC)',
+                                                    usgs_earthquake: '美国地质调查局 (USGS)',
+                                                    china_weather_alarm: '中国气象局: 气象预警',
+                                                    china_tsunami: '自然资源部海啸预警中心',
+                                                    japan_jma_eew: '日本气象厅: 紧急地震速报'
+                                                },
+                                                'P2P地震情報': {
+                                                    japan_jma_eew: '日本气象厅: 紧急地震速报',
+                                                    japan_jma_earthquake: '日本气象厅: 地震情报',
+                                                    japan_jma_tsunami: '日本气象厅: 海啸予报'
+                                                },
+                                                'Wolfx': {
+                                                    japan_jma_eew: '日本气象厅: 紧急地震速报',
+                                                    china_cenc_eew: '中国地震预警网 (CEA)',
+                                                    taiwan_cwa_eew: '台湾中央气象署: 强震即时警报',
+                                                    japan_jma_earthquake: '日本气象厅地震情报',
+                                                    china_cenc_earthquake: '中国地震台网地震测定'
+                                                },
+                                                'Global Quake': {
+                                                    enabled: '实时数据流'
+                                                }
+                                            };
+
+                                            return scopedSourceMap[connectionName]?.[rawKey]
+                                                || (window.formatSourceName ? window.formatSourceName(rawKey) : rawKey);
+                                        };
+
+                                        const friendlyName = getScopedSourceName(key, conn.name);
+
                                         return (
                                             <Box key={key} sx={{
                                                 display: 'flex',
