@@ -20,15 +20,18 @@ function LogStatsCard({ style }) {
     const endTime = logStats.date_range?.end || '暂无记录';
 
     // 进度条颜色逻辑和状态灯
-    let progressColor = 'var(--md-sys-color-primary)';
+    let progressColor = '#6750A4';
     let statusDotColor = '#4CAF50'; // Green
+    let trackColor = 'rgba(103, 80, 164, 0.18)';
     
     if (usagePercent > 90) {
-        progressColor = 'var(--md-sys-color-error)';
+        progressColor = '#F44336';
         statusDotColor = '#F44336'; // Red
+        trackColor = 'rgba(244, 67, 54, 0.18)';
     } else if (usagePercent > 70) {
         progressColor = '#F9A825'; // Yellow/Amber
         statusDotColor = '#FFC107'; // Amber
+        trackColor = 'rgba(249, 168, 37, 0.18)';
     }
 
     const handleOpenLogDir = async () => {
@@ -136,7 +139,8 @@ function LogStatsCard({ style }) {
                     <div style={{
                         width: '100%',
                         height: '6px',
-                        background: 'rgba(0,0,0,0.1)',
+                        background: trackColor,
+                        opacity: 1,
                         borderRadius: '3px',
                         overflow: 'hidden'
                     }}>
@@ -145,6 +149,7 @@ function LogStatsCard({ style }) {
                             height: '100%',
                             background: progressColor,
                             borderRadius: '3px',
+                            boxShadow: `0 0 0 1px ${trackColor} inset`,
                             transition: 'width 0.5s ease-out'
                         }}></div>
                     </div>
