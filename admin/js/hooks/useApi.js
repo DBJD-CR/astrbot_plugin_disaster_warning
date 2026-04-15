@@ -5,13 +5,21 @@
 function useApi() {
     const API_BASE = '/api';
 
+    const unwrapApiResponse = (payload) => {
+        if (payload && typeof payload === 'object' && payload.success === true && payload.data !== undefined) {
+            return payload.data;
+        }
+        return payload;
+    };
+
     // 通用数据获取函数，处理错误和JSON解析
     const fetchData = async (endpoint, options = {}) => {
         const response = await fetch(`${API_BASE}${endpoint}`, options);
+        const payload = await response.json();
         if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
+            throw new Error(payload?.error || `API Error: ${response.statusText}`);
         }
-        return response.json();
+        return unwrapApiResponse(payload);
     };
 
     const getStatus = () => fetchData('/status');
