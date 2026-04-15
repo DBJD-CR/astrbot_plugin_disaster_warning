@@ -510,6 +510,7 @@ function ConfigRenderer() {
     const [expandedKeys, setExpandedKeys] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [loadError, setLoadError] = useState('');
 
     // 多会话模式相关状态
     const [mode, setMode] = useState('global'); // global | session
@@ -609,15 +610,36 @@ function ConfigRenderer() {
         }
     }, [expandedKeys, schema, mode, selectedSession]);
 
+    const isValidSchemaObject = (value) => {
+        return !!(
+            value &&
+            typeof value === 'object' &&
+            !Array.isArray(value) &&
+            !value.error &&
+            Object.keys(value).length > 0
+        );
+    };
+
     const initializePage = async () => {
         setLoading(true);
+        setLoadError('');
         try {
             const schemaData = await api.getConfigSchema();
+            if (!isValidSchemaObject(schemaData)) {
+                const message = schemaData?.error || '配置 Schema 加载失败，服务端返回了无效数据';
+                setSchema(null);
+                setConfig(null);
+                setLoadError(message);
+                throw new Error(message);
+            }
             setSchema(schemaData);
 
             await loadSessions();
         } catch (e) {
             console.error('初始化配置页失败', e);
+            if (!loadError) {
+                setLoadError(e?.message || '初始化配置页失败，请检查后端配置接口');
+            }
             showToast('初始化配置页失败,请检查控制台', 'error');
         } finally {
             setLoading(false);
@@ -642,6 +664,7 @@ function ConfigRenderer() {
 
     const loadConfig = async (currentMode = mode, currentSession = selectedSession) => {
         if (!schema) return;
+        setLoadError('');
 
         const requestSeq = ++loadConfigSeqRef.current;
         setLoading(true);
@@ -703,11 +726,19 @@ function ConfigRenderer() {
                 finalExpandedKeys = getAllExpandablePaths(schema);
             }
 
+            if (!finalConfig || typeof finalConfig !== 'object' || Array.isArray(finalConfig)) {
+                throw new Error(currentMode === 'session'
+                    ? '会话差异配置加载失败：服务端未返回有效配置对象'
+                    : '全局配置加载失败：服务端未返回有效配置对象');
+            }
+
             setConfig(finalConfig);
             setExpandedKeys(finalExpandedKeys);
         } catch (e) {
             if (requestSeq === loadConfigSeqRef.current) {
                 console.error('加载配置失败', e);
+                const message = e?.message || '配置加载失败，请检查接口返回与服务端日志';
+                setLoadError(message);
                 showToast('加载配置失败,请检查控制台', 'error');
                 setConfig(null);
             }
@@ -823,9 +854,49 @@ function ConfigRenderer() {
 
     if (!schema || !config) {
         return (
-            <Box sx={{ textAlign: 'center', py: 6 }}>
-                <Box sx={{ fontSize: '36px', mb: 1.5 }}>❌</Box>
-                <Typography variant="body1" color="error">无法加载配置</Typography>
+            <Box sx={{ px: 3, py: 4 }}>
+                <Paper
+                    elevation={0}
+                    sx={{
+                        p: 4,
+                        borderRadius: 3,
+                        border: '1px solid',
+                        borderColor: 'error.light',
+                        bgcolor: 'rgba(244, 67, 54, 0.04)',
+                        textAlign: 'center'
+                    }}
+                >
+                    <Box sx={{ fontSize: '40px', mb: 1.5 }}>⚠️</Box>
+                    <Typography variant="h6" color="error" sx={{ fontWeight: 800, mb: 1 }}>
+                        配置加载失败
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {loadError || '未能从服务端获取有效的配置 Schema 或配置对象。'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                        <Button
+                            variant="contained"
+                            onClick={initializePage}
+                            startIcon={<span>🔄</span>}
+                            sx={{ borderRadius: 2 }}
+                        >
+                            重新加载配置
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            onClick={() => {
+                                setMode('global');
+                                setSelectedSession('');
+                                setConfig(null);
+                                initializePage();
+                            }}
+                            startIcon={<span>🏠</span>}
+                            sx={{ borderRadius: 2 }}
+                        >
+                            回到全局配置重试
+                        </Button>
+                    </Box>
+                </Paper>
             </Box>
         );
     }
