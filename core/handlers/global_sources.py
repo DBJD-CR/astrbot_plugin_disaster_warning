@@ -167,7 +167,7 @@ class GlobalQuakeHandler(BaseDataHandler):
             )
 
             logger.info(
-                f"[灾害预警] Global Quake地震解析成功 (Protobuf): {earthquake.place_name} "
+                f"[灾害预警] Global Quake地震解析成功: {earthquake.place_name} "
                 f"(M {earthquake.magnitude or 0.0:.1f}), 烈度: {eq_data.intensity}, "
                 f"时间: {earthquake.shock_time}"
             )
