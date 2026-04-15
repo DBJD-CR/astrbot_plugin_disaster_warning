@@ -7,7 +7,8 @@ from collections import defaultdict
 from astrbot.api import logger
 
 from ...models.data_source_config import get_sources_needing_report_control
-from ...models.models import DataSource, DisasterEvent, EarthquakeData
+from ...models.models import DisasterEvent, EarthquakeData
+from ..support.event_metadata import resolve_report_num, resolve_source_id
 
 
 class ReportCountController:
@@ -41,18 +42,19 @@ class ReportCountController:
             commit_state: 是否提交本次判定产生的状态副作用。
                 在多会话预筛选阶段应传入 False，避免前面的会话判定污染后续会话。
         """
+        # 报数控制器只作用于地震类多报事件，其他灾种不参与“第 N 报推送”判断。
         if not isinstance(event.data, EarthquakeData):
             return True  # 非地震事件直接推送
 
         earthquake = event.data
-        source_id = self._get_source_id(event)
+        source_id = resolve_source_id(event)
 
         # 只对需要报数控制的数据源生效
         if source_id not in get_sources_needing_report_control():
             return True
 
         event_id = earthquake.event_id or earthquake.id
-        current_report = getattr(earthquake, "updates", 1)
+        current_report = resolve_report_num(event) or 1
 
         # 确定当前数据源对应的报数限制和最终报支持情况
         push_every_n = self.cea_cwa_report_n  # 默认值
@@ -87,7 +89,8 @@ class ReportCountController:
             )
             return False
 
-        # 检查报数控制
+        # 报数控制的核心规则：第1报默认放行，其余按 N 的倍数控制；
+        # push_every_n 非法时兜底为 1，等价于“每报都推”。
         if push_every_n <= 0:
             push_every_n = 1  # 防止除以零，默认每报都推
 
@@ -105,21 +108,3 @@ class ReportCountController:
             self.event_report_counts[event_id] = current_report
 
         return should_push
-
-    def _get_source_id(self, event: DisasterEvent) -> str:
-        """获取事件的数据源ID"""
-        # 将DataSource映射到我们的source_id
-        source_mapping = {
-            DataSource.FAN_STUDIO_CEA.value: "cea_fanstudio",
-            DataSource.FAN_STUDIO_CEA_PR.value: "cea_pr_fanstudio",
-            DataSource.WOLFX_CENC_EEW.value: "cea_wolfx",
-            DataSource.FAN_STUDIO_CWA.value: "cwa_fanstudio",
-            DataSource.FAN_STUDIO_CWA_REPORT.value: "cwa_fanstudio_report",
-            DataSource.WOLFX_CWA_EEW.value: "cwa_wolfx",
-            DataSource.FAN_STUDIO_JMA.value: "jma_fanstudio",
-            DataSource.P2P_EEW.value: "jma_p2p",
-            DataSource.WOLFX_JMA_EEW.value: "jma_wolfx",
-            DataSource.GLOBAL_QUAKE.value: "global_quake",
-        }
-
-        return source_mapping.get(event.source.value, "")
