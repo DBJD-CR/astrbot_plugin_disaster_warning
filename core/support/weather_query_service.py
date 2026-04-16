@@ -353,12 +353,16 @@ async def query_weather_alarm_data(
         weather_color = entry["weather_color"]
         weather_type_code = str(item.get("weather_type_code") or "").strip()
 
+        raw_unique_id = str(item.get("unique_id") or "").strip()
+        raw_real_event_id = str(item.get("real_event_id") or "").strip()
+        display_alarm_id = raw_real_event_id or raw_unique_id
+        if not raw_real_event_id and "|" in raw_unique_id:
+            display_alarm_id = raw_unique_id.split("|")[-1].strip()
+
         items.append(
             {
                 "issue_time": format_cn_time(entry["event_time_utc"]),
-                "alarm_id": item.get("unique_id")
-                or item.get("real_event_id")
-                or "未知ID",
+                "alarm_id": display_alarm_id or "未知ID",
                 "publish_org": extract_weather_org(title_text, headline_text),
                 "weather_type_line": build_weather_type_line(
                     weather_type,
