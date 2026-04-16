@@ -630,16 +630,25 @@ class DatabaseManager:
         ]
 
     async def get_statistics(self) -> dict[str, Any]:
-        """获取数据库统计信息"""
+        """获取数据库统计信息（按稳定事件集合去重，而非按物理行计数）。"""
         try:
             cursor = await self.connection.cursor()
-            await cursor.execute("SELECT COUNT(*) FROM events")
+
+            dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
+
+            await cursor.execute(
+                f"SELECT COUNT(DISTINCT {dedup_group_expr}) FROM events"
+            )
             total = (await cursor.fetchone())[0]
 
-            await cursor.execute("SELECT type, COUNT(*) FROM events GROUP BY type")
+            await cursor.execute(
+                f"SELECT type, COUNT(DISTINCT {dedup_group_expr}) FROM events GROUP BY type"
+            )
             by_type = {r[0]: r[1] for r in await cursor.fetchall()}
 
-            await cursor.execute("SELECT source, COUNT(*) FROM events GROUP BY source")
+            await cursor.execute(
+                f"SELECT COALESCE(NULLIF(source_id, ''), source) AS source_key, COUNT(DISTINCT {dedup_group_expr}) FROM events GROUP BY source_key"
+            )
             by_source = {r[0]: r[1] for r in await cursor.fetchall()}
 
             db_size_mb = self.db_path.stat().st_size / (1024 * 1024)
