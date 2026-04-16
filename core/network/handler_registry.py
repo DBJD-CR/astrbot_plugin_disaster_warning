@@ -8,7 +8,7 @@ import json
 
 from astrbot.api import logger
 
-from ..network.websocket_manager import WebSocketManager
+from .websocket.websocket_manager import WebSocketManager
 
 
 class WebSocketHandlerRegistry:
@@ -23,6 +23,8 @@ class WebSocketHandlerRegistry:
 
     def register_all(self, ws_manager: WebSocketManager):
         """注册所有处理器"""
+        # 注册中心只负责“连接前缀 -> handler 协程”的装配，
+        # 实际消息循环调度由 WebSocketManager / dispatch_service 完成。
         ws_manager.register_handler("fan_studio", self._create_fan_studio_handler())
         ws_manager.register_handler("p2p", self._create_p2p_handler())
         ws_manager.register_handler("wolfx", self._create_wolfx_handler())
@@ -172,7 +174,8 @@ class WebSocketHandlerRegistry:
                         if detected_source:
                             messages_to_process.append((detected_source, data))
 
-                # 4. 遍历处理所有识别出的消息
+                # 4. 遍历处理所有识别出的消息。
+                # 一个 initial_all 可能拆出多条子消息，因此这里用统一循环逐条下发到具体 handler。
                 processed_count = 0
                 for source, payload in messages_to_process:
                     config_key, handler_id = source_map[source]
