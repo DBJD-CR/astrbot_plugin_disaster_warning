@@ -22,16 +22,15 @@ function LogStatsCard({ style }) {
     // 进度条颜色逻辑和状态灯
     let progressColor = '#6750A4';
     let statusDotColor = '#4CAF50'; // Green
-    let trackColor = 'rgba(103, 80, 164, 0.18)';
+    const trackColor = 'var(--md-sys-color-surface-container-highest)';
+    const trackBorderColor = 'var(--md-sys-color-outline-variant)';
     
     if (usagePercent > 90) {
         progressColor = '#F44336';
         statusDotColor = '#F44336'; // Red
-        trackColor = 'rgba(244, 67, 54, 0.18)';
     } else if (usagePercent > 70) {
         progressColor = '#F9A825'; // Yellow/Amber
         statusDotColor = '#FFC107'; // Amber
-        trackColor = 'rgba(249, 168, 37, 0.18)';
     }
 
     const handleOpenLogDir = async () => {
@@ -142,14 +141,14 @@ function LogStatsCard({ style }) {
                         background: trackColor,
                         opacity: 1,
                         borderRadius: '3px',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        boxShadow: `inset 0 0 0 1px ${trackBorderColor}`
                     }}>
                         <div style={{
                             width: `${Math.min(usagePercent, 100)}%`,
                             height: '100%',
                             background: progressColor,
                             borderRadius: '3px',
-                            boxShadow: `0 0 0 1px ${trackColor} inset`,
                             transition: 'width 0.5s ease-out'
                         }}></div>
                     </div>
