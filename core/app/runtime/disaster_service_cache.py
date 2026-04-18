@@ -26,7 +26,8 @@ class DisasterServiceCacheService:
                 with open(self.service.cache_file, encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, dict) and "cenc" in data and "jma" in data:
-                        self.service.earthquake_lists = data
+                        self.service.earthquake_lists.clear()
+                        self.service.earthquake_lists.update(data)
                         logger.debug("[灾害预警] 已恢复 Wolfx 地震列表本地缓存")
             else:
                 logger.debug("[灾害预警] 本地缓存文件不存在，将使用空的 Wolfx 地震列表")
