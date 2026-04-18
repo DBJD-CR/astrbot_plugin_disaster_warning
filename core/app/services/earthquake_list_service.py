@@ -19,7 +19,12 @@ class EarthquakeListService:
     def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
         """更新内存中的地震列表。"""
         if list_type in self.earthquake_lists:
-            self.earthquake_lists[list_type] = data
+            target = self.earthquake_lists.get(list_type)
+            if isinstance(target, dict) and isinstance(data, dict):
+                target.clear()
+                target.update(data)
+            else:
+                self.earthquake_lists[list_type] = data
             logger.debug(f"[灾害预警] 已更新 {list_type} 地震列表缓存")
 
     def get_formatted_list_data(
@@ -157,8 +162,32 @@ class EarthquakeListService:
                     pass
 
             elif source_type == "jma":
-                shindo = str(item.get("shindo", "")).strip()
-                if shindo:
+                raw_shindo = item.get("shindo")
+                shindo = str(raw_shindo or "").strip()
+                normalized_shindo = shindo.lower()
+                unknown_shindo_values = {
+                    "",
+                    "-",
+                    "--",
+                    "---",
+                    "?",
+                    "unknown",
+                    "unk",
+                    "none",
+                    "null",
+                    "nil",
+                    "nan",
+                    "n/a",
+                    "na",
+                    "0",
+                    "0.0",
+                    "不明",
+                    "不详",
+                    "不詳",
+                    "调查中",
+                }
+
+                if normalized_shindo not in unknown_shindo_values:
                     intensity_display = shindo
 
                     if shindo == "1":
@@ -179,6 +208,9 @@ class EarthquakeListService:
                         intensity_class = "int-6-strong"
                     elif shindo == "7":
                         intensity_class = "int-7"
+                    else:
+                        intensity_display = "---"
+                        intensity_class = "int-unknown"
                 else:
                     intensity_display = "---"
                     intensity_class = "int-unknown"
