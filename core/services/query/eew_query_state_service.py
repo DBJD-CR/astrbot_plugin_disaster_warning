@@ -8,12 +8,37 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from ....models.models import DisasterEvent, DisasterType, EarthquakeData
-from ...support.event_metadata import (
+from ...domain.event_models import EarthquakeEvent, EventEnvelope
+from ..identity.event_identity import (
     ensure_utc_datetime,
     resolve_event_publish_time_utc,
-    resolve_source_id,
+    resolve_report_num,
 )
+
+
+def build_institutions_from_catalog(
+    institutions: dict[str, dict[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    """规范化机构视图，确保来源于统一 catalog 的结构可直接消费。"""
+    result: dict[str, dict[str, Any]] = {}
+    for institution_key, meta in (institutions or {}).items():
+        if not isinstance(meta, dict):
+            continue
+        source_ids = [
+            str(source_id).strip()
+            for source_id in list(meta.get("source_ids") or [])
+            if str(source_id).strip()
+        ]
+        if not source_ids:
+            continue
+        result[institution_key] = {
+            "display_name": str(meta.get("display_name") or institution_key).strip(),
+            "active_name": str(
+                meta.get("active_name") or meta.get("display_name") or institution_key
+            ).strip(),
+            "source_ids": source_ids,
+        }
+    return result
 
 
 class EEWQueryStateService:
@@ -26,7 +51,7 @@ class EEWQueryStateService:
         valid_duration_seconds: int,
         source_enabled_checker,
     ):
-        self.institutions = institutions
+        self.institutions = build_institutions_from_catalog(institutions)
         self.valid_duration_seconds = valid_duration_seconds
         self._source_enabled_checker = source_enabled_checker
 
@@ -37,20 +62,18 @@ class EEWQueryStateService:
                 return institution_key
         return None
 
-    def build_fingerprint(self, data: EarthquakeData, source_id: str) -> str:
+    def build_fingerprint(
+        self,
+        envelope: EventEnvelope,
+        data: EarthquakeEvent,
+        source_id: str,
+        event_key: str,
+    ) -> str:
         """构建机构内去重指纹。"""
-        event_key = data.event_id or data.id or ""
+        del source_id
         place = (data.place_name or "未知地点").strip()
         magnitude = "?" if data.magnitude is None else f"{float(data.magnitude):.1f}"
-        shock_time = resolve_event_publish_time_utc(
-            DisasterEvent(
-                id=data.id,
-                data=data,
-                source=data.source,
-                disaster_type=data.disaster_type,
-            )
-        )
-        # 以分钟粒度分桶，平衡同一次预警多源上报的归并能力与不同事件误合并风险。
+        shock_time = resolve_event_publish_time_utc(envelope)
         minute_bucket = shock_time.strftime("%Y%m%d%H%M")
         return f"{event_key}|{place}|{magnitude}|{minute_bucket}"
 
@@ -69,11 +92,13 @@ class EEWQueryStateService:
             if candidate_updates < current_updates:
                 return False
 
+        current_source_id = str(current.get("source_id") or "").strip()
+        candidate_source_id = str(candidate.get("source_id") or "").strip()
         current_issued = ensure_utc_datetime(
-            current.get("issued_at"), source_id="global_quake"
+            current.get("issued_at"), source_id=current_source_id
         )
         candidate_issued = ensure_utc_datetime(
-            candidate.get("issued_at"), source_id="global_quake"
+            candidate.get("issued_at"), source_id=candidate_source_id
         )
         if current_issued is None:
             return True
@@ -84,35 +109,35 @@ class EEWQueryStateService:
     def update_state(
         self,
         state: dict[str, dict[str, Any]],
-        event: DisasterEvent,
+        event: EventEnvelope,
     ) -> dict[str, dict[str, Any]]:
         """更新 EEW 查询状态。"""
-        # 仅地震预警类事件参与 /地震预警查询 状态计算，其他事件直接忽略。
-        if event.disaster_type != DisasterType.EARTHQUAKE_WARNING:
-            return state
-        if not isinstance(event.data, EarthquakeData):
+        envelope = event
+        data = envelope.event
+        if not isinstance(data, EarthquakeEvent):
             return state
 
-        source_id = resolve_source_id(event)
+        source_id = envelope.source_id
         institution_key = self.normalize_institution(source_id)
         if not institution_key:
             return state
 
-        issued_at = resolve_event_publish_time_utc(event)
+        issued_at = resolve_event_publish_time_utc(envelope)
         expires_at = issued_at + timedelta(seconds=self.valid_duration_seconds)
-        data = event.data
 
-        event_key = data.event_id or data.id or ""
+        identity = envelope.identity
+        event_key = str(identity.event_id or envelope.id or "").strip()
         place = (data.place_name or "未知地点").strip()
         magnitude = data.magnitude
-        fingerprint = self.build_fingerprint(data, source_id)
+        fingerprint = self.build_fingerprint(envelope, data, source_id, event_key)
+        report_num = resolve_report_num(event) or 1
 
         candidate = {
             "source_id": source_id,
             "event_id": event_key,
             "display_place": place,
             "display_magnitude": magnitude,
-            "updates": int(getattr(data, "updates", 1) or 1),
+            "updates": int(report_num),
             "issued_at": issued_at.isoformat(),
             "expires_at": expires_at.isoformat(),
             "fingerprint": fingerprint,
@@ -166,7 +191,6 @@ class EEWQueryStateService:
 
         institutions: list[dict[str, Any]] = []
         for institution_key, meta in self.institutions.items():
-            # 输出视图按机构维度聚合，这样多个同机构源（如 fan / wolfx）可共享一条查询状态。
             enabled_sources = enabled_sources_map.get(institution_key, [])
             display_name = meta.get("display_name", institution_key)
             active_name = meta.get("active_name", display_name)
@@ -195,11 +219,12 @@ class EEWQueryStateService:
                 institutions.append(item)
                 continue
 
+            current_source_id = str(current.get("source_id") or "").strip()
             issued_at = ensure_utc_datetime(
-                current.get("issued_at"), source_id="global_quake"
+                current.get("issued_at"), source_id=current_source_id
             )
             expires_at = ensure_utc_datetime(
-                current.get("expires_at"), source_id="global_quake"
+                current.get("expires_at"), source_id=current_source_id
             )
             if issued_at is None:
                 item["status"] = "no_data"
