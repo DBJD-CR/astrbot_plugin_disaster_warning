@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...support.config_accessor import ConfigAccessor
+from ....services.config.config_service import ConfigAccessor
+from ....services.query.source_runtime_query_service import SourceRuntimeQueryService
 
 
 class ConfigPayloadBuilder:
@@ -16,6 +17,16 @@ class ConfigPayloadBuilder:
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self.config_accessor = ConfigAccessor(config)
+        self.source_runtime_query = SourceRuntimeQueryService(config)
+
+    def _build_source_summary(self) -> dict[str, Any]:
+        return {
+            "enabled_source_ids": self.source_runtime_query.get_enabled_source_ids(),
+            "enabled_source_labels": self.source_runtime_query.get_enabled_source_labels(),
+            "sub_source_status": self.source_runtime_query.build_sub_source_status(),
+            "connection_groups": self.source_runtime_query.get_expected_connection_groups(),
+            "connection_group_sources": self.source_runtime_query.get_connection_group_source_map(),
+        }
 
     def build_summary(self) -> dict[str, Any]:
         """构建管理端使用的配置摘要。"""
@@ -24,6 +35,7 @@ class ConfigPayloadBuilder:
             "enabled": self.config.get("enabled", True),
             "target_sessions_count": len(self.config_accessor.target_sessions()),
             "data_sources": self.config_accessor.data_sources_config(),
+            "source_summary": self._build_source_summary(),
             "earthquake_filters": self.config.get("earthquake_filters", {}),
             "local_monitoring": {
                 "enabled": self.config_accessor.local_monitoring_config().get(

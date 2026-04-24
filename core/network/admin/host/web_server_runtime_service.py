@@ -18,16 +18,16 @@ try:
 except ImportError:  # pragma: no cover - 与 web_server.py 的可选依赖策略保持一致
     FileResponse = None
 
-from .api.analytics_routes import register_analytics_routes
-from .api.auth_routes import register_auth_routes
-from .api.config_routes import register_config_routes
-from .api.events_routes import register_events_routes
-from .api.runtime_admin_routes import register_runtime_admin_routes
-from .api.runtime_routes import register_runtime_routes
-from .api.session_config_routes import register_session_config_routes
-from .api.status_routes import register_status_routes
-from .api.utility_routes import register_utility_routes
-from .api_response import ApiResponse
+from ..api.analytics_routes import register_analytics_routes
+from ..api.auth_routes import register_auth_routes
+from ..api.config_routes import register_config_routes
+from ..api.events_routes import register_events_routes
+from ..api.runtime_admin_routes import register_runtime_admin_routes
+from ..api.runtime_routes import register_runtime_routes
+from ..api.session_config_routes import register_session_config_routes
+from ..api.status_routes import register_status_routes
+from ..api.utility_routes import register_utility_routes
+from ..payloads.api_response import ApiResponse
 
 
 class WebServerRuntimeService:
@@ -57,7 +57,9 @@ class WebServerRuntimeService:
         async def get_logo():
             logo_path = os.path.join(
                 os.path.dirname(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                    os.path.dirname(
+                        os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                    )
                 ),
                 "logo.png",
             )
