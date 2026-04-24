@@ -1,7 +1,7 @@
 """
 消息 JSON 展示格式化服务。
 负责键名翻译、值格式化与递归 JSON 文本渲染，
-用于收缩 [`MessageLogger`](core/message/message_logger.py) 中的展示规则实现。
+用于收缩 core/message/message_logger.py 中的展示规则实现。
 """
 
 from __future__ import annotations

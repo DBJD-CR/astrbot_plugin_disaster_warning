@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ....models.websocket_message_pb2 import MessageAction, MessageType, WsMessage
+from .....models.websocket_message_pb2 import MessageAction, MessageType, WsMessage
 
 
 class GlobalQuakeProtobufParser:

@@ -31,7 +31,7 @@ class RawMessageLoggingService:
         self,
         source: str,
         message_type: str,
-        raw_data: Any,
+        payload_data: Any,
         connection_info: dict | None = None,
     ) -> None:
         """记录原始消息。"""
@@ -43,7 +43,7 @@ class RawMessageLoggingService:
             return
 
         try:
-            parsed_data = self._try_parse_structured_payload(raw_data)
+            parsed_data = self._try_parse_structured_payload(payload_data)
             if self._dispatch_earthquake_list_summary_if_needed(
                 source,
                 parsed_data,
@@ -51,7 +51,7 @@ class RawMessageLoggingService:
             ):
                 return
 
-            filter_reason = self.logger._should_filter_message(raw_data, source)
+            filter_reason = self.logger._should_filter_message(payload_data, source)
             if filter_reason:
                 self._handle_filtered_message(source, message_type, filter_reason)
                 return
@@ -60,7 +60,7 @@ class RawMessageLoggingService:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "source": source,
                 "message_type": message_type,
-                "raw_data": raw_data,
+                "payload_data": payload_data,
                 "connection_info": connection_info or {},
                 "plugin_version": self.logger.plugin_version,
             }
@@ -86,14 +86,14 @@ class RawMessageLoggingService:
         elapsed = (datetime.now(timezone.utc) - self.logger.start_time).total_seconds()
         return elapsed < self.logger.startup_silence_duration
 
-    def _try_parse_structured_payload(self, raw_data: Any) -> dict[str, Any] | None:
-        if isinstance(raw_data, dict):
-            return raw_data
+    def _try_parse_structured_payload(self, payload_data: Any) -> dict[str, Any] | None:
+        if isinstance(payload_data, dict):
+            return payload_data
 
-        if isinstance(raw_data, str) and len(raw_data) > 10:
-            if '"type"' in raw_data[:200] or "'type'" in raw_data[:200]:
+        if isinstance(payload_data, str) and len(payload_data) > 10:
+            if '"type"' in payload_data[:200] or "'type'" in payload_data[:200]:
                 try:
-                    parsed = json.loads(raw_data)
+                    parsed = json.loads(payload_data)
                     if isinstance(parsed, dict):
                         return parsed
                 except (json.JSONDecodeError, TypeError):

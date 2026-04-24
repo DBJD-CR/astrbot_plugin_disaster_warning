@@ -42,10 +42,10 @@ class MessageReadableLogService:
             if connection_info:
                 log_content += self._format_connection_info(connection_info)
 
-            raw_data = log_entry["raw_data"]
+            payload_data = log_entry.get("payload_data")
             log_content += "\n📊 原始数据:\n"
-            log_content += self._format_raw_data(
-                raw_data,
+            log_content += self._format_payload_data(
+                payload_data,
                 source=source,
                 message_type=message_type,
                 connection_info=connection_info,
@@ -100,40 +100,42 @@ class MessageReadableLogService:
             result += f"服务器: {connection_info['server']}:{connection_info['port']}"
         return result + "\n"
 
-    def _format_raw_data(
+    def _format_payload_data(
         self,
-        raw_data: Any,
+        payload_data: Any,
         *,
         source: str,
         message_type: str,
         connection_info: dict[str, Any],
     ) -> str:
-        """根据数据类型格式化原始数据。"""
-        if isinstance(raw_data, str):
+        """根据数据类型格式化原始载荷。"""
+        if isinstance(payload_data, str):
             try:
-                parsed_data = json.loads(raw_data)
+                parsed_data = json.loads(payload_data)
                 return self.logger._format_json_data(parsed_data, indent=2)
             except json.JSONDecodeError:
-                binary_match = re.match(r"^<binary:(\d+)\s+bytes>$", raw_data.strip())
+                binary_match = re.match(
+                    r"^<binary:(\d+)\s+bytes>$", payload_data.strip()
+                )
                 if binary_match:
                     return (
                         "  📋 二进制消息摘要:\n"
                         f"    📋 字节长度: {binary_match.group(1)} (历史占位符，原始二进制不可用)\n"
                     )
-                return f"  {raw_data}\n"
+                return f"  {payload_data}\n"
 
-        if isinstance(raw_data, dict):
-            return self.logger._format_json_data(raw_data, indent=2)
+        if isinstance(payload_data, dict):
+            return self.logger._format_json_data(payload_data, indent=2)
 
-        if isinstance(raw_data, (bytes, bytearray, memoryview)):
+        if isinstance(payload_data, (bytes, bytearray, memoryview)):
             parsed_binary = self.logger._try_parse_binary_message(
-                raw_data,
+                payload_data,
                 source=source,
                 message_type=message_type,
                 connection_info=connection_info,
             )
             if isinstance(parsed_binary, dict):
                 return self.logger._format_json_data(parsed_binary, indent=2)
-            return self.format_binary_data(raw_data, indent=2)
+            return self.format_binary_data(payload_data, indent=2)
 
-        return f"  {str(raw_data)}\n"
+        return f"  {str(payload_data)}\n"

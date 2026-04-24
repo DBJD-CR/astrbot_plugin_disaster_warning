@@ -43,52 +43,53 @@ class RawMessageFilter:
         self._is_connection_status_message = is_connection_status_message
         self._try_parse_binary_message = try_parse_binary_message
 
-    def should_filter_message(self, raw_data: Any, source_id: str = "") -> str:
+    def should_filter_message(self, payload_data: Any, source_id: str = "") -> str:
         """判断是否应该过滤该消息，返回过滤原因。"""
         # 返回空字符串表示不过滤；返回原因文本则既用于统计也用于调试日志。
         if not self.enabled or not self.filter_heartbeat:
             return ""
 
         try:
-            if isinstance(raw_data, str) and raw_data.strip():
-                return self._handle_string_message(raw_data, source_id)
-            if isinstance(raw_data, (bytes, bytearray, memoryview)):
+            if isinstance(payload_data, str) and payload_data.strip():
+                return self._handle_string_message(payload_data, source_id)
+            if isinstance(payload_data, (bytes, bytearray, memoryview)):
                 parsed_binary = self._try_parse_binary_message(
-                    raw_data,
+                    payload_data,
                     source=source_id,
                     message_type="websocket_message",
                     connection_info={"connection_type": "websocket"},
                 )
                 if isinstance(parsed_binary, dict):
                     return self.should_filter_message(parsed_binary, source_id)
-            if isinstance(raw_data, dict):
-                return self._handle_dict_message(raw_data, source_id)
+            if isinstance(payload_data, dict):
+                return self._handle_dict_message(payload_data, source_id)
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
         return ""
 
-    def _handle_string_message(self, raw_data: str, source_id: str) -> str:
+    def _handle_string_message(self, payload_data: str, source_id: str) -> str:
         try:
-            data = json.loads(raw_data)
+            data = json.loads(payload_data)
         except json.JSONDecodeError:
             logger.debug(
-                f"[灾害预警] 消息记录器 - JSON解析失败，消息前100字符: {raw_data[:100]}..."
+                f"[灾害预警] 消息记录器 - JSON解析失败，消息前100字符: {payload_data[:100]}..."
             )
             return ""
 
         msg_type = data.get("type", "")
         logger.debug(
-            f"[灾害预警] 消息记录器 - 检查消息过滤，来源: {source_id}, 类型: {msg_type}, 数据长度: {len(raw_data)}"
+            f"[灾害预警] 消息记录器 - 检查消息过滤，来源: {source_id}, 类型: {msg_type}, 数据长度: {len(payload_data)}"
         )
 
         reason = self._handle_common_dict_checks(data, source_id)
         if reason:
             return reason
 
-        if "raw_data" in data and isinstance(data["raw_data"], str):
+        nested_payload = data.get("payload_data")
+        if isinstance(nested_payload, str):
             try:
-                inner_data = json.loads(data["raw_data"])
+                inner_data = json.loads(nested_payload)
                 inner_reason = self._handle_inner_dict_checks(inner_data, source_id)
                 if inner_reason:
                     return inner_reason
@@ -97,12 +98,12 @@ class RawMessageFilter:
 
         return ""
 
-    def _handle_dict_message(self, raw_data: dict[str, Any], source_id: str) -> str:
-        msg_type = raw_data.get("type", "")
+    def _handle_dict_message(self, payload_data: dict[str, Any], source_id: str) -> str:
+        msg_type = payload_data.get("type", "")
         logger.debug(
             f"[灾害预警] 消息记录器 - 检查字典类型消息，来源: {source_id}, 类型: {msg_type}"
         )
-        return self._handle_common_dict_checks(raw_data, source_id)
+        return self._handle_common_dict_checks(payload_data, source_id)
 
     def _handle_inner_dict_checks(
         self, inner_data: dict[str, Any], source_id: str

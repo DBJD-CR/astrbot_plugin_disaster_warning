@@ -42,7 +42,7 @@ class EarthquakeListSummaryService:
             self.logger.log_raw_message(
                 source=source,
                 message_type="earthquake_list_summary",
-                raw_data=summary_data,
+                payload_data=summary_data,
                 connection_info=self._build_connection_info(url),
             )
         except Exception as e:
@@ -117,7 +117,7 @@ class EarthquakeListSummaryService:
             self.logger.log_raw_message(
                 source=source,
                 message_type="earthquake_list_summary",
-                raw_data=fallback_data,
+                payload_data=fallback_data,
                 connection_info={"url": url} if url else {},
             )
         except Exception:
