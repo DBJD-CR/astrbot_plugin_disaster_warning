@@ -27,6 +27,7 @@ class MapAttachmentBuilder:
         browser_manager,
         default_config: dict[str, Any],
     ):
+        # 地图附件构建依赖模板目录、临时输出目录、浏览器渲染能力与默认消息配置。
         self.plugin_root = plugin_root
         self.temp_dir = temp_dir
         self.browser_manager = browser_manager
@@ -35,6 +36,7 @@ class MapAttachmentBuilder:
     async def render_map_image(
         self, lat: float, lon: float, config: dict[str, Any]
     ) -> str | None:
+        """渲染指定经纬度的地图图片。"""
         try:
             map_source = config.get("map_source", "PetalMap矢量图亮")
             zoom_level = config.get("map_zoom_level", 5)
@@ -74,6 +76,7 @@ class MapAttachmentBuilder:
                 leaflet_js_url = f"file://{leaflet_path}"
                 leaflet_css_url = f"file://{leaflet_css_path}"
 
+            # 模板上下文只放渲染地图所需的最小参数，避免模板层承担额外业务判断。
             context = {
                 "latitude": lat,
                 "longitude": lon,

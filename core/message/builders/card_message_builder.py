@@ -19,6 +19,7 @@ class CardMessageBuilder:
     """卡片消息构建器。"""
 
     def __init__(self, *, plugin_root: str, temp_dir: str, browser_manager):
+        # 构建器本身不维护复杂状态，只持有模板目录、临时目录与浏览器渲染能力。
         self.plugin_root = plugin_root
         self.temp_dir = temp_dir
         self.browser_manager = browser_manager
@@ -28,6 +29,7 @@ class CardMessageBuilder:
     ) -> str | None:
         """渲染地震列表卡片。"""
         try:
+            # 地震列表卡片使用基础模板目录中的通用列表模板。
             template_path = os.path.join(
                 self.plugin_root,
                 "resources",
@@ -58,6 +60,7 @@ class CardMessageBuilder:
             template = Template(template_content)
             html_content = template.render(**context)
 
+            # 输出文件名只要求本次渲染基本唯一，真正去重由上层决定是否复用结果。
             image_filename = f"eq_list_{int(time.time())}.png"
             image_path = os.path.join(self.temp_dir, image_filename)
             return await self.browser_manager.render_card(

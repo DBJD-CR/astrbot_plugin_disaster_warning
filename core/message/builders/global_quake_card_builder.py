@@ -17,26 +17,26 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Image
 
-from ....models.models import EarthquakeData
-from ....utils.formatters import GlobalQuakeFormatter
 from ....utils.map_tile_sources import get_tile_url_js
+from ..presenters.global_quake_display_context import GlobalQuakeDisplayContextBuilder
 
 
 class GlobalQuakeCardBuilder:
     """Global Quake 专用卡片构建器。"""
 
     def __init__(self, *, plugin_root: str, temp_dir: str, browser_manager):
+        # 构建器只持有模板资源定位与浏览器渲染所需依赖。
         self.plugin_root = plugin_root
         self.temp_dir = temp_dir
         self.browser_manager = browser_manager
 
     async def build(
         self,
-        earthquake: EarthquakeData,
+        earthquake,
         *,
         active_config: dict[str, Any],
         message_format_config: dict[str, Any],
-        cache_key_builder: Callable[[EarthquakeData, dict[str, Any], str], str],
+        cache_key_builder: Callable[[Any, dict[str, Any], str], str],
         render_with_cache: Callable[
             [str, Callable[[], Awaitable[str | None]]], Awaitable[str | None]
         ],
@@ -45,12 +45,13 @@ class GlobalQuakeCardBuilder:
         try:
             display_timezone = active_config.get("display_timezone", "UTC+8")
             options = {"timezone": display_timezone}
-            # formatter 负责生成模板渲染上下文，builder 只补充模板与地图相关参数。
-            context = GlobalQuakeFormatter.get_render_context(earthquake, options)
+            # 展示上下文由 presenter 子系统提供，builder 只补充模板与地图相关参数。
+            context = GlobalQuakeDisplayContextBuilder.build(earthquake, options)
 
             zoom_level = message_format_config.get("map_zoom_level", 5)
             context["zoom_level"] = zoom_level
 
+            # 地图底图源和缩放级别由消息格式配置控制，方便不同会话按需调整展示风格。
             map_source = message_format_config.get("map_source", "PetalMap矢量图亮")
             context["map_source"] = map_source
             context["tile_url"] = get_tile_url_js(map_source)
@@ -71,6 +72,7 @@ class GlobalQuakeCardBuilder:
             playwright_mode = active_config.get("message_format", {}).get(
                 "playwright_mode", "local"
             )
+            # 远程浏览器无法稳定访问本地静态文件时，改用公开静态资源地址。
             if playwright_mode == "remote":
                 context["leaflet_js_url"] = (
                     "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
