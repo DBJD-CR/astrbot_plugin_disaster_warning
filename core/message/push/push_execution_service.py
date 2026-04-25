@@ -7,23 +7,75 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
+from astrbot.api.message_components import Plain
 
-from ....models.models import DisasterEvent
+from ...domain.event_models import EventEnvelope
 
 
 class PushExecutionService:
     """消息推送执行服务。"""
 
     def __init__(self, manager):
+        # 执行服务通过主消息管理器获取会话发送、消息构建与规则评估能力。
         self.manager = manager
+
+    @staticmethod
+    def _build_plaintext_fallback_message(message: MessageChain) -> MessageChain | None:
+        """构建发送失败后的降级消息，保留文本与安全的本地图片组件。"""
+        if not isinstance(message, MessageChain):
+            return None
+
+        fallback_components: list[Any] = []
+        text_parts: list[str] = []
+        for component in getattr(message, "chain", []) or []:
+            text = getattr(component, "text", None)
+            if isinstance(text, str) and text.strip():
+                text_parts.append(text)
+                continue
+
+            component_type = type(component).__name__.lower()
+            if "image" not in component_type:
+                continue
+
+            file_attr = getattr(component, "file", None)
+            path_attr = getattr(component, "path", None)
+            url_attr = getattr(component, "url", None)
+            data_attr = getattr(component, "data", None)
+            base64_attr = getattr(component, "base64", None)
+
+            if isinstance(file_attr, str) and file_attr.strip() and not str(file_attr).startswith(("http://", "https://")):
+                fallback_components.append(component)
+                continue
+            if isinstance(path_attr, str) and path_attr.strip() and not str(path_attr).startswith(("http://", "https://")):
+                fallback_components.append(component)
+                continue
+            if data_attr:
+                fallback_components.append(component)
+                continue
+            if isinstance(base64_attr, str) and base64_attr.strip():
+                fallback_components.append(component)
+                continue
+            if isinstance(url_attr, str) and url_attr.strip().startswith(("http://", "https://")):
+                continue
+
+        merged_text = "\n".join(
+            part.rstrip() for part in text_parts if part.strip()
+        ).strip()
+        if merged_text:
+            fallback_components.insert(0, Plain(merged_text))
+
+        if not fallback_components:
+            return None
+        return MessageChain(fallback_components)
 
     async def execute(
         self,
-        event: DisasterEvent,
+        event: EventEnvelope,
         *,
         target_sessions: list[str] | None = None,
         session_config_getter=None,
@@ -48,13 +100,15 @@ class PushExecutionService:
                 "source_id": "",
             }
 
-        source_id = self.manager.resolve_source_id_for_execution(event)
+        source_id = (getattr(event, "source_id", "") or "").strip()
         push_success_count = 0
         passed_sessions: list[str] = []
         # 记录每个会话最终使用的 message_format，供后续地图拆分发送时按配置分组复用。
         session_message_format_config: dict[str, dict[str, Any]] = {}
         # 统计预筛阶段的拦截原因，便于输出汇总日志。
         filter_reason_stats: dict[str, int] = {}
+        # 统计实际发送阶段的失败原因，避免与规则拦截混淆。
+        send_failure_stats: dict[str, int] = {}
 
         push_candidates = self._collect_push_candidates(
             event,
@@ -69,8 +123,47 @@ class PushExecutionService:
         message_task_lock = asyncio.Lock()
 
         async def get_or_build_message(runtime_config: dict[str, Any]) -> MessageChain:
-            cache_key = self.manager._build_message_build_cache_key(
-                event, runtime_config
+            # 构建缓存键时纳入所有会影响展示结果的关键配置，避免不同配置误复用。
+            message_format_config = runtime_config.get("message_format", {})
+            weather_config = runtime_config.get("weather_config", {})
+            cache_key = json.dumps(
+                {
+                    "event_id": event.id,
+                    "source": event.source_id,
+                    "event_type": event.event_type,
+                    "display_timezone": runtime_config.get("display_timezone", "UTC+8"),
+                    "message_format": {
+                        "include_map": message_format_config.get("include_map", False),
+                        "map_source": message_format_config.get(
+                            "map_source", "PetalMap矢量图亮"
+                        ),
+                        "map_zoom_level": message_format_config.get(
+                            "map_zoom_level", 5
+                        ),
+                        "playwright_mode": message_format_config.get(
+                            "playwright_mode", "local"
+                        ),
+                        "use_global_quake_card": message_format_config.get(
+                            "use_global_quake_card", False
+                        ),
+                        "global_quake_template": message_format_config.get(
+                            "global_quake_template", "Aurora"
+                        ),
+                        "detailed_jma_intensity": message_format_config.get(
+                            "detailed_jma_intensity", False
+                        ),
+                    },
+                    "weather": {
+                        "enable_weather_icon": weather_config.get(
+                            "enable_weather_icon", True
+                        ),
+                        "max_description_length": weather_config.get(
+                            "max_description_length", 384
+                        ),
+                    },
+                },
+                sort_keys=True,
+                ensure_ascii=False,
             )
             task = message_task_cache.get(cache_key)
             if task is None:
@@ -78,8 +171,9 @@ class PushExecutionService:
                     task = message_task_cache.get(cache_key)
                     if task is None:
                         task = asyncio.create_task(
-                            self.manager.build_message_async(
-                                event, runtime_config=runtime_config
+                            self.manager.message_build_service.build_message_async(
+                                event,
+                                runtime_config=runtime_config,
                             )
                         )
                         message_task_cache[cache_key] = task
@@ -88,43 +182,76 @@ class PushExecutionService:
         async def push_to_session(
             session: str,
             runtime_config: dict[str, Any],
-        ) -> tuple[bool, str, dict[str, Any] | None]:
+        ) -> tuple[bool, str, dict[str, Any] | None, str | None]:
             try:
-                filter_reasons: list[str] = []
                 # 预筛通过后，在真正发送前再次复核并提交报数状态，
                 # 防止并发场景下状态变化导致“预筛可发、实际不该发”的竞态问题。
-                if not self.manager.should_push_event(
+                decision = self.manager.evaluate_push_decision(
                     event,
                     runtime_config=runtime_config,
                     session_id=session,
-                    filter_reason_out=filter_reasons,
                     emit_filter_log=False,
                     commit_state=True,
-                ):
-                    reason = filter_reasons[0] if filter_reasons else "未通过推送条件"
-                    reason_detail = filter_reasons[1] if len(filter_reasons) > 1 else ""
-                    if reason_detail:
+                )
+                if not decision.accepted:
+                    if decision.detail:
                         logger.debug(
-                            f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{reason}（{reason_detail}）"
+                            f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{decision.reason}（{decision.detail}）"
                         )
                     else:
                         logger.debug(
-                            f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{reason}"
+                            f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{decision.reason}"
                         )
-                    return False, session, None
+                    return False, session, None, "发送前复核未通过"
 
                 logger.debug(
                     f"[灾害预警] 事件 {event.id} 通过会话 {session} 的发送前复核，准备发送消息"
                 )
                 message = await get_or_build_message(runtime_config)
-                await self.manager.send_message(session, message)
+                await self.manager.session_sender.send(session, message)
                 logger.debug(f"[灾害预警] 事件 {event.id} 已推送到 {session}")
-                return True, session, runtime_config.get("message_format", {})
+                return True, session, runtime_config.get("message_format", {}), None
             except Exception as e:
+                error_name = type(e).__name__
                 logger.error(f"[灾害预警] 推送到 {session} 失败: {e}")
-                return False, session, None
+
+                # 如果富媒体发送失败，则尝试从原消息链中提取纯文本进行降级重发。
+                fallback_message = self._build_plaintext_fallback_message(
+                    locals().get("message")
+                )
+                if fallback_message is not None:
+                    try:
+                        await self.manager.session_sender.send(
+                            session, fallback_message
+                        )
+                        logger.warning(
+                            f"[灾害预警] 会话 {session} 富媒体发送失败，已自动降级重发: {error_name}"
+                        )
+                        return (
+                            True,
+                            session,
+                            runtime_config.get("message_format", {}),
+                            None,
+                        )
+                    except Exception as fallback_error:
+                        fallback_error_name = type(fallback_error).__name__
+                        logger.error(
+                            f"[灾害预警] 会话 {session} 纯文本降级重发失败: {fallback_error}"
+                        )
+                        return (
+                            False,
+                            session,
+                            None,
+                            f"富媒体发送失败({error_name})，纯文本降级失败({fallback_error_name})",
+                        )
+
+                logger.warning(
+                    f"[灾害预警] 会话 {session} 富媒体发送失败，且消息中无可用纯文本可降级: {error_name}"
+                )
+                return False, session, None, f"富媒体发送失败({error_name})"
 
         if push_candidates:
+            # 通过并发发送缩短整批会话推送耗时，但单个会话的发送前复核仍各自独立执行。
             push_tasks = [
                 asyncio.create_task(push_to_session(session, runtime_config))
                 for session, runtime_config in push_candidates
@@ -136,11 +263,15 @@ class PushExecutionService:
                     logger.error(f"[灾害预警] 会话推送任务异常: {result}")
                     continue
 
-                ok, session, msg_cfg = result
+                ok, session, msg_cfg, failure_reason = result
                 if ok:
                     push_success_count += 1
                     passed_sessions.append(session)
                     session_message_format_config[session] = msg_cfg or {}
+                elif failure_reason:
+                    send_failure_stats[failure_reason] = (
+                        send_failure_stats.get(failure_reason, 0) + 1
+                    )
 
         self.manager.last_success_sessions = passed_sessions
         return {
@@ -149,12 +280,13 @@ class PushExecutionService:
             "passed_sessions": passed_sessions,
             "session_message_format_config": session_message_format_config,
             "filter_reason_stats": filter_reason_stats,
+            "send_failure_stats": send_failure_stats,
             "source_id": source_id,
         }
 
     def _collect_push_candidates(
         self,
-        event: DisasterEvent,
+        event: EventEnvelope,
         sessions: list[str],
         *,
         session_config_getter=None,
@@ -166,6 +298,7 @@ class PushExecutionService:
             filter_reason_stats = {}
 
         for session in sessions:
+            # 会话级配置允许不同会话使用不同推送规则与展示参数。
             runtime_config = (
                 session_config_getter(session)
                 if callable(session_config_getter)
@@ -178,17 +311,16 @@ class PushExecutionService:
                 logger.debug(f"[灾害预警] 会话 {session} 推送开关关闭，跳过")
                 continue
 
-            filter_reasons: list[str] = []
-            if not self.manager.should_push_event(
+            decision = self.manager.evaluate_push_decision(
                 event,
                 runtime_config=runtime_config,
                 session_id=session,
-                filter_reason_out=filter_reasons,
                 emit_filter_log=False,
                 commit_state=False,
-            ):
-                reason = filter_reasons[0] if filter_reasons else "未通过推送条件"
-                reason_detail = filter_reasons[1] if len(filter_reasons) > 1 else ""
+            )
+            if not decision.accepted:
+                reason = decision.reason or "未通过推送条件"
+                reason_detail = decision.detail or ""
                 filter_reason_stats[reason] = filter_reason_stats.get(reason, 0) + 1
                 if reason_detail:
                     logger.debug(
