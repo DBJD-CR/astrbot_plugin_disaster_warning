@@ -23,6 +23,8 @@ class RealtimePayloadBuilder:
         config: dict[str, Any],
         latency_cache: dict[str, float | None] | None = None,
     ):
+        """初始化实时载荷构建器及其依赖。"""
+        # 实时载荷构建器负责拼装多个子视图，因此长期持有查询器与连接载荷构建器。
         self.disaster_service = disaster_service
         self.config = config
         self.latency_cache = latency_cache if latency_cache is not None else {}
@@ -43,6 +45,7 @@ class RealtimePayloadBuilder:
         """构建实时数据。"""
         result: dict[str, Any] = {"timestamp": datetime.now().isoformat()}
 
+        # 实时面板按“状态、统计、连接、近期地震”四个区块组织数据，便于前端按模块渲染。
         result["status"] = self.build_status_payload()
         result["statistics"] = self.build_statistics_payload()
         result["connections"] = self.build_connections_payload(expected_sources)
@@ -50,6 +53,8 @@ class RealtimePayloadBuilder:
         return result
 
     def _build_runtime_snapshot(self) -> dict[str, Any]:
+        """构建供多个管理端接口复用的运行时快照。"""
+        # 运行时快照是多个管理端接口共享的底层数据来源。
         if not self.disaster_service:
             return {}
 
@@ -59,6 +64,7 @@ class RealtimePayloadBuilder:
                 self.disaster_service.ws_manager.get_all_connections_status()
             )
 
+        # 这里统计的是网络接入层的活动连接数，而不是管理端前端页面连接数。
         active_websocket_connections = sum(
             1
             for status in actual_connections.values()
@@ -86,6 +92,7 @@ class RealtimePayloadBuilder:
         )
 
     def build_status_payload(self) -> dict[str, Any]:
+        """构建管理端状态面板所需的状态数据。"""
         snapshot = self._build_runtime_snapshot()
         if not snapshot:
             return {}
@@ -106,6 +113,7 @@ class RealtimePayloadBuilder:
         }
 
     def build_statistics_payload(self) -> dict[str, Any]:
+        """构建统计面板所需的数据。"""
         if not self.disaster_service or not self.disaster_service.statistics_manager:
             return {}
 
@@ -122,6 +130,7 @@ class RealtimePayloadBuilder:
     def build_connections_payload(
         self, expected_sources: dict[str, str] | None = None
     ) -> dict[str, Any]:
+        """构建连接状态视图。"""
         return self._connections_payload_builder.build(expected_sources)
 
     def build_status_api_payload(self) -> dict[str, Any]:
@@ -138,6 +147,8 @@ class RealtimePayloadBuilder:
         return payload
 
     def _build_recent_earthquakes_payload(self) -> list[dict[str, Any]]:
+        """构建近期地震摘要列表。"""
+        # 近期地震列表来自统计投影视图，避免重复维护另一套摘要拼装逻辑。
         if not self.disaster_service or not self.disaster_service.statistics_manager:
             return []
 

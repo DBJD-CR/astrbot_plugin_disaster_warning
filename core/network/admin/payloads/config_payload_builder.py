@@ -15,11 +15,13 @@ class ConfigPayloadBuilder:
     """配置摘要载荷构建器。"""
 
     def __init__(self, config: dict[str, Any]):
+        """保存原始配置，并初始化管理端所需的查询工具。"""
         self.config = config
         self.config_accessor = ConfigAccessor(config)
         self.source_runtime_query = SourceRuntimeQueryService(config)
 
     def _build_source_summary(self) -> dict[str, Any]:
+        """构建数据源启用状态与连接分组摘要。"""
         return {
             "enabled_source_ids": self.source_runtime_query.get_enabled_source_ids(),
             "enabled_source_labels": self.source_runtime_query.get_enabled_source_labels(),

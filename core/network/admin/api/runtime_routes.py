@@ -12,14 +12,14 @@ from fastapi import Request
 
 from astrbot.api import logger
 
-from .....core.support.simulation_service import (
+from .....utils.geolocation import fetch_location_from_ip
+from ....services.query.weather_query_service import query_weather_alarm_data
+from ....services.simulation.simulation_service import (
     build_earthquake_simulation,
     get_simulation_params,
     resolve_target_session,
 )
-from .....core.support.weather_query_service import query_weather_alarm_data
-from .....utils.geolocation import fetch_location_from_ip
-from ..api_response import ApiResponse
+from ..payloads.api_response import ApiResponse
 
 
 def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
@@ -31,7 +31,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
         optional_a: str = "",
         optional_b: str = "",
     ):
-        """查询气象预警（与 /气象预警查询 逻辑保持一致）。"""
+        """查询气象预警，逻辑与命令侧查询保持一致。"""
         try:
             guard_result = ApiResponse.guard_service_ready(
                 disaster_service,
@@ -63,9 +63,8 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
 
     @app.post("/api/simulate")
     async def simulate_disaster(simulation_data: dict[str, Any]):
-        """模拟灾害预警（当前支持地震）。"""
+        """模拟灾害预警，当前仅支持地震。"""
         try:
-            # 模拟接口是管理端运维工具，不依赖真实上游数据源，但仍要求主服务已就绪。
             if not disaster_service:
                 return ApiResponse.error("服务未初始化", status_code=503)
 
@@ -80,6 +79,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                     status_code=400,
                 )
 
+            # 目标会话允许显式指定，也允许回退到配置中的默认会话。
             final_target_session = resolve_target_session(config, target_session)
             if not final_target_session:
                 return ApiResponse.error("未配置目标会话", status_code=400)
@@ -92,6 +92,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
 
             manager = disaster_service.message_manager
             try:
+                # 先构造模拟事件并执行规则判定，再决定是否真正发送消息。
                 simulation_result = build_earthquake_simulation(
                     manager,
                     lat=lat,
@@ -104,12 +105,12 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                 return ApiResponse.error(str(ve), status_code=400)
 
             if simulation_result.global_pass and simulation_result.local_pass:
+                # 只有全局与本地判定都通过，才继续走正式的消息构建与发送流程。
                 logger.info("[灾害预警] 开始构建模拟预警消息...")
-                # 模拟推送复用真实消息构建与发送链路，确保测试结果尽量贴近线上行为。
-                msg_chain = await manager.build_message_async(
+                msg_chain = await manager.message_build_service.build_message_async(
                     simulation_result.disaster_event
                 )
-                await manager.send_message(final_target_session, msg_chain)
+                await manager.session_sender.send(final_target_session, msg_chain)
                 logger.info(
                     f"[灾害预警] ✅ 模拟事件已成功推送到 {final_target_session}"
                 )

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..api_response import ApiResponse
+from ..payloads.api_response import ApiResponse
 
 
 def register_auth_routes(

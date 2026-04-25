@@ -12,12 +12,12 @@ import platform
 
 from astrbot.api import logger
 
-from ..api_response import ApiResponse
-from ..runtime_environment import is_running_in_docker
+from ..host.runtime_environment import is_running_in_docker
+from ..payloads.api_response import ApiResponse
 
 
 def register_utility_routes(app, disaster_service, plugin_root: str):
-    """注册运维/工具类接口。"""
+    """注册运维与工具类接口。"""
 
     @app.get("/api/logs")
     async def get_logs():
@@ -37,7 +37,7 @@ def register_utility_routes(app, disaster_service, plugin_root: str):
 
     @app.post("/api/open-log-dir")
     async def open_log_dir():
-        """打开日志目录。"""
+        """在宿主机上打开日志目录。"""
         try:
             if not disaster_service or not disaster_service.message_logger:
                 return ApiResponse.error("日志功能不可用", status_code=503)
@@ -48,7 +48,7 @@ def register_utility_routes(app, disaster_service, plugin_root: str):
                 return ApiResponse.error("日志目录不存在", status_code=404)
 
             if is_running_in_docker():
-                # 容器内无法可靠控制宿主机文件管理器，因此这里直接给出明确错误提示。
+                # 容器内无法可靠控制宿主机文件管理器，因此直接给出明确错误提示。
                 return ApiResponse.error(
                     "Docker 环境下不支持在宿主机打开目录，请手动查看挂载路径",
                     status_code=400,
@@ -71,7 +71,7 @@ def register_utility_routes(app, disaster_service, plugin_root: str):
 
     @app.post("/api/open-plugin-dir")
     async def open_plugin_dir():
-        """打开插件根目录。"""
+        """在宿主机上打开插件根目录。"""
         try:
             if not os.path.exists(plugin_root):
                 return ApiResponse.error("插件目录不存在", status_code=404)

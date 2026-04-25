@@ -37,15 +37,17 @@ class WebServerRuntimeService:
         self.server = server
 
     def configure_auth(self) -> None:
+        """按当前配置初始化管理端鉴权状态。"""
         password = self.server.config_accessor.web_admin_password()
-        # 管理端启用密码时，登录成功后依靠随机 token 维持会话，而非反复传输明文密码。
+        # 管理端启用密码时，登录成功后依靠随机令牌维持会话，而非反复传输明文密码。
         if password:
             self.server._auth_enabled = True
             self.server._auth_token = secrets.token_hex(32)
 
     def register_routes(self) -> None:
+        """注册管理端全部 HTTP 路由。"""
         app = self.server.app
-        # 路由按主题拆分注册，避免 WebAdminServer / runtime service 自身继续膨胀成巨型文件。
+        # 路由按主题拆分注册，避免主服务类继续膨胀成巨型文件。
         register_auth_routes(
             app,
             auth_enabled=self.server._auth_enabled,
@@ -55,6 +57,7 @@ class WebServerRuntimeService:
 
         @app.get("/logo.png")
         async def get_logo():
+            """返回插件管理端使用的 Logo 图片。"""
             logo_path = os.path.join(
                 os.path.dirname(
                     os.path.dirname(
@@ -99,7 +102,8 @@ class WebServerRuntimeService:
         )
 
     async def handle_websocket(self, websocket) -> None:
-        """处理单个 WebSocket 客户端连接。"""
+        """处理单个管理端 WebSocket 客户端连接。"""
+        # 若启用了鉴权，则优先从查询参数或 Authorization 头提取令牌。
         if self.server._auth_enabled:
             token = websocket.query_params.get("token", "")
             if not token:
@@ -113,17 +117,19 @@ class WebServerRuntimeService:
             if not self.server._auth_token or not secrets.compare_digest(
                 token, self.server._auth_token
             ):
-                # 1008 表示策略违规，适合表达“鉴权失败，拒绝建立 WS 连接”。
+                # 1008 表示策略违规，适合表达“鉴权失败，拒绝建立连接”。
                 await websocket.close(code=1008)
                 return
 
         await websocket.accept()
+        # 连接建立后立即纳入 hub，便于统一广播与连接计数。
         self.server._ws_hub.add(websocket)
         logger.info(
             f"[灾害预警] 有 WebSocket 客户端已连接，当前连接数: {self.server._ws_hub.count()}"
         )
 
         try:
+            # 新客户端接入后先推送完整快照，再进入增量交互循环。
             await self.send_full_update(websocket)
             while True:
                 try:
@@ -134,6 +140,7 @@ class WebServerRuntimeService:
                     if msg.get("type") == "ping":
                         await websocket.send_json({"type": "pong"})
                     elif msg.get("type") == "refresh":
+                        # 管理端可主动请求一次完整刷新，便于页面恢复同步。
                         await self.send_full_update(websocket)
                 except json.JSONDecodeError:
                     pass
@@ -148,14 +155,17 @@ class WebServerRuntimeService:
             )
 
     async def send_full_update(self, websocket) -> None:
+        """向指定客户端发送一份完整实时快照。"""
         await self.server._ws_hub.send_full_update(
             websocket, self.server.get_realtime_data
         )
 
     async def broadcast_data(self) -> None:
+        """向全部已连接客户端广播最新实时数据。"""
         await self.server._ws_hub.broadcast_update(self.server.get_realtime_data)
 
     async def get_realtime_data(self) -> dict[str, Any]:
+        """构建管理端实时面板所需的数据载荷。"""
         try:
             return await self.server._realtime_payload_builder.build(
                 self.server.get_expected_data_sources()
@@ -165,6 +175,7 @@ class WebServerRuntimeService:
             return {"timestamp": datetime.now().isoformat()}
 
     async def notify_event(self, event_data: dict[str, Any] | None = None) -> None:
+        """向前端广播一条事件通知。"""
         await self.server._ws_hub.broadcast_event(
             self.server.get_realtime_data, event_data
         )

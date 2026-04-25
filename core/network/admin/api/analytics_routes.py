@@ -9,8 +9,8 @@ from datetime import datetime
 
 from astrbot.api import logger
 
-from ....support.event_view_factory import EventViewFactory
-from ..api_response import ApiResponse
+from ....services.display import build_earthquake_views_from_stats
+from ..payloads.api_response import ApiResponse
 
 
 def register_analytics_routes(app, *, disaster_service):
@@ -18,17 +18,16 @@ def register_analytics_routes(app, *, disaster_service):
 
     @app.get("/api/earthquakes")
     async def get_earthquakes():
-        """获取地震数据用于 3D 地球可视化。"""
+        """获取供三维地球视图使用的地震数据。"""
         try:
+            # 统计未就绪时返回空数组，便于前端按“暂无数据”而非异常状态处理。
             if not disaster_service or not disaster_service.statistics_manager:
                 return ApiResponse.success(
                     {"earthquakes": [], "timestamp": datetime.now().isoformat()}
                 )
 
             stats = disaster_service.statistics_manager.stats
-            recent_pushes = stats.get("recent_pushes", [])
-            # 统一复用事件视图工厂，把统计记录转换为前端图形化可直接消费的地震视图。
-            earthquakes = EventViewFactory.build_recent_earthquake_views(recent_pushes)
+            earthquakes = build_earthquake_views_from_stats(stats)
 
             return ApiResponse.success(
                 {
@@ -51,6 +50,7 @@ def register_analytics_routes(app, *, disaster_service):
             if guard_result is not None:
                 return guard_result
 
+            # 趋势图当前只支持按一天或一周粒度查询，超出范围统一回退到默认值。
             if hours not in [24, 168]:
                 hours = 24
 
@@ -77,6 +77,7 @@ def register_analytics_routes(app, *, disaster_service):
             if guard_result is not None:
                 return guard_result
 
+            # 指定年份时优先返回整年数据；否则按最近天数窗口生成热力图。
             if year:
                 heatmap_data = disaster_service.statistics_manager.get_heatmap_data(
                     days=0,

@@ -10,7 +10,7 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ..api_response import ApiResponse
+from ..payloads.api_response import ApiResponse
 
 
 def register_session_config_routes(app, *, disaster_service):
@@ -31,6 +31,7 @@ def register_session_config_routes(app, *, disaster_service):
             sessions = mgr.list_all_known_sessions()
 
             data = []
+            # 列表接口只返回概览字段，详细配置交由单会话查询接口提供。
             for session in sessions:
                 override = mgr.get_override(session)
                 effective = mgr.get_effective_config(session)
@@ -56,7 +57,7 @@ def register_session_config_routes(app, *, disaster_service):
 
     @app.get("/api/session-config/{umo:path}")
     async def get_session_config(umo: str):
-        """获取指定会话的 override 与 effective 配置。"""
+        """获取指定会话的覆写配置与生效配置。"""
         try:
             guard_result = ApiResponse.guard_service_ready(
                 disaster_service,
@@ -80,7 +81,7 @@ def register_session_config_routes(app, *, disaster_service):
 
     @app.post("/api/session-config/{umo:path}")
     async def update_session_config(umo: str, payload: dict[str, Any]):
-        """更新指定会话配置（提交 effective 或 override）。"""
+        """更新指定会话配置，可提交生效配置或覆写配置。"""
         try:
             guard_result = ApiResponse.guard_service_ready(
                 disaster_service,
@@ -92,16 +93,16 @@ def register_session_config_routes(app, *, disaster_service):
             mgr = disaster_service.session_config_manager
             mode = payload.get("mode", "effective")
 
-            # 支持直接提交 override 或 effective，两种写法分别对应高级编辑和表单式编辑场景。
+            # 同时支持直接提交覆写配置或生效配置，兼容高级编辑与表单式编辑两类场景。
             if mode == "override":
                 override = payload.get("override", {})
                 if not isinstance(override, dict):
-                    return ApiResponse.error("override 必须是对象", status_code=400)
+                    return ApiResponse.error("覆写配置必须是对象", status_code=400)
                 mgr.set_override(umo, override)
             else:
                 effective = payload.get("effective", payload)
                 if not isinstance(effective, dict):
-                    return ApiResponse.error("effective 必须是对象", status_code=400)
+                    return ApiResponse.error("生效配置必须是对象", status_code=400)
                 mgr.update_session_from_effective(umo, effective)
 
             return ApiResponse.success(
@@ -119,7 +120,7 @@ def register_session_config_routes(app, *, disaster_service):
 
     @app.delete("/api/session-config/{umo:path}")
     async def reset_session_config(umo: str):
-        """清空指定会话覆写配置（回退到默认）。"""
+        """清空指定会话覆写配置，并回退到默认配置。"""
         try:
             guard_result = ApiResponse.guard_service_ready(
                 disaster_service,

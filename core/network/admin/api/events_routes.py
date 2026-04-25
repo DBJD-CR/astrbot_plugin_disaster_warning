@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from astrbot.api import logger
 
-from ..api_response import ApiResponse
+from ..payloads.api_response import ApiResponse
 
 
 def register_events_routes(app, *, disaster_service):
@@ -43,10 +43,10 @@ def register_events_routes(app, *, disaster_service):
 
             db = disaster_service.statistics_manager.db
             event_type = type if type else None
-            # source 支持逗号分隔，便于前端一次性组合多个数据源筛选。
+            # 数据源筛选支持逗号分隔，便于前端一次性组合多个来源条件。
             source_filters = [s.strip() for s in source.split(",") if s.strip()]
             max_limit = 200
-            # 统一在接口层收敛分页参数，避免极端查询直接打爆数据库。
+            # 在接口层统一收敛分页参数，避免极端查询直接压垮数据库。
             limit = min(max(1, limit), max_limit)
             page = max(1, page)
 
@@ -67,6 +67,20 @@ def register_events_routes(app, *, disaster_service):
                 min_magnitude=min_magnitude,
                 magnitude_order=normalized_magnitude_order or None,
             )
+            # 气象事件在管理端列表中补充图标地址，便于前端直接展示而不再二次拼接。
+            for event in events:
+                if not isinstance(event, dict):
+                    continue
+                if event.get("type") != "weather_alarm":
+                    continue
+
+                weather_type_code = str(event.get("weather_type_code") or "").strip()
+                if weather_type_code:
+                    event["icon_url"] = (
+                        f"https://image.nmc.cn/assets/img/alarm/{weather_type_code}.png"
+                    )
+                else:
+                    event["icon_url"] = None
             total_pages = (total + limit - 1) // limit if total > 0 else 0
             source_options = await db.get_event_source_options(event_type)
             available_sources = [
@@ -129,6 +143,7 @@ def register_events_routes(app, *, disaster_service):
                 return ApiResponse.success({"events": []})
 
             db = disaster_service.statistics_manager.db
+            # 负数或零表示“不限制”，但这里仍显式映射为数据库可接受的大整数上限。
             if limit <= 0:
                 safe_limit = 9223372036854775807
             else:

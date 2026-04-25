@@ -12,8 +12,8 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ....support.config_validator import ConfigValidator
-from ..api_response import ApiResponse
+from ....services.config.config_validation_service import ConfigValidator
+from ..payloads.api_response import ApiResponse
 
 
 def register_config_routes(app, *, config):
@@ -21,7 +21,7 @@ def register_config_routes(app, *, config):
 
     @app.get("/api/config-schema")
     async def get_config_schema():
-        """获取配置 Schema。"""
+        """获取配置结构定义。"""
         try:
             schema_path = os.path.abspath(
                 os.path.join(
@@ -34,14 +34,15 @@ def register_config_routes(app, *, config):
                 )
             )
             if os.path.exists(schema_path):
+                # 配置结构定义单独放在文件中，便于前端动态渲染配置表单。
                 with open(schema_path, encoding="utf-8") as f:
                     return ApiResponse.success(json.load(f))
             return ApiResponse.error(
-                f"Schema file not found at: {schema_path}",
+                f"未找到配置结构定义文件: {schema_path}",
                 status_code=404,
             )
         except Exception as e:
-            logger.error(f"[灾害预警] 获取配置Schema失败: {e}, path: {schema_path}")
+            logger.error(f"[灾害预警] 获取配置结构定义失败: {e}, path: {schema_path}")
             return ApiResponse.error(
                 f"{str(e)}, path: {schema_path}, trace: {traceback.format_exc()}",
                 status_code=500,
@@ -69,6 +70,7 @@ def register_config_routes(app, *, config):
             current_config_dict = dict(config)
 
             def deep_update(target, updates):
+                # 递归合并前端提交的局部修改，避免未提交字段被整段覆盖丢失。
                 for key, value in updates.items():
                     if (
                         isinstance(value, dict)
@@ -80,6 +82,7 @@ def register_config_routes(app, *, config):
                         target[key] = value
 
             deep_update(current_config_dict, config_data)
+            # 只有通过校验后的配置才会回写到运行时对象与配置文件。
             validated_config = ConfigValidator.validate(current_config_dict)
 
             for key, value in validated_config.items():

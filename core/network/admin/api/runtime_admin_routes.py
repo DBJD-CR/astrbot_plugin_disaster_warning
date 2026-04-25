@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from astrbot.api import logger
 
-from ..api_response import ApiResponse
+from ..payloads.api_response import ApiResponse
 
 
 def register_runtime_admin_routes(
@@ -22,13 +22,14 @@ def register_runtime_admin_routes(
 
     @app.post("/api/reconnect")
     async def force_reconnect():
+        """触发所有数据源立即重连。"""
         try:
             guard_result = ApiResponse.guard_service_ready(disaster_service)
             if guard_result is not None:
                 return guard_result
 
             results = await disaster_service.reconnect_all_sources()
-            # 返回汇总 + 逐连接明细，方便前端同时展示总览提示和排障详情。
+            # 同时返回汇总结果与逐连接明细，便于前端展示总览提示和排障详情。
             triggered = sum(1 for s in results.values() if "已触发" in s)
             failed = sum(1 for s in results.values() if "失败" in s)
             return ApiResponse.success(
@@ -44,6 +45,7 @@ def register_runtime_admin_routes(
 
     @app.get("/api/connections")
     async def get_connections():
+        """获取连接状态接口响应。"""
         try:
             guard_result = ApiResponse.guard_service_ready(
                 disaster_service,
@@ -62,6 +64,7 @@ def register_runtime_admin_routes(
 
     @app.get("/api/config")
     async def get_config():
+        """获取管理端使用的配置摘要。"""
         try:
             return ApiResponse.success(config_payload_builder.build_summary())
         except Exception as e:

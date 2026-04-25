@@ -9,7 +9,7 @@ from datetime import datetime
 
 from astrbot.api import logger
 
-from ..api_response import ApiResponse
+from ..payloads.api_response import ApiResponse
 
 
 def register_status_routes(app, *, disaster_service, realtime_payload_builder):
@@ -22,7 +22,7 @@ def register_status_routes(app, *, disaster_service, realtime_payload_builder):
             guard_result = ApiResponse.guard_service_ready(disaster_service)
             if guard_result is not None:
                 return guard_result
-            # /api/status 直接复用实时载荷构建器中的状态快照逻辑，避免接口间字段漂移。
+            # 直接复用实时载荷构建器中的状态快照逻辑，避免多个接口字段逐渐漂移。
             return ApiResponse.success(
                 realtime_payload_builder.build_status_api_payload()
             )
