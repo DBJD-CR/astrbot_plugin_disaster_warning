@@ -1,0 +1,206 @@
+"""
+地震展示上下文构建器。
+负责把统一投影输入整理为地震展示上下文，供文本展示、卡片展示与管理端视图复用。
+"""
+
+from __future__ import annotations
+
+from ....domain.display_models import EarthquakeDisplayModel
+from ....domain.event_context import EarthquakeDisplayContext
+from .common import (
+    build_projection_view,
+    coerce_dict,
+    first_non_empty,
+    normalize_display_text,
+)
+
+
+def _extract_earthquake_domain_details(
+    domain_event, source_payload, metadata, envelope
+):
+    """提取地震领域对象侧的展示细节。"""
+    domain_metadata = coerce_dict(getattr(domain_event, "metadata", None))
+    payload_attributes = coerce_dict(getattr(source_payload, "attributes", None))
+    projection_view = build_projection_view(
+        domain_metadata=domain_metadata,
+        payload_attributes=payload_attributes,
+        metadata=metadata,
+    )
+    identity = getattr(envelope, "identity", None)
+    report_num = first_non_empty(
+        getattr(identity, "report_num", None),
+        envelope.report_num,
+        projection_view.get("report_num"),
+        projection_view.get("updates"),
+    )
+    is_final = bool(
+        getattr(identity, "is_final", False) or projection_view.get("is_final", False)
+    )
+    return {
+        "domain_metadata": domain_metadata,
+        "projection_view": projection_view,
+        "province": str(
+            first_non_empty(
+                getattr(domain_event, "province", None),
+                projection_view.get("province"),
+                "",
+            )
+        ).strip(),
+        "info_type": normalize_display_text(projection_view.get("info_type")) or "",
+        "report_num": report_num,
+        "revision": normalize_display_text(projection_view.get("revision")) or "",
+        "domestic_tsunami": normalize_display_text(
+            projection_view.get("domestic_tsunami")
+        )
+        or "",
+        "stations": first_non_empty(projection_view.get("stations"), {}),
+        "is_final": is_final,
+        "is_cancel": bool(projection_view.get("is_cancel", False)),
+        "is_training": bool(projection_view.get("is_training", False)),
+        "is_assumption": bool(projection_view.get("is_assumption", False)),
+        "max_pga": first_non_empty(projection_view.get("max_pga")),
+    }
+
+
+def _extract_earthquake_projection_details(
+    metadata, domain_province: str, domain_info_type: str
+):
+    """提取投影侧补充字段，如影响区域与日本震度信息。"""
+    impact_area = normalize_display_text(metadata.get("impact_area") or domain_province)
+    jma_issue_type = str(domain_info_type or metadata.get("info_type") or "").strip()
+    jma_warn_area = normalize_display_text(metadata.get("jma_warn_area"))
+    jma_points = [
+        point
+        for point in list(metadata.get("jma_points") or [])
+        if isinstance(point, dict)
+    ]
+    jma_comment = normalize_display_text(metadata.get("jma_comment"))
+    jma_warning_areas = [
+        str(area).strip()
+        for area in list(metadata.get("jma_warning_areas") or [])
+        if str(area).strip()
+    ]
+    jma_warning_area_ranges = [
+        str(area_range).strip()
+        for area_range in list(metadata.get("jma_warning_area_ranges") or [])
+        if str(area_range).strip()
+    ]
+
+    return {
+        "impact_area": impact_area,
+        "jma_issue_type": jma_issue_type,
+        "jma_warn_area": jma_warn_area,
+        "jma_points": jma_points,
+        "jma_comment": jma_comment,
+        "jma_warning_areas": jma_warning_areas,
+        "jma_warning_area_ranges": jma_warning_area_ranges,
+        "image_uri": str(metadata.get("image_uri") or "").strip(),
+        "shakemap_uri": str(metadata.get("shakemap_uri") or "").strip(),
+    }
+
+
+def build_earthquake_display_context(projection: dict, options: dict | None = None):
+    """构建地震展示上下文主入口。"""
+    envelope = projection["envelope"]
+    resolved_source_id = projection["resolved_source_id"]
+    source_descriptor = projection["source_descriptor"]
+    source_payload = projection["source_payload"]
+    metadata = projection["metadata"]
+    title = projection["title"]
+    domain_event = envelope.event
+
+    domain_details = _extract_earthquake_domain_details(
+        domain_event,
+        source_payload,
+        metadata,
+        envelope,
+    )
+    domain_province = str(domain_details["province"] or "")
+    domain_info_type = str(domain_details["info_type"] or "")
+    local_estimation = first_non_empty(metadata.get("local_estimation"))
+    payload_details = _extract_earthquake_projection_details(
+        metadata,
+        domain_province,
+        domain_info_type,
+    )
+    impact_area = payload_details["impact_area"]
+    jma_issue_type = str(payload_details["jma_issue_type"] or "")
+    jma_warn_area = payload_details["jma_warn_area"]
+    jma_points = list(payload_details["jma_points"])
+    jma_comment = payload_details["jma_comment"]
+    # 先整理一份中间字段表，避免在最终上下文构造处重复展开相同逻辑。
+    earthquake_kwargs = {
+        "report_num": int(domain_details["report_num"] or 1),
+        "is_final": bool(domain_details["is_final"]),
+        "is_cancel": bool(domain_details["is_cancel"]),
+        "is_training": bool(domain_details["is_training"]),
+        "is_assumption": bool(domain_details["is_assumption"]),
+        "max_pga": domain_details["max_pga"],
+        "stations": dict(domain_details["stations"] or {}),
+        "image_uri": str(payload_details["image_uri"] or ""),
+        "shakemap_uri": str(payload_details["shakemap_uri"] or ""),
+    }
+    display_metadata = {
+        **metadata,
+        "event_id": envelope.id,
+        "source_id": resolved_source_id,
+        "event_type": "earthquake",
+        "impact_area": impact_area,
+        "jma_issue_type": jma_issue_type,
+        "jma_warn_area": jma_warn_area,
+        "jma_points": jma_points,
+        "jma_comment": jma_comment,
+        "jma_warning_areas": list(payload_details["jma_warning_areas"]),
+        "jma_warning_area_ranges": list(payload_details["jma_warning_area_ranges"]),
+    }
+    if local_estimation is not None:
+        # 本地烈度估算仅在存在时写入，避免污染不相关事件的展示元数据。
+        display_metadata["local_estimation"] = local_estimation
+
+    return EarthquakeDisplayContext(
+        event_id=envelope.id,
+        source_id=resolved_source_id,
+        title=title,
+        occurred_at=(
+            getattr(domain_event, "occurred_at", None)
+            or getattr(domain_event, "issued_at", None)
+            or getattr(domain_event, "effective_at", None)
+        ),
+        latitude=getattr(domain_event, "latitude", None),
+        longitude=getattr(domain_event, "longitude", None),
+        magnitude=getattr(domain_event, "magnitude", None),
+        depth=getattr(domain_event, "depth", None),
+        intensity=getattr(domain_event, "intensity", None),
+        scale=getattr(domain_event, "scale", None),
+        report_num=earthquake_kwargs["report_num"],
+        is_final=earthquake_kwargs["is_final"],
+        is_cancel=earthquake_kwargs["is_cancel"],
+        is_training=earthquake_kwargs["is_training"],
+        is_assumption=earthquake_kwargs["is_assumption"],
+        revision=str(domain_details["revision"] or "").strip(),
+        province=domain_province,
+        domestic_tsunami=str(domain_details["domestic_tsunami"] or "").strip(),
+        max_pga=earthquake_kwargs["max_pga"],
+        stations=earthquake_kwargs["stations"],
+        image_uri=earthquake_kwargs["image_uri"],
+        shakemap_uri=earthquake_kwargs["shakemap_uri"],
+        impact_area=impact_area,
+        local_estimation=local_estimation,
+        jma_issue_type=jma_issue_type,
+        jma_warn_area=jma_warn_area,
+        jma_points=jma_points,
+        jma_comment=jma_comment,
+        jma_warning_areas=list(payload_details["jma_warning_areas"]),
+        jma_warning_area_ranges=list(payload_details["jma_warning_area_ranges"]),
+        display_model=EarthquakeDisplayModel(
+            title=title,
+            extras=dict(display_metadata),
+        ),
+        metadata=display_metadata,
+        options=dict(options or {}),
+        source_descriptor=source_descriptor,
+        payload=source_payload,
+    )
+
+
+__all__ = ["build_earthquake_display_context"]
