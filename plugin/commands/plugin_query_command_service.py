@@ -13,12 +13,9 @@ import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
-from ...core.app.services.query_helpers import (
-    format_earthquake_list_text,
-    quoted_plain_result,
-)
-from ...core.support.simulation_service import build_earthquake_simulation
-from ...core.support.weather_query_service import query_weather_alarm_data
+from ...core.app.services import format_earthquake_list_text, quoted_plain_result
+from ...core.services.query.weather_query_service import query_weather_alarm_data
+from ...core.services.simulation.simulation_service import build_earthquake_simulation
 
 
 class PluginQueryCommandService:
@@ -34,7 +31,6 @@ class PluginQueryCommandService:
         optional_a: str | None = None,
         optional_b: str | None = None,
     ):
-        # 查询类命令统一优先走 quoted plain 结果，保证用户体验与命令回复风格一致。
         def _quoted_plain_result(text: str):
             return quoted_plain_result(self.plugin, event, text)
 
@@ -279,7 +275,7 @@ class PluginQueryCommandService:
                 count = 1
 
             request_count = 50
-            formatted_list = self.plugin.disaster_service.get_formatted_list_data(
+            formatted_list = self.plugin.disaster_service.earthquake_list_service.get_formatted_list_data(
                 source, request_count
             )
             if not formatted_list:
@@ -299,40 +295,32 @@ class PluginQueryCommandService:
                 if img_path:
                     yield event.chain_result(
                         self.plugin._with_quote_reply(
-                            event, [Comp.Image.fromFileSystem(img_path)]
+                            event,
+                            [Comp.Image.fromFileSystem(img_path)],
                         )
                     )
-                else:
-                    yield _quoted_plain_result(
-                        "⚠️ 卡片渲染失败，转为文本显示\n"
-                        + format_earthquake_list_text(formatted_list[:count], source)
-                    )
-            else:
-                display_list = formatted_list[:count]
-                yield _quoted_plain_result(
-                    format_earthquake_list_text(display_list, source)
-                )
+                    return
+
+            text = format_earthquake_list_text(formatted_list[:count], source)
+            yield _quoted_plain_result(text)
         except Exception as e:
             logger.error(f"[灾害预警] 查询地震列表失败: {e}")
             yield _quoted_plain_result(f"❌ 查询失败: {e}")
 
-    async def handle_simulate_earthquake(
+    async def handle_simulate_disaster(
         self,
         event,
         lat: float,
         lon: float,
         magnitude: float,
-        depth: float = 10.0,
+        depth: float,
         source: str = "cea_fanstudio",
     ):
         def _quoted_plain_result(text: str):
             return quoted_plain_result(self.plugin, event, text)
 
-        if (
-            not self.plugin.disaster_service
-            or not self.plugin.disaster_service.message_manager
-        ):
-            yield _quoted_plain_result("❌ 服务未启动")
+        if not self.plugin.disaster_service:
+            yield _quoted_plain_result("❌ 灾害预警服务未启动")
             return
 
         try:
@@ -345,36 +333,30 @@ class PluginQueryCommandService:
                 depth=depth,
                 source=source,
             )
-            yield _quoted_plain_result("\n".join(simulation_result.report_lines))
-            await asyncio.sleep(1)
 
             if simulation_result.global_pass and simulation_result.local_pass:
-                try:
-                    logger.info("[灾害预警] 开始构建模拟预警消息...")
-                    msg_chain = await manager.build_message_async(
-                        simulation_result.disaster_event
-                    )
-                    logger.info(
-                        f"[灾害预警] 消息构建成功，链长度: {len(msg_chain.chain)}"
-                    )
-                    msg_chain.chain = self.plugin._with_quote_reply(
-                        event, msg_chain.chain
-                    )
-                    await self.plugin.context.send_message(
-                        event.unified_msg_origin, msg_chain
-                    )
-                except Exception as build_e:
-                    logger.error(
-                        f"[灾害预警] 消息构建失败: {build_e}\n{traceback.format_exc()}"
-                    )
-                    yield _quoted_plain_result(f"❌ 消息构建失败: {build_e}")
-            else:
-                yield _quoted_plain_result("\n⛔ 结论: 该事件不会触发预警推送。")
-        except Exception as e:
-            error_trace = traceback.format_exc()
-            logger.error(f"[灾害预警] 模拟测试失败: {e}\n{error_trace}")
-            if self.plugin.telemetry and self.plugin.telemetry.enabled:
-                await self.plugin.telemetry.track_error(
-                    e, module="main.simulate_earthquake"
+                msg_chain = await manager.build_message_async(
+                    simulation_result.disaster_event
                 )
+                yield event.chain_result(
+                    self.plugin._with_quote_reply(event, list(msg_chain.chain))
+                )
+                return
+
+            yield _quoted_plain_result("\n".join(simulation_result.report_lines))
+        except Exception as e:
+            logger.error(f"[灾害预警] 模拟预警失败: {e}\n{traceback.format_exc()}")
             yield _quoted_plain_result(f"❌ 模拟失败: {e}")
+
+    async def handle_query_earthquake_warning_with_timeout(
+        self, event, timeout: float = 15.0
+    ):
+        """带超时保护的地震预警查询。"""
+        try:
+            async for result in asyncio.wait_for(
+                self.handle_query_earthquake_warning(event),
+                timeout=timeout,
+            ):
+                yield result
+        except TimeoutError:
+            yield quoted_plain_result(self.plugin, event, "❌ 查询超时，请稍后重试")

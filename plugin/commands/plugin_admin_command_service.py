@@ -12,7 +12,7 @@ from collections import OrderedDict
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
 
-from ...core.app.services.query_helpers import quoted_plain_result
+from ...core.app.services import quoted_plain_result
 from ...utils.version import get_plugin_version
 
 
