@@ -1,6 +1,11 @@
 """
-灾害预警核心服务
-整合所有重构的组件
+灾害预警核心服务。
+
+该模块承担应用层总装配职责：
+1. 持有配置、上下文与共享运行状态；
+2. 装配消息、统计、缓存、查询等基础能力；
+3. 协调生命周期、运行时调度、通知与事件流水线；
+4. 对外暴露统一的启动、停止、状态查询与事件入口。
 """
 
 import asyncio
@@ -13,23 +18,31 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 if TYPE_CHECKING:
-    from ..support.telemetry_manager import TelemetryManager
+    from ..services.telemetry.telemetry_service import TelemetryManager
 
-from ...models.data_source_config import (
-    DATA_SOURCE_CONFIGS,
-    is_source_enabled_in_data_sources,
-)
-from ...models.models import (
-    DATA_SOURCE_MAPPING,
-    DisasterEvent,
-)
-from ...utils.fe_regions import load_data_async
-from ...utils.formatters import MESSAGE_FORMATTERS
-from ..handlers import DATA_HANDLERS
+from ..domain.event_models import EventEnvelope
 from ..message.message_logger import MessageLogger
 from ..message.message_manager import MessagePushManager
-from ..network.handler_registry import WebSocketHandlerRegistry
+from ..message.presenters.presenter_registry import (
+    get_presenter,
+    get_text_presenter_keys,
+)
+from ..network.event_ingress_dispatch_service import EventIngressDispatchService
+from ..network.source_ingress_side_effect_service import SourceIngressSideEffectService
+from ..network.source_message_router import SourceMessageRouter
 from ..network.websocket.websocket_manager import HTTPDataFetcher, WebSocketManager
+from ..parsers.parser_registry import (
+    create_parser_for_source,
+    validate_catalog_parser_names,
+)
+from ..services.config.config_service import ConfigAccessor
+from ..services.config.connection_plan_builder import ConnectionPlanBuilder
+from ..services.geo.region_service import region_service
+from ..services.query.earthquake_list_service import EarthquakeListService
+from ..services.query.eew_query_state_service import EEWQueryStateService
+from ..services.query.source_runtime_query_service import SourceRuntimeQueryService
+from ..sources.source_catalog import SOURCE_CATALOG
+from ..sources.source_institution_catalog import get_institution_catalog
 from ..storage.session_config_manager import SessionConfigManager
 from ..storage.statistics_manager import StatisticsManager
 from .pipeline.event_pipeline import EventPipeline
@@ -39,56 +52,59 @@ from .runtime.disaster_service_notice import DisasterServiceNoticeService
 from .runtime.disaster_service_reconnect import DisasterServiceReconnectService
 from .runtime.disaster_service_runtime import DisasterServiceRuntimeService
 from .runtime.disaster_service_status import DisasterServiceStatusService
-from .runtime.disaster_service_support import DisasterServiceSupportService
-from .services.connection_plan_builder import ConnectionPlanBuilder
-from .services.earthquake_list_service import EarthquakeListService
-from .services.eew_query_state_service import EEWQueryStateService
+
+
+def _is_source_enabled_by_catalog(source_id: str, data_sources: dict[str, Any]) -> bool:
+    """根据统一的数据源目录判断某个数据源是否启用。"""
+    # 当配置结构异常或为空时，默认返回启用，
+    # 以避免查询展示链路因为局部配置缺失而整体失效。
+    if not isinstance(data_sources, dict):
+        return True
+
+    source_entry = SOURCE_CATALOG.get(source_id)
+    if source_entry is None:
+        return True
+
+    group_cfg = data_sources.get(source_entry.config_group, {})
+    if not isinstance(group_cfg, dict):
+        return True
+
+    if group_cfg.get("enabled", True) is False:
+        return False
+
+    return bool(group_cfg.get(source_entry.config_key, True))
 
 
 class DisasterWarningService:
-    """灾害预警核心服务"""
+    """灾害预警核心服务。"""
 
+    # 地震预警查询状态的有效时间窗口，超过后会按历史状态处理。
     EEW_VALID_DURATION_SECONDS = 300
 
-    _EEW_QUERY_INSTITUTIONS: dict[str, dict[str, Any]] = {
-        "china": {
-            "display_name": "中国地震预警网 EEW",
-            "active_name": "中国地震预警网",
-            "source_ids": ["cea_fanstudio", "cea_pr_fanstudio", "cea_wolfx"],
-        },
-        "japan": {
-            "display_name": "日本気象庁 EEW",
-            "active_name": "日本気象庁",
-            "source_ids": ["jma_fanstudio", "jma_p2p", "jma_wolfx"],
-        },
-        "taiwan": {
-            "display_name": "中央氣象署 EEW",
-            "active_name": "中央氣象署",
-            "source_ids": ["cwa_fanstudio", "cwa_wolfx"],
-        },
-    }
-
     def __init__(self, config: dict[str, Any], context):
-        # 主服务保留 facade 身份：持有全局依赖、共享状态与少量兼容入口，
-        # 具体生命周期、运行时调度、通知与缓存逻辑则委托到拆分服务。
+        # 主服务负责持有全局依赖、共享状态，并装配生命周期、运行时调度、通知与缓存等子服务。
         self.config = config
         self.context = context
         self.running = False
+        # 启停锁用于避免重复启动或并发停止时出现状态竞争。
         self._start_lock = asyncio.Lock()
         self._stop_lock = asyncio.Lock()
         self._stopping = False
 
+        # 这一组对象属于全局基础能力，基本会被多个子服务共享使用。
         self.message_logger = MessageLogger(config, "disaster_warning")
         self.statistics_manager = StatisticsManager(config)
         self._telemetry: TelemetryManager | None = None
         self.session_config_manager = SessionConfigManager(config)
+        self.source_runtime_query = SourceRuntimeQueryService(config)
 
-        # WebSocketManager / MessagePushManager 属于核心基础设施，需在初始化阶段提前装配。
+        # WebSocket 管理器与消息推送管理器属于核心基础设施，需在初始化阶段提前装配。
         self.ws_manager = WebSocketManager(
             config.get("websocket_config", {}),
             self.message_logger,
             telemetry=self._telemetry,
         )
+        # 接口抓取器会在初始化阶段创建，用于 Wolfx 等接口型数据源的定时拉取。
         self.http_fetcher: HTTPDataFetcher | None = None
         self.message_manager = MessagePushManager(
             config, context, telemetry=self._telemetry
@@ -96,31 +112,39 @@ class DisasterWarningService:
         # 用于离线通知节流，避免同一连接异常在短时间内反复刷屏。
         self._offline_notification_state: dict[str, dict[str, float]] = {}
 
-        self.handlers = {}
-        self._initialize_handlers()
+        # 解析器按数据源编号注册，后续所有事件入口都通过统一映射表调度。
+        self.parsers = {}
+        self._initialize_parsers()
 
-        # 这些运行时容器会被 lifecycle / runtime 服务共同维护。
+        # 这些运行时容器会被生命周期服务与运行时服务共同维护。
         self.connections = {}
         self.connection_tasks = []
         self.scheduled_tasks = []
         self.background_tasks: set[asyncio.Task] = set()
         self.web_admin_server = None
 
+        # 地震列表缓存主要服务于命令查询与管理端展示。
         self.earthquake_lists = {"cenc": {}, "jma": {}}
         self.earthquake_list_service = EarthquakeListService(self.earthquake_lists)
 
+        # 缓存文件统一落在插件数据目录下，便于跨重启恢复运行状态。
         self.storage_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
         self.cache_file = os.path.join(self.storage_dir, "earthquake_lists_cache.json")
         self.eew_query_cache_file = os.path.join(
             self.storage_dir, "eew_query_cache.json"
         )
+        # 地震预警查询状态按机构维度保存，用于命令与管理端复用。
         self.eew_query_state: dict[str, dict[str, Any]] = {}
         self.eew_query_service = EEWQueryStateService(
-            institutions=self._EEW_QUERY_INSTITUTIONS,
+            institutions=get_institution_catalog("eew"),
             valid_duration_seconds=self.EEW_VALID_DURATION_SECONDS,
-            source_enabled_checker=is_source_enabled_in_data_sources,
+            source_enabled_checker=_is_source_enabled_by_catalog,
         )
-        # 以下服务分别承接事件流水线、生命周期、运行时调度、缓存、状态投影、通知与重连编排。
+        self._setup_runtime_services()
+
+    def _setup_runtime_services(self) -> None:
+        """装配灾害服务运行时子服务。"""
+        # 以下服务分别承接事件流水线、生命周期、运行时调度、缓存、状态整理、通知、重连与接入旁路编排，主服务本身只保留高层协调职责。
         self.event_pipeline = EventPipeline(self)
         self.lifecycle_service = DisasterServiceLifecycleService(self)
         self.runtime_service = DisasterServiceRuntimeService(self)
@@ -128,56 +152,87 @@ class DisasterWarningService:
         self.status_service = DisasterServiceStatusService(self)
         self.notice_service = DisasterServiceNoticeService(self)
         self.reconnect_service = DisasterServiceReconnectService(self)
-        self.support_service = DisasterServiceSupportService(self)
+        self.source_ingress_side_effect_service = SourceIngressSideEffectService(self)
+        self.event_ingress_dispatch_service = EventIngressDispatchService(self)
 
-    def _initialize_handlers(self):
-        """初始化数据处理器"""
-        for source_id, handler_class in DATA_HANDLERS.items():
-            self.handlers[source_id] = handler_class(self.message_logger)
+    def _initialize_parsers(self):
+        """初始化各数据源对应的解析器。"""
+        for source_id in SOURCE_CATALOG:
+            # 解析器创建逻辑集中在注册表中维护，这里只负责装配与缓存实例。
+            parser = create_parser_for_source(source_id, self.message_logger)
+            if parser is not None:
+                self.parsers[source_id] = parser
+
+    def parse_event(self, source_id: str, message):
+        """统一的解析器调度入口。"""
+        parser = self.parsers.get(source_id)
+        if parser is None:
+            return None
+        # 主服务不关心具体解析细节，只负责按数据源分发到正确的解析器。
+        return parser.parse_message(message)
 
     def _check_registry_integrity(self):
-        """检查各注册表的一致性"""
-        handler_ids = set(DATA_HANDLERS.keys())
-        formatter_ids = set(MESSAGE_FORMATTERS.keys())
-        config_ids = set(DATA_SOURCE_CONFIGS.keys())
-        mapping_ids = set(DATA_SOURCE_MAPPING.keys())
+        """检查数据源目录与展示注册入口的一致性。"""
+        source_presentation_types = {
+            entry.presentation_type for entry in SOURCE_CATALOG.values()
+        }
+        source_text_presenter_keys = {
+            entry.text_presenter_key
+            for entry in SOURCE_CATALOG.values()
+            if isinstance(entry.text_presenter_key, str)
+            and entry.text_presenter_key.strip()
+        }
+        source_enum_ids = {
+            entry.source_id
+            for entry in SOURCE_CATALOG.values()
+            if isinstance(entry.source_enum, str) and entry.source_enum.strip()
+        }
 
-        missing_formatters = handler_ids - formatter_ids
-        if missing_formatters:
+        unresolved_presenters = {
+            presentation_type
+            for presentation_type in source_presentation_types
+            if get_presenter(presentation_type) is None
+        }
+        missing_text_presenters = source_text_presenter_keys - get_text_presenter_keys()
+        missing_source_enum = set(SOURCE_CATALOG.keys()) - source_enum_ids
+
+        if unresolved_presenters:
             logger.warning(
-                f"[灾害预警] 以下数据源缺少格式化器注册: {missing_formatters}"
+                f"[灾害预警] 以下 presentation_type 无法解析 presenter: {unresolved_presenters}"
             )
-
-        missing_configs = handler_ids - config_ids
-        if missing_configs:
-            logger.warning(f"[灾害预警] 以下数据源缺少配置定义: {missing_configs}")
-
-        missing_mappings = handler_ids - mapping_ids
-        if missing_mappings:
+        if missing_text_presenters:
             logger.warning(
-                f"[灾害预警] 以下数据源缺少 ID-枚举 映射: {missing_mappings}"
+                f"[灾害预警] 以下 text_presenter_key 缺少 presenter 注册: {missing_text_presenters}"
             )
-
-        if not missing_formatters and not missing_configs and not missing_mappings:
-            logger.debug("[灾害预警] 注册表完整性自检通过")
+        if missing_source_enum:
+            logger.warning(
+                f"[灾害预警] 以下数据源缺少 SOURCE_CATALOG.source_enum 定义: {missing_source_enum}"
+            )
+        if (
+            not unresolved_presenters
+            and not missing_text_presenters
+            and not missing_source_enum
+        ):
+            logger.debug("[灾害预警] source catalog / presenter 注册完整性自检通过")
 
     def set_telemetry(self, telemetry: Optional["TelemetryManager"]):
-        """设置遥测管理器引用"""
+        """设置遥测管理器引用。"""
+        # 遥测能力会同时下发给 WebSocket 管理器与消息推送管理器，
+        # 以便基础设施层也能统一上报异常与运行指标。
         self._telemetry = telemetry
         if self.ws_manager:
             self.ws_manager._telemetry = telemetry
         if self.message_manager:
-            self.message_manager._telemetry = telemetry
-            if self.message_manager.browser_manager:
-                self.message_manager.browser_manager._telemetry = telemetry
+            self.message_manager.set_telemetry(telemetry)
 
     async def initialize(self):
-        """初始化服务"""
+        """初始化服务。"""
         try:
             logger.info("[灾害预警] 正在初始化灾害预警服务...")
-            # 初始化阶段只做“静态装配”：校验注册表、加载基础数据、注册处理器、生成连接计划。
+            # 初始化阶段只做“静态装配”：校验注册表、加载基础数据、注册解析器调度、生成连接计划。
+            validate_catalog_parser_names()
             self._check_registry_integrity()
-            await load_data_async()
+            await region_service.load_data_async()
             self.http_fetcher = HTTPDataFetcher(self.config)
             self._register_handlers()
             self._configure_connections()
@@ -192,13 +247,14 @@ class DisasterWarningService:
             raise
 
     def _register_handlers(self):
-        """注册消息处理器"""
-        registry = WebSocketHandlerRegistry(self)
+        """注册消息调度处理器。"""
+        # 路由器会按不同数据源的接入类型，把消息分发到统一事件入口或旁路处理逻辑。
+        registry = SourceMessageRouter(self)
         registry.register_all(self.ws_manager)
         self.ws_manager.set_offline_notify_callback(self._handle_offline_notification)
 
     def _configure_connections(self):
-        """配置连接 - 适配数据源配置"""
+        """根据数据源配置生成连接计划。"""
         self.connections = ConnectionPlanBuilder.build(self.config)
 
     async def start(self):
@@ -214,6 +270,7 @@ class DisasterWarningService:
         if task is None:
             return
         self.background_tasks.add(task)
+        # 任务结束后自动从集合中移除，避免后台任务引用长期堆积。
         task.add_done_callback(self.background_tasks.discard)
 
     async def stop(self):
@@ -221,47 +278,19 @@ class DisasterWarningService:
         await self.lifecycle_service.stop()
 
     async def _establish_websocket_connections(self):
-        """建立WebSocket连接 - 使用WebSocket管理器功能"""
+        """建立 WebSocket 连接，实际逻辑由运行时服务承接。"""
         await self.runtime_service.establish_websocket_connections()
 
-    def get_data_source_from_connection(self, connection_name: str) -> str:
-        """从连接名称获取数据源 ID。"""
-        return self.support_service.get_data_source_from_connection(connection_name)
-
-    def is_fan_studio_source_enabled(self, source_key: str) -> bool:
-        """检查特定的 FAN Studio 数据源是否启用。"""
-        return self.support_service.is_fan_studio_source_enabled(source_key)
-
-    def is_wolfx_source_enabled(self, source_key: str) -> bool:
-        """检查特定的 Wolfx 数据源是否启用。"""
-        return self.support_service.is_wolfx_source_enabled(source_key)
-
     async def _start_scheduled_http_fetch(self):
-        """启动定时HTTP数据获取"""
+        """启动定时 HTTP 数据获取。"""
         await self.runtime_service.start_scheduled_http_fetch()
 
     async def _start_cleanup_task(self):
-        """启动清理任务"""
+        """启动清理任务。"""
         await self.runtime_service.start_cleanup_task()
 
-    def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
-        """更新内存中的地震列表"""
-        self.earthquake_list_service.update_earthquake_list(list_type, data)
-
-    def _load_earthquake_lists_cache(self):
-        """从文件加载地震列表缓存"""
-        self.cache_service.load_earthquake_lists_cache()
-
-    def _save_earthquake_lists_cache(self):
-        """保存地震列表缓存到文件"""
-        self.cache_service.save_earthquake_lists_cache()
-
-    def get_formatted_list_data(self, source_type: str, count: int) -> list[dict]:
-        """获取格式化后的地震列表数据（用于卡片渲染）。兼容保留在主服务层，实际委托列表服务。"""
-        return self.earthquake_list_service.get_formatted_list_data(source_type, count)
-
     def is_in_silence_period(self) -> bool:
-        """检查是否处于启动后的静默期"""
+        """检查是否处于启动后的静默期。"""
         if not hasattr(self, "start_time"):
             return False
 
@@ -274,10 +303,10 @@ class DisasterWarningService:
         elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         return elapsed < silence_duration
 
-    async def _handle_disaster_event(self, event: DisasterEvent):
-        """处理灾害事件"""
+    async def _handle_disaster_event(self, event: EventEnvelope):
+        """处理灾害事件。主链路仅接收解析器产出的统一事件。"""
         try:
-            # EEW 查询状态更新属于轻量级旁路状态维护，即使失败也不阻断主流程。
+            # 地震预警查询状态更新属于轻量级旁路状态维护，即使失败也不阻断主流程。
             self._update_eew_query_state(event)
         except Exception as e:
             logger.debug(f"[灾害预警] 更新 EEW 查询状态失败（已忽略）: {e}")
@@ -309,71 +338,44 @@ class DisasterWarningService:
                     )
                 )
 
-    def log_event(self, event: DisasterEvent) -> None:
-        """记录事件日志。"""
-        self.support_service.log_event(event)
-
     async def _handle_offline_notification(self, payload: dict[str, Any]) -> None:
-        """处理 WebSocket 管理器离线通知回调"""
+        """处理 WebSocket 管理器的离线通知回调。"""
         await self.notice_service.handle_offline_notification(payload)
-
-    async def notify_data_source_offline(
-        self,
-        connection_name: str,
-        data_source: str,
-        stage: str,
-        reason: str,
-        next_retry_in: str | None = None,
-        retry_count: int | None = None,
-        fallback_count: int | None = None,
-    ) -> bool:
-        """推送数据源离线通知（兜底重试/停止重连）"""
-        return await self.notice_service.notify_data_source_offline(
-            connection_name=connection_name,
-            data_source=data_source,
-            stage=stage,
-            reason=reason,
-            next_retry_in=next_retry_in,
-            retry_count=retry_count,
-            fallback_count=fallback_count,
-        )
 
     async def reconnect_all_sources(self) -> dict[str, str]:
         """
-        强制重连所有已启用但离线的数据源
-        返回: dict {connection_name: status_message}
+        强制重连所有已启用但离线的数据源。
+
+        返回值为“连接名 -> 处理结果”的对应表。
         """
         return await self.reconnect_service.reconnect_all_sources()
 
     def get_service_status(self) -> dict[str, Any]:
-        """获取服务状态 - 增强版本"""
+        """获取服务状态。"""
         return self.status_service.get_service_status()
 
-    def _update_eew_query_state(self, event: DisasterEvent) -> None:
-        """更新地震预警查询状态（机构级，跨源去重）。兼容保留在主服务层，实际委托查询状态服务。"""
+    def get_uptime(self) -> str:
+        """获取服务运行时长。"""
+        return self.status_service.get_uptime()
+
+    def _update_eew_query_state(self, event: EventEnvelope) -> None:
+        """更新地震预警查询状态（机构级，跨源去重）。"""
         self.eew_query_state = self.eew_query_service.update_state(
             self.eew_query_state,
             event,
         )
 
     def get_eew_query_status_data(self) -> dict[str, Any]:
-        """获取地震预警查询的结构化状态数据（供 Web 与指令复用）。兼容保留在主服务层，实际委托查询状态服务。"""
+        """获取地震预警查询的结构化状态数据，供 Web 管理端与指令复用。"""
+        data_sources_cfg = ConfigAccessor(self.config).data_sources_config()
         return self.eew_query_service.build_status_data(
             self.eew_query_state,
-            self.config.get("data_sources", {}),
+            data_sources_cfg,
         )
 
     def get_eew_query_text(self) -> str:
-        """生成 /地震预警查询 文本。兼容保留在主服务层，实际委托通知服务。"""
+        """生成 /地震预警查询 命令对应的文本。"""
         return self.notice_service.get_eew_query_text()
-
-    def _load_eew_query_cache(self):
-        """从文件加载 EEW 查询状态缓存。"""
-        self.cache_service.load_eew_query_cache()
-
-    def _save_eew_query_cache(self):
-        """保存 EEW 查询状态缓存到文件。"""
-        self.cache_service.save_eew_query_cache()
 
 
 _disaster_service: DisasterWarningService | None = None
@@ -382,7 +384,7 @@ _disaster_service: DisasterWarningService | None = None
 async def get_disaster_service(
     config: dict[str, Any], context
 ) -> DisasterWarningService:
-    """获取灾害预警服务实例"""
+    """获取灾害预警服务实例。"""
     global _disaster_service
 
     if _disaster_service is None:
@@ -393,7 +395,7 @@ async def get_disaster_service(
 
 
 async def stop_disaster_service():
-    """停止灾害预警服务"""
+    """停止灾害预警服务。"""
     global _disaster_service
 
     if _disaster_service:
