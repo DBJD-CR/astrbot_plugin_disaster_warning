@@ -1,7 +1,7 @@
 """
 统计会话维度服务。
-负责维护会话推送计数、最近推送时间与 Top 会话视图，
-减少 StatisticsManager 中会话统计写模型逻辑。
+负责维护会话推送计数、最近推送时间与会话排行视图，
+减少统计管理器中会话统计写模型逻辑。
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ class StatsSessionService:
     """会话统计服务。"""
 
     def __init__(self, manager):
+        """初始化会话统计服务。"""
         self.manager = manager
 
     def record_session_stats(
@@ -22,9 +23,10 @@ class StatsSessionService:
     ) -> None:
         """记录会话维度统计。"""
         try:
-            # session_stats 可能来自旧版本 JSON，先做一次结构纠偏再写入。
+            # 会话统计块可能来自旧版本 JSON，先做一次结构纠偏再写入。
             session_stats = self.manager.stats.get("session_stats")
             if not isinstance(session_stats, dict):
+                # 旧版本或异常数据下，先重建一份可写入的会话统计骨架。
                 session_stats = {
                     "by_session": defaultdict(
                         lambda: {
@@ -39,6 +41,7 @@ class StatsSessionService:
 
             by_session = session_stats.get("by_session")
             if not isinstance(by_session, defaultdict):
+                # 若已保存数据退化成普通字典，则在恢复时重新包回带默认值的结构。
                 by_session = defaultdict(
                     lambda: {
                         "received": 0,
@@ -50,6 +53,7 @@ class StatsSessionService:
                 session_stats["by_session"] = by_session
 
             for session in pushed_sessions:
+                # 空会话标识直接跳过，避免污染会话统计榜单。
                 if not session:
                     continue
                 info = by_session[session]
@@ -57,7 +61,7 @@ class StatsSessionService:
                 info["pushed"] = int(info.get("pushed", 0)) + 1
                 info["last_push_time"] = current_time
 
-            # top_sessions 作为展示投影缓存，避免每次查询状态时都重新全量排序。
+            # 会话排行作为展示投影视图缓存，避免每次查询状态时都重新全量排序。
             sorted_sessions = sorted(
                 by_session.items(),
                 key=lambda x: x[1].get("pushed", 0),

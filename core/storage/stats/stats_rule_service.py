@@ -10,14 +10,16 @@ from datetime import datetime
 
 from astrbot.api import logger
 
-from ....models.models import (
-    DisasterEvent,
-    DisasterType,
-    EarthquakeData,
-    TsunamiData,
-    WeatherAlarmData,
+from ...domain.event_models import (
+    EarthquakeEvent,
+    EventEnvelope,
+    TsunamiEvent,
+    WeatherEvent,
 )
-from ....utils.formatters.weather import COLOR_LEVEL_EMOJI, SORTED_WEATHER_TYPES
+from ...message.presenters.weather_constants import (
+    COLOR_LEVEL_EMOJI,
+    SORTED_WEATHER_TYPES,
+)
 
 
 class StatsRuleService:
@@ -26,25 +28,29 @@ class StatsRuleService:
     def __init__(self, manager):
         self.manager = manager
 
-    def is_major_event(self, event: DisasterEvent) -> bool:
+    def is_major_event(self, event: EventEnvelope) -> bool:
         """判断是否为重大事件。"""
-        # 当前规则偏保守：地震按 M5.0+，海啸默认重大，气象按红/橙色预警认定。
-        if isinstance(event.data, EarthquakeData):
-            return event.data.magnitude is not None and event.data.magnitude >= 5.0
-        if isinstance(event.data, TsunamiData):
-            return True
-        if isinstance(event.data, WeatherAlarmData):
-            level = event.data.alert_level or ""
-            title_text = event.data.title or event.data.headline or ""
-            if "红" in level or "橙" in level:
-                return True
-            if "红" in title_text or "橙" in title_text:
-                return True
+        domain_event = event.event
+        # 不同灾种的重大性标准不同，这里统一收口成统计侧可复用的判定入口。
+        if isinstance(domain_event, EarthquakeEvent):
+            magnitude = getattr(domain_event, "magnitude", None)
+            return magnitude is not None and magnitude >= 5.0
+        if isinstance(domain_event, TsunamiEvent):
+            level = str(getattr(domain_event, "level", "") or "")
+            return level not in {"", "信息", "None", "Unknown"}
+        if isinstance(domain_event, WeatherEvent):
+            title_text = f"{getattr(domain_event, 'title', '')}{getattr(domain_event, 'headline', '')}"
+            return any(color in title_text for color in ["红色", "橙色"])
         return False
 
-    def record_earthquake_stats(self, data: EarthquakeData) -> None:
+    def record_earthquake_stats(self, event: EventEnvelope) -> None:
         """记录地震详细统计。"""
         # 地震统计既包含震级分布，也负责维护“最大地震”和国内区域统计等派生指标。
+        envelope = event
+        data = envelope.event
+        if not isinstance(data, EarthquakeEvent):
+            return
+
         mag = data.magnitude
         if mag is not None:
             if mag < 3.0:
@@ -65,37 +71,46 @@ class StatsRuleService:
 
             is_reliable = False
             is_cenc_official = False
-            if data.disaster_type == DisasterType.EARTHQUAKE and data.info_type:
-                info_lower = data.info_type.lower()
-                if "正式" in data.info_type:
+            info_type = str(
+                getattr(data, "jma_issue_type", "")
+                or getattr(data, "info_type", "")
+                or ""
+            )
+            if info_type:
+                # 只有较可靠的正式报、审定报或完整参数报，才参与最大地震等派生统计。
+                info_lower = info_type.lower()
+                if "正式" in info_type:
                     is_reliable = True
                     is_cenc_official = True
                 elif "reviewed" in info_lower:
                     is_reliable = True
-                elif data.info_type in [
+                elif info_type in [
                     "Destination",
                     "ScaleAndDestination",
                     "DetailScale",
                 ]:
                     is_reliable = True
-                elif "震源" in data.info_type or "各地" in data.info_type:
+                elif "震源" in info_type or "各地" in info_type:
                     is_reliable = True
 
             if is_reliable:
+                # 最大地震摘要只接受可信事件，避免临时报文把峰值统计刷乱。
                 current_max = self.manager.stats["earthquake_stats"].get(
                     "max_magnitude"
                 )
+                source_id = envelope.source_id or ""
                 event_time = self.manager.normalize_utc_datetime(
-                    data.shock_time,
-                    source_id=getattr(data, "source_id", "") or data.source.value,
+                    getattr(data, "occurred_at", None),
+                    source_id=source_id,
                 )
+                event_id = str(envelope.identity.event_id or envelope.id or "").strip()
                 if current_max is None or mag > current_max.get("value", 0):
                     self.manager.stats["earthquake_stats"]["max_magnitude"] = {
                         "value": mag,
-                        "event_id": data.id,
+                        "event_id": event_id,
                         "place_name": data.place_name,
                         "time": event_time.isoformat(),
-                        "source": data.source.value,
+                        "source": source_id,
                     }
                 elif mag == current_max.get("value", 0):
                     current_time_str = current_max.get("time")
@@ -107,15 +122,16 @@ class StatsRuleService:
                                     "max_magnitude"
                                 ] = {
                                     "value": mag,
-                                    "event_id": data.id,
+                                    "event_id": event_id,
                                     "place_name": data.place_name,
                                     "time": event_time.isoformat(),
-                                    "source": data.source.value,
+                                    "source": source_id,
                                 }
                         except Exception:
                             pass
 
             if is_cenc_official:
+                # 国内地区分布只统计中国地震台网正式结果，减少来源口径差异带来的偏差。
                 region = self.manager.event_support_service.extract_region(
                     data.place_name,
                     strict=True,
@@ -123,11 +139,11 @@ class StatsRuleService:
                 if region:
                     self.manager.stats["earthquake_stats"]["by_region"][region] += 1
 
-    async def record_weather_stats(self, data: WeatherAlarmData) -> bool:
+    async def record_weather_stats(self, data) -> bool:
         """记录气象预警详细统计。"""
         # 气象统计依赖地区解析成功，否则只保留总量，不把不可靠地区写入分布统计。
-        title_text = data.title or data.headline or ""
-        headline_text = data.headline or ""
+        title_text = getattr(data, "title", "") or getattr(data, "headline", "") or ""
+        headline_text = getattr(data, "headline", "") or ""
 
         direct_region = self.manager._weather_region_resolver.extract_province(
             title_text
@@ -142,6 +158,7 @@ class StatsRuleService:
                 return False
 
         level = "未知"
+        # 颜色级别通过标题关键词匹配，统一映射成带符号的展示文本。
         for color, emoji in COLOR_LEVEL_EMOJI.items():
             if color in title_text:
                 level = f"{emoji}{color}"
@@ -149,6 +166,7 @@ class StatsRuleService:
         self.manager.stats["weather_stats"]["by_level"][level] += 1
 
         w_type = "其他"
+        # 类型按预设顺序匹配，优先命中更具体、排序更靠前的灾种名称。
         for name in SORTED_WEATHER_TYPES:
             if name in title_text:
                 w_type = name
@@ -157,17 +175,23 @@ class StatsRuleService:
         self.manager.stats["weather_stats"]["by_region"][region] += 1
         return True
 
-    def record_time_series(self, event: DisasterEvent) -> None:
+    def record_time_series(self, event: EventEnvelope) -> None:
         """记录时间序列统计。"""
-        event_time = None
-        source_id = getattr(event, "source_id", "") or getattr(
-            event.source, "value", ""
-        )
-        if isinstance(event.data, EarthquakeData):
-            event_time = event.data.shock_time
-        elif isinstance(event.data, (WeatherAlarmData, TsunamiData)):
-            event_time = event.data.issue_time
+        from ...domain.event_models import EarthquakeEvent
 
+        envelope = event
+        domain_event = envelope.event
+        source_id = envelope.source_id or ""
+
+        event_time = None
+        if isinstance(domain_event, EarthquakeEvent):
+            event_time = domain_event.occurred_at
+        elif isinstance(domain_event, TsunamiEvent):
+            event_time = domain_event.issued_at
+        elif isinstance(domain_event, WeatherEvent):
+            event_time = domain_event.effective_at
+
+        # 各类事件时间字段名称不同，这里统一归一为 UTC 时间后再写入时间序列桶。
         event_time = self.manager.normalize_utc_datetime(
             event_time, source_id=source_id
         )

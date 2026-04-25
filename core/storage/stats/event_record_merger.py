@@ -1,17 +1,17 @@
 """
 统计记录合并器。
-负责 recent_pushes / major_events 中已有记录的匹配、合并与更新。
+负责事件摘要记录在 recent_pushes / major_events 中的匹配、合并与更新。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from ....models.models import (
-    DisasterEvent,
-    EarthquakeData,
-    TsunamiData,
-    WeatherAlarmData,
+from ...domain.event_models import (
+    EarthquakeEvent,
+    EventEnvelope,
+    TsunamiEvent,
+    WeatherEvent,
 )
 from .event_record_factory import EventRecordFactory
 
@@ -22,7 +22,7 @@ class EventRecordMerger:
     @staticmethod
     def merge_existing_record(
         target_list: list[dict[str, Any]],
-        event: DisasterEvent,
+        event: EventEnvelope,
         *,
         source_id: str,
         event_unique_id: str,
@@ -30,7 +30,8 @@ class EventRecordMerger:
         description: str,
         earthquake_level: float | None = None,
     ) -> dict[str, Any] | None:
-        if isinstance(event.data, EarthquakeData):
+        if isinstance(event.event, EarthquakeEvent):
+            # 地震事件允许保留报次演进历史，因此走专门的合并分支。
             return EventRecordMerger._merge_earthquake_record(
                 target_list,
                 event,
@@ -41,7 +42,8 @@ class EventRecordMerger:
                 earthquake_level=earthquake_level,
             )
 
-        if isinstance(event.data, (WeatherAlarmData, TsunamiData)):
+        if isinstance(event.event, (WeatherEvent, TsunamiEvent)):
+            # 气象与海啸事件通常按唯一标识覆盖最新摘要，不维护地震那样的报次历史。
             return EventRecordMerger._merge_non_earthquake_record(
                 target_list,
                 event,
@@ -56,7 +58,7 @@ class EventRecordMerger:
     @staticmethod
     def _merge_earthquake_record(
         target_list: list[dict[str, Any]],
-        event: DisasterEvent,
+        event: EventEnvelope,
         *,
         source_id: str,
         event_unique_id: str,
@@ -64,7 +66,12 @@ class EventRecordMerger:
         description: str,
         earthquake_level: float | None,
     ) -> dict[str, Any] | None:
-        real_event_id = event.data.event_id
+        domain_event = event.event
+        if not isinstance(domain_event, EarthquakeEvent):
+            return None
+
+        identity = getattr(event, "identity", None)
+        real_event_id = str(getattr(identity, "event_id", "") or "").strip()
         if not real_event_id:
             return None
 
@@ -88,6 +95,7 @@ class EventRecordMerger:
             if not is_match:
                 continue
 
+            # 命中旧记录时，先把旧摘要压入 history，再用当前事件内容覆盖主记录。
             old_record = record.copy()
             old_record.pop("history", None)
             if "history" not in record:
@@ -112,6 +120,7 @@ class EventRecordMerger:
                 earthquake_level=earthquake_level,
             )
 
+            # 更新后的记录重新放回列表头部，保证最近一次报文始终排在最前面。
             updated_record = target_list.pop(i)
             target_list.insert(0, updated_record)
             return updated_record
@@ -121,7 +130,7 @@ class EventRecordMerger:
     @staticmethod
     def _merge_non_earthquake_record(
         target_list: list[dict[str, Any]],
-        event: DisasterEvent,
+        event: EventEnvelope,
         *,
         source_id: str,
         event_unique_id: str,
@@ -134,6 +143,7 @@ class EventRecordMerger:
             if rec_source != source_id or rec_unique_id != event_unique_id:
                 continue
 
+            # 非地震事件命中后直接覆盖摘要内容，不再额外维护历史链条。
             EventRecordFactory.apply_common_fields(
                 record,
                 event,
@@ -147,9 +157,9 @@ class EventRecordMerger:
             record["weather_detail"] = ""
             record.pop("history", None)
 
-            if isinstance(event.data, WeatherAlarmData):
+            if isinstance(event.event, WeatherEvent):
                 EventRecordFactory.apply_weather_fields(record, event)
-            elif isinstance(event.data, TsunamiData):
+            elif isinstance(event.event, TsunamiEvent):
                 EventRecordFactory.apply_tsunami_fields(record, event)
 
             updated_record = target_list.pop(i)

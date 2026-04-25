@@ -9,22 +9,23 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ....utils.time_converter import TimeConverter
-from ...support.event_view_factory import EventViewFactory
+from ..source_compat import format_source_name
 
 
 class StatsQueryService:
     """统计查询服务。"""
 
     def __init__(self, stats: dict[str, Any], display_timezone: str = "UTC+8"):
+        """初始化统计查询服务。"""
         self.stats = stats
         self.display_timezone = display_timezone
 
     def get_summary(self) -> str:
         """获取统计摘要文本。"""
-        # 该摘要面向命令输出，因此组织为人类可直接阅读的分段文本而非结构化 JSON。
         s = self.stats
 
         total = s.get("total_received", s.get("total_pushes", 0))
+        # 摘要文本按“总览—分类—地震—气象—来源—会话”顺序拼装，便于直接发送到聊天场景。
         text = [
             "📊 灾害预警统计报告",
             f"📅 统计开始时间: {s['start_time'][:19].replace('T', ' ')}",
@@ -41,6 +42,7 @@ class StatsQueryService:
             "weather_alarm": "气象",
         }
         for type_key, count in s["by_type"].items():
+            # 未在映射表中的类型保持原值，避免新增事件类型时被直接丢失显示。
             type_name = type_map.get(type_key, type_key)
             text.append(f"{type_name}: {count}")
 
@@ -57,6 +59,7 @@ class StatsQueryService:
         ]
         has_eq = False
         for key in order:
+            # 按预设震级顺序输出，避免字典遍历顺序影响阅读体验。
             count = eq_stats.get(key, 0)
             if count > 0:
                 text.append(f"{key}: {count}")
@@ -77,8 +80,10 @@ class StatsQueryService:
 
         max_mag = s["earthquake_stats"].get("max_magnitude")
         if max_mag:
+            # 最大地震摘要会额外补充来源，便于区分同震级事件来自哪个数据源。
             source_val = max_mag.get("source")
-            source_info = f" ({source_val})" if source_val else ""
+            formatted_source = format_source_name(str(source_val or "")) if source_val else ""
+            source_info = f" ({formatted_source})" if formatted_source else ""
             text.extend(
                 [
                     "",
@@ -94,6 +99,7 @@ class StatsQueryService:
         has_weather = False
 
         weather_type = s["weather_stats"]["by_type"]
+        # 类型与地区都按数量倒序输出，优先展示最常见的统计项。
         sorted_types = sorted(weather_type.items(), key=lambda x: x[1], reverse=True)
         if sorted_types:
             text.append("类型Top10:")
@@ -102,6 +108,7 @@ class StatsQueryService:
 
         weather_regions = s["weather_stats"].get("by_region", {})
         if weather_regions:
+            # 地区榜单与类型榜单分开输出，避免信息混杂在同一段文本中。
             sorted_w_regions = sorted(
                 weather_regions.items(), key=lambda x: x[1], reverse=True
             )
@@ -125,9 +132,10 @@ class StatsQueryService:
             s["by_source"].items(), key=lambda x: x[1], reverse=True
         )
         for source, count in sorted_sources[:10]:
-            text.append(f"{source}: {count}")
+            text.append(f"{format_source_name(str(source or ''))}: {count}")
 
         session_stats = s.get("session_stats", {})
+        # 会话统计是可选块，缺失时保持静默，避免旧数据结构下报错。
         top_sessions = (
             session_stats.get("top_sessions", [])
             if isinstance(session_stats, dict)
@@ -144,12 +152,12 @@ class StatsQueryService:
 
     def get_trend_data(self, hours: int = 24) -> list[dict[str, Any]]:
         """获取趋势数据（最近 N 小时）。"""
-        # 统计桶按 UTC 存储，但展示时转换到配置时区，避免前端自行处理时区换算。
         result = []
         now = datetime.now(timezone.utc)
         target_tz = TimeConverter._get_timezone(self.display_timezone)
 
         for i in range(hours):
+            # 逐小时回溯生成连续时间轴，即使某些时段没有事件也会保留空桶。
             time_point = now - timedelta(hours=hours - i - 1)
             hour_key_utc = time_point.strftime("%Y-%m-%d %H:00")
             time_point_local = time_point.astimezone(target_tz)
@@ -163,12 +171,12 @@ class StatsQueryService:
         self, days: int = 180, year: int | None = None
     ) -> list[dict[str, Any]]:
         """获取日历热力图数据。"""
-        # 支持“最近 N 天”与“指定年份”两种模式，方便前端切换短期/年度视图。
         result = []
         target_tz = TimeConverter._get_timezone(self.display_timezone)
         now = datetime.now(timezone.utc)
 
         if year:
+            # 指定年份时按整年日历范围生成热力图，但仍会截断未来日期。
             start_date = datetime(year, 1, 1, tzinfo=timezone.utc)
             end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc) - timedelta(days=1)
 
@@ -188,6 +196,7 @@ class StatsQueryService:
                 result.append({"date": display_date, "count": count})
         else:
             for i in range(days):
+                # 未指定年份时，则按最近若干天生成滚动窗口视图。
                 date_point = now - timedelta(days=days - i - 1)
                 day_key_utc = date_point.strftime("%Y-%m-%d")
                 date_point_local = date_point.astimezone(target_tz)
@@ -196,29 +205,3 @@ class StatsQueryService:
                 result.append({"date": display_date, "count": count})
 
         return result
-
-    def get_realtime_statistics_payload(self) -> dict[str, Any]:
-        """获取供 WebSocket / 实时面板使用的统计投影。"""
-        earthquake_stats = self.stats.get("earthquake_stats", {})
-        weather_stats = self.stats.get("weather_stats", {})
-        # recent_pushes 保留原始记录，同时额外提供 recent_push_views 供前端直接消费。
-        recent_pushes = self.stats.get("recent_pushes", [])[:250]
-        recent_push_views = EventViewFactory.build_recent_push_views(recent_pushes)
-        return {
-            "total_events": self.stats.get("total_events", 0),
-            "by_type": dict(self.stats.get("by_type", {})),
-            "by_source": dict(self.stats.get("by_source", {})),
-            "earthquake_stats": {
-                "by_magnitude": dict(earthquake_stats.get("by_magnitude", {})),
-                "by_region": dict(earthquake_stats.get("by_region", {})),
-                "max_magnitude": earthquake_stats.get("max_magnitude"),
-            },
-            "weather_stats": {
-                "by_level": dict(weather_stats.get("by_level", {})),
-                "by_type": dict(weather_stats.get("by_type", {})),
-                "by_region": dict(weather_stats.get("by_region", {})),
-            },
-            "recent_pushes": recent_pushes,
-            "recent_push_views": recent_push_views,
-            "session_stats": self.stats.get("session_stats", {}),
-        }

@@ -1,6 +1,6 @@
 """
 统计记录更新服务。
-负责 recent_pushes / major_events 的记录合并、数据库写入与列表裁剪，
+负责事件摘要记录在 recent_pushes / major_events 中的合并、数据库写入与列表裁剪，
 减少 StatisticsManager 中的写模型编排职责。
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from astrbot.api import logger
 
-from ....models.models import DisasterEvent, EarthquakeData
+from ...domain.event_models import EarthquakeEvent, EventEnvelope
 from .event_record_factory import EventRecordFactory
 from .event_record_merger import EventRecordMerger
 
@@ -22,7 +22,7 @@ class StatsRecordService:
     async def update_push_list(
         self,
         target_list: list,
-        event: DisasterEvent,
+        event: EventEnvelope,
         *,
         source_id: str,
         event_unique_id: str,
@@ -31,12 +31,16 @@ class StatsRecordService:
         is_major: bool = False,
         persist_db: bool = True,
     ) -> None:
-        """更新推送列表（支持合并更新与数据库同步）。"""
-        # 同一套逻辑同时服务于 recent_pushes 和 major_events，仅通过 is_major / max_len 控制差异。
-        description = self.manager.event_support_service.get_event_description(event)
+        """更新事件摘要列表（支持合并更新与数据库同步）。"""
+        # recent_pushes / major_events 在统计侧统一视为事件摘要缓存，仅通过 is_major / max_len 控制差异。
+        description = (
+            self.manager.event_support_service.get_event_description_from_envelope(
+                event
+            )
+        )
         earthquake_level = (
-            self.manager.event_support_service.get_earthquake_level(event.data)
-            if isinstance(event.data, EarthquakeData)
+            self.manager.event_support_service.get_earthquake_level(event.event)
+            if isinstance(event.event, EarthquakeEvent)
             else None
         )
 
