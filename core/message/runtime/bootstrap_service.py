@@ -1,7 +1,8 @@
 """
 消息管理器初始化装配服务。
-负责根据插件配置创建 MessagePushManager 运行所需的过滤器、浏览器、构建器与基础依赖，
-减少 MessagePushManager.__init__() 中的大段对象装配代码。
+
+该服务负责在消息管理器启动时集中创建过滤器、浏览器管理器、消息构建器和远程媒体抓取器等基础组件，
+把初始化阶段的大段装配逻辑从主管理器中拆分出来，从而降低主管理器的构造复杂度。
 """
 
 from __future__ import annotations
@@ -11,8 +12,8 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ...support.config_accessor import ConfigAccessor
-from ...support.event_deduplicator import EventDeduplicator
+from ...services.config.config_service import ConfigAccessor
+from ...services.identity.event_deduplication_service import EventDeduplicationService
 from ..builders.card_message_builder import CardMessageBuilder
 from ..builders.global_quake_card_builder import GlobalQuakeCardBuilder
 from ..builders.map_attachment_builder import MapAttachmentBuilder
@@ -25,6 +26,7 @@ class MessageManagerBootstrapService:
     """消息管理器初始化装配服务。"""
 
     def __init__(self, manager):
+        # 该服务只负责初始化期对象装配，本身不持有复杂运行状态。
         self.manager = manager
         self.config_accessor = ConfigAccessor(manager.config)
         self.map_attachment_builder = None
@@ -36,27 +38,12 @@ class MessageManagerBootstrapService:
     def setup_filters(self, config: dict[str, Any]) -> None:
         """初始化全局过滤器与去重器。"""
         event_deduplication_config = self.config_accessor.event_deduplication_config()
-        shared_components = (
-            self.manager._runtime_component_factory.build_shared_components(
-                config,
-                emit_weather_enable_log=True,
-            )
-        )
 
-        # 这一组共享组件与会话无关，保留在 manager 上供兼容路径与默认全局判定直接复用。
-        self.manager.keyword_filter = shared_components["keyword_filter"]
-        self.manager.intensity_filter = shared_components["intensity_filter"]
-        self.manager.scale_filter = shared_components["scale_filter"]
-        self.manager.usgs_filter = shared_components["usgs_filter"]
-        self.manager.global_quake_filter = shared_components["global_quake_filter"]
-        self.manager.local_monitor = shared_components["local_monitor"]
-        self.manager.weather_filter = shared_components["weather_filter"]
-        self.manager.report_controller = (
-            self.manager._runtime_component_factory.build_report_controller(config)
-        )
+        # 共享规则组件不再直接零散挂在管理器上，统一由运行时组件工厂按需构建。
 
-        # 去重器属于全局入口级保护，尽量在进入更昂贵的渲染/发送逻辑前完成拦截。
-        self.manager.deduplicator = EventDeduplicator(
+        # 去重器属于最前置的入口保护，
+        # 目标是在进入更昂贵的渲染、构图、发送逻辑前尽早拦截重复事件。
+        self.manager.deduplicator = EventDeduplicationService(
             time_window_minutes=event_deduplication_config.get(
                 "time_window_minutes", 1
             ),
@@ -72,6 +59,7 @@ class MessageManagerBootstrapService:
         """初始化浏览器管理器并按需预热。"""
         msg_config = self.config_accessor.message_format_config()
         raw_pool_size = msg_config.get("browser_pool_size", 2)
+        # 池大小允许来自配置文件中的字符串值，因此先做稳妥转换。
         try:
             pool_size = int(raw_pool_size)
         except (TypeError, ValueError):
@@ -89,7 +77,8 @@ class MessageManagerBootstrapService:
             server_url=playwright_server_url,
         )
 
-        # 仅当本地模式且确实需要渲染地图/卡片时才后台预热，平衡启动速度与首渲染时延。
+        # 只有本地浏览器模式且确实需要图形渲染时才后台预热，
+        # 这样既能缩短首次渲染等待，也能避免无地图场景白白消耗资源。
         if playwright_mode == "local" and (
             msg_config.get("include_map", False)
             or msg_config.get("use_global_quake_card", False)
@@ -99,7 +88,8 @@ class MessageManagerBootstrapService:
 
     def setup_message_components(self) -> None:
         """初始化消息构建与远程媒体依赖。"""
-        # 这些组件都依赖前面已准备好的 plugin_root / temp_dir / browser_manager 等运行时基础设施。
+        # 文本构建器、卡片构建器、地图附件构建器都属于展示产物生成层，
+        # 它们共同复用插件目录、临时目录与浏览器管理器等基础设施。
         self.map_attachment_builder = MapAttachmentBuilder(
             plugin_root=self.manager.plugin_root,
             temp_dir=str(self.manager.temp_dir),
@@ -120,7 +110,8 @@ class MessageManagerBootstrapService:
             browser_manager=self.manager.browser_manager,
         )
         self.remote_media_fetcher = RemoteMediaFetcher(
-            # fetcher 本身不感知 aiohttp 细节，通过回调注入 session 与 MIME 判定能力。
+            # 远程媒体抓取器本身不关心底层会话如何创建，
+            # 统一通过回调注入获取会话与判定内容类型的能力。
             session_getter=self.manager.get_remote_media_session,
             image_type_checker=self.manager._remote_media_service.is_image_content_type,
             content_type_guesser=self.manager._remote_media_service.guess_image_content_type,

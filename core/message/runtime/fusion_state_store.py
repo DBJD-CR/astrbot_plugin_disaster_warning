@@ -9,11 +9,15 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from ...domain.event_identity import EventIdentity
+from ...domain.event_models import EarthquakeEvent, EventEnvelope
+
 
 class FusionStateStore:
     """融合状态存储与清理服务。"""
 
     def __init__(self, ttl_seconds: int = 120):
+        # 两组 pending 与缓存分别服务于 CENC 融合和 CWA EEW 融合。
         self.ttl_seconds = ttl_seconds
         self.cenc_pending: dict[str, dict[str, Any]] = {}
         self.cenc_wolfx_cache: dict[str, dict[int, dict[str, Any]]] = {}
@@ -68,6 +72,40 @@ class FusionStateStore:
 
             for event_key in expired_event_keys:
                 cache_dict.pop(event_key, None)
+
+    @staticmethod
+    def get_fusion_event_key(
+        data: EarthquakeEvent | EventEnvelope | object,
+    ) -> str:
+        """融合事件键：优先统一 identity.event_id。"""
+        if isinstance(data, EventEnvelope):
+            identity = getattr(data, "identity", None)
+            if isinstance(identity, EventIdentity):
+                event_id = str(identity.event_id or "").strip()
+                if event_id:
+                    return event_id
+            return str(data.id or "").strip()
+        return str(getattr(data, "id", "") or "").strip()
+
+    @staticmethod
+    def get_fusion_report_num(
+        data: EarthquakeEvent | EventEnvelope | object,
+    ) -> int:
+        """融合报次：统一依赖领域身份字段。"""
+        try:
+            if isinstance(data, EventEnvelope):
+                identity = getattr(data, "identity", None)
+                if (
+                    isinstance(identity, EventIdentity)
+                    and identity.report_num is not None
+                ):
+                    value = int(identity.report_num)
+                    return value if value > 0 else 1
+            return 1
+        except (TypeError, ValueError):
+            return 1
+        except Exception:
+            return 1
 
     @staticmethod
     def select_cached_report_payload(

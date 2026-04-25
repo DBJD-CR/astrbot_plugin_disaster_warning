@@ -12,7 +12,7 @@ import time
 
 from astrbot.api import logger
 
-from ...support.config_accessor import ConfigAccessor
+from ...services.config.config_service import ConfigAccessor
 
 
 class MessageResourceCleanupService:

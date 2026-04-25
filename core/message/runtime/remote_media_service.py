@@ -16,6 +16,7 @@ class MessageRemoteMediaService:
     """远程媒体会话与 MIME 支撑服务。"""
 
     def __init__(self, manager):
+        # 该服务专门负责远程媒体抓取会话的复用与内容类型辅助判断。
         self.manager = manager
 
     async def get_session(self, timeout_seconds: int | None = None) -> ClientSession:
@@ -47,7 +48,23 @@ class MessageRemoteMediaService:
                 self.manager._remote_media_session = None
 
         timeout = aiohttp.ClientTimeout(total=session_timeout_seconds)
-        self.manager._remote_media_session = aiohttp.ClientSession(timeout=timeout)
+        # 统一伪装常见浏览器请求头，提升部分远程图片服务的兼容性。
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "Connection": "keep-alive",
+        }
+        self.manager._remote_media_session = aiohttp.ClientSession(
+            timeout=timeout,
+            headers=headers,
+        )
         return self.manager._remote_media_session
 
     async def close_session(self) -> None:

@@ -1,7 +1,8 @@
 """
-浏览器管理器
-负责 Playwright 浏览器实例的生命周期管理和页面对象池
-实现高性能的卡片渲染
+浏览器管理器。
+
+负责管理浏览器实例、页面池、并发渲染与远程渲染模式切换，
+为卡片、地图等图片渲染场景提供统一的浏览器基础设施。
 """
 
 import asyncio
@@ -16,7 +17,7 @@ from astrbot.api import logger
 
 
 class BrowserManager:
-    """浏览器管理器 - 单例浏览器 + 页面对象池"""
+    """浏览器管理器。"""
 
     def __init__(
         self,
@@ -25,23 +26,17 @@ class BrowserManager:
         mode: str = "local",
         server_url: str = "",
     ):
-        """
-        初始化浏览器管理器
-
-        Args:
-            pool_size: 页面池大小，默认 2 个页面
-            telemetry: 遥测管理器（可选）
-            mode: 运行模式，"local" 或 "remote"
-            server_url: 远程 Playwright 服务器地址（mode="remote" 时必填）
-        """
+        """初始化浏览器管理器。"""
         self.pool_size = pool_size
         self._browser: Browser | None = None
         self._playwright = None
-        self._context = None  # 保存 context 引用（CDP 模式需要）
+        # 远程连接场景下可能需要保留上下文对象引用。
+        self._context = None
         self._page_pool: asyncio.Queue = asyncio.Queue(maxsize=pool_size)
-        self._semaphore = asyncio.Semaphore(pool_size)  # 并发控制
-        self._page_creation_lock = asyncio.Lock()  # 页面创建锁,防止并发创建超出池大小
-        self._init_lock = asyncio.Lock()  # 初始化锁，防止并发初始化
+        # 信号量用于限制同时渲染数量，页面创建锁与初始化锁用于避免并发竞争。
+        self._semaphore = asyncio.Semaphore(pool_size)
+        self._page_creation_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
         self._initialized = False
         self._closed = False
         self._telemetry = telemetry
@@ -184,19 +179,8 @@ class BrowserManager:
         selector: str = "#card-wrapper",
         wait_until: str = "domcontentloaded",
     ) -> str | None:
-        """
-        渲染 HTML 卡片为图片
-
-        Args:
-            html_content: HTML 内容
-            output_path: 输出图片路径
-            selector: 卡片元素选择器
-            wait_until: 等待策略 ('load', 'domcontentloaded', 'networkidle')
-
-        Returns:
-            成功返回图片路径,失败返回 None
-        """
-        # 远程模式：使用 browserless HTTP API
+        """把 HTML 内容渲染为图片文件。"""
+        # 远程模式直接走 HTTP 渲染接口，本地模式则复用页面池执行截图。
         if self._mode == "remote":
             if not self._initialized:
                 logger.warning("[灾害预警] 浏览器未初始化，尝试初始化...")
@@ -430,7 +414,7 @@ class BrowserManager:
         logger.info("[灾害预警] 浏览器已关闭")
 
     async def _cleanup(self):
-        """清理资源 - 确保每个步骤独立执行,即使前面失败也继续后续清理"""
+        """清理资源，确保前一步失败也不影响后续步骤继续执行。"""
         cleanup_errors = []
 
         # 步骤 1: 关闭页面池中的所有页面
