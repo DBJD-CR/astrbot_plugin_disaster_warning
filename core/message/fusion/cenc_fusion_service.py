@@ -10,48 +10,58 @@ import time
 
 from astrbot.api import logger
 
-from ....models.models import DisasterEvent, EarthquakeData
+from ...domain.event_models import EarthquakeEvent, EventEnvelope
 
 
 class CENCFusionService:
     """CENC 融合策略服务。"""
 
     def __init__(self, manager, execute_push):
+        # 融合服务通过主消息管理器访问融合状态仓储，并复用统一推送执行入口。
         self.manager = manager
         self._execute_push = execute_push
 
+    @staticmethod
+    def _get_earthquake_data(
+        event: EventEnvelope,
+    ) -> EarthquakeEvent | None:
+        data = getattr(event, "event", None)
+        if isinstance(data, EarthquakeEvent):
+            return data
+        return None
+
     async def intercept_fan_event(
         self,
-        event: DisasterEvent,
+        event: EventEnvelope,
         timeout: int,
         *,
         target_sessions: list[str] | None = None,
         session_config_getter=None,
     ) -> bool:
-        if not isinstance(event.data, EarthquakeData):
+        """拦截 Fan 侧事件并等待 Wolfx 烈度补充。"""
+        earthquake = self._get_earthquake_data(event)
+        if earthquake is None:
             return await self._execute_push(
                 event,
                 target_sessions=target_sessions,
                 session_config_getter=session_config_getter,
             )
 
-        # 进入拦截流程前先清理过期 pending / cache，避免旧融合状态干扰当前报次。
-        self.manager._prune_fusion_states()
         store = self.manager._fusion_state_store
+        store.prune()
 
-        event_key = self.manager._get_fusion_event_key(event.data)
-        report_num = self.manager._get_fusion_report_num(event.data)
-        cached_payload = self.manager._select_cached_report_payload(
+        event_key = store.get_fusion_event_key(earthquake)
+        report_num = store.get_fusion_report_num(earthquake)
+        cached_payload = store.select_cached_report_payload(
             store.cenc_wolfx_cache.get(event_key, {}), report_num
         )
-        # 若 Wolfx 补充信息已先到，则直接命中缓存完成“即时融合”，无需再等待。
         if (
             isinstance(cached_payload, dict)
             and cached_payload.get("intensity") is not None
         ):
-            event.data.intensity = cached_payload["intensity"]
+            earthquake.intensity = cached_payload["intensity"]
             logger.info(
-                f"[灾害预警] 融合策略: Fan CENC 事件 {event.id} 命中 Wolfx 缓存并补充烈度: {event.data.intensity}"
+                f"[灾害预警] 融合策略: Fan CENC 事件 {event.id} 命中 Wolfx 缓存并补充烈度: {earthquake.intensity}"
             )
             return await self._execute_push(
                 event,
@@ -65,7 +75,7 @@ class CENCFusionService:
 
         loop = asyncio.get_running_loop()
         future = loop.create_future()
-        # pending_key 中混入 event_id 与时间戳，避免同 event_key / report 下多次拦截时相互覆盖。
+        # pending_key 需要足够唯一，避免同一事件同一报次的并发等待互相覆盖。
         pending_key = f"{event_key}#{report_num}#{event.id}#{int(time.time() * 1000)}"
 
         store.cenc_pending[pending_key] = {
@@ -115,27 +125,28 @@ class CENCFusionService:
 
         return False
 
-    def handle_wolfx_event(self, wolfx_event: DisasterEvent):
-        if not isinstance(wolfx_event.data, EarthquakeData):
+    def handle_wolfx_event(self, wolfx_event: EventEnvelope):
+        """处理 Wolfx 到达事件，并尝试唤醒等待中的 Fan CENC 事件。"""
+        earthquake = self._get_earthquake_data(wolfx_event)
+        if earthquake is None:
             return
 
-        intensity = getattr(wolfx_event.data, "intensity", None)
+        intensity = getattr(earthquake, "intensity", None)
         if intensity is None:
             return
 
-        self.manager._prune_fusion_states()
         store = self.manager._fusion_state_store
+        store.prune()
 
-        event_key = self.manager._get_fusion_event_key(wolfx_event.data)
-        report_num = self.manager._get_fusion_report_num(wolfx_event.data)
+        event_key = store.get_fusion_event_key(earthquake)
+        report_num = store.get_fusion_report_num(earthquake)
         if not event_key:
             return
 
         event_cache = store.cenc_wolfx_cache.setdefault(event_key, {})
-        # Wolfx 数据无论是否命中等待中的 Fan 事件，都先入缓存，供稍后到达的 Fan 事件直接复用。
         event_cache[report_num] = {"intensity": intensity, "created_at": time.time()}
 
-        pending_key = self.manager._find_best_pending_key(
+        pending_key = store.find_best_pending_key(
             store.cenc_pending, event_key, report_num
         )
         if not pending_key:
@@ -148,12 +159,11 @@ class CENCFusionService:
 
             fan_event = item.get("event")
             future = item.get("future")
-            if not isinstance(fan_event, DisasterEvent) or not isinstance(
-                fan_event.data, EarthquakeData
-            ):
+            fan_earthquake = self._get_earthquake_data(fan_event)
+            if fan_event is None or fan_earthquake is None:
                 return
 
-            fan_event.data.intensity = intensity
+            fan_earthquake.intensity = intensity
             logger.info(
                 f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan CENC 事件 {pending_key} 的烈度: {intensity}"
             )

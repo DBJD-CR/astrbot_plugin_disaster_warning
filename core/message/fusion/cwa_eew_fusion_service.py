@@ -11,50 +11,85 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ....models.models import DisasterEvent, EarthquakeData
+from ...domain.event_models import EarthquakeEvent, EventEnvelope
+from ...domain.event_payload import SourcePayload
 
 
 class CWAEewFusionService:
     """CWA EEW 融合策略服务。"""
 
     def __init__(self, manager, execute_push):
+        # 通过管理器访问融合状态，并复用统一推送执行入口。
         self.manager = manager
         self._execute_push = execute_push
 
+    @staticmethod
+    def _get_earthquake_data(
+        event: EventEnvelope,
+    ) -> EarthquakeEvent | None:
+        data = getattr(event, "event", None)
+        if isinstance(data, EarthquakeEvent):
+            return data
+        return None
+
+    @staticmethod
+    def _ensure_source_payload(event: EventEnvelope) -> SourcePayload:
+        """确保事件上挂载统一原始载荷对象。"""
+        envelope = event
+        payload = envelope.payload
+        if isinstance(payload, SourcePayload):
+            return payload
+        source_payload = SourcePayload(
+            source_id=envelope.source_id or "",
+            raw=dict(payload) if isinstance(payload, dict) else {},
+        )
+        envelope.payload = source_payload
+        return source_payload
+
+    @classmethod
+    def _apply_impact_area(
+        cls,
+        event: EventEnvelope,
+        earthquake: EarthquakeEvent,
+        impact_area: str,
+    ) -> None:
+        """把影响区域写回事件载荷与领域事件对象。"""
+        source_payload = cls._ensure_source_payload(event)
+        source_payload.raw["wolfx_impact_area"] = impact_area
+        source_payload.attributes["impact_area"] = impact_area
+        if not getattr(earthquake, "province", None):
+            earthquake.province = impact_area
+
     async def intercept_fan_event(
         self,
-        event: DisasterEvent,
+        event: EventEnvelope,
         timeout: int,
         *,
         target_sessions: list[str] | None = None,
         session_config_getter=None,
     ) -> bool:
-        if not isinstance(event.data, EarthquakeData):
+        """拦截 Fan CWA EEW 事件并等待 Wolfx 影响区域补充。"""
+        earthquake = self._get_earthquake_data(event)
+        if earthquake is None:
             return await self._execute_push(
                 event,
                 target_sessions=target_sessions,
                 session_config_getter=session_config_getter,
             )
 
-        # 与 CENC 融合相同，进入等待前先做状态清理，避免过期的 pending 影响匹配结果。
-        self.manager._prune_fusion_states()
         store = self.manager._fusion_state_store
+        store.prune()
 
-        event_key = self.manager._get_fusion_event_key(event.data)
-        report_num = self.manager._get_fusion_report_num(event.data)
-        cached_payload = self.manager._select_cached_report_payload(
+        event_key = store.get_fusion_event_key(earthquake)
+        report_num = store.get_fusion_report_num(earthquake)
+        cached_payload = store.select_cached_report_payload(
             store.cwa_eew_wolfx_cache.get(event_key, {}), report_num
         )
         if isinstance(cached_payload, dict) and cached_payload.get("impact_area"):
             impact_area = str(cached_payload["impact_area"]).strip()
             if impact_area:
-                # 影响区域优先写入 raw_data，便于格式化层从统一补充字段读取；
-                # province 仅作为缺省展示字段补位。
-                if not isinstance(event.data.raw_data, dict):
-                    event.data.raw_data = {}
-                event.data.raw_data["wolfx_impact_area"] = impact_area
-                if not getattr(event.data, "province", None):
-                    event.data.province = impact_area
+                cls = type(self)
+                cls._apply_impact_area(event, earthquake, impact_area)
                 logger.info(
                     f"[灾害预警] 融合策略: Fan CWA EEW 事件 {event.id} 命中 Wolfx 缓存并补充影响区域: {impact_area}"
                 )
@@ -121,37 +156,29 @@ class CWAEewFusionService:
 
         return False
 
-    def extract_wolfx_impact_area(self, wolfx_earthquake: EarthquakeData) -> str | None:
-        raw_data = getattr(wolfx_earthquake, "raw_data", {})
-        if not isinstance(raw_data, dict):
-            raw_data = {}
+    @staticmethod
+    def _extract_wolfx_impact_area(
+        payload_raw: dict[str, Any],
+        fallback: Any = None,
+    ) -> str | None:
+        """从 Wolfx 载荷中尽量提取影响区域文本。"""
+        candidates: list[Any] = []
+        if fallback is not None:
+            candidates.append(fallback)
+        candidates.extend(
+            [
+                payload_raw.get("wolfx_impact_area"),
+                payload_raw.get("locationDesc"),
+                payload_raw.get("impactArea"),
+                payload_raw.get("ImpactArea"),
+                payload_raw.get("affectedArea"),
+                payload_raw.get("AffectedArea"),
+                payload_raw.get("area"),
+                payload_raw.get("Area"),
+            ]
+        )
 
-        def _normalize_area(value: Any) -> str:
-            # Wolfx 不同来源字段形态可能是字符串或数组，这里统一规整为单个展示文本。
-            if isinstance(value, list):
-                parts = [str(x).strip() for x in value if str(x).strip()]
-                return "、".join(parts)
-            if isinstance(value, str):
-                return value.strip()
-            return ""
-
-        # province 是最稳定的上游字段，优先直接使用。
-        if getattr(wolfx_earthquake, "province", None):
-            province_text = str(wolfx_earthquake.province).strip()
-            if province_text:
-                return province_text
-
-        candidates: list[Any] = [
-            raw_data.get("locationDesc"),
-            raw_data.get("impactArea"),
-            raw_data.get("ImpactArea"),
-            raw_data.get("affectedArea"),
-            raw_data.get("AffectedArea"),
-            raw_data.get("area"),
-            raw_data.get("Area"),
-        ]
-
-        warn_area = raw_data.get("WarnArea")
+        warn_area = payload_raw.get("WarnArea")
         if isinstance(warn_area, dict):
             candidates.extend(
                 [
@@ -162,29 +189,52 @@ class CWAEewFusionService:
                     warn_area.get("County"),
                 ]
             )
-        else:
+        elif warn_area is not None:
             candidates.append(warn_area)
 
         for candidate in candidates:
-            normalized = _normalize_area(candidate)
-            if normalized:
-                return normalized
-
+            if isinstance(candidate, list):
+                parts = [str(item).strip() for item in candidate if str(item).strip()]
+                if parts:
+                    return "、".join(parts)
+                continue
+            if isinstance(candidate, str):
+                normalized = candidate.strip()
+                if normalized:
+                    return normalized
+                continue
+            if candidate is not None:
+                normalized = str(candidate).strip()
+                if normalized:
+                    return normalized
         return None
 
-    def handle_wolfx_event(self, wolfx_event: DisasterEvent):
-        if not isinstance(wolfx_event.data, EarthquakeData):
+    def extract_wolfx_impact_area(
+        self,
+        wolfx_event: EventEnvelope,
+        wolfx_earthquake: EarthquakeEvent,
+    ) -> str | None:
+        source_payload = type(self)._ensure_source_payload(wolfx_event)
+        return type(self)._extract_wolfx_impact_area(
+            source_payload.to_dict(),
+            getattr(wolfx_earthquake, "province", None),
+        )
+
+    def handle_wolfx_event(self, wolfx_event: EventEnvelope):
+        """处理 Wolfx 到达事件，并尝试唤醒等待中的 Fan CWA EEW 事件。"""
+        earthquake = self._get_earthquake_data(wolfx_event)
+        if earthquake is None:
             return
 
-        impact_area = self.extract_wolfx_impact_area(wolfx_event.data)
+        impact_area = self.extract_wolfx_impact_area(wolfx_event, earthquake)
         if not impact_area:
             return
 
-        self.manager._prune_fusion_states()
         store = self.manager._fusion_state_store
+        store.prune()
 
-        event_key = self.manager._get_fusion_event_key(wolfx_event.data)
-        report_num = self.manager._get_fusion_report_num(wolfx_event.data)
+        event_key = store.get_fusion_event_key(earthquake)
+        report_num = store.get_fusion_report_num(earthquake)
         if not event_key:
             return
 
@@ -194,7 +244,7 @@ class CWAEewFusionService:
             "created_at": time.time(),
         }
 
-        pending_key = self.manager._find_best_pending_key(
+        pending_key = store.find_best_pending_key(
             store.cwa_eew_pending, event_key, report_num
         )
         if not pending_key:
@@ -207,17 +257,11 @@ class CWAEewFusionService:
 
             fan_event = item.get("event")
             future = item.get("future")
-            if not isinstance(fan_event, DisasterEvent) or not isinstance(
-                fan_event.data, EarthquakeData
-            ):
+            fan_earthquake = self._get_earthquake_data(fan_event)
+            if fan_event is None or fan_earthquake is None:
                 return
 
-            if not isinstance(fan_event.data.raw_data, dict):
-                fan_event.data.raw_data = {}
-
-            fan_event.data.raw_data["wolfx_impact_area"] = impact_area
-            if not getattr(fan_event.data, "province", None):
-                fan_event.data.province = impact_area
+            type(self)._apply_impact_area(fan_event, fan_earthquake, impact_area)
 
             logger.info(
                 f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan CWA EEW 事件 {pending_key} 的影响区域: {impact_area}"
