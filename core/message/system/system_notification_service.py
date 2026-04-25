@@ -1,5 +1,10 @@
 """
 系统消息推送服务。
+
+该服务专门处理不依赖领域事件的系统级提示，
+例如离线告警、运行提示等。
+这类消息不需要经过规则过滤与展示器链路，
+因此采用更直接的发送方式。
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ class MessageSystemNotificationService:
     """系统提示消息推送服务。"""
 
     def __init__(self, manager):
+        # 通过主消息管理器复用统一的会话发送能力与配置访问能力。
         self.manager = manager
 
     async def push_system_message(
@@ -30,12 +36,12 @@ class MessageSystemNotificationService:
             logger.warning("[灾害预警] 没有配置目标会话，系统提示消息未发送")
             return 0
 
-        # 系统消息不绑定 DisasterEvent，因此只构造最小 Plain 消息链并直发。
+        # 系统消息没有事件上下文，因此只构造最小文本消息链直接发送。
         msg_chain = MessageChain([Comp.Plain(message)])
         success_count = 0
         for session in sessions:
             try:
-                await self.manager.send_message(session, msg_chain)
+                await self.manager.session_sender.send(session, msg_chain)
                 success_count += 1
             except Exception as e:
                 logger.error(f"[灾害预警] 系统提示消息发送到 {session} 失败: {e}")
