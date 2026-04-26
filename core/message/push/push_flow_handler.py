@@ -66,6 +66,9 @@ class PushFlowHandler:
             execution_result.get("session_message_format_config", {})
         )
         filter_reason_stats = dict(execution_result.get("filter_reason_stats", {}))
+        filter_reason_detail_stats = dict(
+            execution_result.get("filter_reason_detail_stats", {})
+        )
         send_failure_stats = dict(execution_result.get("send_failure_stats", {}))
 
         # 分离地图属于后处理动作，只有在主消息已完成发送筛选后才有意义。
@@ -79,6 +82,7 @@ class PushFlowHandler:
             event,
             push_success_count=push_success_count,
             filter_reason_stats=filter_reason_stats,
+            filter_reason_detail_stats=filter_reason_detail_stats,
             send_failure_stats=send_failure_stats,
         )
 
@@ -87,6 +91,7 @@ class PushFlowHandler:
             event,
             push_success_count=push_success_count,
             filter_reason_stats=filter_reason_stats,
+            filter_reason_detail_stats=filter_reason_detail_stats,
             send_failure_stats=send_failure_stats,
         )
         return push_success_count > 0
@@ -153,6 +158,7 @@ class PushFlowHandler:
         *,
         push_success_count: int,
         filter_reason_stats: dict[str, int],
+        filter_reason_detail_stats: dict[str, int],
         send_failure_stats: dict[str, int],
     ) -> None:
         """记录会话筛选结果摘要。"""
@@ -163,10 +169,11 @@ class PushFlowHandler:
         )
         failure_suffix = f"，另有 {failure_summary} 发送失败" if failure_summary else ""
 
-        if filter_reason_stats:
+        detailed_stats = filter_reason_detail_stats or filter_reason_stats
+        if detailed_stats:
             summary = "，".join(
                 f"{reason} {count} 个会话"
-                for reason, count in sorted(filter_reason_stats.items())
+                for reason, count in sorted(detailed_stats.items())
             )
             if push_success_count > 0:
                 logger.info(
@@ -191,14 +198,15 @@ class PushFlowHandler:
         *,
         push_success_count: int,
         filter_reason_stats: dict[str, int],
+        filter_reason_detail_stats: dict[str, int],
         send_failure_stats: dict[str, int],
     ) -> None:
         """记录推送完成日志。"""
         # 这一层更偏向最终完成态日志，与前面的筛选摘要日志形成互补。
-        if filter_reason_stats and push_success_count > 0:
+        detailed_stats = filter_reason_detail_stats or filter_reason_stats
+        if detailed_stats and push_success_count > 0:
             summary = "，".join(
-                f"{reason}×{count}"
-                for reason, count in sorted(filter_reason_stats.items())
+                f"{reason}×{count}" for reason, count in sorted(detailed_stats.items())
             )
             logger.debug(f"[灾害预警] 事件 {event.id} 部分会话被过滤: {summary}")
 

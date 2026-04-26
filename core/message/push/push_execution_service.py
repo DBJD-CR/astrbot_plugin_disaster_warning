@@ -48,10 +48,18 @@ class PushExecutionService:
             data_attr = getattr(component, "data", None)
             base64_attr = getattr(component, "base64", None)
 
-            if isinstance(file_attr, str) and file_attr.strip() and not str(file_attr).startswith(("http://", "https://")):
+            if (
+                isinstance(file_attr, str)
+                and file_attr.strip()
+                and not str(file_attr).startswith(("http://", "https://"))
+            ):
                 fallback_components.append(component)
                 continue
-            if isinstance(path_attr, str) and path_attr.strip() and not str(path_attr).startswith(("http://", "https://")):
+            if (
+                isinstance(path_attr, str)
+                and path_attr.strip()
+                and not str(path_attr).startswith(("http://", "https://"))
+            ):
                 fallback_components.append(component)
                 continue
             if data_attr:
@@ -60,7 +68,9 @@ class PushExecutionService:
             if isinstance(base64_attr, str) and base64_attr.strip():
                 fallback_components.append(component)
                 continue
-            if isinstance(url_attr, str) and url_attr.strip().startswith(("http://", "https://")):
+            if isinstance(url_attr, str) and url_attr.strip().startswith(
+                ("http://", "https://")
+            ):
                 continue
 
         merged_text = "\n".join(
@@ -107,6 +117,8 @@ class PushExecutionService:
         session_message_format_config: dict[str, dict[str, Any]] = {}
         # 统计预筛阶段的拦截原因，便于输出汇总日志。
         filter_reason_stats: dict[str, int] = {}
+        # 保留更细粒度的拦截原因明细，避免不同数据源/分组被压扁成同一句日志。
+        filter_reason_detail_stats: dict[str, int] = {}
         # 统计实际发送阶段的失败原因，避免与规则拦截混淆。
         send_failure_stats: dict[str, int] = {}
 
@@ -115,6 +127,7 @@ class PushExecutionService:
             sessions,
             session_config_getter=session_config_getter,
             filter_reason_stats=filter_reason_stats,
+            filter_reason_detail_stats=filter_reason_detail_stats,
         )
 
         # 同一事件在不同会话下若渲染参数一致，则共享同一个消息构建任务，
@@ -280,6 +293,7 @@ class PushExecutionService:
             "passed_sessions": passed_sessions,
             "session_message_format_config": session_message_format_config,
             "filter_reason_stats": filter_reason_stats,
+            "filter_reason_detail_stats": filter_reason_detail_stats,
             "send_failure_stats": send_failure_stats,
             "source_id": source_id,
         }
@@ -291,11 +305,14 @@ class PushExecutionService:
         *,
         session_config_getter=None,
         filter_reason_stats: dict[str, int] | None = None,
+        filter_reason_detail_stats: dict[str, int] | None = None,
     ) -> list[tuple[str, dict[str, Any]]]:
         # 这里仅做“预筛”，所以 commit_state=False，避免在真正发送前就提前消耗报数状态。
         candidates: list[tuple[str, dict[str, Any]]] = []
         if filter_reason_stats is None:
             filter_reason_stats = {}
+        if filter_reason_detail_stats is None:
+            filter_reason_detail_stats = {}
 
         for session in sessions:
             # 会话级配置允许不同会话使用不同推送规则与展示参数。
@@ -322,6 +339,10 @@ class PushExecutionService:
                 reason = decision.reason or "未通过推送条件"
                 reason_detail = decision.detail or ""
                 filter_reason_stats[reason] = filter_reason_stats.get(reason, 0) + 1
+                detail_key = f"{reason}（{reason_detail}）" if reason_detail else reason
+                filter_reason_detail_stats[detail_key] = (
+                    filter_reason_detail_stats.get(detail_key, 0) + 1
+                )
                 if reason_detail:
                     logger.debug(
                         f"[灾害预警] 事件 {event.id} 在会话 {session} 的预筛选阶段被拦截，原因：{reason}（{reason_detail}）"
