@@ -82,7 +82,9 @@ class StatsQueryService:
         if max_mag:
             # 最大地震摘要会额外补充来源，便于区分同震级事件来自哪个数据源。
             source_val = max_mag.get("source")
-            formatted_source = format_source_name(str(source_val or "")) if source_val else ""
+            formatted_source = (
+                format_source_name(str(source_val or "")) if source_val else ""
+            )
             source_info = f" ({formatted_source})" if formatted_source else ""
             text.extend(
                 [

@@ -6,11 +6,10 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 from astrbot.api import logger
-
-from collections import defaultdict
 
 from ...services.identity.event_classifier import is_major_record
 
