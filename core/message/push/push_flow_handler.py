@@ -169,11 +169,10 @@ class PushFlowHandler:
         )
         failure_suffix = f"，另有 {failure_summary} 发送失败" if failure_summary else ""
 
-        detailed_stats = filter_reason_detail_stats or filter_reason_stats
-        if detailed_stats:
+        if filter_reason_stats:
             summary = "，".join(
                 f"{reason} {count} 个会话"
-                for reason, count in sorted(detailed_stats.items())
+                for reason, count in sorted(filter_reason_stats.items())
             )
             if push_success_count > 0:
                 logger.info(
@@ -206,10 +205,14 @@ class PushFlowHandler:
         detailed_stats = filter_reason_detail_stats or filter_reason_stats
         if detailed_stats and push_success_count > 0:
             summary = "，".join(
-                f"{reason}×{count}" for reason, count in sorted(detailed_stats.items())
+                f"{reason}×{count}"
+                for reason, count in sorted(filter_reason_stats.items())
             )
             logger.debug(f"[灾害预警] 事件 {event.id} 部分会话被过滤: {summary}")
-
+            detailed_summary = "，".join(
+                f"{reason}×{count}" for reason, count in sorted(detailed_stats.items())
+            )
+            logger.debug(f"[灾害预警] 事件 {event.id} 过滤明细: {detailed_summary}")
         if send_failure_stats:
             summary = "，".join(
                 f"{reason}×{count}"

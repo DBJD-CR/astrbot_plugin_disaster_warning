@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from ..sources.source_catalog import get_source_entry
+from ..sources.source_catalog import SOURCE_CATALOG, get_source_entry
 from .base_rule import BaseRule, RuleContext
 from .rule_result import RuleDecision
 
@@ -37,7 +37,20 @@ class SourceEnabledRule(BaseRule):
                 context={"source_id": source_id},
             )
 
-        if bool(group_cfg.get(source_entry.config_key, True)):
+        catalog_entry = SOURCE_CATALOG.get(source_id)
+        default_enabled = True
+        if catalog_entry is not None:
+            default_group_cfg = data_sources_cfg.get(catalog_entry.config_group, {})
+            if (
+                isinstance(default_group_cfg, dict)
+                and catalog_entry.config_key in default_group_cfg
+            ):
+                default_enabled = bool(
+                    default_group_cfg.get(catalog_entry.config_key, True)
+                )
+
+        source_enabled = bool(group_cfg.get(source_entry.config_key, default_enabled))
+        if source_enabled:
             return RuleDecision.accept(reason="数据源已启用")
 
         return RuleDecision.reject(
