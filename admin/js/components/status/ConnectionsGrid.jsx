@@ -276,8 +276,20 @@ function ConnectionsGrid() {
                                                 }
                                             };
 
-                                            return scopedSourceMap[connectionName]?.[rawKey]
-                                                || (window.formatSourceName ? window.formatSourceName(rawKey) : rawKey);
+                                            const scopedName = scopedSourceMap[connectionName]?.[rawKey];
+                                            if (scopedName) {
+                                                return scopedName;
+                                            }
+
+                                            const formattedName = window.formatSourceName
+                                                ? window.formatSourceName(rawKey)
+                                                : rawKey;
+
+                                            // 适配后端重构后直接下发 source_id 的情况：
+                                            // 子数据源卡片内不需要展示平台后缀（- Fan / - P2P / - Wolfx）。
+                                            return String(formattedName)
+                                                .replace(/\s+-\s+(Fan|P2P|Wolfx)$/i, '')
+                                                .trim();
                                         };
 
                                         const friendlyName = getScopedSourceName(key, conn.name);
