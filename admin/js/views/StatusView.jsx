@@ -77,9 +77,16 @@ function StatusView({ onOpenSimulation }) {
         const ok = confirm('⚠️ 确定要清除插件统计数据吗？\n\n该操作会重置统计信息、图表数据、事件列表等（不可恢复）。');
         if (!ok) return;
 
+        const password = prompt('请输入管理端密码以确认本次清除操作：', '');
+        if (password === null) return;
+        if (!password.trim()) {
+            showToast('已取消清除：未输入管理端密码', 'warning');
+            return;
+        }
+
         setResettingStats(true);
         try {
-            const result = await api.resetStatistics();
+            const result = await api.resetStatistics(password);
             if (result && result.success) {
                 // 清除后主动刷新控制台数据
                 await refreshAll();
@@ -89,7 +96,7 @@ function StatusView({ onOpenSimulation }) {
             }
         } catch (e) {
             console.error('Reset statistics failed:', e);
-            showToast('清除失败，请检查网络连接', 'error');
+            showToast(e.message || '清除失败，请检查网络连接', 'error');
         } finally {
             setResettingStats(false);
         }

@@ -5,14 +5,22 @@ Web 管理端状态与统计路由。
 
 from __future__ import annotations
 
+import secrets
 from datetime import datetime
+from typing import Any
 
 from astrbot.api import logger
 
 from ..payloads.api_response import ApiResponse
 
 
-def register_status_routes(app, *, disaster_service, realtime_payload_builder):
+def register_status_routes(
+    app,
+    *,
+    disaster_service,
+    realtime_payload_builder,
+    password_getter=None,
+):
     """注册状态与统计相关路由。"""
 
     @app.get("/api/status")
@@ -48,7 +56,7 @@ def register_status_routes(app, *, disaster_service, realtime_payload_builder):
             return ApiResponse.error(str(e), status_code=500)
 
     @app.post("/api/statistics/reset")
-    async def reset_statistics():
+    async def reset_statistics(payload: dict[str, Any] | None = None):
         """清除统计数据（等价于 /灾害预警统计清除）。"""
         try:
             guard_result = ApiResponse.guard_service_ready(
@@ -57,6 +65,15 @@ def register_status_routes(app, *, disaster_service, realtime_payload_builder):
             )
             if guard_result is not None:
                 return guard_result
+
+            admin_password = password_getter() if password_getter else ""
+            provided_password = (payload or {}).get("password", "")
+            if admin_password and not secrets.compare_digest(
+                provided_password, admin_password
+            ):
+                return ApiResponse.error(
+                    "管理端密码错误，二次验证失败", status_code=401
+                )
 
             await disaster_service.statistics_manager.reset_stats()
 

@@ -53,8 +53,10 @@ function useApi() {
         return fetchData(url);
     };
 
-    const resetStatistics = () => fetchData('/statistics/reset', {
-        method: 'POST'
+    const resetStatistics = (password = '') => fetchData('/statistics/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
     });
 
     // 会话差异配置相关接口
