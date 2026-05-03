@@ -18,6 +18,7 @@ class DisasterServiceNoticeService:
 
     # 离线通知只关心对用户可见的阶段语义；底层阶段代号在这里统一翻译为中文描述。
     _OFFLINE_STAGE_MAP = {
+        "short_retry": "离线时间过长",
         "fallback": "进入兜底重试",
         "stop": "停止重连",
     }
@@ -59,7 +60,7 @@ class DisasterServiceNoticeService:
         now = asyncio.get_running_loop().time()
         state = self.service._offline_notification_state.get(key, {})
         last_ts = state.get("last_ts", 0.0)
-        ttl_seconds = 1800
+        ttl_seconds = 1800 if stage != "short_retry" else 0
         # 节流粒度为“同一连接 + 同一阶段”。
         # 相同连接在同一 stage 下 30 分钟内最多通知一次，避免离线抖动造成刷屏。
         if now - last_ts < ttl_seconds:
@@ -135,8 +136,8 @@ class DisasterServiceNoticeService:
             f"🔁 {retry_part}",
             f"🛟 {fallback_part}",
         ]
-        # 只有进入兜底重试阶段时，“下一次重试”信息才最有意义，因此按阶段有条件展示。
-        if stage == "fallback":
+        # “离线时间过长”和“进入兜底重试”都适合展示下一次重试时间，帮助运维判断恢复窗口。
+        if stage in {"short_retry", "fallback"}:
             message_lines.append(f"⏳ {next_retry_part}")
         return "\n".join(message_lines)
 

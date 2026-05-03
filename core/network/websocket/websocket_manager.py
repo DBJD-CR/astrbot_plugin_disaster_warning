@@ -121,6 +121,8 @@ class WebSocketManager:
                 self.connection_info[name]["established_time"] = (
                     asyncio.get_running_loop().time()
                 )
+                self.connection_info[name].pop("offline_since", None)
+                self.connection_info[name].pop("short_retry_notified", None)
                 logger.info(f"[灾害预警] WebSocket连接成功: {name}")
                 # 连接一旦成功，相关重试计数与活跃时间都要刷新。
                 self.connection_retry_counts[name] = 0
@@ -224,9 +226,11 @@ class WebSocketManager:
         uri = info.get("uri")
         headers = info.get("headers")
 
-        # 手动重连视为一次全新尝试，因此清空历史重试计数。
+        # 手动重连视为一次全新尝试，因此清空历史重试计数和离线累计状态。
         self.connection_retry_counts[name] = 0
         self.fallback_retry_counts[name] = 0
+        info.pop("offline_since", None)
+        info.pop("short_retry_notified", None)
 
         logger.info(f"[灾害预警] 正在手动重连 {name}...")
 

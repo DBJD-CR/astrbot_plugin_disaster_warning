@@ -30,6 +30,12 @@ class WebSocketReconnectService:
             self.manager.heartbeat_tasks.pop(name, None)
 
         connection_info = self.manager.connection_info.get(name, {})
+        offline_since = connection_info.get("offline_since")
+        if offline_since is None:
+            offline_since = asyncio.get_running_loop().time()
+            connection_info["offline_since"] = offline_since
+            self.manager.connection_info[name] = connection_info
+
         if not self.manager.running:
             return
 
@@ -88,6 +94,13 @@ class WebSocketReconnectService:
             return
 
         try:
+            connection_info = connection_info or {}
+            offline_since = connection_info.get("offline_since")
+            if offline_since is None:
+                offline_since = asyncio.get_running_loop().time()
+                connection_info["offline_since"] = offline_since
+                self.manager.connection_info[name] = connection_info
+
             # 重连策略分成“短时重试 + 长周期兜底重试”两层，兼顾快速恢复与长期稳定性。
             max_retries = self.manager.config.get("max_reconnect_retries", 3)
             reconnect_interval = self.manager.config.get("reconnect_interval", 10)
@@ -191,6 +204,30 @@ class WebSocketReconnectService:
             logger.info(
                 f"[灾害预警] {name} 将在 {reconnect_interval} 秒后尝试重连{server_type} ({display_retry}/{max_retries})"
             )
+
+            offline_elapsed = asyncio.get_running_loop().time() - offline_since
+            short_retry_notify_threshold = reconnect_interval * 3
+            short_retry_notified = bool(
+                connection_info.get("short_retry_notified", False)
+            )
+            if (
+                short_retry_notify_threshold > 0
+                and offline_elapsed >= short_retry_notify_threshold
+                and not short_retry_notified
+            ):
+                self.emit_offline_notification(
+                    connection_name=name,
+                    stage="short_retry",
+                    reason=(
+                        f"离线已持续至少 {int(short_retry_notify_threshold)} 秒，"
+                        "仍处于短时重连阶段"
+                    ),
+                    next_retry_in=f"{reconnect_interval} 秒",
+                    retry_count=current_retry,
+                    fallback_count=current_fallback,
+                )
+                connection_info["short_retry_notified"] = True
+                self.manager.connection_info[name] = connection_info
 
             await asyncio.sleep(reconnect_interval)
             if not self.manager.running:
