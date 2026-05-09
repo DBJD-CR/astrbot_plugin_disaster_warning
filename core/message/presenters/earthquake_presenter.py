@@ -299,14 +299,12 @@ class CwaEewPresenter(BasePresenter):
 
         lines = rendered.split("\n") if rendered else []
         impact_area = display_context.impact_area
-        impact_area_text = (
-            str(impact_area).strip()
-            if impact_area is not None
-            else ""
-        )
+        impact_area_text = str(impact_area).strip() if impact_area is not None else ""
         if impact_area_text.lower() in {"none", "null", "undefined"}:
             impact_area_text = ""
-        if impact_area_text and not any(line.startswith("⚠️影响区域：") for line in lines):
+        if impact_area_text and not any(
+            line.startswith("⚠️影响区域：") for line in lines
+        ):
             inserted = False
             for idx, line in enumerate(lines):
                 if line.startswith("💥预估最大震度："):

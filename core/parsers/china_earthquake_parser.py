@@ -132,21 +132,25 @@ class CencEarthquakeWolfxParser(BaseParser):
             # WebSocket 标准消息通常会带 type=cenc_eqlist，
             # 但 HTTP 列表接口可能直接返回 No1/No2... 结构而没有顶层 type。
             raw_type = str(data.get("type") or "").strip()
-            no_keys = [key for key, value in data.items() if key.startswith("No") and isinstance(value, dict)]
+            no_keys = [
+                key
+                for key, value in data.items()
+                if key.startswith("No") and isinstance(value, dict)
+            ]
             if raw_type and raw_type != "cenc_eqlist":
                 logger.debug(f"[灾害预警] {self.source_id} 非 CENC 地震列表数据，跳过")
                 return None
             if not raw_type and not no_keys:
-                logger.debug(f"[灾害预警] {self.source_id} 未识别到 Wolfx CENC 列表结构，跳过")
+                logger.debug(
+                    f"[灾害预警] {self.source_id} 未识别到 Wolfx CENC 列表结构，跳过"
+                )
                 return None
 
             eq_info = None
-            selected_key = ""
             # 列表消息通常以 No1、No2 这类键名承载首条地震记录，这里取首个有效项。
             for key, value in data.items():
                 if key.startswith("No") and isinstance(value, dict):
                     eq_info = value
-                    selected_key = key
                     break
 
             if not eq_info:
@@ -173,7 +177,6 @@ class CencEarthquakeWolfxParser(BaseParser):
             report_num = 1
 
             source_record_id = str(eq_info.get("md5") or event_id or "").strip()
-            list_mode = "标准 WebSocket 列表消息" if raw_type == "cenc_eqlist" else "HTTP 列表兼容模式"
 
             raw_payload = dict(data)
             source_entry = get_source_entry(self.source_id)
