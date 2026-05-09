@@ -56,13 +56,9 @@ class TsunamiAlertPresenter(BasePresenter):
             lines.append(f"⚠️级别：{display_context.level}")
         if display_context.org_unit:
             lines.append(f"🏢发布：{display_context.org_unit}")
-        if display_context.issued_at:
-            lines.append(
-                f"⏰发布时间：{TimeConverter.format_time(display_context.issued_at, target_timezone)}"
-            )
         if display_context.updated_at:
             lines.append(
-                f"🕒更新时间：{TimeConverter.format_time(display_context.updated_at, target_timezone)}"
+                f"🕒最近更新时间：{TimeConverter.format_time(display_context.updated_at, target_timezone)}"
             )
 
         place_name = display_context.place_name or display_context.subtitle
