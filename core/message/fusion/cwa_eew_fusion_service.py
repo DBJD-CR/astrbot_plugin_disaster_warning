@@ -93,6 +93,10 @@ class CWAEewFusionService:
         cached_payload = store.select_cached_report_payload(
             store.cwa_eew_wolfx_cache.get(event_key, {}), report_num
         )
+        if cached_payload is None:
+            cached_payload = store.select_cached_payload_from_all(
+                store.cwa_eew_wolfx_cache, report_num, "scale"
+            )
         if (
             isinstance(cached_payload, dict)
             and cached_payload.get("scale") is not None

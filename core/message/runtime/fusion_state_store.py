@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any
 
+from ....utils.converters import safe_float_convert
+from ....utils.time_converter import TimeConverter
 from ...domain.event_identity import EventIdentity
 from ...domain.event_models import EarthquakeEvent, EventEnvelope
 from ...domain.event_payload import SourcePayload
@@ -84,6 +87,16 @@ class FusionStateStore:
         except Exception:
             return 1
         return value if value > 0 else 1
+
+    @staticmethod
+    def _normalize_created_at(raw_value: Any) -> float:
+        """把缓存/等待项中的 created_at 安全归一为浮点时间戳。"""
+        try:
+            return float(raw_value or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+        except Exception:
+            return 0.0
 
     @staticmethod
     def normalize_cenc_measurement_type(raw_value: Any) -> str:
@@ -167,7 +180,7 @@ class FusionStateStore:
                     value = str(metadata.get(key) or "").strip()
                     if value:
                         return value
-            return ""
+            return str(getattr(data, "id", "") or "").strip()
 
         return str(getattr(data, "id", "") or "").strip()
 
@@ -187,7 +200,13 @@ class FusionStateStore:
                     return cls._normalize_report_num(identity.report_num)
 
                 payload = getattr(data, "payload", None)
-                raw = payload.raw if isinstance(payload, SourcePayload) else {}
+                raw = (
+                    payload.raw
+                    if isinstance(payload, SourcePayload)
+                    else payload
+                    if isinstance(payload, dict)
+                    else {}
+                )
                 for key in ("report_num", "ReportNum", "updates", "serial", "Serial"):
                     if key in raw and raw.get(key) is not None:
                         return cls._normalize_report_num(raw.get(key))
@@ -247,18 +266,213 @@ class FusionStateStore:
             matching_candidates.sort(
                 key=lambda item: (
                     abs(int(item[0]) - int(target_report)),
-                    -float(item[1].get("created_at", 0.0) or 0.0),
+                    -FusionStateStore._normalize_created_at(item[1].get("created_at")),
                 )
             )
             return matching_candidates[0][1]
 
         if normalized_type == "unknown" and fallback_candidates:
             fallback_candidates.sort(
-                key=lambda item: -float(item[1].get("created_at", 0.0) or 0.0)
+                key=lambda item: -FusionStateStore._normalize_created_at(
+                    item[1].get("created_at")
+                )
             )
             return fallback_candidates[0][1]
 
         return None
+
+    @staticmethod
+    def _parse_similarity_time(raw_value: Any) -> datetime | None:
+        """复用统一时间转换工具，解析近似匹配所需的时间字段。"""
+        return TimeConverter.parse_datetime(raw_value)
+
+    @staticmethod
+    def _safe_float(raw_value: Any) -> float | None:
+        """复用统一浮点转换工具，避免在融合仓储内重复实现数值清洗。"""
+        return safe_float_convert(raw_value)
+
+    @classmethod
+    def build_cenc_similarity_profile(
+        cls,
+        data: EventEnvelope | EarthquakeEvent | dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """提取 CENC 近似匹配所需的时空与震级特征。
+
+        这里故意只保留“跨源同时稳定存在”的字段：
+        发震时间、经纬度、震级。
+        这样既能避开 event_key 不一致的问题，也能把回退匹配约束在足够像同一场地震的候选上。
+        """
+        profile = {
+            "occurred_at": None,
+            "latitude": None,
+            "longitude": None,
+            "magnitude": None,
+        }
+        if data is None:
+            return profile
+
+        if isinstance(data, EventEnvelope):
+            domain_event = getattr(data, "event", None)
+            if isinstance(domain_event, EarthquakeEvent):
+                profile["occurred_at"] = getattr(domain_event, "occurred_at", None)
+                profile["latitude"] = getattr(domain_event, "latitude", None)
+                profile["longitude"] = getattr(domain_event, "longitude", None)
+                profile["magnitude"] = getattr(domain_event, "magnitude", None)
+            return profile
+
+        if isinstance(data, EarthquakeEvent):
+            profile["occurred_at"] = getattr(data, "occurred_at", None)
+            profile["latitude"] = getattr(data, "latitude", None)
+            profile["longitude"] = getattr(data, "longitude", None)
+            profile["magnitude"] = getattr(data, "magnitude", None)
+            return profile
+
+        if isinstance(data, dict):
+            profile["occurred_at"] = cls._parse_similarity_time(
+                data.get("occurred_at") or data.get("time") or data.get("shockTime")
+            )
+            profile["latitude"] = cls._safe_float(data.get("latitude"))
+            profile["longitude"] = cls._safe_float(data.get("longitude"))
+            profile["magnitude"] = cls._safe_float(data.get("magnitude"))
+            return profile
+
+        return profile
+
+    @classmethod
+    def _is_cenc_profile_compatible(
+        cls,
+        left: dict[str, Any],
+        right: dict[str, Any],
+    ) -> bool:
+        """判断两个 CENC 候选是否足够像同一场地震。
+
+        注意这里仍然要求上层先完成测定类型过滤；
+        本函数只负责比较时空与震级，不负责判断 reviewed / automatic 是否一致。
+        """
+        left_time = cls._parse_similarity_time(left.get("occurred_at"))
+        right_time = cls._parse_similarity_time(right.get("occurred_at"))
+        if left_time is None or right_time is None:
+            return False
+        if abs((left_time - right_time).total_seconds()) > 90:
+            return False
+
+        left_lat = cls._safe_float(left.get("latitude"))
+        right_lat = cls._safe_float(right.get("latitude"))
+        left_lon = cls._safe_float(left.get("longitude"))
+        right_lon = cls._safe_float(right.get("longitude"))
+        left_mag = cls._safe_float(left.get("magnitude"))
+        right_mag = cls._safe_float(right.get("magnitude"))
+        if None in (left_lat, right_lat, left_lon, right_lon, left_mag, right_mag):
+            return False
+
+        if abs(left_lat - right_lat) > 0.8:
+            return False
+        if abs(left_lon - right_lon) > 0.8:
+            return False
+        if abs(left_mag - right_mag) > 0.5:
+            return False
+        return True
+
+    @classmethod
+    def select_cenc_cached_payload_from_all(
+        cls,
+        cache_dict: dict[str, dict[int, dict[str, Any]]],
+        target_report: int,
+        measurement_type: str,
+        reference_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """跨所有 CENC 缓存选择回退载荷：先按测定类型，再按时空与震级相似度筛选。
+
+        这是 Wolfx 先到、Fan 后到场景的兜底路径：
+        当 event_key 无法对齐时，改为在同测定类型候选中寻找“最像同一场地震”的缓存条目。
+        """
+        if not cache_dict:
+            return None
+
+        normalized_type = cls.normalize_cenc_measurement_type(measurement_type)
+        if normalized_type == "unknown":
+            return None
+
+        candidates: list[dict[str, Any]] = []
+        for reports in cache_dict.values():
+            if not isinstance(reports, dict):
+                continue
+            payload = cls.select_cenc_cached_payload(
+                reports, target_report, measurement_type
+            )
+            if not isinstance(payload, dict):
+                continue
+            payload_type = cls.normalize_cenc_measurement_type(
+                payload.get("measurement_type")
+            )
+            if payload_type != normalized_type:
+                continue
+            if reference_profile and not cls._is_cenc_profile_compatible(
+                reference_profile, payload
+            ):
+                continue
+            candidates.append(payload)
+
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda item: FusionStateStore._normalize_created_at(
+                item.get("created_at")
+            ),
+            reverse=True,
+        )
+        return candidates[0]
+
+    @classmethod
+    def select_cached_payload_from_all(
+        cls,
+        cache_dict: dict[str, dict[int, dict[str, Any]]],
+        target_report: int,
+        value_key: str,
+    ) -> dict[str, Any] | None:
+        """跨所有缓存按报次聚合回退：在时间窗口内取最近且包含目标值的缓存。"""
+        if not cache_dict:
+            return None
+
+        candidates: list[dict[str, Any]] = []
+        for reports in cache_dict.values():
+            if not isinstance(reports, dict):
+                continue
+            payload = cls.select_cached_report_payload(reports, target_report)
+            if not isinstance(payload, dict):
+                continue
+            if payload.get(value_key) is not None:
+                candidates.append(payload)
+
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+
+        newest_created_at = max(
+            FusionStateStore._normalize_created_at(item.get("created_at"))
+            for item in candidates
+        )
+        time_window_seconds = 15.0
+        window_candidates = [
+            item
+            for item in candidates
+            if abs(
+                FusionStateStore._normalize_created_at(item.get("created_at"))
+                - newest_created_at
+            )
+            <= time_window_seconds
+        ]
+        if not window_candidates:
+            return None
+
+        window_candidates.sort(
+            key=lambda item: FusionStateStore._normalize_created_at(
+                item.get("created_at")
+            ),
+            reverse=True,
+        )
+        return window_candidates[0]
 
     @staticmethod
     def select_cached_report_payload(
@@ -276,25 +490,110 @@ class FusionStateStore:
         event_key: str,
         measurement_type: str,
     ) -> str | None:
-        """在同 event_key 的 pending 中优先匹配同测定类型，否则回退最早等待项。"""
+        """在同 event_key 的 pending 中优先匹配同测定类型；未命中时回退到同类型单候选，最后允许按短时间窗口选择最近等待项。"""
         normalized_type = cls.normalize_cenc_measurement_type(measurement_type)
         candidates = [
             (k, v)
             for k, v in pending_dict.items()
             if isinstance(v, dict) and v.get("event_key") == event_key
         ]
-        if not candidates:
+
+        if candidates:
+            typed_candidates = [
+                (k, v)
+                for k, v in candidates
+                if cls.normalize_cenc_measurement_type(v.get("measurement_type"))
+                == normalized_type
+            ]
+            selected = typed_candidates or candidates
+            selected.sort(
+                key=lambda item: FusionStateStore._normalize_created_at(
+                    item[1].get("created_at")
+                )
+            )
+            return selected[0][0]
+
+        if normalized_type == "unknown":
             return None
 
-        typed_candidates = [
+        global_typed_candidates = [
             (k, v)
-            for k, v in candidates
-            if cls.normalize_cenc_measurement_type(v.get("measurement_type"))
+            for k, v in pending_dict.items()
+            if isinstance(v, dict)
+            and cls.normalize_cenc_measurement_type(v.get("measurement_type"))
             == normalized_type
         ]
-        selected = typed_candidates or candidates
-        selected.sort(key=lambda item: float(item[1].get("created_at", 0.0) or 0.0))
-        return selected[0][0]
+        if len(global_typed_candidates) == 1:
+            return global_typed_candidates[0][0]
+
+        if not global_typed_candidates:
+            return None
+
+        newest_created_at = max(
+            FusionStateStore._normalize_created_at(item[1].get("created_at"))
+            for item in global_typed_candidates
+        )
+        time_window_seconds = 30.0
+        window_candidates = [
+            (k, v)
+            for k, v in global_typed_candidates
+            if abs(
+                FusionStateStore._normalize_created_at(v.get("created_at"))
+                - newest_created_at
+            )
+            <= time_window_seconds
+        ]
+        if not window_candidates:
+            return None
+
+        window_candidates.sort(
+            key=lambda item: FusionStateStore._normalize_created_at(
+                item[1].get("created_at")
+            ),
+            reverse=True,
+        )
+        return window_candidates[0][0]
+
+    @classmethod
+    def find_best_cenc_pending_key_by_profile(
+        cls,
+        pending_dict: dict[str, dict[str, Any]],
+        measurement_type: str,
+        reference_profile: dict[str, Any] | None,
+    ) -> str | None:
+        """按测定类型与事件时空特征，从 CENC pending 中挑选最相似候选。
+
+        这是 Fan 先到、Wolfx 后到场景的兜底路径：
+        只有在常规 event_key 匹配失败后才启用，尽量恢复功能，同时把串事件风险限制在较低水平。
+        """
+        normalized_type = cls.normalize_cenc_measurement_type(measurement_type)
+        if normalized_type == "unknown" or not reference_profile:
+            return None
+
+        typed_candidates: list[tuple[str, dict[str, Any]]] = []
+        for pending_key, item in pending_dict.items():
+            if not isinstance(item, dict):
+                continue
+            if (
+                cls.normalize_cenc_measurement_type(item.get("measurement_type"))
+                != normalized_type
+            ):
+                continue
+            profile = item.get("similarity_profile")
+            if not isinstance(profile, dict):
+                continue
+            if cls._is_cenc_profile_compatible(reference_profile, profile):
+                typed_candidates.append((pending_key, item))
+
+        if not typed_candidates:
+            return None
+        typed_candidates.sort(
+            key=lambda item: FusionStateStore._normalize_created_at(
+                item[1].get("created_at")
+            ),
+            reverse=True,
+        )
+        return typed_candidates[0][0]
 
     @staticmethod
     def find_best_pending_key(
@@ -302,7 +601,7 @@ class FusionStateStore:
         event_key: str,
         report_num: int,
     ) -> str | None:
-        """在同 event_key 的 pending 中按报次精确匹配。"""
+        """在同 event_key 的 pending 中按报次精确匹配；未命中时按时间窗口回退最近等待项。"""
         exact = [
             (k, v)
             for k, v in pending_dict.items()
@@ -310,8 +609,45 @@ class FusionStateStore:
             and v.get("event_key") == event_key
             and int(v.get("report_num", 1) or 1) == report_num
         ]
-        if not exact:
+        if exact:
+            exact.sort(
+                key=lambda item: FusionStateStore._normalize_created_at(
+                    item[1].get("created_at")
+                )
+            )
+            return exact[0][0]
+
+        report_candidates = [
+            (k, v)
+            for k, v in pending_dict.items()
+            if isinstance(v, dict) and int(v.get("report_num", 1) or 1) == report_num
+        ]
+        if len(report_candidates) == 1:
+            return report_candidates[0][0]
+        if not report_candidates:
             return None
 
-        exact.sort(key=lambda item: float(item[1].get("created_at", 0.0)))
-        return exact[0][0]
+        newest_created_at = max(
+            FusionStateStore._normalize_created_at(item[1].get("created_at"))
+            for item in report_candidates
+        )
+        time_window_seconds = 15.0
+        window_candidates = [
+            (k, v)
+            for k, v in report_candidates
+            if abs(
+                FusionStateStore._normalize_created_at(v.get("created_at"))
+                - newest_created_at
+            )
+            <= time_window_seconds
+        ]
+        if not window_candidates:
+            return None
+
+        window_candidates.sort(
+            key=lambda item: FusionStateStore._normalize_created_at(
+                item[1].get("created_at")
+            ),
+            reverse=True,
+        )
+        return window_candidates[0][0]

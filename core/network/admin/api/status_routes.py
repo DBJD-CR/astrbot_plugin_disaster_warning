@@ -66,8 +66,8 @@ def register_status_routes(
             if guard_result is not None:
                 return guard_result
 
-            admin_password = password_getter() if password_getter else ""
-            provided_password = (payload or {}).get("password", "")
+            admin_password = str(password_getter() if password_getter else "")
+            provided_password = str((payload or {}).get("password", ""))
             if admin_password and not secrets.compare_digest(
                 provided_password, admin_password
             ):

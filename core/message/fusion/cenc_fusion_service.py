@@ -113,9 +113,17 @@ class CENCFusionService:
         event_key = store.get_fusion_event_key(event)
         report_num = store.get_fusion_report_num(event)
         measurement_type = self._resolve_measurement_type(event)
+        similarity_profile = store.build_cenc_similarity_profile(event)
         cached_payload = store.select_cenc_cached_payload(
             store.cenc_wolfx_cache.get(event_key, {}), report_num, measurement_type
         )
+        if cached_payload is None:
+            cached_payload = store.select_cenc_cached_payload_from_all(
+                store.cenc_wolfx_cache,
+                report_num,
+                measurement_type,
+                similarity_profile,
+            )
         if (
             isinstance(cached_payload, dict)
             and cached_payload.get("intensity") is not None
@@ -146,6 +154,7 @@ class CENCFusionService:
             "event_key": event_key,
             "report_num": report_num,
             "measurement_type": measurement_type,
+            "similarity_profile": similarity_profile,
             "created_at": time.time(),
         }
 
@@ -192,10 +201,18 @@ class CENCFusionService:
         """处理 Wolfx 到达事件，并尝试唤醒等待中的 Fan CENC 事件。"""
         earthquake = self._get_earthquake_data(wolfx_event)
         if earthquake is None:
+            logger.warning(
+                "[灾害预警] CENC 融合策略收到了一条 Wolfx 消息，但里面没有可用的地震事件对象，因此这次无法参与融合。"
+            )
             return
 
         intensity = getattr(earthquake, "intensity", None)
         if intensity is None:
+            logger.warning(
+                f"[灾害预警] 这条 Wolfx CENC 消息已经进入融合流程，但烈度信息仍然缺失。"
+                f"当前震中是 {getattr(earthquake, 'place_name', '未知地点') or '未知地点'}，"
+                f"发震时间是 {getattr(earthquake, 'occurred_at', None)}，因此这次无法补充 Fan 的烈度。"
+            )
             return
 
         store = self.manager._fusion_state_store
@@ -204,19 +221,33 @@ class CENCFusionService:
         event_key = store.get_fusion_event_key(wolfx_event)
         report_num = store.get_fusion_report_num(wolfx_event)
         measurement_type = self._resolve_measurement_type(wolfx_event)
+        similarity_profile = store.build_cenc_similarity_profile(wolfx_event)
         if not event_key:
+            logger.warning(
+                f"[灾害预警] 这条 Wolfx CENC 消息虽然带有烈度，但没有生成出可用于融合的事件标识。"
+                f"震中是 {getattr(earthquake, 'place_name', '未知地点') or '未知地点'}，"
+                f"发震时间是 {getattr(earthquake, 'occurred_at', None)}，这次只能放弃写入融合缓存。"
+            )
             return
 
         event_cache = store.cenc_wolfx_cache.setdefault(event_key, {})
         event_cache[report_num] = {
             "intensity": intensity,
             "measurement_type": measurement_type,
+            "occurred_at": similarity_profile.get("occurred_at"),
+            "latitude": similarity_profile.get("latitude"),
+            "longitude": similarity_profile.get("longitude"),
+            "magnitude": similarity_profile.get("magnitude"),
             "created_at": time.time(),
         }
 
         pending_key = store.find_best_cenc_pending_key(
             store.cenc_pending, event_key, measurement_type
         )
+        if not pending_key:
+            pending_key = store.find_best_cenc_pending_key_by_profile(
+                store.cenc_pending, measurement_type, similarity_profile
+            )
         if not pending_key:
             return
 

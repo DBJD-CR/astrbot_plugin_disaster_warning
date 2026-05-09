@@ -299,20 +299,22 @@ class CwaEewPresenter(BasePresenter):
 
         lines = rendered.split("\n") if rendered else []
         impact_area = display_context.impact_area
-        if (
-            isinstance(impact_area, str)
-            and impact_area.strip()
-            and not any("影响区域：" in line for line in lines)
-        ):
-            # 优先把影响区域贴到震度行后面，使核心信息尽量聚合在一起。
+        impact_area_text = (
+            str(impact_area).strip()
+            if impact_area is not None
+            else ""
+        )
+        if impact_area_text.lower() in {"none", "null", "undefined"}:
+            impact_area_text = ""
+        if impact_area_text and not any(line.startswith("⚠️影响区域：") for line in lines):
             inserted = False
             for idx, line in enumerate(lines):
                 if line.startswith("💥预估最大震度："):
-                    lines[idx] = f"{line}（影响区域：{impact_area.strip()}）"
+                    lines.insert(idx + 1, f"⚠️影响区域：{impact_area_text}")
                     inserted = True
                     break
             if not inserted:
-                lines.append(f"⚠️影响区域：{impact_area.strip()}")
+                lines.append(f"⚠️影响区域：{impact_area_text}")
 
         if not any("距离震中" in line for line in lines):
             _append_local_estimation(lines, display_context)
@@ -511,7 +513,8 @@ class CencEarthquakePresenter(BasePresenter):
         if data.depth is not None:
             lines.append(f"🏔️深度：{cls._format_depth(data.depth)}")
         if data.intensity is not None:
-            lines.append(f"💥最大烈度：{data.intensity}")
+            emoji = _get_intensity_emoji(data.intensity, is_eew=False, is_shindo=False)
+            lines.append(f"💥最大烈度：{data.intensity} {emoji}")
         return "\n".join(lines)
 
     @classmethod
