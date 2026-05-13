@@ -1265,6 +1265,11 @@ AstrBot/
              └─ version.py                     # 获取插件版本号的工具
 ```
 
+docs/ 目录中有关 Fan Studio 和 Wolfx 的 API 文档为个人收集整理，非完整内容，并且可能与官方文档表述存在出入或过时的问题，仅供参考，必要时请以官方文档为准。
+
+- [FAN Studio API Docs](https://api.fanstudio.tech/)
+- [Wolfx 防灾(防災) 实用类 免费API接口](https://wolfx.jp/)
+
 ### 💾 数据持久化与存储
 
 插件运行时会在 `AstrBot/data/plugin_data/astrbot_plugin_disaster_warning/` 目录下自动创建并维护以下文件，确保查询状态、通知缓存、统计结果与渲染临时资源都能被安全持久化：
