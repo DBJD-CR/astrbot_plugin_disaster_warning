@@ -763,6 +763,30 @@
       }
     }
   },
+  "notification_settings": {
+    "description": "🔔 官方通知配置",
+    "type": "object",
+    "hint": "接收插件更新、修复说明与注意事项等官方通知",
+    "items": {
+      "enabled": {
+        "description": "启用通知中心",
+        "type": "bool",
+        "default": true,
+        "hint": "启用后，插件将定时从远端通知平台拉取通知并同步到 Web 管理端。关闭后将停止远端通知轮询，但仍保留本地已读缓存"
+      },
+      "poll_interval_seconds": {
+        "description": "通知轮询间隔",
+        "type": "int",
+        "default": 300,
+        "hint": "单位：秒。插件向远端通知平台轮询更新的时间间隔，最低将按 30 秒处理",
+        "slider": {
+          "min": 30,
+          "max": 86400,
+          "step": 30
+        }
+      }
+    }
+  },
   "debug_config": {
     "description": "🐛 调试配置",
     "type": "object",
