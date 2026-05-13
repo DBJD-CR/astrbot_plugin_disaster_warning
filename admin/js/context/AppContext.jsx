@@ -40,6 +40,15 @@ const initialState = {
     lastEvent: null,
     magnitudeDistribution: {},
     wsConnected: false,
+    notifications: [],
+    notificationsMeta: {
+        unread_count: 0,
+        last_sync_at: '',
+        total_count: 0
+    },
+    markdownFiles: [],
+    markdownDocument: null,
+    selectedMarkdownPath: '',
     theme: localStorage.getItem('theme') || 'light',
     // 新增：数据加载状态
     dataLoaded: false
@@ -135,6 +144,23 @@ function appReducer(state, action) {
         }
         case 'SET_WS_CONNECTED':
             return { ...state, wsConnected: action.payload };
+        case 'SET_NOTIFICATIONS':
+            return { ...state, notifications: action.payload || [] };
+        case 'SET_NOTIFICATIONS_META':
+            return {
+                ...state,
+                notificationsMeta: action.payload || {
+                    unread_count: 0,
+                    last_sync_at: '',
+                    total_count: 0
+                }
+            };
+        case 'SET_MARKDOWN_FILES':
+            return { ...state, markdownFiles: action.payload || [] };
+        case 'SET_MARKDOWN_DOCUMENT':
+            return { ...state, markdownDocument: action.payload || null };
+        case 'SET_SELECTED_MARKDOWN_PATH':
+            return { ...state, selectedMarkdownPath: action.payload || '' };
         case 'TOGGLE_THEME':
             return { ...state, theme: state.theme === 'light' ? 'dark' : 'light' };
         default:

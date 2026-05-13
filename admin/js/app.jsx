@@ -6,7 +6,7 @@ const { useState, useMemo, useEffect, useRef, useLayoutEffect } = React;
  * 负责主题配置、路由（视图切换）以及全局状态初始化
  */
 function App() {
-    const { state } = useAppContext();
+    const { state, refreshData } = useAppContext();
     // 从 localStorage 初始化 currentView，默认为 'status'
     const [currentView, setCurrentView] = useState(() => {
         return localStorage.getItem('currentView') || 'status';
@@ -377,7 +377,6 @@ function App() {
                     root: {
                         borderRadius: 8,
                         fontWeight: 600,
-                        border: 'none',
                     },
                     colorSuccess: {
                         backgroundColor: state.theme === 'dark' ? 'rgba(166, 211, 137, 0.12)' : 'rgba(56, 106, 32, 0.12)',
@@ -421,6 +420,10 @@ function App() {
                 return <StatsView />;
             case 'config':
                 return <ConfigView />;
+            case 'notifications':
+                return <NotificationsView onRefresh={refreshData} />;
+            case 'docs':
+                return <MarkdownDocsView />;
             default:
                 return <StatusView onOpenSimulation={() => setShowSimulation(true)} />;
         }

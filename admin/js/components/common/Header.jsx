@@ -75,6 +75,8 @@ function Header({ currentView }) {
     // 视图标题映射
     const viewTitles = {
         'status': '运行状态',
+        'notifications': '通知中心',
+        'docs': '文档浏览',
         'events': '事件列表',
         'stats': '数据统计',
         'config': '配置管理'

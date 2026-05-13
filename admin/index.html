@@ -81,6 +81,11 @@
     <!-- Emotion (Material UI 的 CSS-in-JS 依赖) - defer加载 -->
     <script src="lib/emotion-react.umd.min.js" defer></script>
     <script src="lib/emotion-styled.umd.min.js" defer></script>
+
+    <!-- Markdown 增强依赖：可用时启用 GFM、安全清洗与 Mermaid 图表渲染；不可用时自动回退内置渲染器 -->
+    <script src="https://unpkg.com/marked@14.1.2/marked.min.js" defer></script>
+    <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
+    <script src="https://unpkg.com/mermaid@11.4.1/dist/mermaid.min.js" defer></script>
 </head>
 
 <body>
@@ -236,6 +241,7 @@
     </script>
 
     <script src="js/utils/formatters.js" defer></script>
+    <script src="js/utils/markdown.js" defer></script>
 
     <!-- Context -->
     <script type="text/babel" src="js/context/AppContext.jsx" defer></script>
@@ -280,6 +286,8 @@
     <script type="text/babel" src="js/views/StatusView.jsx" defer></script>
     <script type="text/babel" src="js/views/EventsView.jsx" defer></script>
     <script type="text/babel" src="js/views/StatsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/NotificationsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/MarkdownDocsView.jsx" defer></script>
     <script type="text/babel" src="js/views/ConfigView.jsx" defer></script>
 
     <!-- 主入口 -->

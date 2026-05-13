@@ -71,6 +71,25 @@ function useApi() {
         method: 'DELETE'
     });
 
+    const getNotifications = () => fetchData('/notifications');
+    const readNotification = (id) => fetchData('/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+    });
+    const readAllNotifications = () => fetchData('/notifications/read-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    });
+    const refreshNotifications = () => fetchData('/notifications/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    });
+    const listMarkdownFiles = () => fetchData('/markdown-files');
+    const getMarkdownFile = (path) => fetchData(`/markdown-files/${encodeURIComponent(path)}`);
+
     return {
         getStatus,
         getStatistics,
@@ -87,6 +106,12 @@ function useApi() {
         listSessionConfigs,
         getSessionConfig,
         updateSessionConfig,
-        resetSessionConfig
+        resetSessionConfig,
+        getNotifications,
+        readNotification,
+        readAllNotifications,
+        refreshNotifications,
+        listMarkdownFiles,
+        getMarkdownFile
     };
 }

@@ -13,10 +13,13 @@ function Sidebar({ currentView, onViewChange }) {
     const { version } = state.status;
     const { showToast } = useToast(); // 使用 Toast 提示
 
+    const unreadNotifications = Number(state.notificationsMeta?.unread_count || 0);
     const menuItems = [
         { id: 'status', label: '运行状态', icon: '📊' },
-        { id: 'events', label: '事件列表', icon: '🔔' },
+        { id: 'events', label: '事件列表', icon: '📋' },
         { id: 'stats', label: '数据统计', icon: '📈' },
+        { id: 'notifications', label: '通知中心', icon: '🔔', badge: unreadNotifications },
+        { id: 'docs', label: '文档浏览', icon: '📚' },
         { id: 'config', label: '配置管理', icon: '⚙️' },
     ];
 
@@ -47,6 +50,9 @@ function Sidebar({ currentView, onViewChange }) {
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
                             {item.label}
                         </Typography>
+                        {item.badge > 0 && (
+                            <span className="nav-badge">{item.badge > 99 ? '99+' : item.badge}</span>
+                        )}
                     </div>
                 ))}
             </Box>

@@ -57,6 +57,15 @@ function useWebSocket() {
                 dispatch({ type: 'UPDATE_CONNECTIONS', payload: data.connections });
             }
 
+            if (data.notifications) {
+                dispatch({ type: 'SET_NOTIFICATIONS', payload: data.notifications.items || [] });
+                dispatch({ type: 'SET_NOTIFICATIONS_META', payload: data.notifications.meta || null });
+            }
+
+            if (data.notificationsMeta) {
+                dispatch({ type: 'SET_NOTIFICATIONS_META', payload: data.notificationsMeta });
+            }
+
         } else if (msg.type === 'pong') {
             // 心跳响应
         }
