@@ -235,7 +235,7 @@ class CencEarthquakeWolfxParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
+            logger.debug(
                 f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
             )
 
