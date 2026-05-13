@@ -43,6 +43,56 @@ class BrowserManager:
         self._mode = mode
         self._server_url = server_url
 
+    def _truncate_debug_text(self, value, limit: int = 240) -> str:
+        """截断浏览器侧日志文本，避免单条日志过长。"""
+        text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit]}..."
+
+    async def _log_page_diagnostics(self, page: Page, *, reason: str) -> None:
+        """输出页面级诊断信息，辅助定位资源加载、脚本执行与选择器状态问题。"""
+        try:
+            diagnostics = await page.evaluate(
+                """
+                () => {
+                    const mapEl = document.querySelector('#map-container');
+                    const cardEl = document.querySelector('#card-wrapper') || document.querySelector('.quake-card');
+                    const html = document.documentElement;
+                    const body = document.body;
+                    return {
+                        title: document.title || '',
+                        readyState: document.readyState,
+                        bodyClasses: body ? body.className || '' : '',
+                        mapReady: !!document.querySelector('.map-ready'),
+                        mapContainerExists: !!mapEl,
+                        mapContainerSize: mapEl ? {
+                            width: mapEl.clientWidth,
+                            height: mapEl.clientHeight,
+                        } : null,
+                        cardExists: !!cardEl,
+                        cardSize: cardEl ? {
+                            width: cardEl.clientWidth,
+                            height: cardEl.clientHeight,
+                        } : null,
+                        htmlLength: html ? (html.outerHTML || '').length : 0,
+                    };
+                }
+                """
+            )
+            logger.warning(
+                f"[灾害预警] 页面诊断（{reason}）：当前文档状态为 {diagnostics.get('readyState')}，"
+                f"地图就绪标记{'已出现' if diagnostics.get('mapReady') else '尚未出现'}，"
+                f"地图容器{'已找到' if diagnostics.get('mapContainerExists') else '未找到'}，"
+                f"地图区域尺寸为 {diagnostics.get('mapContainerSize')}，"
+                f"卡片容器{'已找到' if diagnostics.get('cardExists') else '未找到'}，"
+                f"卡片尺寸为 {diagnostics.get('cardSize')}，"
+                f"页面 body 类名为“{self._truncate_debug_text(diagnostics.get('bodyClasses'))}”，"
+                f"页面 HTML 长度约为 {diagnostics.get('htmlLength')} 个字符。"
+            )
+        except Exception as diag_err:
+            logger.warning(f"[灾害预警] 页面诊断({reason})失败: {diag_err}")
+
     async def initialize(self):
         """初始化浏览器和页面池"""
         async with self._init_lock:
@@ -200,6 +250,9 @@ class BrowserManager:
         start_time = time.time()
 
         acquired_semaphore = False
+        console_messages: list[str] = []
+        page_errors: list[str] = []
+        request_failures: list[str] = []
         try:
             # 并发控制 - 限制同时渲染的数量
             try:
@@ -218,6 +271,47 @@ class BrowserManager:
                     return None
 
                 try:
+
+                    def _record_console(msg):
+                        try:
+                            location = msg.location or {}
+                            entry = (
+                                f"[{msg.type}] {self._truncate_debug_text(msg.text)}"
+                                f" @ {location.get('url', '')}:{location.get('lineNumber', '')}:{location.get('columnNumber', '')}"
+                            )
+                            console_messages.append(entry)
+                            if msg.type in {"error", "warning"}:
+                                logger.warning(f"[灾害预警] 页面控制台{entry}")
+                        except Exception as hook_err:
+                            logger.debug(f"[灾害预警] 记录控制台日志失败: {hook_err}")
+
+                    def _record_page_error(exc):
+                        try:
+                            text = self._truncate_debug_text(exc)
+                            page_errors.append(text)
+                            logger.warning(f"[灾害预警] 页面脚本异常: {text}")
+                        except Exception as hook_err:
+                            logger.debug(f"[灾害预警] 记录页面脚本异常失败: {hook_err}")
+
+                    def _record_request_failed(req):
+                        try:
+                            failure = req.failure
+                            failure_text = ""
+                            if failure:
+                                if isinstance(failure, dict):
+                                    failure_text = failure.get("errorText", "")
+                                else:
+                                    failure_text = str(failure)
+                            entry = f"{req.method} {req.url} -> {self._truncate_debug_text(failure_text or 'unknown failure')}"
+                            request_failures.append(entry)
+                            logger.warning(f"[灾害预警] 页面资源请求失败: {entry}")
+                        except Exception as hook_err:
+                            logger.debug(f"[灾害预警] 记录请求失败失败: {hook_err}")
+
+                    page.on("console", _record_console)
+                    page.on("pageerror", _record_page_error)
+                    page.on("requestfailed", _record_request_failed)
+
                     # 本地模式：使用 file:// 协议（支持相对路径资源）
                     temp_html = None
                     try:
@@ -239,18 +333,44 @@ class BrowserManager:
                             except Exception:
                                 pass
 
-                    # 等待地图渲染完成标记
-                    try:
-                        await page.wait_for_selector(
-                            ".map-ready", state="attached", timeout=10000
-                        )
-                        logger.debug("[灾害预警] 地图渲染标记已就绪")
-                    except Exception:
-                        logger.warning(
-                            "[灾害预警] 等待 .map-ready 标记超时，地图可能未完全加载"
-                        )
-                        # 兜底等待，确保至少能看到部分内容
-                        await asyncio.sleep(0.2)
+                    # 仅在页面实际包含地图区域时等待地图渲染完成标记。
+                    # 地震列表等纯卡片模板并不包含地图容器，如果统一等待 .map-ready，
+                    # 会在正常场景下产生误导性的“地图超时”诊断日志。
+                    has_map_related_nodes = await page.evaluate("""
+                        () => {
+                            const selectors = [
+                                '.map-ready',
+                                '#map',
+                                '.map-container',
+                                '#map-container',
+                                '.leaflet-container'
+                            ];
+                            return selectors.some((selector) => document.querySelector(selector));
+                        }
+                    """)
+                    if has_map_related_nodes:
+                        try:
+                            await page.wait_for_selector(
+                                ".map-ready", state="attached", timeout=10000
+                            )
+                            logger.debug("[灾害预警] 地图渲染标记已就绪")
+                        except Exception:
+                            logger.warning(
+                                "[灾害预警] 等待 .map-ready 标记超时，地图可能未完全加载"
+                            )
+                            if request_failures:
+                                logger.warning(
+                                    f"[灾害预警] 地图等待超时期间捕获到资源失败: {' | '.join(request_failures[-5:])}"
+                                )
+                            if page_errors:
+                                logger.warning(
+                                    f"[灾害预警] 地图等待超时期间捕获到脚本异常: {' | '.join(page_errors[-3:])}"
+                                )
+                            await self._log_page_diagnostics(
+                                page, reason="map-ready-timeout"
+                            )
+                            # 兜底等待，确保至少能看到部分内容
+                            await asyncio.sleep(0.2)
 
                     # 等待卡片元素可见
                     try:
@@ -258,7 +378,7 @@ class BrowserManager:
                             selector, state="visible", timeout=2000
                         )
                     except Exception:
-                        # 兜底：尝试找常见的类名
+                        # 兜底：尝试找常见的类名。该分支在部分模板中属于正常兼容路径，不额外输出诊断日志。
                         logger.debug(
                             f"[灾害预警] 选择器 {selector} 未找到，尝试备用选择器"
                         )
@@ -276,10 +396,21 @@ class BrowserManager:
                     elapsed = time.time() - start_time
 
                     if os.path.exists(output_path):
+                        if request_failures:
+                            logger.warning(
+                                f"[灾害预警] 卡片渲染虽成功，但捕获到资源请求失败: {' | '.join(request_failures[-5:])}"
+                            )
+                        if page_errors:
+                            logger.warning(
+                                f"[灾害预警] 卡片渲染虽成功，但捕获到页面脚本异常: {' | '.join(page_errors[-3:])}"
+                            )
                         logger.info(f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒")
                         return output_path
                     else:
                         logger.warning("[灾害预警] 截图未生成文件")
+                        await self._log_page_diagnostics(
+                            page, reason="screenshot-missing"
+                        )
                         return None
 
                 finally:
