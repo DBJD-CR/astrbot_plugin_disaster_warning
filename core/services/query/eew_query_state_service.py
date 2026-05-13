@@ -74,14 +74,18 @@ class EEWQueryStateService:
     ) -> str:
         """构建机构内去重指纹。
 
-        通过事件键、地点、震级与分钟桶描述同机构下的一条预警更新链。
+        指纹需要尽量稳定地描述“同一机构下同一条预警更新链”。
+        早期实现把震级也纳入指纹，但 EEW 后续报经常会修正震级，
+        这会导致同一事件的第 N 报被误判成另一条链，进而无法稳定覆盖首报。
+
+        因此这里仅使用更稳定的事件键、地点与发震时间分钟桶；
+        其中分钟桶用于兼容少数来源缺少稳定 event_id 的情况。
         """
         del source_id
         place = (data.place_name or "未知地点").strip()
-        magnitude = "?" if data.magnitude is None else f"{float(data.magnitude):.1f}"
         shock_time = resolve_event_publish_time_utc(envelope)
         minute_bucket = shock_time.strftime("%Y%m%d%H%M")
-        return f"{event_key}|{place}|{magnitude}|{minute_bucket}"
+        return f"{event_key}|{place}|{minute_bucket}"
 
     def should_replace(
         self, current: dict[str, Any], candidate: dict[str, Any]
