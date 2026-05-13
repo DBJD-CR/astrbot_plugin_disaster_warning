@@ -97,6 +97,8 @@ class LogFileStore:
                 try:
                     self.log_file_path.rename(backup_file)
                     logger.info(f"[灾害预警] 日志文件已轮转，备份文件: {backup_file}")
+                    # 轮转完成后立即重建空主日志文件，避免摘要读取或下一次写入命中“主文件暂不存在”的窗口。
+                    self.log_file_path.touch(exist_ok=True)
                 except OSError as e:
                     logger.error(f"[灾害预警] 重命名主日志文件失败: {e}")
 

@@ -38,6 +38,10 @@ class LogSummaryService:
             current_size_mb = log_file_path.stat().st_size / (1024 * 1024)
             file_size_mb = current_size_mb
             file_count = 1
+            max_capacity_mb = max_size_mb * (max_files + 1)
+            usage_percent = (
+                (file_size_mb / max_capacity_mb) * 100 if max_capacity_mb > 0 else 0
+            )
 
             def update_date_range(content_to_parse: str):
                 # 通过扫描统一日志头部格式来提取时间范围，避免依赖具体消息内容结构。
@@ -77,6 +81,24 @@ class LogSummaryService:
                     except Exception as e:
                         logger.debug(f"[灾害预警] 读取旧日志文件 {old_file} 失败: {e}")
 
+            if not log_file_path.exists():
+                return {
+                    "enabled": enabled,
+                    "log_exists": file_count > 1,
+                    "log_file": str(log_file_path),
+                    "total_entries": entry_count,
+                    "data_sources": list(sources),
+                    "date_range": date_range,
+                    "file_size_mb": file_size_mb,
+                    "file_count": file_count,
+                    "max_files_limit": max_files,
+                    "max_single_file_size_mb": max_size_mb,
+                    "max_total_capacity_mb": max_capacity_mb,
+                    "usage_percent": usage_percent,
+                    "filter_stats": filter_stats.copy(),
+                    "format_version": "3.0",
+                }
+
             with open(log_file_path, encoding="utf-8") as f:
                 content = f.read()
 
@@ -99,7 +121,6 @@ class LogSummaryService:
                     logger.debug(f"[灾害预警] 解析日志条目失败: {e}")
                     continue
 
-            max_capacity_mb = max_size_mb * (max_files + 1)
             usage_percent = (
                 (file_size_mb / max_capacity_mb) * 100 if max_capacity_mb > 0 else 0
             )
