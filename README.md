@@ -22,6 +22,13 @@
 
 <p align="center">
   <a href="https://deepwiki.com/DBJD-CR/astrbot_plugin_disaster_warning" target="_blank"><img src="https://deepwiki.com/badge.svg" alt="deepwiki"></a>
+  <a href="https://www.star-history.com/DBJD-CR/astrbot_plugin_disaster_warning">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=DBJD-CR/astrbot_plugin_disaster_warning&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=DBJD-CR/astrbot_plugin_disaster_warning" />
+      <img alt="Star History Rank" src="https://api.star-history.com/badge?repo=DBJD-CR/astrbot_plugin_disaster_warning" />
+    </picture>
+  </a>
   <a href="https://zread.ai/DBJD-CR/astrbot_plugin_disaster_warning" target="_blank"><img src="https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff" alt="zread"/></a>
 
 [![Moe Counter](https://count.getloli.com/get/@DBJD-CR2?theme=moebooru)](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning)
@@ -880,22 +887,22 @@
 
 插件提供以下命令：
 
-| 命令 | 描述 |
-| :--- | :--- |
-| `/灾害预警` | 显示插件帮助信息 |
-| `/灾害预警状态` | 查看服务运行状态 |
-| `/灾害预警重连` | 强制重连所有离线数据源 **(仅管理员)** |
-| `/地震列表查询 [数据源] [数量] [格式]` | 查询最新地震列表 (card/text 格式) |
-| `/地震预警` 或 `/地震预警查询` | 查询各机构 EEW 发布状态与无 EEW 计时 |
-| `/气象预警` 或 `/气象预警查询 <省份/地名/全国> [<预警类型>] [<预警颜色>] 或 <预警ID>` | 查询近期气象预警列表或查询单个气象预警详情 |
-| `/灾害预警统计` | 查看详细的事件统计报告 |
-| `/灾害预警统计清除` | 清除所有统计信息 **(仅管理员)** |
-| `/灾害预警推送开关` | 开启或关闭当前会话的推送 **(仅管理员)** |
-| `/灾害预警配置 查看 全局/当前/<会话UMO>` | 查看会话配置信息 **(仅管理员)** |
-| `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]` | 模拟地震事件测试 |
-| `/灾害预警日志` | 查看原始消息日志统计摘要 **(仅管理员)** |
-| `/灾害预警日志开关` | 开关原始消息日志记录 **(仅管理员)** |
-| `/灾害预警日志清除` | 清除所有原始消息日志 **(仅管理员)** |
+| 命令 | 别名 | 描述 |
+| :--- | :--- | :--- |
+| `/灾害预警` | - | 显示插件帮助信息 |
+| `/灾害预警状态` | - | 查看服务运行状态 |
+| `/灾害预警重连` | - | 强制重连所有离线数据源 **(仅管理员)** |
+| `/地震列表查询 [数据源] [数量] [格式]` | `/地震列表` | 查询最新地震列表 (card/text 格式) |
+| `/地震预警查询` | `/地震预警` | 查询各机构 EEW 发布状态与无 EEW 计时 |
+| `/气象预警查询 <省份/地名/全国> [<预警类型>] [<预警颜色>]` 或 `/气象预警查询 <预警ID>` | `/气象预警` | 查询近期气象预警列表或查询单个气象预警详情 |
+| `/灾害预警统计` | - | 查看详细的事件统计报告 |
+| `/灾害预警统计清除` | - | 清除所有统计信息 **(仅管理员)** |
+| `/灾害预警推送开关` | - | 开启或关闭当前会话的推送 **(仅管理员)** |
+| `/灾害预警配置 查看 全局/当前/<会话UMO>` | - | 查看会话配置信息 **(仅管理员)** |
+| `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]` | - | 模拟地震事件测试 |
+| `/灾害预警日志` | - | 查看原始消息日志统计摘要 **(仅管理员)** |
+| `/灾害预警日志开关` | - | 开关原始消息日志记录 **(仅管理员)** |
+| `/灾害预警日志清除` | - | 清除所有原始消息日志 **(仅管理员)** |
 
 > [!NOTE]
 > 带有 **(仅管理员)** 标记的命令需要用户具有 AstrBot 全局管理员权限或在插件配置中被列为管理员才能使用。
@@ -905,6 +912,7 @@
 ```bash
 # 查询地震列表
 # 格式：/地震列表查询 [数据源] [数量] [格式]
+# 别名：/地震列表 [数据源] [数量] [格式]
 # 图片格式最大传入参数为 50 ，纯文本格式最大传入参数为 50
 
 # 1. 默认查询 (中国地震台网 - 最近9条 - 卡片格式)
@@ -918,6 +926,9 @@
 
 # 4. 以纯文本格式显示 CENC 最近 5 条地震记录
 /地震列表查询 cenc 5 text
+
+# 5. 使用别名查询 JMA 最近 10 条地震记录（参数与原命令一致）
+/地震列表 jma 10 card
 
 # 查询当前各机构地震预警（EEW）状态
 /地震预警查询
@@ -1046,20 +1057,21 @@ AstrBot/
          │   │   │
          │   │   ├─ utils/                     # 前端工具函数
          │   │   │   ├─ auth.js                # 认证工具
-         │   │   │   └─ formatters.js          # 时间/震级/数据源名称等前端格式化工具
+         │   │   │   ├─ formatters.js          # 时间/震级/数据源名称等前端格式化工具
+         │   │   │   └─ markdown.js            # Markdown 渲染、清洗、代码块/表格/Callout 处理工具
          │   │   │
          │   │   ├─ views/                     # 页面视图组件
          │   │   │   ├─ ConfigView.jsx         # 配置管理页容器
          │   │   │   ├─ EventsView.jsx         # 事件总览页
+         │   │   │   ├─ MarkdownDocsView.jsx   # 文档浏览页
+         │   │   │   ├─ NotificationsView.jsx  # 通知中心页
          │   │   │   ├─ StatsView.jsx          # 统计分析页
          │   │   │   └─ StatusView.jsx         # 运行状态页
          │   │   │
-         │   │   └─ app.jsx                    # React 应用入口
+         │   │   └─ app.jsx                    # React 应用入口与页面切换
          │   ├─ lib/                           # 第三方库 (React, MUI 等)
          │   │
          │   └─ index.html                     # 管理端入口
-         │
-         ├─ API Docs/                          # 上游接口文档与本地 API 规范
          │
          ├─ core/                              # 后端核心模块目录
          │   ├─ __init__.py
@@ -1194,6 +1206,11 @@ AstrBot/
          │   │   ├─ display/                   # 展示数据构建目录
          │   │   ├─ geo/                       # 地理计算与区域解析目录
          │   │   ├─ identity/                  # 事件标识与去重目录
+         │   │   ├─ notification/              # 通知系统目录
+         │   │   │   ├─ notification_cache_repository.py # 通知缓存文件读写仓储
+         │   │   │   ├─ notification_center.py          # 通知同步、缓存、已读状态与轮询广播编排
+         │   │   │   ├─ notification_normalizer.py      # 远端通知标准化与数据清洗
+         │   │   │   └─ notification_remote_client.py   # 官方通知远端拉取客户端
          │   │   ├─ query/                     # 查询服务目录
          │   │   ├─ simulation/                # 模拟预警目录
          │   │   └─ telemetry/                 # 遥测服务目录
@@ -1210,6 +1227,8 @@ AstrBot/
          │       ├─ source_compat.py           # 历史数据兼容辅助
          │       ├─ statistics_manager.py      # 统计数据持久化管理器
          │       └─ stats/                     # 统计聚合子模块
+         │
+         ├─ docs/                              # 上游接口文档与本地 API 规范
          │
          ├─ models/                            # Protobuf 消息模型目录
          │   ├─ websocket_message.proto        # Protobuf 消息定义文件
@@ -1248,7 +1267,7 @@ AstrBot/
 
 ### 💾 数据持久化与存储
 
-插件运行时会在 `AstrBot/data/plugin_data/astrbot_plugin_disaster_warning/` 目录下自动创建并维护以下文件，确保数据的持久化与可追踪性：
+插件运行时会在 `AstrBot/data/plugin_data/astrbot_plugin_disaster_warning/` 目录下自动创建并维护以下文件，确保查询状态、通知缓存、统计结果与渲染临时资源都能被安全持久化：
 
 ```bash
 AstrBot/
@@ -1256,11 +1275,12 @@ AstrBot/
    └─ plugin_data/
       └─ astrbot_plugin_disaster_warning/
          ├─ temp/                              # 临时文件夹，用于存放渲染生成的图片文件
-         ├─ .telemetry_id                      # 匿名遥测实例ID（不包含任何用户信息）
+         ├─ .telemetry_id                      # 匿名遥测实例 ID（不包含任何用户信息）
          ├─ earthquake_lists_cache.json        # Wolfx 地震列表数据缓存
          ├─ eew_query_cache.json               # EEW 查询状态缓存
          ├─ events.db                          # SQLite 数据库，存储所有历史灾害事件记录
          ├─ logger_stats.json                  # 日志过滤器统计摘要
+         ├─ notifications_cache.json           # 官方通知缓存（通知内容、已读状态、最近同步时间）
          ├─ raw_messages.log                   # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
          ├─ raw_messages.log.1                 # 轮转日志文件（自动管理）
          ├─ raw_messages.log.2                 # 更多轮转文件...
@@ -1271,6 +1291,7 @@ AstrBot/
 - **统计数据 (`statistics.json`)**: 记录自插件启动以来的统计摘要信息（如震级分布、历史极值等）。即使插件重启，去重指纹和历史统计信息也会被保留。
 - **列表缓存 (`earthquake_lists_cache.json`)**: 持久化缓存获取到的地震列表数据，用于重载插件后也能第一时间使用 `/地震列表查询` 命令。
 - **EEW 查询缓存 (`eew_query_cache.json`)**: 持久化保存机构级地震预警查询状态（如最近一次预警发布时间、有效期等），用于插件重载后继续计算“无 EEW”时长。
+- **通知缓存 (`notifications_cache.json`)**：用于保存官方通知列表、已读映射和最近同步时间。这样通知中心在插件重启后仍能立即展示上次同步到的内容，不必等首次轮询完成。
 - **日志统计 (`logger_stats.json`)**: 记录日志过滤器的拦截统计信息，如心跳包过滤数、重复事件拦截数等。
 - **匿名ID (`.telemetry_id`)**: 用于遥测统计的匿名随机实例标识符。
 - **原始日志 (`raw_messages.log`)**: 仅在 WebUI 配置中启用 `enable_raw_message_logging` 时生成。它以极高的可读性记录了上游数据源的原始 JSON 结构，是开发者和高级用户排查问题的利器。
@@ -1298,97 +1319,111 @@ graph TB
     classDef infra fill:#EDE7F6,stroke:#5E35B1,stroke-width:1.5px,color:#311B92;
 
     %% ========== 应用装载层 ==========
-    subgraph L1["① 应用装载层（Browser Runtime）"]
+    subgraph L1["① 应用装载层"]
         direction TB
         A1["index.html<br/>脚本顺序加载与首屏骨架"]
-        A2["BootLoader<br/>主题预初始化 + 平滑退场"]
+        A2["启动加载层<br/>主题预初始化 + 平滑退场"]
         A3["app.jsx<br/>应用根组件"]
-        A4["ThemeProvider<br/>MD3 动态主题"]
-        A5["CssBaseline<br/>全局样式重置"]
-        A6["Layout Shell<br/>Sidebar + Header + MainContent"]
+        A4["主题提供器<br/>MD3 动态主题"]
+        A5["全局样式基线<br/>基础样式重置"]
+        A6["布局外壳<br/>侧边栏 + 顶栏 + 主内容区"]
     end
 
     %% ========== 上下文与状态层 ==========
-    subgraph L2["② 全局状态与上下文层（State Core）"]
+    subgraph L2["② 全局状态与上下文层"]
         direction TB
-        B1["AppContext<br/>全局状态容器"]
-        B2["Reducer<br/>状态变更收敛"]
-        B3["initialState<br/>status/stats/events/connections"]
-        B4["dispatch(Action)<br/>统一更新入口"]
+        B1["全局状态上下文<br/>统一状态容器"]
+        B2["状态归并器<br/>状态变更收敛"]
+        B3["初始状态<br/>状态/统计/事件/连接/通知/文档"]
+        B4["派发动作<br/>统一更新入口"]
         B5["refreshData()<br/>刷新运行状态"]
         B6["fetchConnections()<br/>刷新连接信息"]
         B7["fetchConfig()<br/>拉取显示时区等配置"]
-        B8["TOGGLE_THEME<br/>亮暗主题切换"]
-        B9["SET_WS_CONNECTED<br/>实时连接态"]
-        B10["UPDATE_STATS<br/>统计聚合与排序"]
+        B8["主题切换动作<br/>亮暗主题切换"]
+        B9["连接状态动作<br/>实时连接态"]
+        B10["统计更新动作<br/>统计聚合与排序"]
+        B11["通知状态动作<br/>通知列表与元信息收敛"]
     end
 
     %% ========== 视图层 ==========
-    subgraph L3["③ 视图路由层（Views）"]
+    subgraph L3["③ 视图路由层"]
         direction LR
-        C1["StatusView<br/>运行态与运维操作"]
-        C2["EventsView<br/>事件时间线 + 列表"]
-        C3["StatsView<br/>图表与榜单总览"]
-        C4["ConfigView<br/>配置管理容器"]
+        C1["运行状态视图<br/>运行态与运维操作"]
+        C2["事件总览视图<br/>事件时间线 + 列表"]
+        C3["数据统计视图<br/>图表与榜单总览"]
+        C4["配置管理视图<br/>配置管理容器"]
+        C5["通知中心视图<br/>通知中心"]
+        C6["文档浏览视图<br/>Markdown 文档浏览"]
     end
 
     %% ========== 状态页组件 ==========
-    subgraph L4S["④-1 状态页组件组（Status Components）"]
+    subgraph L4S["④-1 状态页组件组"]
         direction TB
-        S1["NewsTicker<br/>实时动态跑马灯"]
-        S2["StatusCard<br/>服务状态卡片"]
-        S3["StatsCard<br/>核心统计卡片"]
-        S4["ConnectionsGrid<br/>连接矩阵 + 延迟"]
-        S5["SimulationModal<br/>模拟预警表单"]
-        S6["Quick Actions<br/>重连/刷新/清除"]
+        S1["实时动态跑马灯"]
+        S2["服务状态卡片"]
+        S3["核心统计卡片"]
+        S4["连接状态矩阵 + 延迟"]
+        S5["模拟预警表单"]
+        S6["快捷操作区<br/>重连/刷新/清除"]
     end
 
     %% ========== 事件页组件 ==========
-    subgraph L4E["④-2 事件页组件组（Events Components）"]
+    subgraph L4E["④-2 事件页组件组"]
         direction TB
-        E1["HorizontalTimeline<br/>重大事件横向回溯"]
-        E2["EventsList<br/>分页 + 筛选 + 折叠"]
-        E3["Event Grouping<br/>按 event_id 聚合"]
-        E4["History Collapse<br/>多报展开/收起"]
-        E5["Badge Engine<br/>震级/震度/烈度语义徽章"]
-        E6["Pagination<br/>跳页与每页条数"]
+        E1["横向时间线<br/>重大事件回溯"]
+        E2["事件列表<br/>分页 + 筛选 + 折叠"]
+        E3["事件分组<br/>按 event_id 聚合"]
+        E4["历史展开区<br/>多报展开/收起"]
+        E5["徽章语义引擎<br/>震级/震度/烈度标签"]
+        E6["分页器<br/>跳页与每页条数"]
     end
 
     %% ========== 统计页组件 ==========
-    subgraph L4T["④-3 统计页组件组（Stats Components）"]
+    subgraph L4T["④-3 统计页组件组"]
         direction TB
-        T1["MagnitudeChart<br/>震级分布"]
-        T2["TrendChart<br/>趋势图"]
-        T3["CalendarHeatmap<br/>热力图"]
-        T4["TopListCard<br/>地区/来源排行"]
-        T5["MaxMagCard<br/>最大地震"]
-        T6["WeatherLevelCard + LogStatsCard<br/>气象级别与日志统计"]
+        T1["震级分布图<br/>震级区间统计"]
+        T2["趋势图"]
+        T3["日历热力图"]
+        T4["排行卡片<br/>地区/来源榜单"]
+        T5["最大地震卡片<br/>历史极值展示"]
+        T6["气象与日志统计卡片"]
     end
 
     %% ========== 配置页组件 ==========
-    subgraph L4C["④-4 配置页组件组（Config Components）"]
+    subgraph L4C["④-4 配置页组件组"]
         direction TB
-        G1["ConfigRenderer<br/>Schema 动态渲染"]
-        G2["ConfigField<br/>字段类型分发器"]
-        G3["Session Mode<br/>全局/会话差异配置"]
-        G4["Draft Cache<br/>草稿本地持久化"]
-        G5["Expanded Cache<br/>折叠状态记忆"]
-        G6["Save Pipeline<br/>清洗后提交"]
+        G1["配置渲染器<br/>配置 Schema 动态渲染"]
+        G2["配置字段分发器<br/>字段类型路由"]
+        G3["会话配置模式<br/>全局/会话差异配置"]
+        G4["草稿缓存<br/>草稿本地持久化"]
+        G5["折叠状态缓存<br/>展开/收起记忆"]
+        G6["保存流水线<br/>清洗后提交"]
+    end
+
+    %% ========== 通知与文档页组件 ==========
+    subgraph L4N["④-5 通知与文档页组件组"]
+        direction TB
+        N1["通知摘要区<br/>未读数 / 同步状态 / 快捷操作"]
+        N2["通知内容流<br/>通知列表 / 已读状态 / Markdown 正文"]
+        N3["文档浏览器<br/>文档列表 / 文件切换 / 文章区"]
+        N4["Mermaid 增强器<br/>图表渲染 / 缩放 / 拖拽"]
+        N5["Markdown 渲染工具<br/>清洗 / 表格 / 代码块 / 提示块"]
     end
 
     %% ========== Hooks 层 ==========
-    subgraph L5["⑤ Hooks 能力层（Runtime Hooks）"]
+    subgraph L5["⑤ Hooks 能力层"]
         direction TB
-        H1["useWebSocket<br/>全局单例连接"]
-        H2["ConnectionListeners<br/>订阅广播机制"]
-        H3["Reconnect Scheduler<br/>断线重连"]
-        H4["useApi<br/>REST 请求封装"]
-        H5["usePreservedScroll<br/>滚动保留恢复"]
-        H6["Custom Effects<br/>视图切换滚动记忆"]
+        H1["WebSocket Hook<br/>全局单例连接"]
+        H2["连接监听器<br/>订阅广播机制"]
+        H3["重连调度器<br/>断线重连"]
+        H4["API Hook<br/>REST 请求封装"]
+        H5["滚动保留 Hook<br/>列表滚动恢复"]
+        H6["界面副作用集<br/>视图切换滚动记忆"]
+        H7["文档加载副作用<br/>目录加载与文章刷新"]
     end
 
     %% ========== 数据与接口层 ==========
-    subgraph L6["⑥ 数据接口层（Data Plane）"]
+    subgraph L6["⑥ 数据与接口层"]
         direction TB
         D1["/api/status<br/>运行状态"]
         D2["/api/connections<br/>连接详情"]
@@ -1398,16 +1433,19 @@ graph TB
         D6["/api/simulate + /api/simulation-params<br/>模拟预警链路"]
         D7["/api/session-config/*<br/>会话差异配置"]
         D8["/ws<br/>实时推送通道"]
+        D9["/api/notifications*<br/>通知列表 / 已读 / 手动同步"]
+        D10["/api/docs/*<br/>文档目录 / Markdown 文件读取"]
     end
 
     %% ========== 工具与样式层 ==========
-    subgraph L7["⑦ 工具与样式层（Utilities & Design Tokens）"]
+    subgraph L7["⑦ 工具与样式层"]
         direction TB
         U1["formatters.js<br/>时间/来源/数值格式化"]
-        U2["style.css<br/>响应式 + 主题变量 + 动画"]
+        U2["style.css<br/>响应式布局 + 主题变量 + 动画"]
         U3["Material UI UMD<br/>组件基础设施"]
         U4["Emotion<br/>运行时样式系统"]
-        U5["LocalStorage<br/>主题/视图/滚动/草稿缓存"]
+        U5["本地存储<br/>主题/视图/滚动/草稿缓存"]
+        U6["markdown.js<br/>Markdown 渲染 / Mermaid 预处理 / HTML 清洗"]
     end
 
     %% ========== 主干连接 ==========
@@ -1429,6 +1467,8 @@ graph TB
     A6 --> C2
     A6 --> C3
     A6 --> C4
+    A6 --> C5
+    A6 --> C6
 
     C1 --> S1
     C1 --> S2
@@ -1458,11 +1498,20 @@ graph TB
     G1 --> G5
     G1 --> G6
 
+    C5 --> N1
+    C5 --> N2
+    C6 --> N3
+    C6 --> N4
+    C6 --> N5
+    N3 --> N5
+    N4 --> N5
+
     %% ========== Hooks 与上下文耦合 ==========
     A3 --> H1
     A3 --> H4
     E2 --> H5
     A3 --> H6
+    C6 --> H7
     H1 --> H2
     H1 --> H3
 
@@ -1474,6 +1523,8 @@ graph TB
     H4 --> D5
     H4 --> D6
     H4 --> D7
+    H4 --> D9
+    H4 --> D10
 
     B5 --> D1
     B6 --> D2
@@ -1490,32 +1541,42 @@ graph TB
     D5 --> C3
     D6 --> S5
     D7 --> G3
+    D8 --> B11
+    D9 --> C5
+    D9 --> B11
+    D10 --> C6
 
     %% ========== 工具支撑 ==========
     U1 --> S1
     U1 --> E1
     U1 --> E2
     U1 --> C3
+    U1 --> C5
     U2 --> A6
     U2 --> C1
     U2 --> C2
     U2 --> C3
     U2 --> C4
+    U2 --> C5
+    U2 --> C6
     U3 --> A3
     U4 --> U3
     U5 --> A3
     U5 --> G4
     U5 --> G5
     U5 --> H6
+    U6 --> N2
+    U6 --> N3
+    U6 --> N4
 
     %% ========== 视觉分层样式绑定 ==========
     class A1,A2,A3,A4,A5,A6 entry;
-    class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10 core;
-    class C1,C2,C3,C4 view;
-    class S1,S2,S3,S4,S5,S6,E1,E2,E3,E4,E5,E6,T1,T2,T3,T4,T5,T6,G1,G2,G3,G4,G5,G6 component;
-    class H1,H2,H3,H4,H5,H6 hook;
-    class D1,D2,D3,D4,D5,D6,D7,D8 api;
-    class U1,U2,U3,U4,U5 util;
+    class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11 core;
+    class C1,C2,C3,C4,C5,C6 view;
+    class S1,S2,S3,S4,S5,S6,E1,E2,E3,E4,E5,E6,T1,T2,T3,T4,T5,T6,G1,G2,G3,G4,G5,G6,N1,N2,N3,N4,N5 component;
+    class H1,H2,H3,H4,H5,H6,H7 hook;
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10 api;
+    class U1,U2,U3,U4,U5,U6 util;
 ```
 
 ### 📊 后端架构图
@@ -1558,7 +1619,8 @@ graph TB
         S3["连接拓扑构建<br/>数据源目录 + 连接计划构建器"]
         S4["注册表完整性自检<br/>解析器 / 展示器 注册检查"]
         S5["统一事件流水线<br/>推送 → 统计 → 管理端广播"]
-        S6["状态 / 通知 / 重连服务"]
+        S6["状态 / 离线通知 / 重连服务"]
+        S7["通知中心<br/>官方通知同步、缓存与广播"]
     end
 
     subgraph B4["④ 网络接入与标准化层"]
@@ -1609,6 +1671,7 @@ graph TB
         C4["WebSocket 实时广播<br/>周期快照 + 事件即时推送"]
         C5["数据源健康探测"]
         C6["资源清理与回收"]
+        C7["文档浏览工具路由<br/>Markdown 文件列表与内容读取"]
     end
 
     U1 --> M1
@@ -1631,12 +1694,14 @@ graph TB
     M5 --> C3
     M5 --> C4
     M5 --> C5
+    M5 --> C7
 
     S1 --> S2
     S1 --> S3
     S1 --> S4
     S1 --> S5
     S1 --> S6
+    S1 --> S7
     S1 --> N1
     S1 --> R1
     S1 --> D1
@@ -1651,6 +1716,9 @@ graph TB
     S5 --> C4
     S6 --> D6
     S6 --> N1
+    S7 --> C4
+    S7 --> D4
+    S7 --> C3
 
     N1 --> N2
     N2 --> N3
@@ -1688,6 +1756,8 @@ graph TB
     D1 --> D3
     D1 --> D4
     D2 --> D4
+    C3 --> S7
+    C7 --> D4
     D5 --> D4
     D6 --> C4
     D6 --> C5
@@ -2148,7 +2218,24 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 
 ## ⭐️ 星星
 
-[![Star History Chart](https://api.star-history.com/svg?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date)](https://www.star-history.com/#DBJD-CR/astrbot_plugin_disaster_warning&Date)
+<div align="center">
+<a href="https://www.star-history.com/#DBJD-CR/astrbot_plugin_disaster_warning&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
+  </picture>
+</a>
+
+<br>
+
+<a href="https://www.star-history.com/DBJD-CR/astrbot_plugin_disaster_warning">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&style=landscape1&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&style=landscape1" />
+    <img alt="Star History Overview Card" src="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&style=landscape1" />
+  </picture>
+</a>
 
 ---
 
