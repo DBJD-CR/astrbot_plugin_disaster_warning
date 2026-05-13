@@ -45,11 +45,12 @@ class RealtimePayloadBuilder:
         """构建实时数据。"""
         result: dict[str, Any] = {"timestamp": datetime.now().isoformat()}
 
-        # 实时面板按“状态、统计、连接、近期地震”四个区块组织数据，便于前端按模块渲染。
+        # 实时面板按“状态、统计、连接、近期地震、通知”五个区块组织数据，便于前端按模块渲染。
         result["status"] = self.build_status_payload()
         result["statistics"] = self.build_statistics_payload()
         result["connections"] = self.build_connections_payload(expected_sources)
         result["earthquakes"] = self._build_recent_earthquakes_payload()
+        result["notifications"] = await self._build_notifications_payload()
         return result
 
     def _build_runtime_snapshot(self) -> dict[str, Any]:
@@ -145,6 +146,22 @@ class RealtimePayloadBuilder:
         payload["recent_pushes"] = list(payload.get("event_summary_views", []))[:50]
         payload["timestamp"] = datetime.now().isoformat()
         return payload
+
+    async def _build_notifications_payload(self) -> dict[str, Any]:
+        """构建通知中心实时载荷。"""
+        notification_center = getattr(
+            self.disaster_service, "notification_center", None
+        )
+        if not notification_center:
+            return {
+                "items": [],
+                "meta": {
+                    "unread_count": 0,
+                    "last_sync_at": None,
+                    "total_count": 0,
+                },
+            }
+        return await notification_center.get_payload()
 
     def _build_recent_earthquakes_payload(self) -> list[dict[str, Any]]:
         """构建近期地震摘要列表。"""

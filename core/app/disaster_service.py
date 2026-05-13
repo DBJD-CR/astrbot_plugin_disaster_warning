@@ -38,6 +38,7 @@ from ..parsers.parser_registry import (
 from ..services.config.config_service import ConfigAccessor
 from ..services.config.connection_plan_builder import ConnectionPlanBuilder
 from ..services.geo.region_service import region_service
+from ..services.notification import NotificationCenter
 from ..services.query.earthquake_list_service import EarthquakeListService
 from ..services.query.eew_query_state_service import EEWQueryStateService
 from ..services.query.source_runtime_query_service import SourceRuntimeQueryService
@@ -140,6 +141,8 @@ class DisasterWarningService:
             valid_duration_seconds=self.EEW_VALID_DURATION_SECONDS,
             source_enabled_checker=_is_source_enabled_by_catalog,
         )
+        # 通知中心独立维护远端通知同步、本地缓存和已读状态，供管理端前端复用。
+        self.notification_center = NotificationCenter(self)
         self._setup_runtime_services()
 
     def _setup_runtime_services(self) -> None:

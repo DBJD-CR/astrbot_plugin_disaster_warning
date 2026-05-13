@@ -22,6 +22,7 @@ from ..api.analytics_routes import register_analytics_routes
 from ..api.auth_routes import register_auth_routes
 from ..api.config_routes import register_config_routes
 from ..api.events_routes import register_events_routes
+from ..api.notification_routes import register_notification_routes
 from ..api.runtime_admin_routes import register_runtime_admin_routes
 from ..api.runtime_routes import register_runtime_routes
 from ..api.session_config_routes import register_session_config_routes
@@ -94,6 +95,7 @@ class WebServerRuntimeService:
         )
         register_events_routes(app, disaster_service=self.server.disaster_service)
         register_analytics_routes(app, disaster_service=self.server.disaster_service)
+        register_notification_routes(app, disaster_service=self.server.disaster_service)
         register_runtime_routes(
             app,
             disaster_service=self.server.disaster_service,

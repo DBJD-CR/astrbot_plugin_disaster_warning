@@ -50,6 +50,8 @@ class DisasterServiceLifecycleService:
                 await self.service._establish_websocket_connections()
                 await self.service._start_scheduled_http_fetch()
                 await self.service._start_cleanup_task()
+                if getattr(self.service, "notification_center", None):
+                    await self.service.notification_center.start()
 
                 # 原始消息日志属于排障辅助能力，是否启用只影响调试体验，不影响主流程可用性。
                 if self.service.message_logger.enabled:
@@ -121,6 +123,8 @@ class DisasterServiceLifecycleService:
                 self.service.background_tasks.clear()
 
                 # 任务回收完成后，再逐项释放底层基础设施资源。
+                if getattr(self.service, "notification_center", None):
+                    await self.service.notification_center.stop()
                 await self.service.ws_manager.stop()
 
                 if self.service.http_fetcher:
