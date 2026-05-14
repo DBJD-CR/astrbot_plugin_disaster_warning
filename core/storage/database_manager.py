@@ -17,6 +17,8 @@ from astrbot.api import logger
 
 from ..services.identity.event_classifier import (
     MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
+    MAJOR_WEATHER_LEVEL_KEYWORD,
+    MAJOR_WEATHER_TEXT_PHRASES,
     is_major_record,
 )
 from .source_compat import (
@@ -506,7 +508,16 @@ class DatabaseManager:
                           )
                           OR (
                               type = 'weather_alarm'
-                              AND COALESCE(NULLIF(TRIM(level), ''), description) LIKE '%红%'
+                              AND (
+                                  (
+                                      COALESCE(TRIM(level), '') != ''
+                                      AND level LIKE ?
+                                  )
+                                  OR (
+                                      COALESCE(TRIM(level), '') = ''
+                                      AND description LIKE ?
+                                  )
+                              )
                           )
                       )
                 )
@@ -516,7 +527,12 @@ class DatabaseManager:
                 ORDER BY time DESC, updated_at DESC
                 LIMIT ?
                 """,
-                (MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD, limit),
+                (
+                    MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
+                    f"%{MAJOR_WEATHER_LEVEL_KEYWORD}%",
+                    *(f"%{phrase}%" for phrase in MAJOR_WEATHER_TEXT_PHRASES),
+                    limit,
+                ),
             )
             events = [dict(row) for row in await cursor.fetchall()]
             return await self._attach_history(events)

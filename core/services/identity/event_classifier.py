@@ -16,14 +16,23 @@ from ...domain.event_models import (
 from ...domain.event_payload import SourcePayload
 
 MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD = 6.0
-_MAJOR_WEATHER_KEYWORDS = ("红",)
+MAJOR_WEATHER_LEVEL_KEYWORD = "红"
+MAJOR_WEATHER_TEXT_PHRASES = ("红色预警",)
+
+
+def is_major_weather_level(*candidates: Any) -> bool:
+    """判断结构化气象等级字段是否表示红色预警。"""
+    return any(
+        MAJOR_WEATHER_LEVEL_KEYWORD in str(candidate or "")
+        for candidate in candidates
+    )
 
 
 def is_major_weather_text(*candidates: Any) -> bool:
-    """判断候选文本是否表示重大气象红色预警。"""
+    """判断标题或描述文本是否明确表示红色预警。"""
     return any(
-        keyword in text
-        for keyword in _MAJOR_WEATHER_KEYWORDS
+        phrase in text
+        for phrase in MAJOR_WEATHER_TEXT_PHRASES
         for text in (str(candidate or "") for candidate in candidates)
     )
 
@@ -46,7 +55,7 @@ def is_major_record(record: dict[str, Any]) -> bool:
     if record_type == "weather_alarm":
         level = str(record.get("level") or "")
         description = str(record.get("description") or "")
-        return is_major_weather_text(level, description)
+        return is_major_weather_level(level) or is_major_weather_text(description)
     return False
 
 
@@ -87,5 +96,5 @@ def is_major_event(event: EventEnvelope) -> bool:
             or payload.get("title", "")
             or payload.get("headline", "")
         )
-        return is_major_weather_text(level, title)
+        return is_major_weather_level(level) or is_major_weather_text(title)
     return False
