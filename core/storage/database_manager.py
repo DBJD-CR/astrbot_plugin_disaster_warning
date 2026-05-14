@@ -15,7 +15,10 @@ import aiosqlite
 
 from astrbot.api import logger
 
-from ..services.identity.event_classifier import is_major_record
+from ..services.identity.event_classifier import (
+    MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
+    is_major_record,
+)
 from .source_compat import (
     expand_source_aliases,
     format_source_name,
@@ -499,21 +502,11 @@ class DatabaseManager:
                           OR (
                               type IN ('earthquake', 'earthquake_warning')
                               AND magnitude IS NOT NULL
-                              AND magnitude >= 6.0
+                              AND magnitude >= ?
                           )
                           OR (
                               type = 'weather_alarm'
-                              AND (
-                                  -- 气象预警仅保留红色级别：优先 level，缺失时回退 description
-                                  (
-                                      COALESCE(TRIM(level), '') != ''
-                                      AND level LIKE '%红%'
-                                  )
-                                  OR (
-                                      COALESCE(TRIM(level), '') = ''
-                                      AND description LIKE '%红%'
-                                  )
-                              )
+                              AND COALESCE(NULLIF(TRIM(level), ''), description) LIKE '%红%'
                           )
                       )
                 )
@@ -523,7 +516,7 @@ class DatabaseManager:
                 ORDER BY time DESC, updated_at DESC
                 LIMIT ?
                 """,
-                (limit,),
+                (MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD, limit),
             )
             events = [dict(row) for row in await cursor.fetchall()]
             return await self._attach_history(events)
