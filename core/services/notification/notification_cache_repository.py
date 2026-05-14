@@ -67,3 +67,4 @@ class NotificationCacheRepository:
             )
         except Exception as e:
             logger.warning(f"[灾害预警] 保存通知缓存失败: {e}")
+            raise
