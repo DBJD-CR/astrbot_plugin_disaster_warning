@@ -30,6 +30,7 @@ const CONFIG_ICONS = {
     weather_config: '⛈️',
     websocket_config: '🔌',
     web_admin: '💻',
+    notification_settings: '🔔',
     debug_config: '🐛',
     telemetry_config: '📊',
 };
