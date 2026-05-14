@@ -267,8 +267,9 @@ function HorizontalTimeline({ style }) {
                         onTouchEnd={stopContinuousScroll}
                         onTouchCancel={stopContinuousScroll}
                         title="单击：向左快速移动｜长按：连续移动｜双击：跳到最左"
+                        aria-label="向左浏览重大事件"
                     >
-                        <span className="horizontal-timeline-nav-icon">‹</span>
+                        <span className="horizontal-timeline-nav-icon" aria-hidden="true">‹</span>
                     </button>
                 </div>
 
@@ -285,8 +286,9 @@ function HorizontalTimeline({ style }) {
                         onTouchEnd={stopContinuousScroll}
                         onTouchCancel={stopContinuousScroll}
                         title="单击：向右快速移动｜长按：连续移动｜双击：跳到最右"
+                        aria-label="向右浏览重大事件"
                     >
-                        <span className="horizontal-timeline-nav-icon">›</span>
+                        <span className="horizontal-timeline-nav-icon" aria-hidden="true">›</span>
                     </button>
                 </div>
 
