@@ -3,7 +3,7 @@ const { useMemo, useRef, useEffect, useState, useCallback } = React;
 
 /**
  * 重大事件时间轴组件
- * 横向展示最近的重大事件 (M>=5.0 或 红色/橙色预警 或 海啸)
+ * 横向展示最近的重大事件 (地震 M>=6.0、红色气象预警或海啸)
  * 数据直接从 /api/events/major 获取，支持历史回溯
  */
 function HorizontalTimeline({ style }) {
@@ -254,75 +254,43 @@ function HorizontalTimeline({ style }) {
 
             {/* 左右导航按钮 */}
             <>
-                <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
-                            <div
-                                onClick={() => scrollByStep(-1)}
-                                onDoubleClick={() => scrollToEdge(false)}
-                                onMouseDown={() => startContinuousScroll(-1)}
-                                onMouseUp={stopContinuousScroll}
-                                onMouseLeave={(e) => {
-                                    stopContinuousScroll();
-                                    e.currentTarget.style.opacity = 0.6;
-                                }}
-                                onTouchStart={() => startContinuousScroll(-1)}
-                                onTouchEnd={stopContinuousScroll}
-                                onTouchCancel={stopContinuousScroll}
-                                title="单击：向左快速移动｜长按：连续移动｜双击：跳到最左"
-                                style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: 'var(--md-sys-color-on-surface)',
-                                    backdropFilter: 'blur(4px)',
-                                    opacity: 0.6,
-                                    transition: 'opacity 0.2s',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-                            >
-                                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>‹</span>
-                            </div>
-                        </div>
+                <div className="horizontal-timeline-nav-wrap horizontal-timeline-nav-wrap-left">
+                    <button
+                        type="button"
+                        className="horizontal-timeline-nav-btn"
+                        onClick={() => scrollByStep(-1)}
+                        onDoubleClick={() => scrollToEdge(false)}
+                        onMouseDown={() => startContinuousScroll(-1)}
+                        onMouseUp={stopContinuousScroll}
+                        onMouseLeave={stopContinuousScroll}
+                        onTouchStart={() => startContinuousScroll(-1)}
+                        onTouchEnd={stopContinuousScroll}
+                        onTouchCancel={stopContinuousScroll}
+                        title="单击：向左快速移动｜长按：连续移动｜双击：跳到最左"
+                        aria-label="向左浏览重大事件"
+                    >
+                        <span className="horizontal-timeline-nav-icon" aria-hidden="true">‹</span>
+                    </button>
+                </div>
 
-                        <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
-                            <div
-                                onClick={() => scrollByStep(1)}
-                                onDoubleClick={() => scrollToEdge(true)}
-                                onMouseDown={() => startContinuousScroll(1)}
-                                onMouseUp={stopContinuousScroll}
-                                onMouseLeave={(e) => {
-                                    stopContinuousScroll();
-                                    e.currentTarget.style.opacity = 0.6;
-                                }}
-                                onTouchStart={() => startContinuousScroll(1)}
-                                onTouchEnd={stopContinuousScroll}
-                                onTouchCancel={stopContinuousScroll}
-                                title="单击：向右快速移动｜长按：连续移动｜双击：跳到最右"
-                                style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: 'var(--md-sys-color-on-surface)',
-                                    backdropFilter: 'blur(4px)',
-                                    opacity: 0.6,
-                                    transition: 'opacity 0.2s',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-                            >
-                                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>›</span>
-                            </div>
-                        </div>
+                <div className="horizontal-timeline-nav-wrap horizontal-timeline-nav-wrap-right">
+                    <button
+                        type="button"
+                        className="horizontal-timeline-nav-btn"
+                        onClick={() => scrollByStep(1)}
+                        onDoubleClick={() => scrollToEdge(true)}
+                        onMouseDown={() => startContinuousScroll(1)}
+                        onMouseUp={stopContinuousScroll}
+                        onMouseLeave={stopContinuousScroll}
+                        onTouchStart={() => startContinuousScroll(1)}
+                        onTouchEnd={stopContinuousScroll}
+                        onTouchCancel={stopContinuousScroll}
+                        title="单击：向右快速移动｜长按：连续移动｜双击：跳到最右"
+                        aria-label="向右浏览重大事件"
+                    >
+                        <span className="horizontal-timeline-nav-icon" aria-hidden="true">›</span>
+                    </button>
+                </div>
 
                         <div
                             ref={scrollContainerRef}

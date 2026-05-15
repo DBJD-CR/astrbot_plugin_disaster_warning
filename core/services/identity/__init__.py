@@ -3,7 +3,15 @@
 统一导出事件分类、事件身份解析与运行时去重相关服务。
 """
 
-from .event_classifier import is_major_event, is_major_record
+from .event_classifier import (
+    MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
+    MAJOR_WEATHER_LEVEL_KEYWORD,
+    MAJOR_WEATHER_TEXT_PHRASES,
+    is_major_event,
+    is_major_record,
+    is_major_weather_level,
+    is_major_weather_text,
+)
 from .event_deduplication_service import EventDeduplicationService
 from .event_identity import (
     EventIdentityService,
@@ -30,6 +38,11 @@ __all__ = [
     "resolve_event_time_utc",
     "resolve_event_publish_time_utc",
     "resolve_event_unique_key",
+    "MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD",
+    "MAJOR_WEATHER_LEVEL_KEYWORD",
+    "MAJOR_WEATHER_TEXT_PHRASES",
     "is_major_event",
     "is_major_record",
+    "is_major_weather_level",
+    "is_major_weather_text",
 ]

@@ -178,11 +178,24 @@ function AppProvider({ children }) {
     // 主题效果
     useEffect(() => {
         const isDark = state.theme === 'dark';
+        const rootEl = document.documentElement;
+        const bodyEl = document.body;
 
-        document.body.className = isDark ? 'dark-theme' : '';
-        document.documentElement.classList.toggle('theme-dark', isDark);
+        rootEl.classList.add('theme-switching');
+        bodyEl.classList.toggle('dark-theme', isDark);
+        rootEl.classList.toggle('theme-dark', isDark);
 
         localStorage.setItem('theme', state.theme);
+
+        const clearThemeSwitching = () => {
+            rootEl.classList.remove('theme-switching');
+        };
+        const timer = window.setTimeout(clearThemeSwitching, 360);
+
+        return () => {
+            window.clearTimeout(timer);
+            clearThemeSwitching();
+        };
     }, [state.theme]);
 
     // 封装刷新数据的函数

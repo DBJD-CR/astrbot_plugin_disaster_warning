@@ -18,7 +18,15 @@ from .display import (
 from .geo.intensity_service import IntensityService
 from .geo.region_service import RegionService, region_service
 from .geo.weather_region_resolver import WeatherRegionResolver
-from .identity.event_classifier import is_major_event, is_major_record
+from .identity.event_classifier import (
+    MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
+    MAJOR_WEATHER_LEVEL_KEYWORD,
+    MAJOR_WEATHER_TEXT_PHRASES,
+    is_major_event,
+    is_major_record,
+    is_major_weather_level,
+    is_major_weather_text,
+)
 from .identity.event_deduplication_service import EventDeduplicationService
 from .identity.event_identity import (
     EventIdentityService,
@@ -79,6 +87,11 @@ __all__ = [
     "resolve_event_time_utc",
     "resolve_event_publish_time_utc",
     "resolve_event_unique_key",
+    "MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD",
+    "MAJOR_WEATHER_LEVEL_KEYWORD",
+    "MAJOR_WEATHER_TEXT_PHRASES",
     "is_major_event",
     "is_major_record",
+    "is_major_weather_level",
+    "is_major_weather_text",
 ]

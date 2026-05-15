@@ -15,7 +15,12 @@ import aiosqlite
 
 from astrbot.api import logger
 
-from ..services.identity.event_classifier import is_major_record
+from ..services.identity.event_classifier import (
+    MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
+    MAJOR_WEATHER_LEVEL_KEYWORD,
+    MAJOR_WEATHER_TEXT_PHRASES,
+    is_major_record,
+)
 from .source_compat import (
     expand_source_aliases,
     format_source_name,
@@ -495,16 +500,23 @@ class DatabaseManager:
                     FROM events
                     WHERE is_major = 1
                       AND (
-                          type != 'weather_alarm'
+                          type NOT IN ('earthquake', 'earthquake_warning', 'weather_alarm')
                           OR (
-                              -- 气象预警仅保留红/橙级别：优先 level，缺失时回退 description
-                              (
-                                  COALESCE(TRIM(level), '') != ''
-                                  AND (level LIKE '%红%' OR level LIKE '%橙%')
-                              )
-                              OR (
-                                  COALESCE(TRIM(level), '') = ''
-                                  AND (description LIKE '%红%' OR description LIKE '%橙%')
+                              type IN ('earthquake', 'earthquake_warning')
+                              AND magnitude IS NOT NULL
+                              AND magnitude >= ?
+                          )
+                          OR (
+                              type = 'weather_alarm'
+                              AND (
+                                  (
+                                      COALESCE(TRIM(level), '') != ''
+                                      AND level LIKE ?
+                                  )
+                                  OR (
+                                      COALESCE(TRIM(level), '') = ''
+                                      AND description LIKE ?
+                                  )
                               )
                           )
                       )
@@ -515,7 +527,12 @@ class DatabaseManager:
                 ORDER BY time DESC, updated_at DESC
                 LIMIT ?
                 """,
-                (limit,),
+                (
+                    MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
+                    f"%{MAJOR_WEATHER_LEVEL_KEYWORD}%",
+                    *(f"%{phrase}%" for phrase in MAJOR_WEATHER_TEXT_PHRASES),
+                    limit,
+                ),
             )
             events = [dict(row) for row in await cursor.fetchall()]
             return await self._attach_history(events)

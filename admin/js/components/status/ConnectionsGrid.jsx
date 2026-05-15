@@ -151,7 +151,7 @@ function ConnectionsGrid() {
                 const config = statusConfig[conn.status];
                 
                 return (
-                    <Box key={conn.name} sx={{
+                    <Box key={conn.name} className={`connection-item connection-item-${conn.status}`} sx={{
                         position: 'relative',
                         borderRadius: '16px',
                         border: '1px solid',
@@ -295,7 +295,7 @@ function ConnectionsGrid() {
                                         const friendlyName = getScopedSourceName(key, conn.name);
 
                                         return (
-                                            <Box key={key} sx={{
+                                            <Box key={key} className="connection-sub-source-item" sx={{
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 p: 1,

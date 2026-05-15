@@ -20,6 +20,7 @@ from ...message.presenters.weather_constants import (
     COLOR_LEVEL_EMOJI,
     SORTED_WEATHER_TYPES,
 )
+from ...services.identity.event_classifier import is_major_event
 
 
 class StatsRuleService:
@@ -30,18 +31,8 @@ class StatsRuleService:
 
     def is_major_event(self, event: EventEnvelope) -> bool:
         """判断是否为重大事件。"""
-        domain_event = event.event
-        # 不同灾种的重大性标准不同，这里统一收口成统计侧可复用的判定入口。
-        if isinstance(domain_event, EarthquakeEvent):
-            magnitude = getattr(domain_event, "magnitude", None)
-            return magnitude is not None and magnitude >= 5.0
-        if isinstance(domain_event, TsunamiEvent):
-            level = str(getattr(domain_event, "level", "") or "")
-            return level not in {"", "信息", "None", "Unknown"}
-        if isinstance(domain_event, WeatherEvent):
-            title_text = f"{getattr(domain_event, 'title', '')}{getattr(domain_event, 'headline', '')}"
-            return any(color in title_text for color in ["红色", "橙色"])
-        return False
+        # 统计侧复用身份分类服务的重大事件规则，确保运行时、入库与统计口径一致。
+        return is_major_event(event)
 
     def record_earthquake_stats(self, event: EventEnvelope) -> None:
         """记录地震详细统计。"""
