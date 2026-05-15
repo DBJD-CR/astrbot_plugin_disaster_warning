@@ -58,7 +58,16 @@ class SourceHealthMonitor:
                 pass
 
             return (end_time - start_time) * 1000
-        except (asyncio.TimeoutError, OSError, Exception):
+        except (asyncio.TimeoutError, OSError):
+            return None
+        except Exception as e:
+            logger.error(
+                "[灾害预警] TCP 延迟探测发生非预期异常，主机为 %s，端口为 %s，错误为 %s",
+                host,
+                port,
+                e,
+                exc_info=True,
+            )
             return None
 
     async def run_background_ping_loop(self, interval_seconds: float = 30.0):

@@ -187,8 +187,12 @@ class SourceMessageRouter:
                     connection_info.get("uri") if connection_info else "未知地址"
                 )
                 logger.error(
-                    f"[灾害预警] {source_id} 解析器处理来自 {connection_name or '未知连接'} 的消息失败，"
-                    f"连接地址为 {connection_uri}，错误为 {error}"
+                    "[灾害预警] %s 解析器处理来自 %s 的消息失败，连接地址为 %s，错误为 %s",
+                    source_id,
+                    connection_name or "未知连接",
+                    connection_uri,
+                    error,
+                    exc_info=True,
                 )
         return False
 
@@ -266,9 +270,11 @@ class SourceMessageRouter:
                         is_unhandled_initial = msg_type == "initial_all"
                         if has_data or is_unhandled_initial:
                             logger.debug(
-                                f"[灾害预警] 收到一条尚未处理的消息，连接为 {connection_name}，"
-                                f"消息类型为 {msg_type}，来源为 {data.get('source', 'unknown')}，"
-                                f"数据摘要: {str(data)[:100]}"
+                                "[灾害预警] 收到一条尚未处理的消息，连接为 %s，消息类型为 %s，来源为 %s，数据摘要：%s",
+                                connection_name,
+                                msg_type,
+                                data.get("source", "unknown"),
+                                str(data)[:100],
                             )
 
                 return None
@@ -283,8 +289,12 @@ class SourceMessageRouter:
                     else "未知类型"
                 )
                 logger.error(
-                    f"[灾害预警] FAN Studio 处理器解析来自 {connection_name or '未知连接'} 的消息失败，"
-                    f"连接地址为 {connection_uri}，连接类型为 {connection_type}，错误为 {error}"
+                    "[灾害预警] FAN Studio 处理器解析来自 %s 的消息失败，连接地址为 %s，连接类型为 %s，错误为 %s",
+                    connection_name or "未知连接",
+                    connection_uri,
+                    connection_type,
+                    error,
+                    exc_info=True,
                 )
                 raise
 
@@ -391,13 +401,16 @@ class SourceMessageRouter:
                 return None
 
             except Exception as error:
-                logger.error(
-                    f"[灾害预警] Wolfx处理器处理失败 - 连接: {connection_name}, 错误: {error}"
+                connection_uri = (
+                    connection_info.get("uri") if connection_info else "未知地址"
                 )
-                if connection_info:
-                    logger.error(
-                        f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
-                    )
+                logger.error(
+                    "[灾害预警] Wolfx 处理器处理来自 %s 的消息失败，连接地址为 %s，错误为 %s",
+                    connection_name or "未知连接",
+                    connection_uri,
+                    error,
+                    exc_info=True,
+                )
                 return None
 
         return wolfx_handler
@@ -431,13 +444,16 @@ class SourceMessageRouter:
                     parser_log_label="Global Quake",
                 )
             except Exception as error:
-                logger.error(
-                    f"[灾害预警] Global Quake解析器解析消息失败 - 连接: {connection_name}, 错误: {error}"
+                connection_uri = (
+                    connection_info.get("uri") if connection_info else "未知地址"
                 )
-                if connection_info:
-                    logger.error(
-                        f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
-                    )
+                logger.error(
+                    "[灾害预警] Global Quake 解析器处理来自 %s 的消息失败，连接地址为 %s，错误为 %s",
+                    connection_name or "未知连接",
+                    connection_uri,
+                    error,
+                    exc_info=True,
+                )
 
         return global_quake_handler
 
