@@ -1,0 +1,49 @@
+"""
+遥测安全辅助工具。
+
+提供跨模块复用的 best-effort 遥测调用封装
+避免各业务模块重复实现启用检查、异常吞噬与调试日志输出逻辑。
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from astrbot.api import logger
+
+
+async def track_feature_safely(
+    telemetry: Any,
+    feature_name: str,
+    extra: dict[str, Any] | None = None,
+    *,
+    log_context: str = "遥测行为事件",
+) -> bool:
+    """安全上报匿名行为事件。"""
+    if not telemetry or not getattr(telemetry, "enabled", False):
+        return False
+    try:
+        return bool(await telemetry.track_feature(feature_name, extra or {}))
+    except Exception as exc:
+        logger.debug(f"[灾害预警] {log_context}上报失败（已忽略）: {exc}")
+        return False
+
+
+async def track_error_safely(
+    telemetry: Any,
+    exception: Exception,
+    *,
+    module: str | None = None,
+    log_context: str = "遥测错误事件",
+) -> bool:
+    """安全上报错误事件。"""
+    if not telemetry or not getattr(telemetry, "enabled", False):
+        return False
+    try:
+        return bool(await telemetry.track_error(exception, module=module))
+    except Exception as exc:
+        logger.debug(f"[灾害预警] {log_context}上报失败（已忽略）: {exc}")
+        return False
+
+
+__all__ = ["track_feature_safely", "track_error_safely"]
