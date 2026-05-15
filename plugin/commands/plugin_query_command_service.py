@@ -24,6 +24,18 @@ class PluginQueryCommandService:
     def __init__(self, plugin):
         self.plugin = plugin
 
+    async def _track_command_feature(
+        self, feature_name: str, extra: dict | None = None
+    ):
+        """上报匿名命令行为统计，不包含会话、关键词或原始参数。"""
+        telemetry = getattr(self.plugin, "telemetry", None)
+        if not telemetry or not telemetry.enabled:
+            return
+        try:
+            await telemetry.track_feature(feature_name, extra or {})
+        except Exception as exc:
+            logger.debug(f"[灾害预警] 查询命令行为遥测上报失败（已忽略）: {exc}")
+
     async def handle_query_weather_alarm(
         self,
         event,
@@ -144,6 +156,15 @@ class PluginQueryCommandService:
                     usage_lines = "\n".join(f"• {line}" for line in result["usage"])
                     error_text = f"{error_text}\n用法：\n{usage_lines}"
 
+                await self._track_command_feature(
+                    "command_weather_query",
+                    {
+                        "success": False,
+                        "query_mode": str(result.get("query_mode") or "unknown"),
+                        "has_optional_type": bool(optional_a),
+                        "has_optional_level": bool(optional_b),
+                    },
+                )
                 yield _quoted_plain_result(error_text)
                 return
 
@@ -173,6 +194,14 @@ class PluginQueryCommandService:
 
                 detail_text = "\n".join(lines)
                 icon_url = detail.get("icon_url")
+                await self._track_command_feature(
+                    "command_weather_query",
+                    {
+                        "success": True,
+                        "query_mode": "id",
+                        "has_icon": bool(icon_url),
+                    },
+                )
                 if icon_url:
                     try:
                         yield event.chain_result(
@@ -202,6 +231,18 @@ class PluginQueryCommandService:
                 try:
                     ok = await _send_forward_batches(text_blocks)
                     if ok:
+                        await self._track_command_feature(
+                            "command_weather_query",
+                            {
+                                "success": True,
+                                "query_mode": str(result.get("query_mode") or "search"),
+                                "is_nationwide": True,
+                                "result_count": int(total or 0),
+                                "has_optional_type": bool(optional_a),
+                                "has_optional_level": bool(optional_b),
+                                "delivery_mode": "forward_batches",
+                            },
+                        )
                         return
                 except Exception as forward_error:
                     logger.warning(
@@ -209,6 +250,18 @@ class PluginQueryCommandService:
                     )
                     try:
                         await _send_text_blocks(text_blocks, total)
+                        await self._track_command_feature(
+                            "command_weather_query",
+                            {
+                                "success": True,
+                                "query_mode": str(result.get("query_mode") or "search"),
+                                "is_nationwide": True,
+                                "result_count": int(total or 0),
+                                "has_optional_type": bool(optional_a),
+                                "has_optional_level": bool(optional_b),
+                                "delivery_mode": "text_blocks",
+                            },
+                        )
                         return
                     except Exception as text_error:
                         logger.warning(f"[灾害预警] 文本回退发送失败: {text_error}")
@@ -224,6 +277,17 @@ class PluginQueryCommandService:
                 if idx != len(items) - 1:
                     lines.append("")
 
+            await self._track_command_feature(
+                "command_weather_query",
+                {
+                    "success": True,
+                    "query_mode": str(result.get("query_mode") or "search"),
+                    "is_nationwide": is_nationwide,
+                    "result_count": int(total or 0),
+                    "has_optional_type": bool(optional_a),
+                    "has_optional_level": bool(optional_b),
+                },
+            )
             yield _quoted_plain_result("\n".join(lines))
         except Exception as e:
             logger.error(f"[灾害预警] 查询气象预警失败: {e}")
@@ -239,6 +303,10 @@ class PluginQueryCommandService:
 
         try:
             text = self.plugin.disaster_service.get_eew_query_text()
+            await self._track_command_feature(
+                "command_eew_status_query",
+                {"success": True},
+            )
             yield _quoted_plain_result(text)
         except Exception as e:
             logger.error(f"[灾害预警] 查询地震预警状态失败: {e}")
@@ -293,6 +361,15 @@ class PluginQueryCommandService:
                     display_list, source_name
                 )
                 if img_path:
+                    await self._track_command_feature(
+                        "command_earthquake_list_query",
+                        {
+                            "success": True,
+                            "source": source,
+                            "mode": "card",
+                            "count": int(count),
+                        },
+                    )
                     yield event.chain_result(
                         self.plugin._with_quote_reply(
                             event,
@@ -302,6 +379,15 @@ class PluginQueryCommandService:
                     return
 
             text = format_earthquake_list_text(formatted_list[:count], source)
+            await self._track_command_feature(
+                "command_earthquake_list_query",
+                {
+                    "success": True,
+                    "source": source,
+                    "mode": "card" if show_card else "text",
+                    "count": int(count),
+                },
+            )
             yield _quoted_plain_result(text)
         except Exception as e:
             logger.error(f"[灾害预警] 查询地震列表失败: {e}")
@@ -338,11 +424,31 @@ class PluginQueryCommandService:
                 msg_chain = await manager.build_message_async(
                     simulation_result.disaster_event
                 )
+                await self._track_command_feature(
+                    "command_simulation_result",
+                    {
+                        "success": True,
+                        "triggered": True,
+                        "source": str(source or "unknown"),
+                        "magnitude_bucket": round(magnitude),
+                        "depth_bucket": int(depth // 10 * 10),
+                    },
+                )
                 yield event.chain_result(
                     self.plugin._with_quote_reply(event, list(msg_chain.chain))
                 )
                 return
 
+            await self._track_command_feature(
+                "command_simulation_result",
+                {
+                    "success": True,
+                    "triggered": False,
+                    "source": str(source or "unknown"),
+                    "magnitude_bucket": round(magnitude),
+                    "depth_bucket": int(depth // 10 * 10),
+                },
+            )
             yield _quoted_plain_result("\n".join(simulation_result.report_lines))
         except Exception as e:
             logger.error(f"[灾害预警] 模拟预警失败: {e}\n{traceback.format_exc()}")

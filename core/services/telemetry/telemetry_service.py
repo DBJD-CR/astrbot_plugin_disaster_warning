@@ -25,7 +25,7 @@ import aiohttp
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-from ....utils.version import get_astrbot_version
+from ....utils.version import get_astrbot_version_info
 
 
 class TelemetryManager:
@@ -53,8 +53,9 @@ class TelemetryManager:
         self._config = config
         self._plugin_version = plugin_version
 
-        # 获取 AstrBot 版本号
-        self._astrbot_version = get_astrbot_version()
+        # 获取 AstrBot 版本号与探测来源，便于区分宿主版本差异带来的兼容性问题。
+        self._astrbot_version_info = get_astrbot_version_info()
+        self._astrbot_version = self._astrbot_version_info.version
 
         # 从配置中读取遥测开关
         telemetry_config = config.get("telemetry_config", {})
@@ -191,6 +192,8 @@ class TelemetryManager:
                 "python_version": platform.python_version(),
                 "arch": platform.machine(),
                 "astrbot_version": self._astrbot_version,
+                "astrbot_version_source": self._astrbot_version_info.source,
+                "astrbot_version_error": self._astrbot_version_info.error,
             },
         )
 
@@ -311,9 +314,16 @@ class TelemetryManager:
         message = (raw_message or "").lower()
         module_name = (module or "").lower()
 
+        if error_type in {"CancelledError", "GeneratorExit"}:
+            return True
+
         if error_type == "TargetClosedError":
             return True
         if "target page, context or browser has been closed" in message:
+            return True
+        if "browser has been closed" in message and module_name.startswith(
+            "core.browser_manager"
+        ):
             return True
 
         if (
@@ -325,9 +335,27 @@ class TelemetryManager:
 
         if "websocket异常关闭" in message and "1006" in message:
             return True
-        if (
-            module_name.startswith("core.websocket_manager.connect")
-            and "1006" in message
+        if module_name.startswith("core.websocket_manager.connect") and any(
+            marker in message
+            for marker in (
+                "1006",
+                "cannot write to closing transport",
+                "connection reset by peer",
+                "server disconnected",
+                "heartbeat",
+                "ping",
+            )
+        ):
+            return True
+
+        if module_name.startswith("core.browser_manager.render_card") and any(
+            marker in message
+            for marker in (
+                "waiting for selector",
+                "timeout",
+                "navigation timeout",
+                "net::err_",
+            )
         ):
             return True
 

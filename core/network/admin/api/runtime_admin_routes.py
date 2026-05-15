@@ -20,6 +20,15 @@ def register_runtime_admin_routes(
 ):
     """注册运行态管理路由。"""
 
+    async def _track_admin_feature(feature_name: str, extra: dict | None = None):
+        telemetry = getattr(disaster_service, "_telemetry", None)
+        if not telemetry or not telemetry.enabled:
+            return
+        try:
+            await telemetry.track_feature(feature_name, extra or {})
+        except Exception as exc:
+            logger.debug(f"[灾害预警] Web管理行为遥测上报失败（已忽略）: {exc}")
+
     @app.post("/api/reconnect")
     async def force_reconnect():
         """触发所有数据源立即重连。"""
@@ -32,6 +41,14 @@ def register_runtime_admin_routes(
             # 同时返回汇总结果与逐连接明细，便于前端展示总览提示和排障详情。
             triggered = sum(1 for s in results.values() if "已触发" in s)
             failed = sum(1 for s in results.values() if "失败" in s)
+            await _track_admin_feature(
+                "web_force_reconnect",
+                {
+                    "triggered_count": triggered,
+                    "failed_count": failed,
+                    "total_count": len(results),
+                },
+            )
             return ApiResponse.success(
                 {
                     "success": True,
@@ -40,6 +57,7 @@ def register_runtime_admin_routes(
                 }
             )
         except Exception as e:
+            await _track_admin_feature("web_force_reconnect", {"failed": True})
             logger.error(f"[灾害预警] 通过Web端进行手动重连失败: {e}")
             return ApiResponse.error(str(e), status_code=500)
 

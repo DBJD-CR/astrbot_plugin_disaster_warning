@@ -22,6 +22,18 @@ class PluginAdminCommandService:
     def __init__(self, plugin):
         self.plugin = plugin
 
+    async def _track_command_feature(
+        self, feature_name: str, extra: dict | None = None
+    ):
+        """上报匿名管理命令行为统计，不包含会话、配置详情或 UMO。"""
+        telemetry = getattr(self.plugin, "telemetry", None)
+        if not telemetry or not telemetry.enabled:
+            return
+        try:
+            await telemetry.track_feature(feature_name, extra or {})
+        except Exception as exc:
+            logger.debug(f"[灾害预警] 管理命令行为遥测上报失败（已忽略）: {exc}")
+
     async def handle_disaster_reconnect(self, event):
         # 管理类命令统一在入口先做管理员校验，避免内部逻辑重复散落权限判断。
         if not await self.plugin.is_plugin_admin(event):
@@ -57,8 +69,21 @@ class PluginAdminCommandService:
             lines.append(
                 f"📊 统计: 触发 {success_count}, 跳过 {skip_count}, 失败 {fail_count}"
             )
+            await self._track_command_feature(
+                "command_force_reconnect",
+                {
+                    "success": True,
+                    "triggered_count": success_count,
+                    "failed_count": fail_count,
+                    "skipped_count": skip_count,
+                },
+            )
             yield event.plain_result("\n".join(lines))
         except Exception as e:
+            await self._track_command_feature(
+                "command_force_reconnect",
+                {"success": False},
+            )
             logger.error(f"[灾害预警] 重连操作失败: {e}")
             yield event.plain_result(f"❌ 重连操作失败: {str(e)}")
 
@@ -227,9 +252,17 @@ class PluginAdminCommandService:
                 ]
             )
             if nodes:
+                await self._track_command_feature(
+                    "command_status_query",
+                    {"success": True, "running": bool(status.get("running"))},
+                )
                 yield event.chain_result([nodes])
                 return
 
+            await self._track_command_feature(
+                "command_status_query",
+                {"success": True, "running": bool(status.get("running"))},
+            )
             yield quoted_plain_result(self.plugin, event, "\n".join(overview_lines))
         except Exception as e:
             logger.error(f"[灾害预警] 获取服务状态失败: {e}")
@@ -266,6 +299,10 @@ class PluginAdminCommandService:
                     stats_summary += (
                         f"📊 总计拦截: {filter_stats.get('total_filtered', 0)}"
                     )
+            await self._track_command_feature(
+                "command_stats_query",
+                {"success": True},
+            )
             yield _quoted_plain_result(stats_summary)
         except Exception as e:
             logger.error(f"[灾害预警] 获取统计信息失败: {e}")
@@ -350,6 +387,10 @@ class PluginAdminCommandService:
 
             status = "启用" if new_state else "禁用"
             action = "开始" if new_state else "停止"
+            await self._track_command_feature(
+                "command_toggle_raw_logging",
+                {"enabled": bool(new_state)},
+            )
             yield event.plain_result(
                 f"✅ 原始消息日志记录已{status}\n\n插件将{action}记录所有数据源的原始消息格式。"
             )
@@ -392,6 +433,10 @@ class PluginAdminCommandService:
 
         try:
             await self.plugin.disaster_service.statistics_manager.reset_stats()
+            await self._track_command_feature(
+                "command_clear_statistics",
+                {"success": True},
+            )
             yield event.plain_result(
                 "✅ 统计数据已重置\n\n所有历史统计记录已被清除，新的统计将重新开始。"
             )
@@ -418,6 +463,10 @@ class PluginAdminCommandService:
                 target_sessions.remove(session_umo)
                 self.plugin.config["target_sessions"] = target_sessions
                 self.plugin.config.save_config()
+                await self._track_command_feature(
+                    "command_toggle_push",
+                    {"enabled": False, "target_session_count": len(target_sessions)},
+                )
                 yield event.plain_result(
                     f"✅ 推送已关闭\n\n会话 ({session_umo}) 已从推送列表中移除。"
                 )
@@ -426,6 +475,10 @@ class PluginAdminCommandService:
                 target_sessions.append(session_umo)
                 self.plugin.config["target_sessions"] = target_sessions
                 self.plugin.config.save_config()
+                await self._track_command_feature(
+                    "command_toggle_push",
+                    {"enabled": True, "target_session_count": len(target_sessions)},
+                )
                 yield event.plain_result(
                     f"✅ 推送已开启\n\n会话 ({session_umo}) 已添加到推送列表。"
                 )

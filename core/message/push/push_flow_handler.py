@@ -94,7 +94,47 @@ class PushFlowHandler:
             filter_reason_detail_stats=filter_reason_detail_stats,
             send_failure_stats=send_failure_stats,
         )
+        await self._track_push_result(
+            event,
+            push_success_count=push_success_count,
+            filter_reason_stats=filter_reason_stats,
+            filter_reason_detail_stats=filter_reason_detail_stats,
+            send_failure_stats=send_failure_stats,
+        )
         return push_success_count > 0
+
+    async def _track_push_result(
+        self,
+        event: EventEnvelope,
+        *,
+        push_success_count: int,
+        filter_reason_stats: dict[str, int],
+        filter_reason_detail_stats: dict[str, int],
+        send_failure_stats: dict[str, int],
+    ) -> None:
+        """上报匿名推送结果统计，不包含会话标识或消息正文。"""
+        telemetry = getattr(self.manager, "_telemetry", None)
+        if not telemetry or not telemetry.enabled:
+            return
+
+        try:
+            await telemetry.track_feature(
+                "push_result",
+                {
+                    "source_id": getattr(event, "source_id", "") or "unknown",
+                    "event_type": getattr(event, "event_type", "") or "unknown",
+                    "success": push_success_count > 0,
+                    "success_count": push_success_count,
+                    "filter_reason_count": sum(filter_reason_stats.values()),
+                    "filter_detail_reason_count": sum(
+                        filter_reason_detail_stats.values()
+                    ),
+                    "send_failure_count": sum(send_failure_stats.values()),
+                    "send_failure_types": sorted(send_failure_stats.keys())[:8],
+                },
+            )
+        except Exception as exc:
+            logger.debug(f"[灾害预警] 推送结果遥测上报失败（已忽略）: {exc}")
 
     async def _dispatch_split_maps(
         self,

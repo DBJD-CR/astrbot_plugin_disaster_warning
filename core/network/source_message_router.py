@@ -154,6 +154,16 @@ class SourceMessageRouter:
         )
         return True
 
+    async def _track_router_error(self, exception: Exception, module: str) -> None:
+        """上报路由层非预期异常，避免解析入口错误只停留在日志中。"""
+        telemetry = getattr(self.service, "_telemetry", None)
+        if not telemetry or not telemetry.enabled:
+            return
+        try:
+            await telemetry.track_error(exception, module=module)
+        except Exception as exc:
+            logger.debug(f"[灾害预警] 路由异常遥测上报失败（已忽略）: {exc}")
+
     async def _parse_candidate_source_ids(
         self,
         *,
@@ -193,6 +203,10 @@ class SourceMessageRouter:
                     connection_uri,
                     error,
                     exc_info=True,
+                )
+                await self._track_router_error(
+                    error,
+                    module=f"core.source_message_router.parse_candidate.{source_id}",
                 )
         return False
 
@@ -295,6 +309,10 @@ class SourceMessageRouter:
                     connection_type,
                     error,
                     exc_info=True,
+                )
+                await self._track_router_error(
+                    error,
+                    module="core.source_message_router.fan_studio_handler",
                 )
                 raise
 
@@ -411,6 +429,10 @@ class SourceMessageRouter:
                     error,
                     exc_info=True,
                 )
+                await self._track_router_error(
+                    error,
+                    module="core.source_message_router.wolfx_handler",
+                )
                 return None
 
         return wolfx_handler
@@ -453,6 +475,10 @@ class SourceMessageRouter:
                     connection_uri,
                     error,
                     exc_info=True,
+                )
+                await self._track_router_error(
+                    error,
+                    module="core.source_message_router.global_quake_handler",
                 )
 
         return global_quake_handler
