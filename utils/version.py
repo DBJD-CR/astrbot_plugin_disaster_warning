@@ -5,6 +5,9 @@
 
 import os
 import re
+from dataclasses import dataclass
+from functools import lru_cache
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 # 优先使用标准库 tomllib；若运行环境较旧，则回退到 tomli。
@@ -18,6 +21,15 @@ except ImportError:
 
 import astrbot
 from astrbot.api import logger
+
+
+@dataclass(frozen=True)
+class AstrBotVersionInfo:
+    """AstrBot 版本探测结果。"""
+
+    version: str
+    source: str
+    error: str | None = None
 
 
 def get_plugin_version() -> str:
@@ -49,41 +61,127 @@ def get_plugin_version() -> str:
     return "unknown"
 
 
-def get_astrbot_version() -> str:
-    """
-    从 pyproject.toml 获取 AstrBot 版本号
+def _build_unknown_version_info(
+    default: str = "unknown", error: str = "all_methods_failed"
+) -> AstrBotVersionInfo:
+    """构造未知版本探测结果。"""
+    return AstrBotVersionInfo(version=default, source="unknown", error=error)
 
-    返回值：
-    - AstrBot 版本号，获取失败则返回 "unknown"
-    """
+
+def _get_astrbot_version_from_core_config() -> AstrBotVersionInfo | None:
+    """优先从 AstrBot 运行时核心配置模块读取版本。"""
+    module_candidates = (
+        "astrbot.core.config",
+        "astrbot.core.config.default",
+    )
+
+    for module_name in module_candidates:
+        try:
+            module = __import__(module_name, fromlist=["VERSION"])
+            version = str(getattr(module, "VERSION", "")).strip()
+            if version:
+                return AstrBotVersionInfo(version=version, source="core_config")
+        except Exception as exc:
+            logger.debug(
+                "[灾害预警] 从 %s 读取 AstrBot VERSION 失败: %s",
+                module_name,
+                exc,
+            )
+
+    return None
+
+
+def _get_astrbot_version_from_distribution() -> AstrBotVersionInfo | None:
+    """从 AstrBot 安装分发元数据读取版本。"""
+    for dist_name in ("AstrBot", "astrbot"):
+        try:
+            version = str(importlib_metadata.version(dist_name)).strip()
+            if version:
+                return AstrBotVersionInfo(version=version, source="distribution")
+        except importlib_metadata.PackageNotFoundError:
+            logger.debug("[灾害预警] 未找到 AstrBot 分发元数据: %s", dist_name)
+        except Exception as exc:
+            logger.debug(
+                "[灾害预警] 读取 AstrBot 分发元数据失败 (%s): %s",
+                dist_name,
+                exc,
+            )
+
+    return None
+
+
+def _get_astrbot_version_from_cli_module() -> AstrBotVersionInfo | None:
+    """从 AstrBot CLI 模块常量读取版本。"""
+    try:
+        from astrbot.cli import __version__ as cli_version
+
+        version = str(cli_version).strip()
+        if version:
+            return AstrBotVersionInfo(version=version, source="cli_module")
+        logger.debug("[灾害预警] astrbot.cli.__version__ 为空")
+    except Exception as exc:
+        logger.debug(f"[灾害预警] 导入 astrbot.cli.__version__ 失败: {exc}")
+
+    return None
+
+
+def _get_astrbot_version_from_pyproject(default: str = "unknown") -> AstrBotVersionInfo:
+    """从 AstrBot 安装目录附近的 pyproject.toml 中兜底读取版本。"""
     try:
         # 从 astrbot 包路径定位 pyproject.toml。
-        astrbot_path = Path(astrbot.__file__).parent.parent
+        astrbot_path = Path(astrbot.__file__).resolve().parent.parent
         pyproject_path = astrbot_path / "pyproject.toml"
 
-        if pyproject_path.exists():
-            # 只有在解析库可用时，才继续读取 pyproject.toml。
-            if tomllib is None:
-                logger.warning(
-                    "[灾害预警] ⚠️ 未找到 tomllib 或 tomli 模块，无法解析 pyproject.toml"
-                )
-                return "unknown"
+        if not pyproject_path.exists():
+            logger.debug(
+                f"[灾害预警] 无法读取 AstrBot 版本，pyproject.toml 不存在: {pyproject_path}"
+            )
+            return _build_unknown_version_info(default, "pyproject_missing")
 
-            with open(pyproject_path, "rb") as f:
-                # tomllib 读取后只关心 project.version 字段。
-                data = tomllib.load(f)
-                version_str = data.get("project", {}).get("version", "unknown")
-                if version_str != "unknown":
-                    logger.debug(
-                        f"[灾害预警] ✅ 从 pyproject.toml 获取到 AstrBot 版本: {version_str}"
-                    )
-                    return version_str
+        if tomllib is None:
+            logger.warning(
+                "[灾害预警] 未找到 tomllib 或 tomli 模块，无法解析 AstrBot 版本"
+            )
+            return _build_unknown_version_info(default, "tomllib_unavailable")
+
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+
+        project_version = str(data.get("project", {}).get("version", "")).strip()
+        if project_version:
+            return AstrBotVersionInfo(version=project_version, source="pyproject")
+
+        poetry_version = str(
+            data.get("tool", {}).get("poetry", {}).get("version", "")
+        ).strip()
+        if poetry_version:
+            return AstrBotVersionInfo(version=poetry_version, source="pyproject")
 
         logger.debug(
-            f"[灾害预警] ⚠️ 无法读取 AstrBot 版本，pyproject.toml 不存在: {pyproject_path}"
+            f"[灾害预警] pyproject.toml 中未找到可用的 AstrBot 版本字段: {pyproject_path}"
         )
-        return "unknown"
+        return _build_unknown_version_info(default, "pyproject_version_missing")
 
     except Exception as e:
-        logger.debug(f"[灾害预警] ❌ 获取 AstrBot 版本时出错: {e}")
-        return "unknown"
+        logger.debug(f"[灾害预警] 获取 AstrBot 版本时出错: {e}")
+        return _build_unknown_version_info(default, "pyproject_parse_failed")
+
+
+@lru_cache(maxsize=8)
+def get_astrbot_version_info(default: str = "unknown") -> AstrBotVersionInfo:
+    """获取带来源与错误码的 AstrBot 版本探测结果。"""
+    for resolver in (
+        _get_astrbot_version_from_core_config,
+        _get_astrbot_version_from_distribution,
+        _get_astrbot_version_from_cli_module,
+    ):
+        version_info = resolver()
+        if version_info is not None:
+            return version_info
+
+    return _get_astrbot_version_from_pyproject(default)
+
+
+def get_astrbot_version(default: str = "unknown") -> str:
+    """获取 AstrBot 版本号字符串。"""
+    return get_astrbot_version_info(default).version

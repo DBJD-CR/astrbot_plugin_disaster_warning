@@ -1,6 +1,25 @@
 const { Box, TextField, Switch, FormControlLabel, Typography, Button, Accordion, AccordionSummary, AccordionDetails, Divider, Paper, Chip, Slider, MenuItem, ToggleButton, ToggleButtonGroup } = MaterialUI;
 const { useState, useEffect, useRef, useLayoutEffect } = React;
 
+// 会话差异配置只暴露可按会话覆写的业务配置，隐藏全局运行、管理与系统级配置项。
+const SESSION_DIFF_HIDDEN_CONFIG_KEYS = new Set([
+    'enabled',
+    'admin_users',
+    'target_sessions',
+    'offline_notification_sessions',
+    'display_timezone',
+    'web_admin',
+    'notification_settings',
+    'websocket_config',
+    'debug_config',
+    'telemetry_config'
+]);
+
+// 会话模式下虽不由 Schema 渲染，但属于会话级语义的运行时控制字段，保存时需要保留。
+const SESSION_ONLY_CONFIG_KEYS = new Set([
+    'push_enabled'
+]);
+
 // 辅助函数：获取所有可展开的路径
 const getAllExpandablePaths = (schema, prefix = '') => {
     let paths = [];
@@ -611,6 +630,16 @@ function ConfigRenderer() {
         }
     }, [expandedKeys, schema, mode, selectedSession]);
 
+    const getVisibleSchema = (currentMode = mode) => {
+        if (!schema || currentMode !== 'session') {
+            return schema;
+        }
+
+        return Object.fromEntries(
+            Object.entries(schema).filter(([key]) => !SESSION_DIFF_HIDDEN_CONFIG_KEYS.has(key))
+        );
+    };
+
     const isValidSchemaObject = (value) => {
         return !!(
             value &&
@@ -724,7 +753,7 @@ function ConfigRenderer() {
                 }
             } else {
                 // 默认全展开
-                finalExpandedKeys = getAllExpandablePaths(schema);
+                finalExpandedKeys = getAllExpandablePaths(getVisibleSchema(currentMode));
             }
 
             if (!finalConfig || typeof finalConfig !== 'object' || Array.isArray(finalConfig)) {
@@ -765,7 +794,7 @@ function ConfigRenderer() {
         if (expandedKeys.length > 0) {
             setExpandedKeys([]); // 全部收起
         } else {
-            setExpandedKeys(getAllExpandablePaths(schema)); // 全部展开
+            setExpandedKeys(getAllExpandablePaths(getVisibleSchema())); // 全部展开
         }
     };
 
@@ -785,12 +814,36 @@ function ConfigRenderer() {
         return obj;
     };
 
+    const pickConfigBySchema = (sourceConfig, schemaObject) => {
+        if (!sourceConfig || typeof sourceConfig !== 'object' || Array.isArray(sourceConfig)) {
+            return {};
+        }
+
+        const picked = {};
+        Object.keys(schemaObject || {}).forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(sourceConfig, key)) {
+                picked[key] = sourceConfig[key];
+            }
+        });
+
+        SESSION_ONLY_CONFIG_KEYS.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(sourceConfig, key)) {
+                picked[key] = sourceConfig[key];
+            }
+        });
+
+        return picked;
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
-            const cleanedConfig = cleanConfig(config);
             const currentMode = mode;
             const currentSession = selectedSession;
+            const configToSave = currentMode === 'session'
+                ? pickConfigBySchema(config, getVisibleSchema('session'))
+                : config;
+            const cleanedConfig = cleanConfig(configToSave);
 
             if (currentMode === 'session') {
                 if (!currentSession) {
@@ -903,6 +956,8 @@ function ConfigRenderer() {
     }
 
     const selectedSessionMeta = sessions.find(s => s.session === selectedSession);
+    const visibleSchema = getVisibleSchema();
+    const visibleSchemaEntries = Object.entries(visibleSchema || {});
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -979,13 +1034,13 @@ function ConfigRenderer() {
                 }
             }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {Object.entries(schema).map(([key, subSchema]) => (
+                    {visibleSchemaEntries.map(([key, subSchema]) => (
                         <Box key={key} sx={{ width: '100%' }}>
                             <ConfigField
                                 fieldKey={key}
                                 schema={subSchema}
                                 value={config[key]}
-                                onChange={(newValue) => { isDirtyRef.current = true; setConfig({ ...config, [key]: newValue }); }}
+                                onChange={(newValue) => { isDirtyRef.current = true; setConfig(prev => ({ ...prev, [key]: newValue })); }}
                                 path=""
                                 expandedKeys={expandedKeys}
                                 onToggleExpand={handleToggleExpand}
@@ -1012,7 +1067,7 @@ function ConfigRenderer() {
             }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                        {Object.keys(schema).length} 个配置组
+                        {visibleSchemaEntries.length} 个配置组
                     </Typography>
                     <Button
                         onClick={handleToggleAll}
@@ -1039,8 +1094,8 @@ function ConfigRenderer() {
                                     return c;
                                 };
                                 
-                                const defaults = generateDefaults(schema);
-                                setConfig(defaults);
+                                const defaults = generateDefaults(visibleSchema);
+                                setConfig(prev => ({ ...prev, ...defaults }));
                                 localStorage.removeItem(getDraftKey());
                             }
                         }}

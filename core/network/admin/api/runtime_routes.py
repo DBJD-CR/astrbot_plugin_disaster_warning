@@ -19,11 +19,23 @@ from ....services.simulation.simulation_service import (
     get_simulation_params,
     resolve_target_session,
 )
+from ....services.telemetry.telemetry_utils import track_feature_safely
 from ..payloads.api_response import ApiResponse
 
 
 def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
     """注册运行态查询与模拟接口。"""
+
+    async def _track_runtime_feature(
+        feature_name: str, extra: dict[str, Any] | None = None
+    ):
+        telemetry = getattr(disaster_service, "_telemetry", None)
+        await track_feature_safely(
+            telemetry,
+            feature_name,
+            extra,
+            log_context="Web运行态行为遥测",
+        )
 
     @app.get("/api/weather/query")
     async def query_weather_alarm(
@@ -46,6 +58,16 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                 keyword,
                 optional_a or None,
                 optional_b or None,
+            )
+            await _track_runtime_feature(
+                "web_weather_query",
+                {
+                    "success": bool(query_result.get("success")),
+                    "query_mode": str(query_result.get("query_mode") or "unknown"),
+                    "has_optional_type": bool(optional_a),
+                    "has_optional_level": bool(optional_b),
+                    "result_count": len(query_result.get("items") or []),
+                },
             )
             return ApiResponse.success(query_result)
         except Exception as e:
@@ -102,6 +124,14 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                     source=source,
                 )
             except ValueError as ve:
+                await _track_runtime_feature(
+                    "web_simulation_result",
+                    {
+                        "success": False,
+                        "reason": "invalid_params",
+                        "source": str(source or "unknown"),
+                    },
+                )
                 return ApiResponse.error(str(ve), status_code=400)
 
             if simulation_result.global_pass and simulation_result.local_pass:
@@ -117,6 +147,16 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                 simulation_result.report_lines.append(
                     f"\n✅ 消息已发送到: {final_target_session}"
                 )
+                await _track_runtime_feature(
+                    "web_simulation_result",
+                    {
+                        "success": True,
+                        "triggered": True,
+                        "source": str(source or "unknown"),
+                        "magnitude_bucket": round(magnitude),
+                        "depth_bucket": int(depth // 10 * 10),
+                    },
+                )
                 return ApiResponse.success(
                     {
                         "success": True,
@@ -125,6 +165,16 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                 )
 
             simulation_result.report_lines.append("\n⛔ 结论: 该事件不会触发预警推送。")
+            await _track_runtime_feature(
+                "web_simulation_result",
+                {
+                    "success": True,
+                    "triggered": False,
+                    "source": str(source or "unknown"),
+                    "magnitude_bucket": round(magnitude),
+                    "depth_bucket": int(depth // 10 * 10),
+                },
+            )
             return ApiResponse.success(
                 {
                     "success": False,
@@ -142,6 +192,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
         try:
             client_ip = request.client.host if request.client else None
             location_data = await fetch_location_from_ip(ip=client_ip)
+            await _track_runtime_feature("web_geolocate", {"success": True})
             return ApiResponse.success(
                 {
                     "success": True,
@@ -156,6 +207,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                 }
             )
         except Exception as e:
+            await _track_runtime_feature("web_geolocate", {"success": False})
             logger.error(f"[灾害预警] IP地理定位失败: {e}")
             return ApiResponse.error(
                 f"获取地理位置失败: {str(e)}", status_code=500, success=False

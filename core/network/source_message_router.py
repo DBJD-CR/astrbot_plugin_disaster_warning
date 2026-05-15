@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from astrbot.api import logger
 
+from ..services.telemetry.telemetry_utils import track_error_safely
 from ..sources.source_catalog import get_source_entry, get_source_ids_by_dispatch_family
 from ..sources.source_entry import ProviderFamily
 from ..sources.source_router import (
@@ -154,6 +155,16 @@ class SourceMessageRouter:
         )
         return True
 
+    async def _track_router_error(self, exception: Exception, module: str) -> None:
+        """上报路由层非预期异常，避免解析入口错误只停留在日志中。"""
+        telemetry = getattr(self.service, "_telemetry", None)
+        await track_error_safely(
+            telemetry,
+            exception,
+            module=module,
+            log_context="路由异常遥测",
+        )
+
     async def _parse_candidate_source_ids(
         self,
         *,
@@ -193,6 +204,10 @@ class SourceMessageRouter:
                     connection_uri,
                     error,
                     exc_info=True,
+                )
+                await self._track_router_error(
+                    error,
+                    module=f"core.source_message_router.parse_candidate.{source_id}",
                 )
         return False
 
@@ -295,6 +310,10 @@ class SourceMessageRouter:
                     connection_type,
                     error,
                     exc_info=True,
+                )
+                await self._track_router_error(
+                    error,
+                    module="core.source_message_router.fan_studio_handler",
                 )
                 raise
 
@@ -411,6 +430,10 @@ class SourceMessageRouter:
                     error,
                     exc_info=True,
                 )
+                await self._track_router_error(
+                    error,
+                    module="core.source_message_router.wolfx_handler",
+                )
                 return None
 
         return wolfx_handler
@@ -453,6 +476,10 @@ class SourceMessageRouter:
                     connection_uri,
                     error,
                     exc_info=True,
+                )
+                await self._track_router_error(
+                    error,
+                    module="core.source_message_router.global_quake_handler",
                 )
 
         return global_quake_handler
