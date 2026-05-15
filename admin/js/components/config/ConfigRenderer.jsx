@@ -15,6 +15,11 @@ const SESSION_DIFF_HIDDEN_CONFIG_KEYS = new Set([
     'telemetry_config'
 ]);
 
+// 会话模式下虽不由 Schema 渲染，但属于会话级语义的运行时控制字段，保存时需要保留。
+const SESSION_ONLY_CONFIG_KEYS = new Set([
+    'push_enabled'
+]);
+
 // 辅助函数：获取所有可展开的路径
 const getAllExpandablePaths = (schema, prefix = '') => {
     let paths = [];
@@ -809,12 +814,36 @@ function ConfigRenderer() {
         return obj;
     };
 
+    const pickConfigBySchema = (sourceConfig, schemaObject) => {
+        if (!sourceConfig || typeof sourceConfig !== 'object' || Array.isArray(sourceConfig)) {
+            return {};
+        }
+
+        const picked = {};
+        Object.keys(schemaObject || {}).forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(sourceConfig, key)) {
+                picked[key] = sourceConfig[key];
+            }
+        });
+
+        SESSION_ONLY_CONFIG_KEYS.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(sourceConfig, key)) {
+                picked[key] = sourceConfig[key];
+            }
+        });
+
+        return picked;
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
-            const cleanedConfig = cleanConfig(config);
             const currentMode = mode;
             const currentSession = selectedSession;
+            const configToSave = currentMode === 'session'
+                ? pickConfigBySchema(config, getVisibleSchema('session'))
+                : config;
+            const cleanedConfig = cleanConfig(configToSave);
 
             if (currentMode === 'session') {
                 if (!currentSession) {
