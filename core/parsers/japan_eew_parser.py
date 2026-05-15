@@ -271,7 +271,11 @@ class JmaEewP2PParser(BaseParser):
                 range_text = ScaleConverter.format_p2p_scale_range(scale_from, scale_to)
                 emoji = ScaleConverter.get_p2p_scale_emoji(scale_from, scale_to)
 
-                if area_name:
+                max_area_scale = max(
+                    value for value in (scale_from, scale_to) if value is not None
+                ) if scale_from is not None or scale_to is not None else None
+
+                if area_name and max_area_scale is not None and max_area_scale >= 45:
                     kind = str(area.get("kindCode", "") or "").strip()
                     status = "已到达" if kind == "11" else "未到达"
                     area_parts = [status]
