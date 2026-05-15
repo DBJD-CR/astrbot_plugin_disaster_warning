@@ -14,6 +14,7 @@ from astrbot.api import logger
 
 from ...domain.event_models import EarthquakeEvent, EventEnvelope
 from ...services.identity.event_identity import resolve_report_num
+from ...services.telemetry.telemetry_utils import track_feature_safely
 from ...sources.source_catalog import get_source_ids_by_type
 from ...sources.source_entry import SourceType
 
@@ -117,24 +118,26 @@ class PushFlowHandler:
         if not telemetry or not telemetry.enabled:
             return
 
-        try:
-            await telemetry.track_feature(
-                "push_result",
-                {
-                    "source_id": getattr(event, "source_id", "") or "unknown",
-                    "event_type": getattr(event, "event_type", "") or "unknown",
-                    "success": push_success_count > 0,
-                    "success_count": push_success_count,
-                    "filter_reason_count": sum(filter_reason_stats.values()),
-                    "filter_detail_reason_count": sum(
-                        filter_reason_detail_stats.values()
-                    ),
-                    "send_failure_count": sum(send_failure_stats.values()),
-                    "send_failure_types": sorted(send_failure_stats.keys())[:8],
-                },
-            )
-        except Exception as exc:
-            logger.debug(f"[灾害预警] 推送结果遥测上报失败（已忽略）: {exc}")
+        send_failure_types = sorted(
+            send_failure_stats,
+            key=send_failure_stats.get,
+            reverse=True,
+        )[:8]
+        await track_feature_safely(
+            telemetry,
+            "push_result",
+            {
+                "source_id": getattr(event, "source_id", "") or "unknown",
+                "event_type": getattr(event, "event_type", "") or "unknown",
+                "success": push_success_count > 0,
+                "success_count": push_success_count,
+                "filter_reason_count": sum(filter_reason_stats.values()),
+                "filter_detail_reason_count": sum(filter_reason_detail_stats.values()),
+                "send_failure_count": sum(send_failure_stats.values()),
+                "send_failure_types": send_failure_types,
+            },
+            log_context="推送结果遥测",
+        )
 
     async def _dispatch_split_maps(
         self,

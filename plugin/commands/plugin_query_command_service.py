@@ -16,6 +16,7 @@ from astrbot.api.event import MessageChain
 from ...core.app.services import format_earthquake_list_text, quoted_plain_result
 from ...core.services.query.weather_query_service import query_weather_alarm_data
 from ...core.services.simulation.simulation_service import build_earthquake_simulation
+from ...core.services.telemetry.telemetry_utils import track_feature_safely
 
 
 class PluginQueryCommandService:
@@ -29,12 +30,12 @@ class PluginQueryCommandService:
     ):
         """上报匿名命令行为统计，不包含会话、关键词或原始参数。"""
         telemetry = getattr(self.plugin, "telemetry", None)
-        if not telemetry or not telemetry.enabled:
-            return
-        try:
-            await telemetry.track_feature(feature_name, extra or {})
-        except Exception as exc:
-            logger.debug(f"[灾害预警] 查询命令行为遥测上报失败（已忽略）: {exc}")
+        await track_feature_safely(
+            telemetry,
+            feature_name,
+            extra,
+            log_context="查询命令行为遥测",
+        )
 
     async def handle_query_weather_alarm(
         self,

@@ -13,6 +13,7 @@ import astrbot.api.message_components as Comp
 from astrbot.api import logger
 
 from ...core.app.services import quoted_plain_result
+from ...core.services.telemetry.telemetry_utils import track_feature_safely
 from ...utils.version import get_plugin_version
 
 
@@ -27,12 +28,12 @@ class PluginAdminCommandService:
     ):
         """上报匿名管理命令行为统计，不包含会话、配置详情或 UMO。"""
         telemetry = getattr(self.plugin, "telemetry", None)
-        if not telemetry or not telemetry.enabled:
-            return
-        try:
-            await telemetry.track_feature(feature_name, extra or {})
-        except Exception as exc:
-            logger.debug(f"[灾害预警] 管理命令行为遥测上报失败（已忽略）: {exc}")
+        await track_feature_safely(
+            telemetry,
+            feature_name,
+            extra,
+            log_context="管理命令行为遥测",
+        )
 
     async def handle_disaster_reconnect(self, event):
         # 管理类命令统一在入口先做管理员校验，避免内部逻辑重复散落权限判断。

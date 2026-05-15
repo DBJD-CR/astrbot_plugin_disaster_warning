@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from astrbot.api import logger
 
+from ..services.telemetry.telemetry_utils import track_error_safely
 from ..sources.source_catalog import get_source_entry, get_source_ids_by_dispatch_family
 from ..sources.source_entry import ProviderFamily
 from ..sources.source_router import (
@@ -157,12 +158,12 @@ class SourceMessageRouter:
     async def _track_router_error(self, exception: Exception, module: str) -> None:
         """上报路由层非预期异常，避免解析入口错误只停留在日志中。"""
         telemetry = getattr(self.service, "_telemetry", None)
-        if not telemetry or not telemetry.enabled:
-            return
-        try:
-            await telemetry.track_error(exception, module=module)
-        except Exception as exc:
-            logger.debug(f"[灾害预警] 路由异常遥测上报失败（已忽略）: {exc}")
+        await track_error_safely(
+            telemetry,
+            exception,
+            module=module,
+            log_context="路由异常遥测",
+        )
 
     async def _parse_candidate_source_ids(
         self,

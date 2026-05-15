@@ -19,6 +19,7 @@ from ....services.simulation.simulation_service import (
     get_simulation_params,
     resolve_target_session,
 )
+from ....services.telemetry.telemetry_utils import track_feature_safely
 from ..payloads.api_response import ApiResponse
 
 
@@ -29,12 +30,12 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
         feature_name: str, extra: dict[str, Any] | None = None
     ):
         telemetry = getattr(disaster_service, "_telemetry", None)
-        if not telemetry or not telemetry.enabled:
-            return
-        try:
-            await telemetry.track_feature(feature_name, extra or {})
-        except Exception as exc:
-            logger.debug(f"[灾害预警] Web运行态行为遥测上报失败（已忽略）: {exc}")
+        await track_feature_safely(
+            telemetry,
+            feature_name,
+            extra,
+            log_context="Web运行态行为遥测",
+        )
 
     @app.get("/api/weather/query")
     async def query_weather_alarm(

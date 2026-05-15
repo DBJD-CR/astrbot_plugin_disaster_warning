@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from astrbot.api import logger
 
+from ....services.telemetry.telemetry_utils import track_feature_safely
 from ..payloads.api_response import ApiResponse
 
 
@@ -22,12 +23,12 @@ def register_runtime_admin_routes(
 
     async def _track_admin_feature(feature_name: str, extra: dict | None = None):
         telemetry = getattr(disaster_service, "_telemetry", None)
-        if not telemetry or not telemetry.enabled:
-            return
-        try:
-            await telemetry.track_feature(feature_name, extra or {})
-        except Exception as exc:
-            logger.debug(f"[灾害预警] Web管理行为遥测上报失败（已忽略）: {exc}")
+        await track_feature_safely(
+            telemetry,
+            feature_name,
+            extra,
+            log_context="Web管理行为遥测",
+        )
 
     @app.post("/api/reconnect")
     async def force_reconnect():
