@@ -116,6 +116,74 @@ class ScaleConverter:
         return scale_mapping.get(p2p_scale)
 
     @staticmethod
+    def normalize_p2p_scale_value(value: Any) -> int | None:
+        """把 P2P 震度业务值安全规整为整数。"""
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def format_p2p_scale_display(value: Any) -> str:
+        """把 P2P 震度业务值转换为用户可读展示值。"""
+        raw_value = ScaleConverter.normalize_p2p_scale_value(value)
+        if raw_value is None:
+            return ""
+        converted = ScaleConverter.convert_p2p_scale(raw_value)
+        if converted is not None:
+            return ScaleConverter.format_jma_cwa_scale_display(converted)
+        return ScaleConverter.format_jma_cwa_scale_display(raw_value)
+
+    @staticmethod
+    def format_p2p_scale_range(scale_from: Any, scale_to: Any) -> str:
+        """格式化 P2P 预估震度范围。"""
+        from_value = ScaleConverter.normalize_p2p_scale_value(scale_from)
+        to_value = ScaleConverter.normalize_p2p_scale_value(scale_to)
+        if from_value is None and to_value is None:
+            return ""
+        if from_value is None:
+            return ScaleConverter.format_p2p_scale_display(to_value)
+        if to_value is None or to_value == from_value:
+            return ScaleConverter.format_p2p_scale_display(from_value)
+        from_display = ScaleConverter.format_p2p_scale_display(from_value)
+        to_display = ScaleConverter.format_p2p_scale_display(to_value)
+        if not from_display:
+            return to_display
+        if not to_display:
+            return from_display
+        return f"{from_display} ～ {to_display}"
+
+    @staticmethod
+    def get_p2p_scale_emoji(scale_from: Any, scale_to: Any) -> str:
+        """根据 P2P 震度业务值选择展示 emoji。"""
+        candidates: list[float] = []
+        for value in (scale_from, scale_to):
+            raw_value = ScaleConverter.normalize_p2p_scale_value(value)
+            if raw_value is None:
+                continue
+            converted = ScaleConverter.convert_p2p_scale(raw_value)
+            if converted is not None:
+                candidates.append(converted)
+        if not candidates:
+            return "⚪"
+        max_scale = max(candidates)
+        if max_scale >= 6.5:
+            return "🟣"
+        if max_scale >= 5.5:
+            return "🔴"
+        if max_scale >= 4.5:
+            return "🟠"
+        if max_scale >= 3.5:
+            return "🟡"
+        if max_scale >= 2.5:
+            return "🟢"
+        if max_scale >= 1.5:
+            return "🔵"
+        return "⚪"
+
+    @staticmethod
     def format_jma_cwa_scale_display(scale_value: str | int | float | None) -> str:
         """
         将日本/台湾震度值转换为展示文本。

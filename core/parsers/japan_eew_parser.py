@@ -189,9 +189,19 @@ class JmaEewP2PParser(BaseParser):
             else:
                 raw_scales = []
                 for area in areas:
-                    scale = area.get("scaleFrom", 0)
+                    if not isinstance(area, dict):
+                        continue
+                    scale = (
+                        ScaleConverter.normalize_p2p_scale_value(area.get("scaleFrom"))
+                        or 0
+                    )
                     if scale <= 0:
-                        scale = area.get("scaleTo", 0)
+                        scale = (
+                            ScaleConverter.normalize_p2p_scale_value(
+                                area.get("scaleTo")
+                            )
+                            or 0
+                        )
                     if scale > 0:
                         raw_scales.append(scale)
 
@@ -238,7 +248,7 @@ class JmaEewP2PParser(BaseParser):
             is_plum = earthquake_info.get("condition") == "仮定震源要素"
             if not is_plum:
                 for area in areas:
-                    if area.get("kindCode") == "19":
+                    if isinstance(area, dict) and str(area.get("kindCode", "")) == "19":
                         is_plum = True
                         break
 
@@ -254,19 +264,23 @@ class JmaEewP2PParser(BaseParser):
                 if not isinstance(area, dict):
                     continue
                 area_name = str(area.get("name", "") or "").strip()
-                if area_name and area.get("scaleFrom", 0) >= 45:
+                scale_from = ScaleConverter.normalize_p2p_scale_value(
+                    area.get("scaleFrom")
+                )
+                scale_to = ScaleConverter.normalize_p2p_scale_value(area.get("scaleTo"))
+                range_text = ScaleConverter.format_p2p_scale_range(scale_from, scale_to)
+                emoji = ScaleConverter.get_p2p_scale_emoji(scale_from, scale_to)
+
+                if area_name:
                     kind = str(area.get("kindCode", "") or "").strip()
                     status = "已到达" if kind == "11" else "未到达"
-                    warning_areas.append(f"{area_name}({status})")
+                    area_parts = [status]
+                    if range_text:
+                        area_parts.append(f"震度{range_text}")
+                    warning_areas.append(f"{emoji}{area_name}({'・'.join(area_parts)})")
 
-                scale_from = area.get("scaleFrom")
-                scale_to = area.get("scaleTo")
-                if scale_from:
-                    range_text = f"{scale_from}"
-                    if scale_to and scale_to != scale_from:
-                        range_text += f" ～ {scale_to}"
-                    if range_text not in warning_area_ranges:
-                        warning_area_ranges.append(range_text)
+                if range_text and range_text not in warning_area_ranges:
+                    warning_area_ranges.append(range_text)
 
             source_entry = get_source_entry(self.source_id)
             metadata = {
