@@ -70,7 +70,7 @@ class TelemetryManager:
 
         if self._enabled:
             logger.debug(
-                f"[灾害预警] 已启用匿名遥测 (Instance ID: {self._instance_id}, AstrBot: {self._astrbot_version})"
+                f"[灾害预警] 已启用匿名遥测，实例标识为 {self._instance_id}，AstrBot 版本为 {self._astrbot_version}"
             )
         else:
             logger.debug("[灾害预警] 遥测功能未启用")
@@ -155,7 +155,6 @@ class TelemetryManager:
                 self._ENDPOINT, json=payload, headers=headers
             ) as response:
                 if response.status == 200:
-                    logger.debug(f"[灾害预警] 遥测事件 '{event_name}' 发送成功")
                     return True
                 if response.status == 401:
                     logger.warning("[灾害预警] App Key 无效或项目已禁用")
@@ -171,13 +170,13 @@ class TelemetryManager:
             logger.debug(f"[灾害预警] 遥测连接失败: {e}")
             return False
         except aiohttp.ClientPayloadError as e:
-            logger.debug(f"[灾害预警] 遥测数据负载错误: {e}")
+            logger.debug(f"[灾害预警] 遥测数据负载异常，错误为 {e}")
             return False
         except aiohttp.ClientError as e:
-            logger.debug(f"[灾害预警] 遥测网络错误: {e}")
+            logger.debug(f"[灾害预警] 遥测网络请求异常，错误为 {e}")
             return False
         except Exception as e:
-            logger.debug(f"[灾害预警] 遥测未知错误: {e}")
+            logger.debug(f"[灾害预警] 遥测发送遇到未知异常，错误为 {e}")
             return False
 
         return False
@@ -212,7 +211,6 @@ class TelemetryManager:
 
         参数 `uptime_seconds` 表示当前累计运行秒数。
         """
-        logger.debug(f"[灾害预警] 准备发送心跳: uptime_seconds={uptime_seconds}")
         return await self.track(
             "heartbeat",
             {
@@ -279,8 +277,8 @@ class TelemetryManager:
         raw_message = str(exception)
         if self._should_skip_error_telemetry(exception, raw_message, module):
             logger.debug(
-                "[灾害预警] 命中遥测噪声过滤规则，跳过错误上报: "
-                f"{type(exception).__name__} | module={module} | message={raw_message[:200]}"
+                "[灾害预警] 命中遥测噪声过滤规则，跳过错误上报："
+                f"异常类型为 {type(exception).__name__}，模块为 {module}，消息摘要：{raw_message[:200]}"
             )
             return False
 

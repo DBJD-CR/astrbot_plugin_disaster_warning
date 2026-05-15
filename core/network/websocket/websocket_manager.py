@@ -255,11 +255,10 @@ class WebSocketManager:
         if name in self.connections:
             try:
                 await self.connections[name].send_str(message)
-                logger.debug(f"[灾害预警] 消息已发送到 {name}: {message[:100]}...")
             except Exception as e:
-                logger.error(f"[灾害预警] WebSocket管理器发送消息失败 {name}: {e}")
+                logger.error(f"[灾害预警] WebSocket 管理器向 {name} 发送消息失败，错误为 {e}")
         else:
-            logger.warning(f"[灾害预警] WebSocket管理器尝试发送到未连接的连接: {name}")
+            logger.warning(f"[灾害预警] WebSocket 管理器尝试向未连接的 {name} 发送消息")
 
     def get_connection_status(self, name: str) -> dict[str, Any]:
         """获取单个连接的状态摘要。"""

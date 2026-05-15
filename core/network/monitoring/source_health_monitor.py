@@ -58,8 +58,7 @@ class SourceHealthMonitor:
                 pass
 
             return (end_time - start_time) * 1000
-        except (asyncio.TimeoutError, OSError, Exception) as e:
-            logger.debug(f"[灾害预警] TCP 延迟探测异常 {host}:{port}: {e}")
+        except (asyncio.TimeoutError, OSError, Exception):
             return None
 
     async def run_background_ping_loop(self, interval_seconds: float = 30.0):
@@ -96,7 +95,6 @@ class SourceHealthMonitor:
                             ping_failures[source_name] = 0
                             self.latency_cache[source_name] = result
 
-                logger.debug(f"[灾害预警] 延迟缓存已更新: {self.latency_cache}")
                 await asyncio.sleep(interval_seconds)
 
             except asyncio.CancelledError:

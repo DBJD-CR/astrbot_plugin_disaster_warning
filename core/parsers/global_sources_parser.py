@@ -49,18 +49,16 @@ class GlobalQuakeParser(BaseParser):
 
             # 二进制通道会混发地震、心跳和状态消息，这里只把地震消息送入正式解析链。
             if ws_msg.type == MessageType.EARTHQUAKE:
-                logger.debug(f"[灾害预警] {self.source_id} 收到地震消息")
                 return self._parse_earthquake_protobuf(ws_msg)
             if ws_msg.type == MessageType.HEARTBEAT:
-                logger.debug(f"[灾害预警] {self.source_id} 心跳消息")
                 return None
             if ws_msg.type == MessageType.STATUS:
                 logger.debug(
-                    f"[灾害预警] {self.source_id} 状态消息: {ws_msg.status_data.server_status}"
+                    f"[灾害预警] {self.source_id} 收到状态消息，服务器状态为 {ws_msg.status_data.server_status}"
                 )
                 return None
 
-            logger.debug(f"[灾害预警] {self.source_id} 未知消息类型: {ws_msg.type}")
+            logger.debug(f"[灾害预警] {self.source_id} 收到未知类型的消息，类型值为 {ws_msg.type}")
             return None
         except Exception as exc:
             logger.error(f"[灾害预警] {self.source_id} Protobuf 解析失败: {exc}")
@@ -76,11 +74,11 @@ class GlobalQuakeParser(BaseParser):
             # JSON 通道当前主要关心地震消息，其余类型直接忽略。
             if msg_type == "earthquake":
                 logger.debug(
-                    f"[灾害预警] {self.source_id} 收到地震消息 (JSON)，action: {action}"
+                    f"[灾害预警] {self.source_id} 收到 JSON 地震消息，动作为 {action}"
                 )
                 return self._parse_earthquake_data(data)
 
-            logger.debug(f"[灾害预警] {self.source_id} 忽略消息类型: {msg_type}")
+            logger.debug(f"[灾害预警] {self.source_id} 已忽略类型为 {msg_type} 的消息")
             return None
         except json.JSONDecodeError as exc:
             logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")

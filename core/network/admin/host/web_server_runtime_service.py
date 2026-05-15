@@ -196,7 +196,7 @@ class WebServerRuntimeService:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"[灾害预警] 广播循环异常: {e}")
+                logger.debug(f"[灾害预警] 管理端广播循环执行异常，错误为 {e}")
 
     async def close_all_websockets(self) -> None:
         """关闭所有 WebSocket 连接。"""

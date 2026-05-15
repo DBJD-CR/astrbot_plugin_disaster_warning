@@ -98,17 +98,8 @@ class SourceMessageRouter:
         connection_name=None,
         connection_info=None,
     ) -> None:
-        if connection_info:
-            logger.debug(
-                f"[灾害预警] {provider_name}处理器收到消息 - 连接: {connection_name}, URI: {connection_info.get('uri', 'unknown')}, 长度: {len(message) if hasattr(message, '__len__') else 'unknown'}"
-            )
-            established_time = connection_info.get("established_time")
-            if established_time:
-                logger.debug(f"[灾害预警] 连接建立时间: {established_time}")
-            return
-        logger.debug(
-            f"[灾害预警] {provider_name}处理器收到消息 - 连接: {connection_name}, 长度: {len(message) if hasattr(message, '__len__') else 'unknown'}"
-        )
+        # 原始 WebSocket 消息由 message_logger 负责落盘；这里避免对高频消息逐条输出 DEBUG。
+        return
 
     def _has_parser(self, source_id: str) -> bool:
         """检查 source 是否已装配 parser。"""
@@ -192,13 +183,13 @@ class SourceMessageRouter:
                 if dispatched:
                     return True
             except Exception as error:
-                logger.error(
-                    f"[灾害预警] {source_id}解析器解析失败 - 连接: {connection_name}, 错误: {error}"
+                connection_uri = (
+                    connection_info.get("uri") if connection_info else "未知地址"
                 )
-                if connection_info:
-                    logger.error(
-                        f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}"
-                    )
+                logger.error(
+                    f"[灾害预警] {source_id} 解析器处理来自 {connection_name or '未知连接'} 的消息失败，"
+                    f"连接地址为 {connection_uri}，错误为 {error}"
+                )
         return False
 
     def _ensure_fan_studio_parser_mapping(self) -> None:
@@ -275,22 +266,24 @@ class SourceMessageRouter:
                         is_unhandled_initial = msg_type == "initial_all"
                         if has_data or is_unhandled_initial:
                             logger.debug(
-                                f"[灾害预警] 未处理的消息，连接: {connection_name}, "
-                                f"类型: {msg_type}, "
-                                f"源: {data.get('source', 'unknown')}, "
+                                f"[灾害预警] 收到一条尚未处理的消息，连接为 {connection_name}，"
+                                f"消息类型为 {msg_type}，来源为 {data.get('source', 'unknown')}，"
                                 f"数据摘要: {str(data)[:100]}"
                             )
 
                 return None
 
             except Exception as error:
-                logger.error(
-                    f"[灾害预警] FAN Studio处理器解析消息失败 - 连接: {connection_name}, 错误: {error}"
+                connection_uri = (
+                    connection_info.get("uri") if connection_info else "未知地址"
                 )
-                if connection_info:
-                    logger.error(
-                        f"[灾害预警] 连接信息 - URI: {connection_info.get('uri')}, 类型: {connection_info.get('connection_type')}"
-                    )
+                connection_type = (
+                    connection_info.get("connection_type") if connection_info else "未知类型"
+                )
+                logger.error(
+                    f"[灾害预警] FAN Studio 处理器解析来自 {connection_name or '未知连接'} 的消息失败，"
+                    f"连接地址为 {connection_uri}，连接类型为 {connection_type}，错误为 {error}"
+                )
                 raise
 
         return fan_studio_handler
@@ -312,7 +305,7 @@ class SourceMessageRouter:
                 code = str(data.get("code") or "").strip()
                 if code == "556":
                     logger.info(
-                        "[灾害预警] P2P处理器收到紧急地震速报(code:556)，准备解析..."
+                        "[灾害预警] P2P 处理器收到紧急地震速报，业务码为 556，准备解析"
                     )
             except (json.JSONDecodeError, AttributeError, TypeError):
                 data = {}
@@ -366,7 +359,7 @@ class SourceMessageRouter:
                 source_id = get_wolfx_source_id(msg_type)
                 if source_id is None:
                     logger.debug(
-                        f"[灾害预警] 未识别的 Wolfx 消息类型: {msg_type}, 连接: {connection_name}"
+                        f"[灾害预警] Wolfx 消息类型 {msg_type} 暂未识别，来源连接为 {connection_name}"
                     )
                     return None
 
@@ -374,7 +367,7 @@ class SourceMessageRouter:
                     return None
 
                 logger.debug(
-                    f"[灾害预警] 使用 Wolfx 解析器: {source_id} 处理 {msg_type}"
+                    f"[灾害预警] 将使用 Wolfx 解析器 {source_id} 处理类型为 {msg_type} 的消息"
                 )
                 # 某些 Wolfx 消息在正式解析前需要先触发附带状态更新等副作用处理。
                 await self._side_effect_service.process_message(

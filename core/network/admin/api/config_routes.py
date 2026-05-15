@@ -42,7 +42,9 @@ def register_config_routes(app, *, config):
                 status_code=404,
             )
         except Exception as e:
-            logger.error(f"[灾害预警] 获取配置结构定义失败: {e}, path: {schema_path}")
+            logger.error(
+                f"[灾害预警] 获取配置结构定义失败，文件路径为 {schema_path}，错误为 {e}"
+            )
             return ApiResponse.error(
                 f"{str(e)}, path: {schema_path}, trace: {traceback.format_exc()}",
                 status_code=500,

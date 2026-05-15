@@ -106,7 +106,7 @@ class CWAEewFusionService:
             cls = type(self)
             cls._apply_scale(event, earthquake, scale)
             logger.info(
-                f"[灾害预警] 融合策略: Fan CWA EEW 事件 {event.id} 命中 Wolfx 缓存并补充最大震度: {scale}"
+                f"[灾害预警] 融合策略：Fan CWA EEW 事件 {event.id} 已命中 Wolfx 缓存，补充的最大震度为 {scale}"
             )
             return await self._execute_push(
                 event,
@@ -115,7 +115,7 @@ class CWAEewFusionService:
             )
 
         logger.info(
-            f"[灾害预警] 融合策略: 拦截 Fan CWA EEW 事件 {event.id} (event_key={event_key}, report={report_num})，等待 Wolfx 最大震度补充 ({timeout}s)..."
+            f"[灾害预警] 融合策略：已拦截 Fan CWA EEW 事件 {event.id}，事件标识为 {event_key}，报数为 {report_num}，等待 Wolfx 在 {timeout} 秒内补充最大震度"
         )
 
         loop = asyncio.get_running_loop()
@@ -146,7 +146,7 @@ class CWAEewFusionService:
             store.cwa_eew_pending.pop(pending_key, None)
 
             if result == "timeout":
-                logger.info("[灾害预警] 融合策略: CWA EEW 等待超时，推送原始 Fan 事件")
+                logger.info("[灾害预警] 融合策略：CWA EEW 等待超时，推送原始 Fan 事件")
                 return await self._execute_push(
                     event,
                     target_sessions=target_sessions,
@@ -154,7 +154,7 @@ class CWAEewFusionService:
                 )
             if result == "fused":
                 logger.info(
-                    "[灾害预警] 融合策略: CWA EEW 融合完成，推送补充最大震度后的 Fan 事件"
+                    "[灾害预警] 融合策略：CWA EEW 融合完成，推送补充最大震度后的 Fan 事件"
                 )
                 return await self._execute_push(
                     event,
@@ -252,11 +252,11 @@ class CWAEewFusionService:
             if fan_earthquake.scale is None:
                 type(self)._apply_scale(fan_event, fan_earthquake, scale)
                 logger.info(
-                    f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan CWA EEW 事件 {pending_key} 的最大震度: {scale}"
+                    f"[灾害预警] 融合策略：已使用 Wolfx 为 Fan CWA EEW 事件 {pending_key} 补充最大震度，数值为 {scale}"
                 )
             else:
                 logger.info(
-                    f"[灾害预警] 融合策略: Fan CWA EEW 事件 {pending_key} 已自带最大震度，保留 Fan 数值 {fan_earthquake.scale}"
+                    f"[灾害预警] 融合策略：Fan CWA EEW 事件 {pending_key} 已自带最大震度，保留 Fan 的数值 ({fan_earthquake.scale})"
                 )
 
             if future is not None and hasattr(future, "done") and not future.done():

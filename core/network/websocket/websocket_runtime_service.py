@@ -35,10 +35,9 @@ class WebSocketRuntimeService:
                 # 若超过两个心跳周期仍无活跃信号，则主动发送 ping 做保活探测。
                 if current_time - last_time > interval * 2:
                     try:
-                        logger.debug(f"[灾害预警] 发送应用层 Ping: {name}")
                         await websocket.ping()
                     except Exception as e:
-                        logger.warning(f"[灾害预警] Ping 失败 {name}: {e}")
+                        logger.warning(f"[灾害预警] WebSocket {name} 的 Ping 保活失败，错误为 {e}")
                         await websocket.close(code=1001, message=b"Heartbeat timeout")
                         break
         except asyncio.CancelledError:
@@ -51,9 +50,9 @@ class WebSocketRuntimeService:
         if name in self.manager.connections:
             try:
                 await self.manager.connections[name].close()
-                logger.info(f"[灾害预警] WebSocket连接已关闭: {name}")
+                logger.debug(f"[灾害预警] WebSocket {name} 的连接句柄已关闭")
             except Exception as e:
-                logger.error(f"[灾害预警] WebSocket断开连接时出错 {name}: {e}")
+                logger.error(f"[灾害预警] WebSocket {name} 断开连接时出错，错误为 {e}")
             finally:
                 # 断开后同步清理连接句柄、元数据与心跳任务，避免残留脏状态。
                 self.manager.connections.pop(name, None)

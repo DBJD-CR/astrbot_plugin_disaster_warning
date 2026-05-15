@@ -137,7 +137,9 @@ class WeatherRegionResolver:
             ) as resp:
                 payload = await resp.json(content_type=None)
         except Exception as exc:
-            logger.debug(f"[灾害预警] 行政区划查询失败: {place_name}, 错误: {exc}")
+            logger.debug(
+                f"[灾害预警] 行政区划查询失败，地点为 {place_name}，错误为 {exc}"
+            )
             self._location_province_cache[place_name] = None
             self._cache_expire[place_name] = now + self._failure_ttl
             return None

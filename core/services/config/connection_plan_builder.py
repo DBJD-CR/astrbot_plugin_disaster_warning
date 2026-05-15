@@ -68,6 +68,6 @@ class ConnectionPlanBuilder:
             elif group_key == "global_quake":
                 logger.info("[灾害预警] Global Quake 数据源已启用")
             else:
-                logger.info(f"[灾害预警] 已配置数据连接: {group_key}")
+                logger.info(f"[灾害预警] 已配置数据连接，连接分组为 {group_key}")
 
         return connections

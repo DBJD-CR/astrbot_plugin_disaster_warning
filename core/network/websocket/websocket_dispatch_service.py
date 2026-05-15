@@ -65,8 +65,8 @@ class WebSocketDispatchService:
                 elif msg.type == WSMsgType.ERROR:
                     raise msg.data
                 elif msg.type == WSMsgType.CLOSED:
-                    logger.info(
-                        f"[灾害预警] WebSocket连接已关闭: {name}, code={websocket.close_code}"
+                    logger.debug(
+                        f"[灾害预警] WebSocket {name} 的连接已收到关闭帧，关闭码为 {websocket.close_code}"
                     )
                     break
                 elif msg.type in {WSMsgType.PING, WSMsgType.PONG}:
@@ -84,7 +84,7 @@ class WebSocketDispatchService:
             logger.error(f"[灾害预警] WebSocket消息循环异常 {name}: {e}")
             raise
 
-        logger.info(f"[灾害预警] 连接断开: {name}")
+        logger.debug(f"[灾害预警] WebSocket 连接 {name} 的消息循环已结束")
 
     def log_message(self, name: str, message: Any, uri: str) -> None:
         """记录原始 WebSocket 消息。"""
@@ -155,7 +155,7 @@ class WebSocketDispatchService:
 
         # 关闭码策略显式区分：正常关闭、不应重连的协议错误、以及需要重连的异常关闭。
         if close_code in self._NORMAL_CLOSE_CODES:
-            logger.info(f"[灾害预警] WebSocket正常关闭: {name}, code={close_code}")
+            logger.info(f"[灾害预警] WebSocket {name} 的连接已正常关闭，关闭码为 {close_code}")
             return
 
         if close_code in self._NO_RECONNECT_CODES:
@@ -163,7 +163,7 @@ class WebSocketDispatchService:
 
         if close_code == 1006:
             logger.warning(
-                f"[灾害预警] WebSocket异常关闭，准备重连: {name}, code={close_code}"
+                f"[灾害预警] WebSocket {name} 的连接异常关闭，关闭码为 {close_code}，准备重连"
             )
             self.manager._handle_connection_error(
                 name,
@@ -201,7 +201,7 @@ class WebSocketDispatchService:
                     connection_info=connection_info,
                 )
             else:
-                logger.warning(f"[灾害预警] 未找到消息处理器 - 连接: {name}")
+                logger.warning(f"[灾害预警] 连接 {name} 没有匹配到可用的消息处理器")
         except Exception as e:
             logger.error(f"[灾害预警] {error_label} {name}: {e}")
             logger.debug(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")

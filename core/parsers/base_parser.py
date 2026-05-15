@@ -37,8 +37,6 @@ class BaseParser:
 
     def parse_message(self, message: str | bytes) -> Any | None:
         """解析原始消息。"""
-        logger.debug(f"[{self.source_id}] 收到原始消息，长度: {len(message)}")
-
         try:
             # 统一先做解码，再交给领域事件构建入口，便于子类按需覆写其中某一步。
             payload = self.decode_message(message)
