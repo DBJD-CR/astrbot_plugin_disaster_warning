@@ -646,13 +646,12 @@ class ConfigValidator:
                         f"[灾害预警] 配置警告: 地图源 '{map_source}' 不在标准列表中，请确认是否为自定义源。"
                     )
 
-        # Global Quake 模板校验
-        gq_template = cfg.get("global_quake_template")
+        # 地震卡片模板校验
+        eq_template = cfg.get("earthquake_card_template")
         valid_templates = ["Aurora", "DarkNight"]
-        if gq_template and gq_template not in valid_templates:
-            # 仅警告，不强制重置
+        if eq_template and eq_template not in valid_templates:
             logger.warning(
-                f"[灾害预警] 配置警告: GQ模板 '{gq_template}' 不在标准列表中，请确认是否为自定义模板。"
+                f"[灾害预警] 配置警告: 卡片模板 '{eq_template}' 不在标准列表中，请确认是否为自定义模板。"
             )
 
         # Playwright 模式校验
@@ -692,7 +691,7 @@ class ConfigValidator:
         # 布尔值校验
         ConfigValidator._ensure_bool(cfg, "include_map", False)
         ConfigValidator._ensure_bool(cfg, "detailed_jma_intensity", False)
-        ConfigValidator._ensure_bool(cfg, "use_global_quake_card", False)
+        ConfigValidator._ensure_bool(cfg, "use_earthquake_card", False)
 
         return cfg
 

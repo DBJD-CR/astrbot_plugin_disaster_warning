@@ -39,6 +39,7 @@ from ...utils.formatters import (
     format_earthquake_message,
     format_tsunami_message,
     format_weather_message,
+    get_render_context,
 )
 from ...utils.map_tile_sources import get_tile_url_js
 from ...utils.version import get_plugin_version
@@ -180,13 +181,13 @@ class MessagePushManager:
         self.cleanup_old_records()
 
         # 检查是否需要预启动浏览器
-        # 如果启用了地图瓦片 (include_map) 或 Global Quake 卡片 (use_global_quake_card)
+        # 如果启用了地图瓦片 (include_map) 或地震卡片 (use_earthquake_card)
         # 则在后台异步预热浏览器，避免第一次推送时因启动浏览器造成延迟
         # 注意：远程模式使用 HTTP API，不需要预热
         msg_config = config.get("message_format", {})
         if playwright_mode == "local" and (
             msg_config.get("include_map", False)
-            or msg_config.get("use_global_quake_card", False)
+            or msg_config.get("use_earthquake_card", False)
         ):
             logger.debug("[灾害预警] 检测到已启用卡片渲染功能，正在后台预热浏览器...")
             asyncio.create_task(self.browser_manager.initialize())
@@ -383,10 +384,13 @@ class MessagePushManager:
         message_format_config: dict[str, Any],
         display_timezone: str,
     ) -> str:
-        """构建 Global Quake 卡片缓存键。"""
+        """构建地震卡片缓存键。"""
         key_obj = {
-            "type": "global_quake_card",
+            "type": "earthquake_card",
             "event_id": earthquake.event_id or earthquake.id,
+            "source": earthquake.source.value
+            if hasattr(earthquake.source, "value")
+            else str(earthquake.source),
             "updates": getattr(earthquake, "updates", 1),
             "shock_time": (
                 earthquake.shock_time.isoformat()
@@ -399,7 +403,7 @@ class MessagePushManager:
             "depth": earthquake.depth,
             "intensity": earthquake.intensity,
             "place_name": earthquake.place_name,
-            "template": message_format_config.get("global_quake_template", "Aurora"),
+            "template": message_format_config.get("earthquake_card_template", "Aurora"),
             "map_source": message_format_config.get("map_source", "PetalMap矢量图亮"),
             "map_zoom_level": message_format_config.get("map_zoom_level", 5),
             "playwright_mode": message_format_config.get("playwright_mode", "local"),
@@ -431,11 +435,11 @@ class MessagePushManager:
                 "playwright_mode": message_format_config.get(
                     "playwright_mode", "local"
                 ),
-                "use_global_quake_card": message_format_config.get(
-                    "use_global_quake_card", False
+                "use_earthquake_card": message_format_config.get(
+                    "use_earthquake_card", False
                 ),
-                "global_quake_template": message_format_config.get(
-                    "global_quake_template", "Aurora"
+                "earthquake_card_template": message_format_config.get(
+                    "earthquake_card_template", "Aurora"
                 ),
                 "detailed_jma_intensity": message_format_config.get(
                     "detailed_jma_intensity", False
@@ -1367,116 +1371,106 @@ class MessagePushManager:
         source_id = self._get_source_id(event)
         message_format_config = active_config.get("message_format", {})
 
-        # 1. Global Quake 卡片处理逻辑
-        use_gq_card = message_format_config.get("use_global_quake_card", False)
-        if (
-            source_id == "global_quake"
-            and use_gq_card
-            and isinstance(event.data, EarthquakeData)
-        ):
+        # 1. 地震卡片处理逻辑 — 支持所有地震数据源
+        use_card = message_format_config.get("use_earthquake_card", False)
+        if use_card and isinstance(event.data, EarthquakeData):
             try:
-                # 渲染 Global Quake 卡片
                 display_timezone = active_config.get("display_timezone", "UTC+8")
                 options = {"timezone": display_timezone}
-                context = GlobalQuakeFormatter.get_render_context(event.data, options)
+                context = get_render_context(source_id, event.data, options)
 
-                # 注入自定义缩放级别，默认设为 5
-                zoom_level = message_format_config.get("map_zoom_level", 5)
-                context["zoom_level"] = zoom_level
-
-                # 注入地图源配置
-                map_source = message_format_config.get("map_source", "PetalMap矢量图亮")
-                context["map_source"] = map_source
-                # 注入完整的瓦片URL（处理特殊格式）
-                context["tile_url"] = get_tile_url_js(map_source)
-
-                # 获取模板名称配置
-                template_name = message_format_config.get(
-                    "global_quake_template", "Aurora"
-                )
-
-                # 加载模板
-                resources_dir = os.path.join(self.plugin_root, "resources")
-                template_path = os.path.join(
-                    resources_dir, "card_templates", template_name, "global_quake.html"
-                )
-
-                if not os.path.exists(template_path):
-                    logger.error(f"[灾害预警] 找不到模板文件: {template_path}")
+                if context is None:
+                    logger.debug(
+                        f"[灾害预警] 数据源 {source_id} 不支持卡片渲染，回退到文本模式"
+                    )
                 else:
-                    with open(template_path, encoding="utf-8") as f:
-                        template_content = f.read()
+                    # 注入页面级配置
+                    zoom_level = message_format_config.get("map_zoom_level", 5)
+                    context["zoom_level"] = zoom_level
 
-                    # 根据 playwright 模式选择资源 URL
-                    playwright_mode = active_config.get("message_format", {}).get(
-                        "playwright_mode", "local"
+                    map_source = message_format_config.get("map_source", "PetalMap矢量图亮")
+                    context["map_source"] = map_source
+                    context["tile_url"] = get_tile_url_js(map_source)
+
+                    template_name = message_format_config.get(
+                        "earthquake_card_template", "Aurora"
                     )
-                    if playwright_mode == "remote":
-                        # 远程模式：使用 CDN
-                        context["leaflet_js_url"] = (
-                            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-                        )
-                        context["leaflet_css_url"] = (
-                            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-                        )
+                    resources_dir = os.path.join(self.plugin_root, "resources")
+                    template_path = os.path.join(
+                        resources_dir, "card_templates", template_name, "earthquake_card.html"
+                    )
+
+                    if not os.path.exists(template_path):
+                        logger.error(f"[灾害预警] 找不到卡片模板: {template_path}")
                     else:
-                        # 本地模式：使用本地文件
-                        leaflet_path = os.path.abspath(
-                            os.path.join(resources_dir, "card_templates", "leaflet.js")
+                        with open(template_path, encoding="utf-8") as f:
+                            template_content = f.read()
+
+                        playwright_mode = active_config.get("message_format", {}).get(
+                            "playwright_mode", "local"
                         )
-                        leaflet_css_path = os.path.abspath(
-                            os.path.join(resources_dir, "card_templates", "leaflet.css")
+                        if playwright_mode == "remote":
+                            context["leaflet_js_url"] = (
+                                "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                            )
+                            context["leaflet_css_url"] = (
+                                "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+                            )
+                        else:
+                            leaflet_path = os.path.abspath(
+                                os.path.join(resources_dir, "card_templates", "leaflet.js")
+                            )
+                            leaflet_css_path = os.path.abspath(
+                                os.path.join(resources_dir, "card_templates", "leaflet.css")
+                            )
+                            context["leaflet_js_url"] = f"file://{leaflet_path}"
+                            context["leaflet_css_url"] = f"file://{leaflet_css_path}"
+
+                        map_helper_path = os.path.abspath(
+                            os.path.join(
+                                resources_dir, "card_templates", "map_render_helper.js"
+                            )
                         )
-                        context["leaflet_js_url"] = f"file://{leaflet_path}"
-                        context["leaflet_css_url"] = f"file://{leaflet_css_path}"
+                        with open(map_helper_path, encoding="utf-8") as helper_file:
+                            context["map_render_helper_js"] = helper_file.read()
 
-                    # 共享渲染 helper 统一以内联脚本注入，避免远程模式下的静态资源可达性问题
-                    map_helper_path = os.path.abspath(
-                        os.path.join(
-                            resources_dir, "card_templates", "map_render_helper.js"
-                        )
-                    )
-                    with open(map_helper_path, encoding="utf-8") as helper_file:
-                        context["map_render_helper_js"] = helper_file.read()
+                        template = Template(template_content)
+                        html_content = template.render(**context)
 
-                    # Jinja2 渲染
-                    template = Template(template_content)
-                    html_content = template.render(**context)
-
-                    # 准备临时文件路径
-                    card_cache_key = self._build_global_quake_card_cache_key(
-                        event.data,
-                        message_format_config,
-                        display_timezone,
-                    )
-
-                    async def render_gq_card() -> str | None:
-                        image_filename = f"gq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
-                        image_path = os.path.join(self.temp_dir, image_filename)
-                        return await self.browser_manager.render_card(
-                            html_content, image_path, selector="#card-wrapper"
+                        card_cache_key = self._build_global_quake_card_cache_key(
+                            event.data,
+                            message_format_config,
+                            display_timezone,
                         )
 
-                    result_path = await self._render_with_cache(
-                        card_cache_key,
-                        render_gq_card,
-                    )
+                        async def render_card() -> str | None:
+                            image_filename = f"eq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                            image_path = os.path.join(self.temp_dir, image_filename)
+                            return await self.browser_manager.render_card(
+                                html_content, image_path, selector="#card-wrapper"
+                            )
 
-                    if result_path and os.path.exists(result_path):
-                        # 核心修复点：将图片转换为 base64 避免路径兼容性问题
-                        try:
-                            with open(result_path, "rb") as f:
-                                b64_data = base64.b64encode(f.read()).decode()
-                            chain = [Comp.Image.fromBase64(b64_data)]
-                            return MessageChain(chain)
-                        except Exception as e:
-                            logger.error(f"[灾害预警] 读取图片转换为Base64失败: {e}")
-                    else:
-                        logger.warning("[灾害预警] Global Quake 卡片渲染失败")
+                        result_path = await self._render_with_cache(
+                            card_cache_key,
+                            render_card,
+                        )
+
+                        if result_path and os.path.exists(result_path):
+                            try:
+                                with open(result_path, "rb") as f:
+                                    b64_data = base64.b64encode(f.read()).decode()
+                                chain = [Comp.Image.fromBase64(b64_data)]
+                                return MessageChain(chain)
+                            except Exception as e:
+                                logger.error(f"[灾害预警] 读取图片转换为Base64失败: {e}")
+                        else:
+                            logger.warning(
+                                f"[灾害预警] 地震卡片渲染失败 ({source_id})，回退到文本模式"
+                            )
 
             except Exception as e:
                 logger.error(
-                    f"[灾害预警] Global Quake 卡片渲染失败: {e}，回退到文本模式"
+                    f"[灾害预警] 地震卡片渲染失败 ({source_id}): {e}，回退到文本模式"
                 )
 
         # 2. 通用文本消息构建 (包含新的瓦片地图图片逻辑)

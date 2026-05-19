@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earthquake Card</title>
+
+    <!-- Leaflet.js 地图瓦片依赖 -->
+    <link rel="stylesheet" href="{{ leaflet_css_url }}" />
+    <script src="{{ leaflet_js_url }}"></script>
+    <script>
+        {{ map_render_helper_js }}
+    </script>
+
+    <style>
+        :root {
+            --font-stack: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --bg-body: transparent;
+            --bg-card: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --color-mag-low: #10b981;
+            --color-mag-med: #f59e0b;
+            --color-mag-high: #ef4444;
+            --color-update: #3b82f6;
+            --color-intensity: #8b5cf6;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: fit-content;
+            height: fit-content;
+            background-color: var(--bg-body);
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .quake-card {
+            width: 520px;
+            margin: 10px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: 90px 1fr;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .card-visual {
+            background: rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 15px 10px;
+            border-right: 1px solid var(--border);
+            gap: 8px;
+        }
+
+        .mag-circle {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .intensity-badge {
+            background: var(--color-intensity);
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-details {
+            padding: 15px 20px;
+        }
+
+        .card-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .region-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
+            line-height: 1.2;
+        }
+
+        .action-tag {
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            margin-left: 8px;
+            vertical-align: middle;
+            display: inline-block;
+        }
+
+        .tag-update {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid #3b82f6;
+        }
+
+        .tag-new {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid #10b981;
+        }
+
+        .time-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-family: monospace;
+            white-space: nowrap;
+            margin-left: 10px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 15px;
+            margin-top: 10px;
+        }
+
+        .metric-item {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.8rem;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+            font-size: 0.75rem;
+        }
+
+        .metric-value {
+            color: var(--text-primary);
+            font-weight: 500;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+
+        .metric-sub {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-left: 4px;
+        }
+
+        .card-footer {
+            margin-top: 12px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+
+        .bg-low { background-color: var(--color-mag-low); }
+        .bg-med { background-color: var(--color-mag-med); }
+        .bg-high { background-color: var(--color-mag-high); }
+
+        #map-container {
+            height: 150px;
+            width: 100%;
+            margin: 15px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+        }
+
+        .leaflet-container {
+            border-radius: 8px;
+        }
+
+        .epicenter-marker {
+            font-size: 20px;
+            line-height: 1;
+            text-shadow: 0 0 3px #FFF1AA, 0 0 6px rgba(255, 241, 170, 0.5);
+        }
+
+        .footer-grid {
+            margin-top: 0;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px 15px;
+        }
+
+        .footer-item {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.75rem;
+        }
+
+        .f-label {
+            color: #475569;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .f-val {
+            color: var(--text-secondary);
+            font-family: monospace;
+            font-size: 0.75rem;
+            word-break: break-all;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="quake-card">
+        <div class="card-visual">
+            <div class="mag-circle {{ mag_class }}">{{ magnitude }}</div>
+            {% if intensity %}
+            <div class="intensity-badge">{{ intensity_label }} {{ intensity }}</div>
+            {% endif %}
+        </div>
+        <div class="card-details">
+            <div class="card-header-row">
+                <div style="flex: 1;">
+                    <span class="region-text">{{ region }}</span>
+                    {% if is_update %}
+                    <span class="action-tag tag-update">UPDATE (Rev.{{ revision }})</span>
+                    {% else %}
+                    <span class="action-tag tag-new">NEW EVENT</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="time-text" style="margin-bottom: 10px;">
+                {{ time_str }}
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-item">
+                    <span class="metric-label">深度 (Depth)</span>
+                    <span class="metric-value">{{ depth }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">震中位置 (Epicenter)</span>
+                    <span class="metric-value">{{ epicenter_str }}</span>
+                </div>
+            </div>
+
+            <!-- 地图容器 -->
+            <div id="map-container"></div>
+
+            {% if footer_items %}
+            <div class="footer-grid" style="grid-template-columns: repeat({{ [footer_items|length, 2]|min }}, 1fr);">
+                {% for item in footer_items %}
+                <div class="footer-item">
+                    <span class="f-label">{{ item.label }}</span>
+                    <span class="f-val">{{ item.value }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="card-footer">
+                <span>ID: {{ event_id }}</span>
+                <span>Source: {{ source_name }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet 地图脚本 -->
+    <script>
+        const lat = Number("{{ latitude }}");
+        const lng = Number("{{ longitude }}");
+
+        const zoomLevel = Number("{{ zoom_level }}") || 5;
+        const map = L.map('map-container', {
+            center: [lat, lng],
+            zoom: zoomLevel,
+            zoomControl: false,
+            attributionControl: false,
+            zoomAnimation: false,
+            fadeAnimation: false,
+            markerZoomAnimation: false
+        });
+
+        const tileLayer = L.tileLayer(`{{ tile_url }}`, {
+            maxZoom: 18,
+            minZoom: 1,
+            keepBuffer: 2,
+            updateWhenIdle: true,
+            updateWhenZooming: false
+        }).addTo(map);
+
+        setupStableTileRender(map, tileLayer, {
+            readyDebounceMs: 120,
+            readyFallbackMs: 2200,
+            readyClass: 'map-ready',
+            debug: true
+        });
+
+        const svgContent = `
+            <svg width="30" height="30" viewBox="-15 -15 30 30" style="overflow: visible;">
+                <line x1="-8" y1="-8" x2="8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
+                <line x1="8" y1="-8" x2="-8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
+                <line x1="-8" y1="-8" x2="8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
+                <line x1="8" y1="-8" x2="-8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
+            </svg>
+        `;
+
+        const epicenterIcon = L.divIcon({
+            className: 'epicenter-marker',
+            html: svgContent,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        });
+
+        L.marker([lat, lng], { icon: epicenterIcon }).addTo(map);
+
+        console.log("Map Init Complete");
+    </script>
+</body>
+
+</html>

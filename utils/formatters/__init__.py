@@ -87,6 +87,32 @@ def _safe_format_message(source_id: str, data: Any, options: dict = None) -> str
     return BaseMessageFormatter.format_message(data)
 
 
+def get_render_context(source_id: str, earthquake: EarthquakeData, options: dict = None) -> dict | None:
+    """获取指定数据源的卡片渲染上下文。
+
+    Returns:
+        渲染上下文 dict，如果数据源不支持卡片渲染则返回 None
+    """
+    formatter_class = get_formatter(source_id)
+    if hasattr(formatter_class, "get_render_context"):
+        try:
+            return formatter_class.get_render_context(earthquake, options=options)
+        except TypeError:
+            try:
+                return formatter_class.get_render_context(earthquake)
+            except Exception as e:
+                logger.error(
+                    f"[灾害预警] 获取渲染上下文失败 ({formatter_class.__name__}): {e}",
+                    exc_info=True,
+                )
+        except Exception as e:
+            logger.error(
+                f"[灾害预警] 获取渲染上下文失败 ({formatter_class.__name__}): {e}",
+                exc_info=True,
+            )
+    return None
+
+
 def format_earthquake_message(
     source_id: str, earthquake: EarthquakeData, options: dict = None
 ) -> str:
@@ -112,6 +138,7 @@ __all__ = [
     "BaseMessageFormatter",
     "MESSAGE_FORMATTERS",
     "get_formatter",
+    "get_render_context",
     "format_earthquake_message",
     "format_tsunami_message",
     "format_weather_message",

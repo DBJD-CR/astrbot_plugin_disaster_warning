@@ -1,14 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Quake Aurora Card</title>
-    <!-- 字体（系统默认） -->
-    <!-- 为提升本地渲染性能，移除 Google Fonts -->
+    <title>Earthquake Card</title>
 
-    <!-- Leaflet.js 地图瓦片依赖（本地加载） -->
+    <!-- Leaflet.js 地图瓦片依赖 -->
     <link rel="stylesheet" href="{{ leaflet_css_url }}" />
     <script src="{{ leaflet_js_url }}"></script>
     <script>
@@ -16,15 +14,10 @@
     </script>
 
     <style>
-        /* --- Aurora 主题变量 --- */
         :root {
             --aurora-low: #34d399;
-            /* Mint */
             --aurora-med: #fbbf24;
-            /* Amber */
             --aurora-high: #f43f5e;
-            /* Rose */
-
             --text-main: #1e293b;
             --text-sub: #64748b;
             --text-light: #94a3b8;
@@ -46,7 +39,6 @@
             position: relative;
         }
 
-        /* --- Aurora 光晕效果 --- */
         .aurora-glow {
             position: absolute;
             top: 20px;
@@ -60,19 +52,10 @@
             background: var(--aurora-low);
         }
 
-        .glow-low {
-            background: var(--aurora-low);
-        }
+        .glow-low { background: var(--aurora-low); }
+        .glow-med { background: var(--aurora-med); }
+        .glow-high { background: var(--aurora-high); }
 
-        .glow-med {
-            background: var(--aurora-med);
-        }
-
-        .glow-high {
-            background: var(--aurora-high);
-        }
-
-        /* --- 毛玻璃卡片 --- */
         .glass-card {
             width: 540px;
             background: rgba(255, 255, 255, 0.85);
@@ -80,7 +63,6 @@
             -webkit-backdrop-filter: blur(20px) saturate(180%);
             border-radius: 32px;
             border: 1px solid rgba(255, 255, 255, 0.6);
-            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
             box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
             font-family: system-ui, -apple-system, sans-serif;
             color: var(--text-main);
@@ -91,7 +73,6 @@
             flex-direction: column;
         }
 
-        /* --- 组件区块 --- */
         .header-section {
             padding: 32px 32px 24px;
             display: flex;
@@ -161,17 +142,9 @@
             box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
         }
 
-        .bg-low {
-            background: linear-gradient(135deg, #34d399, #10b981);
-        }
-
-        .bg-med {
-            background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        }
-
-        .bg-high {
-            background: linear-gradient(135deg, #f87171, #ef4444);
-        }
+        .bg-low { background: linear-gradient(135deg, #34d399, #10b981); }
+        .bg-med { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+        .bg-high { background: linear-gradient(135deg, #f87171, #ef4444); }
 
         .mag-number {
             font-size: 46px;
@@ -230,7 +203,6 @@
             font-weight: 500;
         }
 
-        /* --- 地图容器 --- */
         #map-container {
             height: 180px;
             width: calc(100% - 64px);
@@ -242,12 +214,10 @@
             border: 1px solid rgba(255, 255, 255, 0.5);
         }
 
-        /* Leaflet 样式覆盖 */
         .leaflet-container {
             border-radius: 20px;
         }
 
-        /* 震中标记样式 - emoji */
         .epicenter-marker {
             font-size: 24px;
             line-height: 1;
@@ -280,6 +250,7 @@
             font-size: 13px;
             font-weight: 600;
             color: var(--text-sub);
+            word-break: break-all;
         }
 
         .bottom-bar {
@@ -299,8 +270,7 @@
 
 <body>
     <div id="card-wrapper">
-        {% set glow_class = 'glow-high' if mag_class == 'bg-high' else ('glow-med' if mag_class == 'bg-med' else
-        'glow-low') %}
+        {% set glow_class = 'glow-high' if mag_class == 'bg-high' else ('glow-med' if mag_class == 'bg-med' else 'glow-low') %}
         <div class="aurora-glow {{ glow_class }}"></div>
 
         <div class="glass-card">
@@ -319,16 +289,12 @@
                 <div class="mag-capsule {{ mag_class }}">
                     <span class="mag-number">{{ magnitude }}</span>
                     <span class="mag-label-small">震级 (Mag)</span>
-                    {% if intensity %}<div class="intensity-mini">MMI {{ intensity }}</div>{% endif %}
+                    {% if intensity %}<div class="intensity-mini">{{ intensity_label }} {{ intensity }}</div>{% endif %}
                 </div>
                 <div class="key-data-list">
                     <div class="data-block">
                         <span class="data-title">深度 (Depth)</span>
                         <span class="data-content">{{ depth }}</span>
-                    </div>
-                    <div class="data-block">
-                        <span class="data-title">数据拟合 (Quality)</span>
-                        <span class="data-content">{{ quality_pct }}</span>
                     </div>
                     <div class="data-block" style="grid-column: span 2;">
                         <span class="data-title">震中位置 (Epicenter)</span>
@@ -340,24 +306,20 @@
             <!-- 地图容器 -->
             <div id="map-container"></div>
 
-            <div class="footer-grid">
+            {% if footer_items %}
+            <div class="footer-grid" style="grid-template-columns: repeat({{ [footer_items|length, 3]|min }}, 1fr);">
+                {% for item in footer_items %}
                 <div class="footer-item">
-                    <span class="f-label">触发测站 (Used/Total)</span>
-                    <span class="f-val">{{ stations_used }} / {{ stations_total }}</span>
+                    <span class="f-label">{{ item.label }}</span>
+                    <span class="f-val">{{ item.value }}</span>
                 </div>
-                <div class="footer-item">
-                    <span class="f-label">最大加速度 (PGA)</span>
-                    <span class="f-val">{{ pga }}</span>
-                </div>
-                <div class="footer-item">
-                    <span class="f-label">定位误差 (Loc Err)</span>
-                    <span class="f-val">{{ location_error }}</span>
-                </div>
+                {% endfor %}
             </div>
+            {% endif %}
 
             <div class="bottom-bar">
                 <span>ID: {{ event_id }}</span>
-                <span>Source: Global Quake</span>
+                <span>Source: {{ source_name }}</span>
             </div>
         </div>
     </div>
@@ -367,7 +329,6 @@
         const lat = Number("{{ latitude }}");
         const lng = Number("{{ longitude }}");
 
-        // 初始化地图,中心为震中位置
         const zoomLevel = Number("{{ zoom_level }}") || 5;
         const map = L.map('map-container', {
             center: [lat, lng],
@@ -379,7 +340,6 @@
             markerZoomAnimation: false
         });
 
-        // 添加瓦片层（从配置读取完整URL）
         const tileLayer = L.tileLayer(`{{ tile_url }}`, {
             maxZoom: 18,
             minZoom: 1,
@@ -388,7 +348,6 @@
             updateWhenZooming: false
         }).addTo(map);
 
-        // 统一调用共享 helper：瓦片计数 + 防抖收敛 + 超时兜底
         setupStableTileRender(map, tileLayer, {
             readyDebounceMs: 120,
             readyFallbackMs: 2200,
@@ -396,16 +355,11 @@
             debug: true
         });
 
-        // 创建震中标记（SVG）
-        // 转换 D3 逻辑为 SVG 字符串
         const svgContent = `
             <svg width="30" height="30" viewBox="-15 -15 30 30" style="overflow: visible;">
-                <!-- 轮廓 (淡黄色) -->
                 <line x1="-8" y1="-8" x2="8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
                 <line x1="8" y1="-8" x2="-8" y2="8" stroke="#FFF1AA" stroke-width="6" stroke-linecap="round" />
-                <!-- 红色叉 (\) -->
                 <line x1="-8" y1="-8" x2="8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
-                <!-- 红色叉 (/) -->
                 <line x1="8" y1="-8" x2="-8" y2="8" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
             </svg>
         `;
@@ -417,11 +371,8 @@
             iconAnchor: [15, 15]
         });
 
-        // 在震中位置添加标记
-        L.marker([lat, lng], { icon: epicenterIcon })
-            .addTo(map);
+        L.marker([lat, lng], { icon: epicenterIcon }).addTo(map);
 
-        // map-ready 标记由共享 helper 统一触发
         console.log("Map Init Complete");
     </script>
 </body>

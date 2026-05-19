@@ -12,6 +12,55 @@ from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
 
 
+def _build_base_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+    """构建基础卡片渲染上下文，各 formatter 的 get_render_context 可在此基础上扩展。
+
+    返回的 dict 已包含所有通用字段，zoom_level / map_source / tile_url
+    等页面级配置由 message_manager 在渲染前注入，无需在此处理。
+    """
+    options = options or {}
+    timezone_str = options.get("timezone", "UTC+8")
+
+    mag = earthquake.magnitude or 0
+    if mag < 5:
+        mag_class = "bg-low"
+    elif mag < 7:
+        mag_class = "bg-med"
+    else:
+        mag_class = "bg-high"
+
+    shock_time = earthquake.shock_time
+    time_str = (
+        BaseMessageFormatter.format_time(shock_time, timezone_str)
+        if shock_time
+        else "Unknown Time"
+    )
+
+    return {
+        "magnitude": f"{mag:.1f}",
+        "mag_class": mag_class,
+        "region": earthquake.place_name or "未知地点",
+        "time_str": time_str,
+        "depth": _format_depth(earthquake.depth)
+        if earthquake.depth is not None
+        else "N/A",
+        "latitude": f"{earthquake.latitude:.4f}" if earthquake.latitude is not None else "0.0000",
+        "longitude": f"{earthquake.longitude:.4f}" if earthquake.longitude is not None else "0.0000",
+        "epicenter_str": BaseMessageFormatter.format_coordinates(
+            earthquake.latitude, earthquake.longitude
+        )
+        if earthquake.latitude is not None and earthquake.longitude is not None
+        else "N/A",
+        "is_update": (getattr(earthquake, "updates", 1) > 1),
+        "revision": getattr(earthquake, "updates", 1),
+        "event_id": earthquake.event_id or earthquake.id,
+        "intensity": "",
+        "intensity_label": "烈度",
+        "source_name": "",
+        "footer_items": [],
+    }
+
+
 def _format_depth(depth: float) -> str:
     """
     格式化深度显示
@@ -158,6 +207,35 @@ class CEAEEWFormatter(BaseMessageFormatter):
     """中国地震预警网格式化器"""
 
     @staticmethod
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+        ctx = _build_base_render_context(earthquake, options)
+        source_name = "中国地震预警网"
+        if earthquake.province:
+            source_name = f"{earthquake.province}地震局"
+        ctx["source_name"] = source_name
+
+        if earthquake.intensity is not None:
+            ctx["intensity"] = str(earthquake.intensity)
+            ctx["intensity_label"] = "烈度"
+
+        footer_items = []
+        report_num = getattr(earthquake, "updates", 1)
+        is_final = getattr(earthquake, "is_final", False)
+        report_info = f"第 {report_num} 报"
+        if is_final:
+            report_info += "(最终报)"
+        footer_items.append({"label": "报数", "value": report_info})
+
+        if earthquake.province:
+            footer_items.append({"label": "影响区域", "value": earthquake.province})
+
+        if earthquake.max_pga is not None:
+            footer_items.append({"label": "最大加速度 (PGA)", "value": f"{earthquake.max_pga:.1f} gal"})
+
+        ctx["footer_items"] = footer_items
+        return ctx
+
+    @staticmethod
     def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化中国地震预警网消息"""
         options = options or {}
@@ -230,6 +308,34 @@ class CEAEEWFormatter(BaseMessageFormatter):
 
 class CWAEEWFormatter(BaseMessageFormatter):
     """台湾中央气象署地震预警格式化器"""
+
+    @staticmethod
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+        ctx = _build_base_render_context(earthquake, options)
+        ctx["source_name"] = "台湾中央气象署"
+
+        if earthquake.scale is not None:
+            ctx["intensity"] = str(earthquake.scale)
+            ctx["intensity_label"] = "震度"
+
+        footer_items = []
+        report_num = getattr(earthquake, "updates", 1)
+        is_final = getattr(earthquake, "is_final", False)
+        report_info = f"第 {report_num} 报"
+        if is_final:
+            report_info += "(最终报)"
+        footer_items.append({"label": "报数", "value": report_info})
+
+        impact_area = None
+        if isinstance(getattr(earthquake, "raw_data", None), dict):
+            impact_area = earthquake.raw_data.get("wolfx_impact_area")
+        if not impact_area:
+            impact_area = earthquake.province
+        if impact_area:
+            footer_items.append({"label": "影响区域", "value": str(impact_area)})
+
+        ctx["footer_items"] = footer_items
+        return ctx
 
     @staticmethod
     def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
@@ -313,6 +419,20 @@ class CWAReportFormatter(BaseMessageFormatter):
     """台湾中央气象署地震报告格式化器"""
 
     @staticmethod
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+        ctx = _build_base_render_context(earthquake, options)
+        ctx["source_name"] = "台湾中央气象署 (报告)"
+
+        footer_items = []
+        if earthquake.image_uri:
+            footer_items.append({"label": "报告图片", "value": earthquake.image_uri})
+        if earthquake.shakemap_uri:
+            footer_items.append({"label": "等震度图", "value": earthquake.shakemap_uri})
+
+        ctx["footer_items"] = footer_items
+        return ctx
+
+    @staticmethod
     def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
         """格式化台湾中央气象署地震报告消息"""
         options = options or {}
@@ -357,6 +477,47 @@ class CWAReportFormatter(BaseMessageFormatter):
 
 class JMAEEWFormatter(BaseMessageFormatter):
     """日本气象厅紧急地震速报格式化器"""
+
+    @staticmethod
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+        ctx = _build_base_render_context(earthquake, options)
+        ctx["source_name"] = "日本气象厅 (紧急地震速报)"
+
+        if earthquake.intensity is not None:
+            ctx["intensity"] = str(earthquake.intensity)
+        elif earthquake.scale is not None:
+            ctx["intensity"] = str(earthquake.scale)
+        ctx["intensity_label"] = "震度"
+
+        footer_items = []
+        report_num = getattr(earthquake, "updates", 1)
+        is_final = getattr(earthquake, "is_final", False)
+        report_info = f"第 {report_num} 报"
+        if is_final:
+            report_info += "(最终报)"
+        footer_items.append({"label": "报数", "value": report_info})
+
+        if earthquake.is_cancel:
+            footer_items.append({"label": "状态", "value": "已取消"})
+        else:
+            warning_type = earthquake.info_type or ""
+            if not warning_type:
+                warning_type = "警报" if (earthquake.scale is not None and earthquake.scale >= 4.5) else "予报"
+            footer_items.append({"label": "种类", "value": warning_type})
+
+        if earthquake.domestic_tsunami:
+            tsunami_mapping = {
+                "None": "无需担心海啸",
+                "Unknown": "不明",
+                "Checking": "调查中",
+                "NonEffective": "预计若干海面变动",
+                "Watch": "津波注意报发布中",
+                "Warning": "津波警报/大津波警报发布中",
+            }
+            footer_items.append({"label": "津波", "value": tsunami_mapping.get(earthquake.domestic_tsunami, earthquake.domestic_tsunami)})
+
+        ctx["footer_items"] = footer_items
+        return ctx
 
     @staticmethod
     def format_message(earthquake: EarthquakeData, options: dict = None) -> str:
@@ -499,6 +660,22 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
     """中国地震台网地震测定格式化器"""
 
     @staticmethod
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+        ctx = _build_base_render_context(earthquake, options)
+        measurement_type = CENCEarthquakeFormatter.determine_measurement_type(earthquake)
+        ctx["source_name"] = f"中国地震台网 [{measurement_type}]"
+
+        if earthquake.intensity is not None:
+            ctx["intensity"] = str(earthquake.intensity)
+            ctx["intensity_label"] = "烈度"
+
+        footer_items = []
+        if earthquake.info_type:
+            footer_items.append({"label": "测定类型", "value": earthquake.info_type})
+        ctx["footer_items"] = footer_items
+        return ctx
+
+    @staticmethod
     def determine_measurement_type(earthquake: EarthquakeData) -> str:
         """判断测定类型（自动/正式）"""
         # 优先使用info_type字段
@@ -567,6 +744,37 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
 
 class JMAEarthquakeFormatter(BaseMessageFormatter):
     """日本气象厅地震情报格式化器"""
+
+    @staticmethod
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+        ctx = _build_base_render_context(earthquake, options)
+        info_type = JMAEarthquakeFormatter.determine_info_type(earthquake)
+        ctx["source_name"] = f"日本气象厅 ({info_type})"
+
+        if earthquake.scale is not None:
+            ctx["intensity"] = str(earthquake.scale)
+            ctx["intensity_label"] = "震度"
+
+        footer_items = []
+        correct_tag = ""
+        if hasattr(earthquake, "revision") and earthquake.revision and isinstance(earthquake.revision, str):
+            correct_tag = f" [{earthquake.revision}]"
+        if correct_tag:
+            footer_items.append({"label": "订正", "value": correct_tag.strip(" []")})
+
+        if earthquake.domestic_tsunami:
+            tsunami_mapping = {
+                "None": "无需担心海啸",
+                "Unknown": "不明",
+                "Checking": "调查中",
+                "NonEffective": "预计若干海面变动",
+                "Watch": "津波注意报发布中",
+                "Warning": "津波警报/大津波警报发布中",
+            }
+            footer_items.append({"label": "津波", "value": tsunami_mapping.get(earthquake.domestic_tsunami, earthquake.domestic_tsunami)})
+
+        ctx["footer_items"] = footer_items
+        return ctx
 
     @staticmethod
     def determine_info_type(earthquake: EarthquakeData) -> str:
@@ -755,6 +963,18 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
     """美国地质调查局地震情报格式化器"""
 
     @staticmethod
+    def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
+        ctx = _build_base_render_context(earthquake, options)
+        measurement_type = USGSEarthquakeFormatter.determine_measurement_type(earthquake)
+        ctx["source_name"] = f"USGS [{measurement_type}]"
+
+        footer_items = []
+        if earthquake.info_type:
+            footer_items.append({"label": "测定类型", "value": earthquake.info_type})
+        ctx["footer_items"] = footer_items
+        return ctx
+
+    @staticmethod
     def determine_measurement_type(earthquake: EarthquakeData) -> str:
         """判断测定类型（自动/正式）"""
         # 优先使用info_type字段
@@ -820,81 +1040,54 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
 
     @staticmethod
     def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
-        """获取 Global Quake 卡片渲染上下文"""
         options = options or {}
-        timezone_str = options.get("timezone", "UTC+8")
+        ctx = _build_base_render_context(earthquake, options)
+        ctx["source_name"] = "Global Quake"
 
-        # 震级颜色
-        mag = earthquake.magnitude or 0
-        if mag < 5:
-            mag_class = "bg-low"
-        elif mag < 7:
-            mag_class = "bg-med"
-        else:
-            mag_class = "bg-high"
+        if earthquake.intensity is not None:
+            ctx["intensity"] = str(earthquake.intensity)
+            ctx["intensity_label"] = "烈度"
 
-        # 格式化时间
-        shock_time = earthquake.shock_time
-        if shock_time:
-            time_str = GlobalQuakeFormatter.format_time(shock_time, timezone_str)
-        else:
-            time_str = "Unknown Time"
+        footer_items = []
 
-        # 测站信息
+        if earthquake.max_pga is not None:
+            footer_items.append(
+                {"label": "最大加速度 (PGA)", "value": f"{earthquake.max_pga:.1f} gal"}
+            )
+
         stations_used = 0
         stations_total = 0
         if earthquake.stations:
             stations_used = earthquake.stations.get("used", 0)
             stations_total = earthquake.stations.get("total", 0)
+        footer_items.append(
+            {"label": "触发测站 (Used/Total)", "value": f"{stations_used} / {stations_total}"}
+        )
 
-        # 质量百分比
         quality_pct = "N/A"
         location_error = "N/A"
 
         if earthquake.raw_data:
             data_inner = earthquake.raw_data.get("data", {})
 
-            # 解析质量
             quality = data_inner.get("quality", {})
             if isinstance(quality, dict):
                 pct = quality.get("pct")
                 if pct is not None:
                     quality_pct = f"{pct}%"
 
-                # 解析误差（支持 camelCase 和 snake_case）
                 err_origin = quality.get("errOrigin") or quality.get("err_origin")
                 if err_origin is not None:
                     location_error = f"{err_origin:.1f} km"
 
-            # 兼容另一种可能的结构（视API版本而定）
             elif isinstance(data_inner.get("locationError"), (int, float)):
                 location_error = f"{data_inner.get('locationError'):.1f} km"
 
-        return {
-            "magnitude": f"{mag:.1f}",
-            "mag_class": mag_class,
-            "intensity": earthquake.intensity if earthquake.intensity else "",
-            "region": earthquake.place_name,
-            "is_update": (getattr(earthquake, "updates", 1) > 1),
-            "revision": getattr(earthquake, "updates", 1),
-            "time_str": time_str,
-            "depth": _format_depth(earthquake.depth)
-            if earthquake.depth is not None
-            else "N/A",
-            "latitude": f"{earthquake.latitude:.4f}",
-            "longitude": f"{earthquake.longitude:.4f}",
-            "epicenter_str": GlobalQuakeFormatter.format_coordinates(
-                earthquake.latitude, earthquake.longitude
-            ),
-            "pga": f"{earthquake.max_pga:.1f} gal"
-            if earthquake.max_pga is not None
-            else "N/A",
-            "location_error": location_error,
-            "stations_used": stations_used,
-            "stations_total": stations_total,
-            "quality_pct": quality_pct,
-            "event_id": earthquake.event_id,
-        }
+        footer_items.append({"label": "定位误差 (Loc Err)", "value": location_error})
+        footer_items.append({"label": "数据拟合 (Quality)", "value": quality_pct})
+
+        ctx["footer_items"] = footer_items
+        return ctx
 
     @staticmethod
     def format_message(earthquake: EarthquakeData, options: dict = None) -> str:

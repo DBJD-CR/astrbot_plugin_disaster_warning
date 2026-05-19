@@ -574,14 +574,14 @@
         "hint": "开启后，日本气象厅地震情报将显示所有观测到震度1及以上的区域，而不仅是最大震度区域",
         "default": false
       },
-      "use_global_quake_card": {
-        "description": "启用 Global Quake 卡片消息",
+      "use_earthquake_card": {
+        "description": "启用地震卡片消息",
         "type": "bool",
-        "hint": "开启后，Global Quake 的地震预警将以图片卡片的形式推送（需要消耗少量系统资源进行渲染并增加一点延迟）",
+        "hint": "开启后，所有地震数据源（Global Quake、CENC、USGS、JMA、CEA、CWA 等）的预警将以图片卡片的形式推送（需要消耗少量系统资源进行渲染并增加一点延迟）",
         "default": false
       },
-      "global_quake_template": {
-        "description": "Global Quake 卡片模板",
+      "earthquake_card_template": {
+        "description": "地震卡片模板",
         "type": "string",
         "hint": "选择使用的卡片模板。Aurora：极光主题，浅色背景；DarkNight：暗夜主题，深色背景",
         "default": "Aurora",
