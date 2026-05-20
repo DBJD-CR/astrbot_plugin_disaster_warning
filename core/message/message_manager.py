@@ -1268,7 +1268,9 @@ class MessagePushManager:
                     for session in passed_sessions:
                         msg_cfg = session_message_format_config.get(session, {})
                         include_map = msg_cfg.get("include_map", False)
-                        if not include_map:
+                        use_card = msg_cfg.get("use_earthquake_card", False)
+                        # 卡片已内嵌地图，不再额外发送分离地图瓦片
+                        if not include_map or use_card:
                             continue
                         k = json.dumps(msg_cfg, sort_keys=True, ensure_ascii=False)
                         if k not in grouped_sessions:

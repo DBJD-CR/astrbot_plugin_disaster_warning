@@ -4,12 +4,39 @@
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from ...core.support.intensity_calculator import IntensityCalculator
-from ...models.models import EarthquakeData
+from ...models.models import DataSource, EarthquakeData
 from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
+
+# 各数据源对应的默认时区（用于 naive datetime 的修复）
+_SOURCE_TIMEZONE_MAP = {
+    "jma_fanstudio": timezone(timedelta(hours=9)),
+    "jma_p2p": timezone(timedelta(hours=9)),
+    "jma_p2p_info": timezone(timedelta(hours=9)),
+    "jma_wolfx": timezone(timedelta(hours=9)),
+    "jma_wolfx_info": timezone(timedelta(hours=9)),
+    "global_quake": timezone.utc,
+}
+_SOURCE_TZ_CST = timezone(timedelta(hours=8))
+
+
+def _fix_naive_datetime(dt: datetime, source: DataSource) -> datetime:
+    """为 naive datetime 附加数据源对应的时区信息。
+
+    各数据源的原始时间通常不带时区，但实际含义不同：
+      - JMA / P2P 数据源使用 JST (UTC+9)
+      - Global Quake 使用 UTC
+      - 其他中国/台湾数据源使用 CST (UTC+8)
+    """
+    if dt is None or dt.tzinfo is not None:
+        return dt
+
+    source_val = source.value if hasattr(source, "value") else str(source)
+    tz = _SOURCE_TIMEZONE_MAP.get(source_val, _SOURCE_TZ_CST)
+    return dt.replace(tzinfo=tz)
 
 
 def _build_base_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
@@ -29,7 +56,7 @@ def _build_base_render_context(earthquake: EarthquakeData, options: dict = None)
     else:
         mag_class = "bg-high"
 
-    shock_time = earthquake.shock_time
+    shock_time = _fix_naive_datetime(earthquake.shock_time, earthquake.source)
     time_str = (
         BaseMessageFormatter.format_time(shock_time, timezone_str)
         if shock_time
@@ -53,7 +80,7 @@ def _build_base_render_context(earthquake: EarthquakeData, options: dict = None)
         else "N/A",
         "is_update": (getattr(earthquake, "updates", 1) > 1),
         "revision": getattr(earthquake, "updates", 1),
-        "event_id": earthquake.event_id or earthquake.id,
+        "event_id": earthquake.event_id or earthquake.id or "N/A",
         "intensity": "",
         "intensity_label": "烈度",
         "source_name": "",
@@ -481,7 +508,15 @@ class JMAEEWFormatter(BaseMessageFormatter):
     @staticmethod
     def get_render_context(earthquake: EarthquakeData, options: dict = None) -> dict:
         ctx = _build_base_render_context(earthquake, options)
-        ctx["source_name"] = "日本气象厅 (紧急地震速报)"
+
+        # 源名称：追加训练/PLUM标识
+        header_tags = []
+        if getattr(earthquake, "is_training", False):
+            header_tags.append("训练")
+        if getattr(earthquake, "is_assumption", False):
+            header_tags.append("PLUM法假定震源")
+        tag_str = f" [{'/'.join(header_tags)}]" if header_tags else ""
+        ctx["source_name"] = f"日本气象厅 (紧急地震速报){tag_str}"
 
         if earthquake.intensity is not None:
             ctx["intensity"] = str(earthquake.intensity)
@@ -515,6 +550,34 @@ class JMAEEWFormatter(BaseMessageFormatter):
                 "Warning": "津波警报/大津波警报发布中",
             }
             footer_items.append({"label": "津波", "value": tsunami_mapping.get(earthquake.domestic_tsunami, earthquake.domestic_tsunami)})
+
+        # 警报区域
+        raw_data = getattr(earthquake, "raw_data", {})
+        if isinstance(raw_data, dict):
+            warn_area_wolfx = raw_data.get("WarnArea", {})
+            if isinstance(warn_area_wolfx, dict) and warn_area_wolfx.get("Chiiki"):
+                area_text = warn_area_wolfx.get("Chiiki")
+                shindo1 = warn_area_wolfx.get("Shindo1")
+                shindo2 = warn_area_wolfx.get("Shindo2")
+                if shindo1:
+                    shindo_range = f"{shindo1}"
+                    if shindo2 and shindo2 != shindo1:
+                        shindo_range += f"～{shindo2}"
+                    area_text += f" (震度{shindo_range})"
+                footer_items.append({"label": "警报区域", "value": area_text})
+            else:
+                areas = raw_data.get("areas", [])
+                warn_areas = []
+                for area in areas:
+                    if area.get("scaleFrom", 0) >= 45:
+                        name = area.get("name", "")
+                        kind = area.get("kindCode", "")
+                        status = "已到达" if kind == "11" else "未到达"
+                        warn_areas.append(f"{name}({status})")
+                if warn_areas:
+                    footer_items.append(
+                        {"label": "警报区域", "value": "、".join(warn_areas[:6]) + ("等" if len(warn_areas) > 6 else "")}
+                    )
 
         ctx["footer_items"] = footer_items
         return ctx
@@ -772,6 +835,39 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
                 "Warning": "津波警报/大津波警报发布中",
             }
             footer_items.append({"label": "津波", "value": tsunami_mapping.get(earthquake.domestic_tsunami, earthquake.domestic_tsunami)})
+
+        # 震度观测点 (最大震度区域摘要)
+        raw_data = getattr(earthquake, "raw_data", {})
+        if isinstance(raw_data, dict):
+            points = raw_data.get("points", [])
+            if points:
+                scale_groups = {}
+                for point in points:
+                    scale = point.get("scale", 0)
+                    addr = point.get("addr", "")
+                    if scale not in scale_groups:
+                        scale_groups[scale] = []
+                    scale_groups[scale].append(addr)
+
+                if scale_groups:
+                    max_scale_key = max(scale_groups.keys())
+                    scale_disp = str(max_scale_key / 10).replace(".0", "")
+                    if max_scale_key == 45:
+                        scale_disp = "5弱"
+                    elif max_scale_key == 50:
+                        scale_disp = "5强"
+                    elif max_scale_key == 55:
+                        scale_disp = "6弱"
+                    elif max_scale_key == 60:
+                        scale_disp = "6强"
+                    locs = scale_groups[max_scale_key][:5]
+                    points_text = f"震度{scale_disp}: {'、'.join(locs)}{'等' if len(scale_groups[max_scale_key]) > 5 else ''}"
+                    footer_items.append({"label": "观测点", "value": points_text})
+
+            comments = raw_data.get("comments", {})
+            free_form = comments.get("freeFormComment", "")
+            if free_form:
+                footer_items.append({"label": "备注", "value": free_form})
 
         ctx["footer_items"] = footer_items
         return ctx
