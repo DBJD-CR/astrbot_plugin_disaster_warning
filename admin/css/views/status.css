@@ -1,0 +1,799 @@
+/* 运行状态视图样式 (Service Status View Styles) */
+
+/* ==========================================================================
+   1. 灾害数据模拟发送弹窗样式 (Simulation Dispatcher Modal)
+   ========================================================================== */
+.simulation-modal-body {
+    padding: 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 模拟发送下方低对比度提示说明 */
+.simulation-modal-hint {
+    margin-top: 4px !important;
+    margin-left: 12px !important;
+}
+
+.simulation-modal-section-title {
+    font-weight: 600 !important;
+}
+
+/* 模拟参数控制表单垂直列表 */
+.simulation-modal-form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 地震模拟行（纬度、经度、深度） */
+.simulation-modal-quake-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.simulation-modal-field--geo {
+    flex: 1.2 1 180px;
+}
+
+.simulation-modal-field--metric {
+    flex: 0.8 1 140px;
+}
+
+/* 位置选取或获取定位地图触发小按钮 */
+.simulation-modal-geo-button {
+    border: 1px solid var(--md-sys-color-outline-variant) !important;
+    border-radius: 8px !important;
+    padding: 8px !important;
+}
+
+.simulation-modal-geo-icon {
+    font-size: 1.1rem;
+}
+
+/* ==========================================================================
+   2. 系统状态监控小卡片组件 (System Status Cards)
+   ========================================================================== */
+.status-card-fill {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.status-card-full-height {
+    height: 100%;
+}
+
+.status-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.status-card-header--compact {
+    margin-bottom: 20px;
+}
+
+/* 状态卡片右上角特色状态图标背景容器 */
+.status-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+/* 根据监控资源性质设定专属主题色 */
+.status-card-icon--service {
+    background: rgba(59, 130, 246, 0.1); /* 系统后台服务蓝色 */
+}
+
+.status-card-icon--eew {
+    background: rgba(103, 80, 164, 0.12); /* EEW地震预警核心紫色 */
+}
+
+.status-card-icon--actions {
+    background: rgba(236, 72, 153, 0.1); /* 快捷动作栏粉色 */
+}
+
+.status-card-title {
+    font-weight: 700 !important;
+}
+
+.status-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+    justify-content: center;
+}
+
+/* 单项参数左右对照分布行 */
+.status-card-row {
+    display: flex;
+    justify-content: space-between;
+}
+
+.status-card-row--center {
+    align-items: center;
+}
+
+.status-card-label {
+    opacity: 0.7;
+    font-weight: 500 !important;
+}
+
+.status-card-value {
+    font-weight: 600 !important;
+}
+
+.status-card-separator {
+    height: 1px;
+    background: var(--md-sys-color-outline-variant);
+}
+
+.status-card-ratio-separator {
+    opacity: 0.4;
+}
+
+/* 系统监控加载时骨架屏 */
+.status-card-skeleton-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+    justify-content: center;
+}
+
+.status-skeleton-line {
+    height: 24px;
+    border-radius: 6px;
+}
+
+.eew-skeleton-line {
+    height: 20px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.eew-skeleton-line--wide {
+    width: 85%;
+}
+
+.eew-skeleton-line--medium {
+    width: 70%;
+    margin-bottom: 0;
+}
+
+/* ==========================================================================
+   3. 地震预警应急事件状态显示 (EEW Real-time Response)
+   ========================================================================== */
+.eew-empty-text {
+    opacity: 0.75;
+}
+
+.eew-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* 核心预警文本信息 (大号高对比度字体展示应急防灾指令) */
+.eew-line-strong {
+    font-weight: 600 !important;
+}
+
+.eew-line-muted {
+    opacity: 0.92;
+}
+
+.eew-line-subtle {
+    opacity: 0.85;
+}
+
+.eew-section-spacer {
+    height: 8px;
+}
+
+/* ==========================================================================
+   4. WebSocket 灾害发布接口多路监听状态网格 (Disaster Source WS Connect Grid)
+   ========================================================================== */
+.status-connections-grid {
+    display: grid;
+    /* 核心接口响应式多列铺开 */
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.status-connections-grid.connections-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+/* 长连接项目列表项骨架屏 */
+.status-connection-skeleton-card {
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    padding: 20px;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.status-skeleton-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-skeleton-title {
+    width: 120px;
+    height: 22px;
+    border-radius: 6px;
+}
+
+.status-skeleton-badge {
+    width: 60px;
+    height: 24px;
+    border-radius: 12px;
+}
+
+.status-skeleton-subtitle {
+    width: 80%;
+    height: 16px;
+    border-radius: 4px;
+}
+
+.status-skeleton-subtitle--short {
+    width: 60%;
+}
+
+/* 单个连接通道卡片本体 */
+.connection-item {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    min-height: 140px;
+    background-color: var(--md-sys-color-surface);
+    transition:
+        background-color 0.2s ease-out,
+        border-color 0.2s ease-out,
+        transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+        box-shadow 0.22s ease-out;
+    will-change: transform, box-shadow, border-color;
+}
+
+.connection-item:hover {
+    transform: translateY(-2px);
+    border-color: var(--md-sys-color-primary);
+    box-shadow: var(--glass-shadow), 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+}
+
+html.theme-dark .connection-item:hover,
+body.dark-theme .connection-item:hover {
+    border-color: var(--md-sys-color-primary);
+    box-shadow: var(--glass-shadow), 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 26%, transparent);
+}
+
+/* 通道正常在线 (绿色底纹混合) */
+.connection-item-online {
+    background: var(--status-tone-online-soft);
+    border-color: var(--status-tone-online-border);
+}
+
+/* 通道网络离线或重连中 (红色底纹混合) */
+.connection-item-offline {
+    background: var(--status-tone-offline-soft);
+    border-color: var(--status-tone-offline-border);
+}
+
+/* 通道未配置或被管理员停用 (灰色底纹混合) */
+.connection-item-disabled {
+    background: var(--status-tone-disabled-soft);
+    border-color: var(--status-tone-disabled-border);
+}
+
+.connection-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+/* 接口服务提供商名字 */
+.connection-title {
+    font-weight: 700 !important;
+    font-size: 1.1rem !important;
+    color: var(--md-sys-color-on-surface);
+}
+
+.connection-status-cluster {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 通道当前异常重新建立连接次数标志 */
+.connection-retry-count {
+    color: #ED6C02;
+    font-weight: 600 !important;
+}
+
+/* 通道右上角核心状态指示呼吸灯点 */
+.connection-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    transition: background-color 0.3s;
+}
+
+.connection-item-online .connection-indicator {
+    background: #4CAF50;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+}
+
+.connection-item-offline .connection-indicator {
+    background: #F44336;
+    box-shadow: 0 0 8px rgba(244, 67, 54, 0.6);
+}
+
+.connection-item-disabled .connection-indicator {
+    background: #9E9E9E;
+}
+
+.connection-summary {
+    margin-bottom: 16px;
+}
+
+/* 连接状态名 (例如 "连接正常", "通道断开") */
+.connection-status-label {
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    display: flex;
+    align-items: center;
+}
+
+.connection-item-online .connection-status-label {
+    color: #4CAF50;
+}
+
+.connection-item-offline .connection-status-label {
+    color: #F44336;
+}
+
+.connection-item-disabled .connection-status-label {
+    color: #9E9E9E;
+}
+
+/* 通道握手往返延迟统计 */
+.connection-latency-line {
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 0.85rem !important;
+    margin-top: 4px !important;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.connection-latency-line.is-pending {
+    opacity: 0.6;
+    font-style: italic;
+}
+
+.connection-latency-icon {
+    font-size: 0.75rem;
+}
+
+.connection-latency-value {
+    font-weight: 600;
+}
+
+/* 通道往返手延迟等级颜色划分 (根据延迟毫秒数划分) */
+.connection-latency-value--fast {
+    color: #4CAF50;
+}
+
+.connection-latency-value--medium {
+    color: #FF9800;
+}
+
+.connection-latency-value--slow {
+    color: #F44336;
+}
+
+/* ==========================================================================
+   5. 数据源细分子接口通道状态列表 (Sub Sources Connections)
+   ========================================================================== */
+.connection-sub-source-section {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+body.dark-theme .connection-sub-source-section {
+    border-top-color: rgba(255, 255, 255, 0.14);
+}
+
+.connection-sub-source-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.connection-sub-source-title {
+    opacity: 0.8;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase;
+}
+
+.connection-sub-source-count {
+    opacity: 0.6;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+}
+
+.connection-sub-source-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 子通道容器单条 */
+.connection-sub-source-item {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--md-sys-color-surface);
+    border: 1px solid rgba(76, 175, 80, 0.15);
+    transition:
+        background-color 0.18s ease-out,
+        border-color 0.18s ease-out,
+        box-shadow 0.2s ease-out,
+        transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform, box-shadow, border-color;
+}
+
+.connection-sub-source-item:hover {
+    background: color-mix(in srgb, var(--md-sys-color-surface) 92%, var(--md-sys-color-primary) 8%);
+}
+
+.connection-sub-source-item.is-disabled {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: transparent;
+}
+
+.connection-sub-source-item.is-disabled:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+body.dark-theme .connection-sub-source-item:hover,
+html.theme-dark .connection-sub-source-item:hover {
+    background: color-mix(in srgb, var(--md-sys-color-surface) 90%, var(--md-sys-color-primary) 10%);
+}
+
+body.dark-theme .connection-sub-source-item.is-disabled,
+html.theme-dark .connection-sub-source-item.is-disabled {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-theme .connection-sub-source-item.is-disabled:hover,
+html.theme-dark .connection-sub-source-item.is-disabled:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.connection-sub-source-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4CAF50;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.connection-sub-source-item.is-disabled .connection-sub-source-dot {
+    background: #BDBDBD;
+}
+
+.connection-sub-source-name {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: var(--md-sys-color-on-surface);
+    flex: 1;
+    line-height: 1.2 !important;
+}
+
+.connection-sub-source-item.is-disabled .connection-sub-source-name {
+    font-weight: 400 !important;
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+/* 被管理员禁用的提示芯片 */
+.connection-sub-source-off-badge {
+    font-size: 10px !important;
+    color: rgba(0, 0, 0, 0.38);
+    font-weight: 700 !important;
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid transparent;
+    padding: 2px 6px;
+    border-radius: 6px;
+    letter-spacing: 0.3px !important;
+}
+
+body.dark-theme .connection-sub-source-off-badge {
+    color: #E6E1E5;
+    background: rgba(208, 188, 255, 0.18);
+    border-color: rgba(208, 188, 255, 0.35);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.connection-empty-detail {
+    color: var(--md-sys-color-on-surface-variant);
+    font-style: italic;
+    opacity: 0.7;
+}
+
+/* ==========================================================================
+   6. 顶部实报横滚动条 (EEW & Earthquake News Ticker)
+   ========================================================================== */
+.news-ticker-card {
+    padding: 0 24px !important;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.news-ticker-card.is-dark {
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.news-ticker-card.is-light {
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+}
+
+.news-ticker-card--empty {
+    overflow: visible;
+}
+
+/* 走马灯最左侧固定的标题面板 (带遮罩渐变隔离走马灯滑入效果) */
+.news-ticker-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    min-width: fit-content;
+    z-index: 2;
+    background: inherit;
+    padding-right: 12px;
+    box-shadow: 10px 0 10px -5px rgba(0, 0, 0, 0.1);
+}
+
+.news-ticker-head--loading {
+    font-size: 0.9rem;
+    box-shadow: none;
+    z-index: auto;
+}
+
+.news-ticker-head__icon {
+    font-size: 18px;
+}
+
+.news-ticker-head__icon--large {
+    font-size: 20px;
+}
+
+.news-ticker-head__title {
+    font-weight: 700 !important;
+}
+
+.news-ticker-skeleton {
+    flex: 1;
+    height: 24px;
+    border-radius: 12px;
+}
+
+.news-ticker-empty-text {
+    opacity: 0.6;
+    font-size: 0.9rem !important;
+}
+
+/* 走马灯遮罩蒙版：左右淡入淡出 */
+.news-ticker-marquee-mask {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    mask-image: linear-gradient(to right, transparent, black 20px, black 95%, transparent);
+}
+
+/* 无尽横向循环滚动动画轨道 */
+.news-ticker-marquee-track {
+    display: inline-block;
+    animation: scroll-left 30s linear infinite;
+    animation-play-state: running;
+    white-space: nowrap;
+    will-change: transform;
+}
+
+/* 悬停走马灯时自动暂停滚动，方便管理员阅读 */
+.news-ticker-marquee-track.is-paused {
+    animation-play-state: paused;
+}
+
+/* 单条滚动播报条目 */
+.news-ticker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 48px;
+}
+
+.news-ticker-item--last {
+    margin-right: 24px;
+}
+
+.news-ticker-time {
+    opacity: 0.7;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 22px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.news-ticker-type-icon {
+    font-size: 16px;
+    line-height: 22px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* 走马灯内微型震级高亮胶囊 */
+.news-ticker-mag-chip,
+.news-ticker-mag-chip.MuiChip-root,
+.news-ticker-mag-chip.MuiChip-sizeSmall,
+.news-ticker-mag-chip.MuiChip-filled,
+.news-ticker-mag-chip.MuiChip-filled.MuiChip-sizeSmall {
+    height: 22px !important;
+    min-height: 22px !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+    border-radius: 999px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    padding: 0 !important;
+}
+
+.news-ticker-mag-chip .MuiChip-label,
+.news-ticker-mag-chip.MuiChip-root .MuiChip-label,
+.news-ticker-mag-chip.MuiChip-sizeSmall .MuiChip-label,
+.news-ticker-mag-chip.MuiChip-filled .MuiChip-label,
+.news-ticker-mag-chip.MuiChip-filled.MuiChip-sizeSmall .MuiChip-label {
+    padding: 0 8px !important;
+    line-height: 22px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    color: var(--md-sys-color-primary) !important;
+}
+
+.news-ticker-mag-chip.is-dark,
+.news-ticker-mag-chip.is-dark.MuiChip-root,
+.news-ticker-mag-chip.is-dark.MuiChip-sizeSmall,
+.news-ticker-mag-chip.is-dark.MuiChip-filled,
+.news-ticker-mag-chip.is-dark.MuiChip-filled.MuiChip-sizeSmall {
+    background: rgba(208, 188, 255, 0.22) !important;
+    color: var(--md-sys-color-primary) !important;
+    border: 1px solid rgba(208, 188, 255, 0.45) !important;
+    box-shadow: 0 0 0 1px rgba(208, 188, 255, 0.2), 0 6px 14px rgba(0, 0, 0, 0.25) !important;
+}
+
+.news-ticker-mag-chip.is-dark .MuiChip-label,
+.news-ticker-mag-chip.is-dark.MuiChip-root .MuiChip-label,
+.news-ticker-mag-chip.is-dark.MuiChip-sizeSmall .MuiChip-label,
+.news-ticker-mag-chip.is-dark .MuiChip-label span {
+    color: var(--md-sys-color-primary) !important;
+}
+
+.news-ticker-mag-chip.is-light,
+.news-ticker-mag-chip.is-light.MuiChip-root,
+.news-ticker-mag-chip.is-light.MuiChip-sizeSmall,
+.news-ticker-mag-chip.is-light.MuiChip-filled,
+.news-ticker-mag-chip.is-light.MuiChip-filled.MuiChip-sizeSmall {
+    background: rgba(0, 0, 0, 0.08) !important;
+    color: var(--md-sys-color-primary) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
+.news-ticker-mag-chip.is-light .MuiChip-label,
+.news-ticker-mag-chip.is-light.MuiChip-root .MuiChip-label,
+.news-ticker-mag-chip.is-light.MuiChip-sizeSmall .MuiChip-label,
+.news-ticker-mag-chip.is-light .MuiChip-label span {
+    color: var(--md-sys-color-primary) !important;
+}
+
+.news-ticker-desc {
+    font-weight: 600 !important;
+    line-height: 26px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    vertical-align: middle;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+/* 滚动条目之间的精美圆点分隔符 */
+.news-ticker-divider {
+    margin-left: 20px;
+    opacity: 0.3;
+    font-weight: 300;
+    font-size: 18px;
+    line-height: 30px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* 走马灯滚动关键帧 */
+@keyframes scroll-left {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
+/* ==========================================================================
+   7. 快速操作控制卡片 (Status Quick Actions Card)
+   ========================================================================== */
+.status-quick-actions-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.status-quick-actions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+    justify-content: center;
+}
+
+.status-action-button {
+    opacity: 1;
+}
+
+.status-action-button.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.status-action-icon {
+    font-size: 18px;
+}
+
+/* 正在操作或重连测试中的小旋转加载圈 */
+.status-action-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    border-top-color: var(--md-sys-color-primary);
+    border-radius: 50%;
+}
