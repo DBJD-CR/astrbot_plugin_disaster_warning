@@ -89,6 +89,7 @@ class PushExecutionService:
         *,
         target_sessions: list[str] | None = None,
         session_config_getter=None,
+        commit_state: bool = True,
     ) -> dict[str, Any]:
         """执行会话级推送流程并返回结果摘要。"""
         # 每次执行前重置成功会话列表，避免旧批次结果污染当前事件。
@@ -197,14 +198,14 @@ class PushExecutionService:
             runtime_config: dict[str, Any],
         ) -> tuple[bool, str, dict[str, Any] | None, str | None]:
             try:
-                # 预筛通过后，在真正发送前再次复核并提交报数状态，
-                # 防止并发场景下状态变化导致“预筛可发、实际不该发”的竞态问题。
+                # 预筛通过后，在真正发送前再次复核；真实推送提交报数状态，
+                # 模拟推送只复用筛选与渲染链路，不污染运行时规则状态。
                 decision = self.manager.evaluate_push_decision(
                     event,
                     runtime_config=runtime_config,
                     session_id=session,
                     emit_filter_log=False,
-                    commit_state=True,
+                    commit_state=commit_state,
                 )
                 if not decision.accepted:
                     if decision.detail:
@@ -314,6 +315,12 @@ class PushExecutionService:
         if filter_reason_detail_stats is None:
             filter_reason_detail_stats = {}
 
+        simulation_bypass = bool(
+            getattr(event, "metadata", {}).get(
+                "simulation_bypass_regular_filters", False
+            )
+        )
+
         for session in sessions:
             # 会话级配置允许不同会话使用不同推送规则与展示参数。
             runtime_config = (
@@ -323,10 +330,18 @@ class PushExecutionService:
             )
             if not isinstance(runtime_config, dict):
                 runtime_config = self.manager.config
+            else:
+                runtime_config = dict(runtime_config)
+
+            if simulation_bypass:
+                runtime_config["__simulation_bypass_regular_filters"] = True
 
             if runtime_config.get("push_enabled", True) is False:
-                logger.debug(f"[灾害预警] 会话 {session} 推送开关关闭，跳过")
-                continue
+                if simulation_bypass:
+                    runtime_config["push_enabled"] = True
+                else:
+                    logger.debug(f"[灾害预警] 会话 {session} 推送开关关闭，跳过")
+                    continue
 
             decision = self.manager.evaluate_push_decision(
                 event,

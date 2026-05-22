@@ -272,7 +272,7 @@ class DisasterWarningPlugin(Star):
         source: str = "cea_fanstudio",
     ):
         """模拟地震事件测试预警响应"""
-        async for result in self._query_command_service.handle_simulate_earthquake(
+        async for result in self._query_command_service.handle_simulate_disaster(
             event,
             lat=lat,
             lon=lon,

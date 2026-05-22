@@ -31,11 +31,15 @@ class PushFlowHandler:
         event: EventEnvelope,
         target_sessions: list[str] | None = None,
         session_config_getter=None,
-    ) -> bool:
+        *,
+        commit_state: bool = True,
+        skip_dedup: bool = False,
+        return_details: bool = False,
+    ) -> bool | dict[str, Any]:
         """执行完整推送流程：去重、会话执行、后处理与异常遥测。"""
         logger.debug(f"[灾害预警] 执行事件推送流程: {event.id}")
 
-        if not self.manager.deduplicator.should_push_event(event):
+        if not skip_dedup and not self.manager.deduplicator.should_push_event(event):
             logger.debug(f"[灾害预警] 事件 {event.id} 被去重器过滤")
             return False
 
@@ -44,8 +48,13 @@ class PushFlowHandler:
                 event,
                 target_sessions=target_sessions,
                 session_config_getter=session_config_getter,
+                commit_state=commit_state,
             )
-            return await self.handle_execution_result(event, execution_result)
+            success = await self.handle_execution_result(event, execution_result)
+            if return_details:
+                execution_result["success"] = bool(success)
+                return execution_result
+            return success
         except Exception as e:
             logger.error(f"[灾害预警] 推送事件失败: {e}")
             if self.manager._telemetry and self.manager._telemetry.enabled:
@@ -87,6 +96,11 @@ class PushFlowHandler:
             send_failure_stats=send_failure_stats,
         )
 
+        execution_result["final_failure_reason"] = self._build_failure_summary(
+            filter_reason_stats=filter_reason_stats,
+            filter_reason_detail_stats=filter_reason_detail_stats,
+            send_failure_stats=send_failure_stats,
+        )
         self.manager.last_success_sessions = list(passed_sessions)
         self._log_push_completion(
             event,
@@ -194,6 +208,26 @@ class PushFlowHandler:
                     grouped_config[config_key],
                 )
             )
+
+    @staticmethod
+    def _build_failure_summary(
+        *,
+        filter_reason_stats: dict[str, int],
+        filter_reason_detail_stats: dict[str, int],
+        send_failure_stats: dict[str, int],
+    ) -> str:
+        """汇总最终失败原因，供模拟链路回显。"""
+        detail_stats = filter_reason_detail_stats or filter_reason_stats
+        if detail_stats:
+            return "；".join(
+                f"{reason}×{count}" for reason, count in sorted(detail_stats.items())
+            )
+        if send_failure_stats:
+            return "；".join(
+                f"{reason}×{count}"
+                for reason, count in sorted(send_failure_stats.items())
+            )
+        return "未找到明确失败原因"
 
     def _log_filter_summary(
         self,
