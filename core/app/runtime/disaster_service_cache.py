@@ -61,44 +61,162 @@ class DisasterServiceCacheService:
 
     def load_eew_query_cache(self) -> None:
         """从文件加载 EEW 查询状态缓存。"""
+        restored: dict[str, dict[str, Any]] = {}
         try:
-            if not os.path.exists(self.service.eew_query_cache_file):
-                logger.debug("[灾害预警] EEW 查询缓存文件不存在，将使用空状态")
-                return
+            if os.path.exists(self.service.eew_query_cache_file):
+                with open(self.service.eew_query_cache_file, encoding="utf-8") as f:
+                    data = json.load(f)
 
-            with open(self.service.eew_query_cache_file, encoding="utf-8") as f:
-                data = json.load(f)
+                if not isinstance(data, dict):
+                    logger.warning("[灾害预警] EEW 查询缓存格式无效，已忽略")
+                else:
+                    active_state = getattr(self.service, "eew_query_state", {})
+                    if isinstance(active_state, dict) and active_state:
+                        supported_institutions = set(active_state.keys())
+                    else:
+                        institutions = getattr(
+                            self.service.eew_query_service, "institutions", {}
+                        )
+                        supported_institutions = set(institutions.keys())
 
-            if not isinstance(data, dict):
-                logger.warning("[灾害预警] EEW 查询缓存格式无效，已忽略")
-                return
-
-            restored: dict[str, dict[str, Any]] = {}
-            active_state = getattr(self.service, "eew_query_state", {})
-            if isinstance(active_state, dict) and active_state:
-                supported_institutions = set(active_state.keys())
+                    for key, value in data.items():
+                        # 仅恢复当前仍受支持的机构键，避免历史版本缓存污染现有状态结构。
+                        if supported_institutions and key not in supported_institutions:
+                            continue
+                        if not isinstance(value, dict):
+                            continue
+                        if not value.get("issued_at"):
+                            continue
+                        restored[key] = value
             else:
-                institutions = getattr(
-                    self.service.eew_query_service, "institutions", {}
-                )
-                supported_institutions = set(institutions.keys())
-
-            for key, value in data.items():
-                # 仅恢复当前仍受支持的机构键，避免历史版本缓存污染现有状态结构。
-                if supported_institutions and key not in supported_institutions:
-                    continue
-                if not isinstance(value, dict):
-                    continue
-                if not value.get("issued_at"):
-                    continue
-                restored[key] = value
-
-            self.service.eew_query_state = restored
-            if restored:
-                logger.debug("[灾害预警] 已恢复 EEW 查询缓存")
-
+                logger.debug("[灾害预警] EEW 查询缓存文件不存在，将使用空状态")
         except Exception as e:
             logger.warning(f"[灾害预警] 加载 EEW 查询缓存失败: {e}")
+
+        self.service.eew_query_state = restored
+        self._restore_eew_query_state_from_recent_pushes()
+        if (
+            self.service.statistics_manager
+            and self.service.statistics_manager._db_initialized
+        ):
+            try:
+                import asyncio
+
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._restore_eew_query_state_from_db_recent_events())
+            except RuntimeError:
+                pass
+        if self.service.eew_query_state:
+            logger.debug("[灾害预警] 已恢复 EEW 查询缓存/近期状态")
+
+    def _restore_eew_query_state_from_recent_pushes(self) -> None:
+        """当缓存缺项时，使用近期事件记录补齐机构级 EEW 状态。"""
+        recent_pushes = getattr(self.service.statistics_manager, "stats", {}).get(
+            "recent_pushes", []
+        )
+        if not isinstance(recent_pushes, list) or not recent_pushes:
+            return
+
+        state = self.service.eew_query_state
+        institutions = getattr(self.service.eew_query_service, "institutions", {})
+        source_to_institution: dict[str, str] = {}
+        for institution_key, meta in institutions.items():
+            for source_id in meta.get("source_ids", []):
+                source_to_institution[str(source_id).strip()] = institution_key
+
+        for record in recent_pushes:
+            if not isinstance(record, dict):
+                continue
+            if str(record.get("type") or "").strip() != "earthquake_warning":
+                continue
+            source_id = str(
+                record.get("source_id") or record.get("source") or ""
+            ).strip()
+            institution_key = source_to_institution.get(source_id)
+            if not institution_key or institution_key in state:
+                continue
+            issued_at = str(record.get("time") or "").strip()
+            if not issued_at:
+                continue
+            state[institution_key] = {
+                "source_id": source_id,
+                "event_id": str(
+                    record.get("real_event_id")
+                    or record.get("event_id")
+                    or record.get("unique_id")
+                    or ""
+                ).strip(),
+                "display_place": str(
+                    record.get("place_name") or record.get("description") or "未知地点"
+                ).strip(),
+                "display_magnitude": record.get("magnitude"),
+                "updates": int(
+                    record.get("report_num") or record.get("update_count") or 1
+                ),
+                "issued_at": issued_at,
+                "expires_at": str(record.get("expires_at") or "").strip(),
+                "fingerprint": str(
+                    record.get("unique_id") or record.get("event_id") or ""
+                ).strip(),
+            }
+
+    async def _restore_eew_query_state_from_db_recent_events(self) -> None:
+        """从本地数据库最近事件中补齐缺失的机构级 EEW 状态。"""
+        manager = getattr(self.service, "statistics_manager", None)
+        if manager is None or not getattr(manager, "_db_initialized", False):
+            return
+
+        try:
+            recent_events = await manager.db.get_recent_events(1000)
+        except Exception as e:
+            logger.debug(f"[灾害预警] 从数据库补齐 EEW 查询状态失败: {e}")
+            return
+
+        if not isinstance(recent_events, list) or not recent_events:
+            return
+
+        state = self.service.eew_query_state
+        institutions = getattr(self.service.eew_query_service, "institutions", {})
+        source_to_institution: dict[str, str] = {}
+        for institution_key, meta in institutions.items():
+            for source_id in meta.get("source_ids", []):
+                source_to_institution[str(source_id).strip()] = institution_key
+
+        for record in recent_events:
+            if not isinstance(record, dict):
+                continue
+            if str(record.get("type") or "").strip() != "earthquake_warning":
+                continue
+            source_id = str(
+                record.get("source_id") or record.get("source") or ""
+            ).strip()
+            institution_key = source_to_institution.get(source_id)
+            if not institution_key or institution_key in state:
+                continue
+            issued_at = str(record.get("time") or "").strip()
+            if not issued_at:
+                continue
+            state[institution_key] = {
+                "source_id": source_id,
+                "event_id": str(
+                    record.get("real_event_id")
+                    or record.get("event_id")
+                    or record.get("unique_id")
+                    or ""
+                ).strip(),
+                "display_place": str(
+                    record.get("place_name") or record.get("description") or "未知地点"
+                ).strip(),
+                "display_magnitude": record.get("magnitude"),
+                "updates": int(
+                    record.get("report_num") or record.get("update_count") or 1
+                ),
+                "issued_at": issued_at,
+                "expires_at": str(record.get("expires_at") or "").strip(),
+                "fingerprint": str(
+                    record.get("unique_id") or record.get("event_id") or ""
+                ).strip(),
+            }
 
     def save_eew_query_cache(self) -> None:
         """保存 EEW 查询状态缓存到文件。"""

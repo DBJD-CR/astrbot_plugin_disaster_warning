@@ -54,6 +54,7 @@ class StatisticsManager:
         # 运行时去重集合
         self._recorded_event_ids = set()  # 全局去重（用于 total_events）
         self._recorded_source_event_ids = set()  # 源内去重（用于 by_source）
+        self._recorded_cenc_official_region_ids = set()  # CENC 正式测定地区统计去重
 
         # 初始化去重器，用于复用统一事件指纹与判重能力。
         self.deduplicator = EventDeduplicationService()
@@ -165,6 +166,7 @@ class StatisticsManager:
             self.stats = StatsStateFactory.build_initial_stats()
             self._recorded_event_ids.clear()
             self._recorded_source_event_ids.clear()
+            self._recorded_cenc_official_region_ids.clear()
 
             if self._db_initialized:
                 await self.db.clear_all_events()
@@ -181,6 +183,13 @@ class StatisticsManager:
         具体加载、迁移和恢复逻辑由专门的加载服务承接，主管理器只保留调度职责。
         """
         await self.load_service.load()
+
+    async def refresh_derived_stats_from_database(self) -> None:
+        """从数据库全量刷新前端统计卡片依赖的派生统计。"""
+        if not self._db_initialized:
+            await self.initialize()
+            return
+        await self.load_service.refresh_derived_stats_from_database()
 
     def _merge_stats(self, current: dict, saved: dict):
         """递归合并统计数据。

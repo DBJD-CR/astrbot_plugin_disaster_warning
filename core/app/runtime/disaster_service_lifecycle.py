@@ -136,6 +136,8 @@ class DisasterServiceLifecycleService:
                     and self.service.statistics_manager._db_initialized
                 ):
                     await self.service.statistics_manager.db.close()
+                    # 重载插件后需要允许统计管理器重新建库/重载，否则会保留“已初始化”假状态。
+                    self.service.statistics_manager._db_initialized = False
 
                 logger.info("[灾害预警] 灾害预警服务已停止")
             except Exception as e:
