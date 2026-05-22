@@ -185,10 +185,11 @@ class CeaEewPresenter(BasePresenter):
         merged_options = dict(options or {})
         timezone = merged_options.get("timezone", "UTC+8")
 
-        # 省级来源存在时，优先展示更具体的属地机构名称。
+        # 省级来源存在时，优先展示更具体的属地机构名称；缺失或占位值回退到全国机构名。
         source_name = "中国地震预警网"
-        if data.province:
-            source_name = f"{data.province}地震局"
+        province_name = str(data.province or "").strip()
+        if province_name and province_name.lower() not in {"none", "null", "unknown"}:
+            source_name = f"{province_name}地震局"
 
         lines = [f"🚨[地震预警] {source_name}"]
 
