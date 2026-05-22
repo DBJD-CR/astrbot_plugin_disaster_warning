@@ -1067,44 +1067,81 @@ AstrBot/
          │
          ├─ admin/                             # Web 管理端前端资源
          │   ├─ css/                           # 样式文件目录
+         │   │   ├─ base.css                   # 全局基础样式
+         │   │   ├─ components.css             # 通用组件样式
+         │   │   ├─ layout.css                 # 管理端整体布局样式
+         │   │   │
+         │   │   └─ views/                     # 页面级样式目录
+         │   │       ├─ config.css             # 配置页样式
+         │   │       ├─ events.css             # 事件页样式
+         │   │       ├─ markdown.css           # Markdown 文档页样式
+         │   │       ├─ notifications.css      # 通知中心页样式
+         │   │       ├─ stats.css              # 统计页样式
+         │   │       └─ status.css             # 状态页样式
          │   │
-         │   ├─ fonts/                         # 字体文件目录
+         │   ├─ fonts/                         # Outfit 字体资源目录
+         │   │
+         │   ├─ index.html                     # 管理端入口与静态脚本加载清单
          │   │
          │   ├─ js/                            # 前端逻辑脚本目录
          │   │   ├─ .syntax_check_config_renderer.js # 配置渲染器语法检查辅助脚本
+         │   │   ├─ app.jsx                    # React 应用入口与页面切换
          │   │   │
          │   │   ├─ components/                # UI 组件目录
-         │   │   │   ├─ common/                # 通用组件
-         │   │   │   ├─ config/                # 配置页组件
-         │   │   │   ├─ events/                # 事件列表页组件
-         │   │   │   ├─ stats/                 # 统计分析页组件
-         │   │   │   └─ status/                # 状态概览页组件
+         │   │   │   ├─ common/                # 通用布局、导航、分页与 Toast 组件
+         │   │   │   ├─ config/                # 配置页字段渲染与操作组件
+         │   │   │   ├─ events/                # 事件列表、筛选、时间轴与天气查询组件
+         │   │   │   ├─ stats/                 # 统计卡片、图表与热力图组件
+         │   │   │   └─ status/                # 状态概览、连接、新闻与模拟弹窗组件
          │   │   │
          │   │   ├─ context/                   # 全局状态管理
-         │   │   │   └─ AppContext.jsx         # 全局 Store 与 Reducer（状态/统计/连接/主题管理）
+         │   │   │   ├─ AppContext.jsx         # 全局 Store 与上下文 Provider
+         │   │   │   ├─ appReducer.js          # 全局状态 Reducer 与 Action 定义
+         │   │   │   └─ appState.js            # 管理端初始状态定义
          │   │   │
          │   │   ├─ hooks/                     # 自定义 React Hooks
-         │   │   │   ├─ useApi.js              # API 请求封装
-         │   │   │   ├─ usePreservedScroll.js  # 列表滚动位置保留 Hook
-         │   │   │   └─ useWebSocket.js        # 全局单例 WebSocket Hook（状态广播/重连控制）
+         │   │   │   ├─ app/                   # 应用启动、认证、主题、状态副作用与 WebSocket Hook
+         │   │   │   ├─ config/                # 配置编辑器加载、草稿、保存、同步与视图模型 Hook
+         │   │   │   ├─ events/                # 事件查询、重大事件与天气查询 Hook
+         │   │   │   ├─ markdown/              # Markdown 文档加载与 Mermaid 渲染 Hook
+         │   │   │   └─ scroll/                # 滚动位置保留与恢复 Hook
+         │   │   │
+         │   │   ├─ routes/                    # 前端视图注册与导航元数据
+         │   │   │   └─ viewRegistry.jsx       # 管理端页面注册表
+         │   │   │
+         │   │   ├─ services/                  # 前端 API 与客户端服务
+         │   │   │   ├─ apiClient.js           # 统一请求客户端与鉴权处理
+         │   │   │   ├─ configApi.js           # 配置管理 API 封装
+         │   │   │   ├─ eventsApi.js           # 事件查询与天气查询 API 封装
+         │   │   │   ├─ notificationApi.js     # 通知中心与 Markdown 文档 API 封装
+         │   │   │   ├─ statsNormalizer.js     # 统计数据前端标准化工具
+         │   │   │   ├─ statusApi.js           # 状态、连接、统计与模拟 API 封装
+         │   │   │   └─ webSocketClient.js     # WebSocket 单例客户端与订阅管理
+         │   │   │
+         │   │   ├─ theme/                     # 前端主题配置
+         │   │   │   ├─ createAppTheme.js      # Material UI 主题创建逻辑
+         │   │   │   └─ tokens.js              # 明暗主题设计令牌
          │   │   │
          │   │   ├─ utils/                     # 前端工具函数
          │   │   │   ├─ auth.js                # 认证工具
+         │   │   │   ├─ authBootstrap.js       # 首屏登录与鉴权引导逻辑
+         │   │   │   ├─ bootloader.js          # 首屏加载骨架屏控制逻辑
+         │   │   │   ├─ configSchemaUtils.js   # 配置 schema 清洗、默认值与可见性工具
+         │   │   │   ├─ eventFormatters.js     # 事件来源、类型与展示字段格式化工具
+         │   │   │   ├─ eventGrouping.js       # 事件列表分组工具
          │   │   │   ├─ formatters.js          # 时间/震级/数据源名称等前端格式化工具
-         │   │   │   └─ markdown.js            # Markdown 渲染、清洗、代码块/表格/Callout 处理工具
+         │   │   │   ├─ markdown.js            # Markdown 渲染、清洗、代码块/表格/Callout 处理工具
+         │   │   │   └─ mermaidViewport.js     # Mermaid 图表视口与交互辅助工具
          │   │   │
-         │   │   ├─ views/                     # 页面视图组件
-         │   │   │   ├─ ConfigView.jsx         # 配置管理页容器
-         │   │   │   ├─ EventsView.jsx         # 事件总览页
-         │   │   │   ├─ MarkdownDocsView.jsx   # 文档浏览页
-         │   │   │   ├─ NotificationsView.jsx  # 通知中心页
-         │   │   │   ├─ StatsView.jsx          # 统计分析页
-         │   │   │   └─ StatusView.jsx         # 运行状态页
-         │   │   │
-         │   │   └─ app.jsx                    # React 应用入口与页面切换
-         │   ├─ lib/                           # 第三方库 (React, MUI 等)
+         │   │   └─ views/                     # 页面视图组件
+         │   │       ├─ ConfigView.jsx         # 配置管理页容器
+         │   │       ├─ EventsView.jsx         # 事件总览页
+         │   │       ├─ MarkdownDocsView.jsx   # 文档浏览页
+         │   │       ├─ NotificationsView.jsx  # 通知中心页
+         │   │       ├─ StatsView.jsx          # 统计分析页
+         │   │       └─ StatusView.jsx         # 运行状态页
          │   │
-         │   └─ index.html                     # 管理端入口
+         │   └─ lib/                           # 第三方库 (React, MUI, Babel, Emotion 等)
          │
          ├─ core/                              # 后端核心模块目录
          │   ├─ __init__.py
@@ -1346,278 +1383,225 @@ AstrBot/
 ### 📊 前端架构图
 
 ```mermaid
-graph TB
+flowchart TB
     %% ========== 样式定义 ==========
-    classDef entry fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
-    classDef core fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
+    classDef shell fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
+    classDef runtime fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
+    classDef state fill:#EDE7F6,stroke:#5E35B1,stroke-width:2px,color:#311B92;
     classDef view fill:#FFF3E0,stroke:#FB8C00,stroke-width:2px,color:#E65100;
     classDef component fill:#F3E5F5,stroke:#8E24AA,stroke-width:1.5px,color:#4A148C;
     classDef hook fill:#E0F7FA,stroke:#00ACC1,stroke-width:1.5px,color:#006064;
-    classDef data fill:#FFFDE7,stroke:#F9A825,stroke-width:1.5px,color:#5D4037;
-    classDef api fill:#FBE9E7,stroke:#F4511E,stroke-width:2px,color:#BF360C;
-    classDef util fill:#ECEFF1,stroke:#546E7A,stroke-width:1.5px,color:#263238;
-    classDef styling fill:#F1F8E9,stroke:#7CB342,stroke-width:1.5px,color:#33691E;
-    classDef infra fill:#EDE7F6,stroke:#5E35B1,stroke-width:1.5px,color:#311B92;
+    classDef service fill:#FBE9E7,stroke:#F4511E,stroke-width:2px,color:#BF360C;
+    classDef utility fill:#ECEFF1,stroke:#546E7A,stroke-width:1.5px,color:#263238;
+    classDef api fill:#FFFDE7,stroke:#F9A825,stroke-width:1.8px,color:#5D4037;
+    classDef persist fill:#F1F8E9,stroke:#7CB342,stroke-width:1.6px,color:#33691E;
 
-    %% ========== 应用装载层 ==========
-    subgraph L1["① 应用装载层"]
+    %% ========== 静态宿主与启动 ==========
+    subgraph A["① 静态宿主与启动装载"]
         direction TB
-        A1["index.html<br/>脚本顺序加载与首屏骨架"]
-        A2["启动加载层<br/>主题预初始化 + 平滑退场"]
-        A3["app.jsx<br/>应用根组件"]
-        A4["主题提供器<br/>MD3 动态主题"]
-        A5["全局样式基线<br/>基础样式重置"]
-        A6["布局外壳<br/>侧边栏 + 顶栏 + 主内容区"]
+        A1["入口页面<br/>脚本清单 / 字体 / 样式 / 首屏骨架"]
+        A2["认证引导<br/>访问令牌 / 登录表单 / 会话过期重载"]
+        A3["运行时依赖<br/>React / MUI / Emotion / Babel"]
+        A4["文档增强依赖<br/>marked / DOMPurify / Mermaid"]
+        A5["工具与服务预注册<br/>全局 window 命名空间"]
     end
 
-    %% ========== 上下文与状态层 ==========
-    subgraph L2["② 全局状态与上下文层"]
+    %% ========== 根应用运行时 ==========
+    subgraph B["② 根应用运行时"]
         direction TB
-        B1["全局状态上下文<br/>统一状态容器"]
-        B2["状态归并器<br/>状态变更收敛"]
-        B3["初始状态<br/>状态/统计/事件/连接/通知/文档"]
-        B4["派发动作<br/>统一更新入口"]
-        B5["refreshData()<br/>刷新运行状态"]
-        B6["fetchConnections()<br/>刷新连接信息"]
-        B7["fetchConfig()<br/>拉取显示时区等配置"]
-        B8["主题切换动作<br/>亮暗主题切换"]
-        B9["连接状态动作<br/>实时连接态"]
-        B10["统计更新动作<br/>统计聚合与排序"]
-        B11["通知状态动作<br/>通知列表与元信息收敛"]
+        B1["认证包装器<br/>等待认证就绪后挂载"]
+        B2["应用上下文提供器<br/>归并器状态容器"]
+        B3["提示消息提供器<br/>全局操作反馈"]
+        B4["根组件 App<br/>主题 / 布局 / 视图切换"]
+        B5["MD3 主题工厂<br/>亮暗主题令牌"]
+        B6["布局外壳<br/>侧边导航 + 顶栏 + 主内容"]
+        B7["模拟预警弹窗<br/>全局弹层入口"]
     end
 
-    %% ========== 视图层 ==========
-    subgraph L3["③ 视图路由层"]
+    %% ========== 全局状态 ==========
+    subgraph C["③ 全局状态与实时同步"]
+        direction TB
+        C1["初始状态<br/>状态 / 统计 / 连接 / 通知 / 文档 / 主题"]
+        C2["状态归并器<br/>动作驱动更新"]
+        C3["启动初始化<br/>状态 / 配置 / 连接 / 统计"]
+        C4["运行时长派生<br/>秒级运行时长更新"]
+        C5["主题同步<br/>根节点类名 + 本地存储"]
+        C6["WebSocket 钩子<br/>订阅全局单例连接"]
+        C7["实时消息归并<br/>状态 / 统计 / 连接 / 通知 / 新事件"]
+    end
+
+    %% ========== 视图路由 ==========
+    subgraph D["④ 视图注册与页面容器"]
         direction LR
-        C1["运行状态视图<br/>运行态与运维操作"]
-        C2["事件总览视图<br/>事件时间线 + 列表"]
-        C3["数据统计视图<br/>图表与榜单总览"]
-        C4["配置管理视图<br/>配置管理容器"]
-        C5["通知中心视图<br/>通知中心"]
-        C6["文档浏览视图<br/>Markdown 文档浏览"]
+        D1["运行状态<br/>健康度与运维操作"]
+        D2["事件列表<br/>时间线 / 查询 / 分页"]
+        D3["数据统计<br/>图表 / 热力 / 榜单"]
+        D4["通知中心<br/>公告流 / 已读状态"]
+        D5["文档浏览<br/>Markdown + Mermaid"]
+        D6["配置管理<br/>配置模式动态表单"]
     end
 
-    %% ========== 状态页组件 ==========
-    subgraph L4S["④-1 状态页组件组"]
+    %% ========== 页面组件 ==========
+    subgraph E["⑤ 页面组件矩阵"]
         direction TB
-        S1["实时动态跑马灯"]
-        S2["服务状态卡片"]
-        S3["核心统计卡片"]
-        S4["连接状态矩阵 + 延迟"]
-        S5["模拟预警表单"]
-        S6["快捷操作区<br/>重连/刷新/清除"]
+        E1["通用组件<br/>页头 / 侧边栏 / 提示消息 / 分页器"]
+        E2["状态组件<br/>跑马灯 / 状态卡 / 连接矩阵 / 地震预警状态 / 快捷操作"]
+        E3["事件组件<br/>重大事件横向时间线 / 天气查询 / 筛选器 / 折叠事件组"]
+        E4["统计组件<br/>震级分布 / 趋势图 / 日历热力图 / 榜单 / 日志统计"]
+        E5["通知与文档组件<br/>通知流 / 文档目录 / Markdown 文章区 / Mermaid 视口控制"]
+        E6["配置组件<br/>模式工具栏 / 字段布局 / 对象组 / 基础字段 / 操作栏"]
     end
 
-    %% ========== 事件页组件 ==========
-    subgraph L4E["④-2 事件页组件组"]
+    %% ========== 钩子能力 ==========
+    subgraph F["⑥ 钩子能力层"]
         direction TB
-        E1["横向时间线<br/>重大事件回溯"]
-        E2["事件列表<br/>分页 + 筛选 + 折叠"]
-        E3["事件分组<br/>按 event_id 聚合"]
-        E4["历史展开区<br/>多报展开/收起"]
-        E5["徽章语义引擎<br/>震级/震度/烈度标签"]
-        E6["分页器<br/>跳页与每页条数"]
+        F1["应用生命周期钩子<br/>启动拉取 / 主题同步 / 认证就绪 / 骨架退场"]
+        F2["滚动记忆钩子<br/>主内容滚动 / 列表刷新位置保留"]
+        F3["事件查询钩子<br/>筛选 / 数据源 / 震级 / 关键词 / 分页 / 请求中断控制"]
+        F4["重大事件与天气查询钩子<br/>时间线刷新 / 气象预警检索"]
+        F5["配置编辑钩子<br/>加载 / 草稿 / 保存 / 会话差异 / 展开状态 / 滚动恢复"]
+        F6["文档钩子<br/>Markdown 文件列表 / 文档内容 / Mermaid 渲染"]
     end
 
-    %% ========== 统计页组件 ==========
-    subgraph L4T["④-3 统计页组件组"]
+    %% ========== 前端服务 ==========
+    subgraph G["⑦ 前端服务与协议封装"]
         direction TB
-        T1["震级分布图<br/>震级区间统计"]
-        T2["趋势图"]
-        T3["日历热力图"]
-        T4["排行卡片<br/>地区/来源榜单"]
-        T5["最大地震卡片<br/>历史极值展示"]
-        T6["气象与日志统计卡片"]
+        G1["统一请求客户端<br/>接口前缀 / 查询参数 / 数据解包 / 错误处理"]
+        G2["状态服务<br/>状态 / 统计 / 连接 / 模拟 / 重连 / 目录打开"]
+        G3["事件服务<br/>事件列表 / 重大事件 / 气象查询"]
+        G4["配置服务<br/>配置模式 / 全量配置 / 会话差异配置"]
+        G5["通知与文档服务<br/>通知列表 / 已读 / 同步 / Markdown 文件"]
+        G6["WebSocket 单例客户端<br/>令牌拼接 / 订阅广播 / 指数退避重连"]
+        G7["统计归一化<br/>后端统计载荷转前端展示模型"]
     end
 
-    %% ========== 配置页组件 ==========
-    subgraph L4C["④-4 配置页组件组"]
+    %% ========== 工具与样式 ==========
+    subgraph H["⑧ 工具、样式与本地体验"]
         direction TB
-        G1["配置渲染器<br/>配置 Schema 动态渲染"]
-        G2["配置字段分发器<br/>字段类型路由"]
-        G3["会话配置模式<br/>全局/会话差异配置"]
-        G4["草稿缓存<br/>草稿本地持久化"]
-        G5["折叠状态缓存<br/>展开/收起记忆"]
-        G6["保存流水线<br/>清洗后提交"]
+        H1["格式化工具<br/>时间时区 / 数据源 / 事件字段 / 数值展示"]
+        H2["事件分组工具<br/>按事件标识聚合多报更新"]
+        H3["配置模式工具<br/>默认值 / 可见字段 / 清洗 / 覆写提取"]
+        H4["Markdown 工具<br/>清洗 / 表格 / 代码块 / 提示块 / Mermaid 预处理"]
+        H5["Mermaid 视口工具<br/>缩放 / 拖拽 / 重置 / 自适应"]
+        H6["样式系统<br/>基础样式 / 布局样式 / 组件样式 / 视图样式"]
+        H7["本地持久化<br/>主题 / 当前视图 / 滚动位置 / 配置草稿"]
     end
 
-    %% ========== 通知与文档页组件 ==========
-    subgraph L4N["④-5 通知与文档页组件组"]
+    %% ========== 后端接口边界 ==========
+    subgraph I["⑨ 管理端接口边界"]
         direction TB
-        N1["通知摘要区<br/>未读数 / 同步状态 / 快捷操作"]
-        N2["通知内容流<br/>通知列表 / 已读状态 / Markdown 正文"]
-        N3["文档浏览器<br/>文档列表 / 文件切换 / 文章区"]
-        N4["Mermaid 增强器<br/>图表渲染 / 缩放 / 拖拽"]
-        N5["Markdown 渲染工具<br/>清洗 / 表格 / 代码块 / 提示块"]
+        I1["状态接口<br/>/api/status / statistics / connections"]
+        I2["事件接口<br/>/api/events / events/major / weather/query"]
+        I3["配置接口<br/>/api/config-schema / full-config / session-config"]
+        I4["通知与文档接口<br/>/api/notifications / markdown-files"]
+        I5["运维接口<br/>/api/simulate / reconnect / maintenance"]
+        I6["实时通道<br/>/ws<br/>全量快照 + 增量事件推送"]
     end
 
-    %% ========== Hooks 层 ==========
-    subgraph L5["⑤ Hooks 能力层"]
-        direction TB
-        H1["WebSocket Hook<br/>全局单例连接"]
-        H2["连接监听器<br/>订阅广播机制"]
-        H3["重连调度器<br/>断线重连"]
-        H4["API Hook<br/>REST 请求封装"]
-        H5["滚动保留 Hook<br/>列表滚动恢复"]
-        H6["界面副作用集<br/>视图切换滚动记忆"]
-        H7["文档加载副作用<br/>目录加载与文章刷新"]
-    end
+    %% ========== 启动链路 ==========
+    A1 --> A2 --> B1
+    A1 --> A3
+    A1 --> A4
+    A1 --> A5
+    B1 --> B2 --> B3 --> B4
+    B4 --> B5 --> B6
+    B4 --> B7
+    B4 --> C6
 
-    %% ========== 数据与接口层 ==========
-    subgraph L6["⑥ 数据与接口层"]
-        direction TB
-        D1["/api/status<br/>运行状态"]
-        D2["/api/connections<br/>连接详情"]
-        D3["/api/config + /api/full-config<br/>配置读取/保存"]
-        D4["/api/events + /api/events/major<br/>事件列表/重大事件"]
-        D5["/api/statistics + /api/trend + /api/heatmap<br/>统计图表数据"]
-        D6["/api/simulate + /api/simulation-params<br/>模拟预警链路"]
-        D7["/api/session-config/*<br/>会话差异配置"]
-        D8["/ws<br/>实时推送通道"]
-        D9["/api/notifications*<br/>通知列表 / 已读 / 手动同步"]
-        D10["/api/docs/*<br/>文档目录 / Markdown 文件读取"]
-    end
+    %% ========== 状态链路 ==========
+    B2 --> C1
+    C1 --> C2
+    B2 --> C3
+    B2 --> C4
+    B2 --> C5
+    C6 --> C7 --> C2
+    C2 --> B4
 
-    %% ========== 工具与样式层 ==========
-    subgraph L7["⑦ 工具与样式层"]
-        direction TB
-        U1["formatters.js<br/>时间/来源/数值格式化"]
-        U2["style.css<br/>响应式布局 + 主题变量 + 动画"]
-        U3["Material UI UMD<br/>组件基础设施"]
-        U4["Emotion<br/>运行时样式系统"]
-        U5["本地存储<br/>主题/视图/滚动/草稿缓存"]
-        U6["markdown.js<br/>Markdown 渲染 / Mermaid 预处理 / HTML 清洗"]
-    end
-
-    %% ========== 主干连接 ==========
-    A1 --> A2
-    A2 --> A3
-    A3 --> A4
-    A4 --> A5
-    A5 --> A6
-
-    A3 --> B1
-    B1 --> B2
-    B1 --> B3
-    B2 --> B4
-    B4 --> B8
-    B4 --> B9
-    B4 --> B10
-
-    A6 --> C1
-    A6 --> C2
-    A6 --> C3
-    A6 --> C4
-    A6 --> C5
-    A6 --> C6
-
-    C1 --> S1
-    C1 --> S2
-    C1 --> S3
-    C1 --> S4
-    C1 --> S5
-    C1 --> S6
-
-    C2 --> E1
-    C2 --> E2
-    E2 --> E3
-    E2 --> E4
-    E2 --> E5
-    E2 --> E6
-
-    C3 --> T1
-    C3 --> T2
-    C3 --> T3
-    C3 --> T4
-    C3 --> T5
-    C3 --> T6
-
-    C4 --> G1
-    G1 --> G2
-    G1 --> G3
-    G1 --> G4
-    G1 --> G5
-    G1 --> G6
-
-    C5 --> N1
-    C5 --> N2
-    C6 --> N3
-    C6 --> N4
-    C6 --> N5
-    N3 --> N5
-    N4 --> N5
-
-    %% ========== Hooks 与上下文耦合 ==========
-    A3 --> H1
-    A3 --> H4
-    E2 --> H5
-    A3 --> H6
-    C6 --> H7
-    H1 --> H2
-    H1 --> H3
-
-    H1 --> D8
-    H4 --> D1
-    H4 --> D2
-    H4 --> D3
-    H4 --> D4
-    H4 --> D5
-    H4 --> D6
-    H4 --> D7
-    H4 --> D9
-    H4 --> D10
-
-    B5 --> D1
+    %% ========== 视图挂载 ==========
+    B6 --> D1
     B6 --> D2
-    B7 --> D3
+    B6 --> D3
+    B6 --> D4
+    B6 --> D5
+    B6 --> D6
 
-    %% ========== 状态回流 ==========
-    D8 --> H1
-    H1 --> B4
-    D1 --> B5
-    D2 --> B6
-    D3 --> B7
-    D4 --> E2
-    D4 --> E1
-    D5 --> C3
-    D6 --> S5
-    D7 --> G3
-    D8 --> B11
-    D9 --> C5
-    D9 --> B11
-    D10 --> C6
+    D1 --> E2
+    D2 --> E3
+    D3 --> E4
+    D4 --> E5
+    D5 --> E5
+    D6 --> E6
+    B6 --> E1
+
+    %% ========== 钩子支撑 ==========
+    B4 --> F1
+    B4 --> F2
+    D2 --> F3
+    D2 --> F4
+    D6 --> F5
+    D5 --> F6
+    E3 --> F2
+    E6 --> F5
+    E5 --> F6
+
+    %% ========== 服务调用 ==========
+    C3 --> G2
+    C3 --> G4
+    C3 --> G7
+    F3 --> G3
+    F4 --> G3
+    F5 --> G4
+    F6 --> G5
+    D4 --> G5
+    D1 --> G2
+    C6 --> G6
+    G2 --> G1
+    G3 --> G1
+    G4 --> G1
+    G5 --> G1
+
+    %% ========== 后端边界 ==========
+    G1 --> I1
+    G1 --> I2
+    G1 --> I3
+    G1 --> I4
+    G1 --> I5
+    G6 --> I6
+    I6 --> G6
+    I6 --> C7
 
     %% ========== 工具支撑 ==========
-    U1 --> S1
-    U1 --> E1
-    U1 --> E2
-    U1 --> C3
-    U1 --> C5
-    U2 --> A6
-    U2 --> C1
-    U2 --> C2
-    U2 --> C3
-    U2 --> C4
-    U2 --> C5
-    U2 --> C6
-    U3 --> A3
-    U4 --> U3
-    U5 --> A3
-    U5 --> G4
-    U5 --> G5
-    U5 --> H6
-    U6 --> N2
-    U6 --> N3
-    U6 --> N4
+    H1 --> E1
+    H1 --> E2
+    H1 --> E3
+    H1 --> E4
+    H1 --> E5
+    H2 --> E3
+    H3 --> F5
+    H3 --> E6
+    H4 --> E5
+    H5 --> F6
+    H6 --> B6
+    H6 --> E2
+    H6 --> E3
+    H6 --> E4
+    H6 --> E5
+    H6 --> E6
+    H7 --> F1
+    H7 --> F2
+    H7 --> F5
 
-    %% ========== 视觉分层样式绑定 ==========
-    class A1,A2,A3,A4,A5,A6 entry;
-    class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11 core;
-    class C1,C2,C3,C4,C5,C6 view;
-    class S1,S2,S3,S4,S5,S6,E1,E2,E3,E4,E5,E6,T1,T2,T3,T4,T5,T6,G1,G2,G3,G4,G5,G6,N1,N2,N3,N4,N5 component;
-    class H1,H2,H3,H4,H5,H6,H7 hook;
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10 api;
-    class U1,U2,U3,U4,U5,U6 util;
+    %% ========== 样式绑定 ==========
+    class A1,A2,A3,A4,A5 shell;
+    class B1,B2,B3,B4,B5,B6,B7 runtime;
+    class C1,C2,C3,C4,C5,C6,C7 state;
+    class D1,D2,D3,D4,D5,D6 view;
+    class E1,E2,E3,E4,E5,E6 component;
+    class F1,F2,F3,F4,F5,F6 hook;
+    class G1,G2,G3,G4,G5,G6,G7 service;
+    class H1,H2,H3,H4,H5,H6 utility;
+    class H7 persist;
+    class I1,I2,I3,I4,I5,I6 api;
 ```
 
 ### 📊 后端架构图
@@ -1835,35 +1819,44 @@ graph TB
 
 #### 🧩 一、 前端架构设计与运行机制
 
-管理端前端采用“**静态资源 + 浏览器端 React 运行时编译**”的轻部署模式，在不引入额外打包流水线的前提下，实现了复杂控制台能力：
+管理端前端采用“**静态资源 + 浏览器端 React 运行时编译**”的轻部署模式，由 [`admin/index.html`](admin/index.html) 显式声明脚本、样式与第三方运行时加载顺序，不依赖额外打包流水线即可运行完整控制台：
 
-- **分层组织清晰**：按 `context / hooks / views / components / utils` 分层，避免页面逻辑与基础能力耦合。
-- **状态中心化**：通过 `AppContext + Reducer` 统一管理状态、统计、连接、主题与加载态，确保状态流可追踪。
-- **视图容器化**：四大视图（状态/事件/统计/配置）由根容器统一挂载，侧边导航只负责切换，不直接承载业务副作用。
+- **装载链路轻量明确**：入口页面先完成主题预初始化、字体与样式加载，再依次挂载认证工具、请求服务、状态上下文、主题工厂、钩子、组件、视图注册表与根组件，降低部署复杂度。
+- **认证与首屏解耦**：首屏骨架和登录表单位于 React 根节点之外，认证完成后再挂载应用；会话失效时通过浏览器事件触发重载，避免未授权状态污染应用运行时。
+- **分层组织清晰**：前端按上下文、钩子、服务、视图、组件、主题、工具与样式分层，页面只负责组装，连接、请求、滚动、配置草稿、文档渲染等能力下沉到专门模块。
 
-在运行机制上，前端形成了“**REST 初始化 + WebSocket 增量更新**”的双通道数据模型：
+在状态与数据流上，前端已经从单纯页面拉取演进为“**初始化快照 + 实时增量 + 操作后校准**”的控制台模型：
 
-- **首屏阶段**：先拉取 `/api/status`、`/api/config`、`/api/connections`，快速建立可交互骨架。
-- **实时阶段**：通过 `/ws` 接收增量消息，触发 `UPDATE_STATUS`、`UPDATE_STATS`、`UPDATE_CONNECTIONS` 等动作。
-- **一致性策略**：关键操作（如刷新、重连、统计清空）执行后主动补一次 REST 校准，避免纯流式状态漂移。
+- **全局状态中心化**：通过 [`AppContext`](admin/js/context/AppContext.jsx) 与状态归并器统一维护运行状态、统计摘要、连接矩阵、事件缓存、通知元信息、文档状态、主题与加载态。
+- **初始化快照**：应用启动后并行拉取 `/api/status`、`/api/config`、`/api/connections` 与 `/api/statistics`，先建立可交互的运行视图与统计基线。
+- **实时增量回流**：[`WebSocketClient`](admin/js/services/webSocketClient.js) 维护全局单例连接，负责令牌拼接、监听器广播和指数退避重连；[`useWebSocket`](admin/js/hooks/app/useWebSocket.js) 将后端推送的状态、统计、连接、通知与新事件归并回全局状态。
+- **操作后校准**：刷新、重连、清除统计、通知同步等操作会在必要时再次触发接口拉取，避免长时间运行后只依赖实时流造成状态漂移。
 
-为保障高频交互体验，前端在“状态持久化与滚动恢复”上做了专门工程化设计：
+在视图组织上，当前管理端不再只有四个基础页面，而是形成了六个注册化视图：
 
-- **本地持久化**：主题、当前视图、配置草稿、折叠状态、滚动位置等均落地 `localStorage`。
-- **滚动保留机制**：视图切换与事件列表刷新时，优先恢复用户阅读上下文，减少异步渲染导致的跳动。
-- **用户优先原则**：滚动恢复过程中检测到用户主动操作时立即让渡控制，防止“强制回拉”影响浏览。
+- **运行状态视图**：展示跑马灯、运行状态、核心统计、数据源连接矩阵、地震预警状态与模拟/重连/刷新/清除统计等运维操作。
+- **事件列表视图**：组合重大事件横向时间线、气象预警查询、事件筛选、分页列表与多报折叠时间线，支持类型、来源、震级、排序和关键词过滤。
+- **数据统计视图**：集中展示震级分布、趋势图、日历热力图、地区榜单、数据源贡献、气象级别与日志统计。
+- **通知中心与文档浏览视图**：通知中心处理官方通知同步和已读状态；文档浏览视图可直接读取插件内 Markdown 文件，并支持 Mermaid 图表渲染、缩放、拖拽与重置。
+- **配置管理视图**：[`ConfigRenderer`](admin/js/components/config/ConfigRenderer.jsx) 基于后端配置模式动态渲染全局配置与会话差异配置，配置加载、草稿、保存、回滚、默认值恢复、展开状态和滚动恢复均由专用钩子拆分处理。
 
-在组件通信与可维护性方面，前端遵循“能力下沉、页面组装”的策略：
+为保障高频交互体验，前端在本地状态保留与异步刷新细节上做了专门工程化设计：
 
-- **Hook 能力沉淀**：`useWebSocket`、`useApi`、`usePreservedScroll` 分别封装连接、请求与交互细节。
-- **通用组件复用**：Header、Sidebar、Toast、卡片类组件在多视图复用，降低样式与逻辑重复。
-- **配置动态渲染**：`ConfigRenderer` 按后端 Schema 自动生成表单，减少硬编码字段维护成本。
+- **本地持久化**：主题、当前视图、主内容滚动位置、配置草稿、配置折叠状态与配置页滚动位置等均落地浏览器本地存储。
+- **滚动恢复策略**：主内容区按视图记忆滚动位置；事件列表在实时刷新和分页查询时保留阅读位置，减少异步数据更新造成的跳动。
+- **用户优先原则**：滚动恢复期间一旦检测到用户主动滚动、触摸、滚轮或键盘操作，会立即停止自动回拉，避免干扰阅读。
 
-在视觉系统上，管理端以 MD3 设计语言为核心并兼顾性能约束：
+在服务封装与可维护性方面，前端遵循“统一协议入口、页面消费服务、工具辅助展示”的策略：
 
-- **主题令牌化**：颜色、圆角、层级通过变量统一管理，支持亮暗主题平滑切换。
-- **响应式布局**：覆盖桌面/平板/移动端，导航与网格按断点自适应重排。
-- **加载体验优化**：首屏骨架 + 启动动画 + 渐进隐藏策略，降低“白屏感”和主题闪烁。
+- **统一请求客户端**：所有 HTTP 请求经 [`apiClient.js`](admin/js/services/apiClient.js) 构造接口地址、查询参数、请求体、响应解包与错误对象，页面无需重复处理协议细节。
+- **领域服务拆分**：状态、事件、配置、通知、统计归一化与实时连接分别由独立服务封装，便于后端接口演进时局部调整。
+- **展示工具复用**：时间时区、事件字段、来源名称、事件分组、配置模式清洗、Markdown 清洗与 Mermaid 视口控制均拆到工具层，降低组件内条件分支和重复逻辑。
+
+在视觉系统上，管理端以 MD3 设计语言为核心，并兼顾轻部署场景下的运行性能：
+
+- **主题令牌化**：颜色、圆角、层级与明暗主题通过主题工厂和样式变量统一管理，主题切换会同步到根节点类名与本地存储。
+- **样式分层明确**：基础样式、布局样式、通用组件样式与各视图样式拆分管理，配合 MUI 与 Emotion 运行时提供统一的界面语义。
+- **加载体验优化**：首屏骨架、登录态切换、加载进度条和骨架退场策略共同降低白屏感，同时避免暗色主题闪烁。
 
 #### 🧩 二、 后端架构设计与运行机制
 
