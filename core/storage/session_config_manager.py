@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from astrbot.api import logger
@@ -46,15 +47,17 @@ class SessionConfigManager:
     }
 
     def __init__(self, default_config_ref: dict[str, Any]):
-        """初始化会话配置管理器并加载已保存的差异补丁。"""
+        """初始化会话差异配置管理器并加载已保存的差异补丁。"""
         self.default_config_ref = default_config_ref
         self.storage_dir = StarTools.get_data_dir("astrbot_plugin_disaster_warning")
         self.overrides_file = os.path.join(self.storage_dir, self.OVERRIDES_FILE)
         self.legacy_full_configs_file = os.path.join(
             self.storage_dir, self.LEGACY_FULL_CONFIGS_FILE
         )
+        self.schema = self._load_schema()
 
         self._overrides: dict[str, dict[str, Any]] = {}
+        self._legacy_full_configs: dict[str, dict[str, Any]] = {}
         self._load()
 
     def _ensure_storage_dir(self) -> None:
@@ -65,9 +68,10 @@ class SessionConfigManager:
     def _load(self) -> None:
         """加载 override 文件，并执行一次兼容迁移。"""
         self._ensure_storage_dir()
+        self._legacy_full_configs = self._load_legacy_full_configs()
 
         if os.path.exists(self.overrides_file):
-            # 优先读取新的差异补丁文件；读取成功后就不再继续处理旧格式迁移。
+            # 优先读取新的差异补丁文件；读取成功后仍继续尝试回填旧字段兼容数据。
             try:
                 with open(self.overrides_file, encoding="utf-8") as f:
                     data = json.load(f)
@@ -75,6 +79,7 @@ class SessionConfigManager:
                         self._overrides = {
                             str(k): v for k, v in data.items() if isinstance(v, dict)
                         }
+                        self._restore_legacy_weather_fields_from_full_configs()
                         return
             except Exception as e:
                 logger.warning(f"[灾害预警] 读取会话差异配置失败，将使用空配置: {e}")
@@ -84,28 +89,22 @@ class SessionConfigManager:
         # 新格式不存在时，再尝试兼容旧版“按会话保存完整配置”的历史文件。
         # 迁移完成后会统一落为差异补丁，减少后续默认配置变化带来的冗余存储。
         # 兼容旧格式: session_configs.json (存的是完整配置)
-        if os.path.exists(self.legacy_full_configs_file):
+        if self._legacy_full_configs:
             try:
-                with open(self.legacy_full_configs_file, encoding="utf-8") as f:
-                    legacy_data = json.load(f)
+                migrated = 0
+                for umo, full_conf in self._legacy_full_configs.items():
+                    if not isinstance(full_conf, dict):
+                        continue
+                    patch = self.compute_diff(self._default_config_dict(), full_conf)
+                    patch = self._sanitize_patch(patch)
+                    if patch:
+                        self._overrides[str(umo)] = patch
+                        migrated += 1
 
-                if isinstance(legacy_data, dict):
-                    migrated = 0
-                    for umo, full_conf in legacy_data.items():
-                        if not isinstance(full_conf, dict):
-                            continue
-                        patch = self.compute_diff(
-                            self._default_config_dict(), full_conf
-                        )
-                        patch = self._sanitize_patch(patch)
-                        if patch:
-                            self._overrides[str(umo)] = patch
-                            migrated += 1
-
-                    self._save()
-                    logger.info(
-                        f"[灾害预警] 已从旧会话配置迁移 {migrated} 条到差异配置存储"
-                    )
+                self._save()
+                logger.info(
+                    f"[灾害预警] 已从旧会话配置迁移 {migrated} 条到差异配置存储"
+                )
             except Exception as e:
                 logger.warning(f"[灾害预警] 迁移旧会话配置失败: {e}")
 
@@ -128,9 +127,132 @@ class SessionConfigManager:
                 except Exception:
                     pass
 
+    def _load_legacy_full_configs(self) -> dict[str, dict[str, Any]]:
+        if not os.path.exists(self.legacy_full_configs_file):
+            return {}
+        try:
+            with open(self.legacy_full_configs_file, encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return {}
+            return {str(k): v for k, v in data.items() if isinstance(v, dict)}
+        except Exception as e:
+            logger.warning(f"[灾害预警] 读取旧会话完整配置失败: {e}")
+            return {}
+
     def _default_config_dict(self) -> dict[str, Any]:
         """获取当前全局默认配置的深拷贝。"""
         return copy.deepcopy(dict(self.default_config_ref))
+
+    def _extract_legacy_weather_filter_patch(
+        self, full_conf: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        weather_config = full_conf.get("weather_config")
+        if not isinstance(weather_config, dict):
+            return None
+        weather_filter = weather_config.get("weather_filter")
+        if not isinstance(weather_filter, dict):
+            return None
+
+        legacy_patch: dict[str, Any] = {}
+        if isinstance(weather_filter.get("provinces"), list):
+            legacy_patch["provinces"] = copy.deepcopy(weather_filter.get("provinces"))
+        if isinstance(weather_filter.get("province"), str):
+            legacy_patch["province"] = str(weather_filter.get("province"))
+
+        if not legacy_patch:
+            return None
+        return {"weather_config": {"weather_filter": legacy_patch}}
+
+    def _restore_legacy_weather_fields_from_full_configs(self) -> None:
+        if not self._legacy_full_configs or not self._overrides:
+            return
+
+        changed = False
+        for umo, override in list(self._overrides.items()):
+            if not isinstance(override, dict):
+                continue
+
+            weather_config = override.get("weather_config")
+            weather_filter = (
+                weather_config.get("weather_filter")
+                if isinstance(weather_config, dict)
+                else None
+            )
+            has_legacy_weather = isinstance(weather_filter, dict) and (
+                "provinces" in weather_filter or "province" in weather_filter
+            )
+            if has_legacy_weather:
+                continue
+
+            legacy_full_conf = self._legacy_full_configs.get(umo)
+            if not isinstance(legacy_full_conf, dict):
+                continue
+
+            legacy_patch = self._extract_legacy_weather_filter_patch(legacy_full_conf)
+            if not legacy_patch:
+                continue
+
+            self._overrides[umo] = self.deep_merge(override, legacy_patch)
+            changed = True
+
+        if changed:
+            self._save()
+
+    def _load_schema(self) -> dict[str, Any]:
+        """加载当前插件配置 Schema，供会话 override 新写入裁剪使用。"""
+        try:
+            schema_path = Path(__file__).resolve().parents[2] / "_conf_schema.json"
+            with open(schema_path, encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logger.warning(
+                f"[灾害预警] 读取配置 Schema 失败，会话保存将退化为顶层白名单模式: {e}"
+            )
+            return {}
+
+    @staticmethod
+    def _is_legacy_weather_filter_key(key: str, value: Any) -> bool:
+        if key == "provinces" and isinstance(value, list):
+            return True
+        if key == "province" and isinstance(value, str):
+            return True
+        return False
+
+    def _prune_to_schema(self, value: Any, schema_node: dict[str, Any] | None) -> Any:
+        """按 schema 递归裁剪新提交的配置，仅阻止未来污染，不清理已存旧字段。"""
+        if schema_node is None or not isinstance(schema_node, dict):
+            return value
+
+        field_type = schema_node.get("type")
+        if field_type == "object":
+            if not isinstance(value, dict):
+                return None
+            items = (
+                schema_node.get("items")
+                if isinstance(schema_node.get("items"), dict)
+                else {}
+            )
+            result: dict[str, Any] = {}
+            node_description = str(schema_node.get("description") or "")
+            for key, child_value in value.items():
+                child_schema = items.get(key)
+                if not isinstance(child_schema, dict):
+                    if (
+                        node_description == "气象预警过滤器"
+                        and self._is_legacy_weather_filter_key(key, child_value)
+                    ):
+                        result[key] = copy.deepcopy(child_value)
+                    continue
+                pruned = self._prune_to_schema(child_value, child_schema)
+                if pruned is not None:
+                    result[key] = pruned
+            return result if result else None
+
+        if isinstance(value, dict):
+            return None
+        return copy.deepcopy(value)
 
     def list_target_sessions(self) -> list[str]:
         """列出全局配置中声明的目标会话。"""
@@ -155,8 +277,10 @@ class SessionConfigManager:
         if not isinstance(override_patch, dict):
             raise ValueError("override_patch 必须是对象")
 
-        # 保存前再次执行白名单清洗，避免调用方传入越界字段污染存储层。
-        patch = self._sanitize_patch(copy.deepcopy(override_patch))
+        current_override = self._overrides.get(umo, {})
+        patch = self._sanitize_patch(
+            copy.deepcopy(override_patch), preserve_legacy=current_override
+        )
         if patch:
             self._overrides[umo] = patch
         else:
@@ -188,13 +312,13 @@ class SessionConfigManager:
         if not isinstance(effective_config, dict):
             raise ValueError("effective_config 必须是对象")
 
-        # 仅允许会话级白名单字段参与差异计算，避免会话保存误带入全局字段
-        # 导致会话隔离失效或出现“改会话却影响全局”的错觉。
         default_conf = self._sanitize_patch(self._default_config_dict()) or {}
         session_effective = self._sanitize_patch(copy.deepcopy(effective_config)) or {}
 
         patch = self.compute_diff(default_conf, session_effective)
-        patch = self._sanitize_patch(patch)
+        patch = self._sanitize_patch(
+            patch, preserve_legacy=self._overrides.get(umo, {})
+        )
         self.set_override(umo, patch)
 
     @classmethod
@@ -237,9 +361,16 @@ class SessionConfigManager:
 
         return None
 
-    def _sanitize_patch(self, patch: Any, depth: int = 0) -> Any:
+    def _sanitize_patch(
+        self,
+        patch: Any,
+        depth: int = 0,
+        preserve_legacy: Any = None,
+    ) -> Any:
         """清洗 patch：
-        - 顶层仅保留白名单键
+        - 顶层仅保留会话白名单键
+        - 对 schema 内对象块递归裁剪新写入字段
+        - 若旧 override 中已存在历史兼容字段，则原样保留，不做清空/重置
         - 递归移除空 dict
         """
         if patch is None:
@@ -248,15 +379,44 @@ class SessionConfigManager:
         if not isinstance(patch, dict):
             return patch
 
+        legacy_patch = preserve_legacy if isinstance(preserve_legacy, dict) else {}
         sanitized: dict[str, Any] = {}
+        active_schema = self.schema if isinstance(self.schema, dict) else {}
+
         for key, val in patch.items():
-            # 顶层做白名单裁剪，深层则保留对应配置块内部的细分字段。
             if depth == 0 and key not in self.ALLOWED_ROOT_KEYS:
                 continue
-            child = self._sanitize_patch(val, depth + 1)
+
+            legacy_child = legacy_patch.get(key)
+            schema_node = active_schema.get(key) if depth == 0 else None
+
+            if (
+                depth == 0
+                and isinstance(schema_node, dict)
+                and schema_node.get("type") == "object"
+            ):
+                child = self._prune_to_schema(val, schema_node)
+                if isinstance(child, dict) and isinstance(legacy_child, dict):
+                    merged_child = copy.deepcopy(legacy_child)
+                    merged_child.update(child)
+                    child = merged_child
+            else:
+                child = self._sanitize_patch(val, depth + 1, legacy_child)
+
             if isinstance(child, dict) and not child:
+                if isinstance(legacy_child, dict) and legacy_child:
+                    sanitized[key] = copy.deepcopy(legacy_child)
                 continue
             if child is not None:
                 sanitized[key] = child
+            elif legacy_child is not None:
+                sanitized[key] = copy.deepcopy(legacy_child)
+
+        if depth == 0:
+            for key, legacy_value in legacy_patch.items():
+                if key in sanitized:
+                    continue
+                if key in self.ALLOWED_ROOT_KEYS:
+                    sanitized[key] = copy.deepcopy(legacy_value)
 
         return sanitized
