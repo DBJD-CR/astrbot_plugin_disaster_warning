@@ -1,0 +1,454 @@
+/* 常用组件样式文件：包含顶部导航、侧边栏、状态通知气泡、分页栏等通用组件的CSS规范 */
+
+/* ==========================================================================
+   1. 顶部信息栏 & 全局加载指示器 (Header & Top-bar Progress)
+   ========================================================================== */
+
+/* 全局加载条容器：固定于最顶部 */
+.app-loading-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--md-sys-color-surface-variant);
+    z-index: 9999; /* 保证始终悬浮在弹层、侧栏等最上层 */
+    overflow: hidden;
+}
+
+/* 往复式加载横条 */
+.app-loading-progress__bar {
+    height: 100%;
+    background: var(--md-sys-color-primary);
+    animation: loading-bar 1.5s ease-in-out infinite;
+    transform-origin: left;
+}
+
+/* 循环往复进度条动画 */
+@keyframes loading-bar {
+    0% { transform: scaleX(0); transform-origin: left; }
+    50% { transform: scaleX(0.7); transform-origin: left; }
+    51% { transform: scaleX(0.7); transform-origin: right; }
+    100% { transform: scaleX(0); transform-origin: right; }
+}
+
+/* 顶部栏标题样式 */
+.header-title {
+    font-weight: 800 !important;
+    color: var(--md-sys-color-on-surface);
+    letter-spacing: -0.5px !important;
+}
+
+/* 顶部右侧操作栏按钮/时钟/状态指示区域 */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* 实时数字时钟容器 */
+.real-time-clock {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--md-sys-color-primary);
+    background: var(--md-sys-color-surface-variant);
+    padding: 4px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 12px;
+}
+
+/* 数字时钟的前缀文本 (如 "当前时间:") */
+.real-time-clock__label {
+    font-size: 14px;
+    opacity: 0.8;
+    font-weight: 600;
+}
+
+/* 时钟数值显示：使用等宽字体以防止数字跳动时容器宽度抖动 */
+.real-time-clock__value {
+    font-family: Monaco, Consolas, "Courier New", monospace;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+/* WebSocket 网络状态连接胶囊 (WS Connection Status Chip) */
+.ws-status-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border-radius: 12px;
+}
+
+/* 已连接状态 */
+.ws-status-chip.is-connected {
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.2);
+}
+
+/* 已断开状态 */
+.ws-status-chip.is-disconnected {
+    background: rgba(244, 67, 54, 0.1);
+    border: 1px solid rgba(244, 67, 54, 0.2);
+}
+
+/* 呼吸小圆点 */
+.ws-status-chip__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.ws-status-chip.is-connected .ws-status-chip__dot {
+    background: #4CAF50;
+    box-shadow: 0 0 8px #4CAF50;
+}
+
+.ws-status-chip.is-disconnected .ws-status-chip__dot {
+    background: #F44336;
+    box-shadow: 0 0 8px #F44336;
+}
+
+/* 状态文字标签 */
+.ws-status-chip__label {
+    font-weight: 600 !important;
+    font-size: 13px !important;
+}
+
+.ws-status-chip.is-connected .ws-status-chip__label {
+    color: #4CAF50;
+}
+
+.ws-status-chip.is-disconnected .ws-status-chip__label {
+    color: #F44336;
+}
+
+/* 主题模式切换悬浮小按钮 (Theme Switch Button) */
+.theme-toggle-button {
+    width: 44px !important;
+    height: 44px !important;
+    background: var(--md-sys-color-surface) !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+}
+
+.theme-toggle-button:hover {
+    background: var(--md-sys-color-surface-variant) !important;
+}
+
+.theme-toggle-button__icon {
+    font-size: 18px;
+}
+
+/* ==========================================================================
+   2. 侧边导航栏相关组件 (Sidebar Components)
+   ========================================================================== */
+
+/* 侧栏系统主品牌标题 */
+.sidebar-brand-title {
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+    letter-spacing: -0.5px !important;
+}
+
+/* 侧栏副标题 */
+.sidebar-brand-subtitle {
+    opacity: 0.6;
+    display: block !important;
+    margin-top: 4px !important;
+}
+
+/* 导航链接父级列表 */
+.sidebar-nav {
+    flex: 1;
+    margin-top: 32px;
+}
+
+/* 导航链接中的图标规范 */
+.nav-item__icon {
+    font-size: 18px;
+}
+
+/* 导航链接中的文本标签 */
+.nav-item__label {
+    font-weight: 500 !important;
+}
+
+/* 侧栏页脚：放置版本号及插件物理根目录展示 */
+.sidebar-footer {
+    padding: 0 16px;
+}
+
+/* 快速打开插件本地文件夹按钮 */
+.sidebar-plugin-dir-button {
+    width: 100%;
+    margin-bottom: 16px;
+    padding: 10px;
+    font-size: 13px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--md-sys-color-on-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+body.dark-theme .sidebar-plugin-dir-button {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-plugin-dir-button__icon {
+    font-size: 16px;
+    margin-left: -6px;
+}
+
+/* GitHub跳转链接容器 */
+.github-btn {
+    text-decoration: none;
+}
+
+/* 底部作者与仓库链接卡片 */
+.github-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+}
+
+body.dark-theme .github-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.github-card__icon {
+    flex-shrink: 0;
+    fill: #000000;
+}
+
+.github-btn[data-theme='dark'] .github-card__icon {
+    fill: #E6E1E5;
+}
+
+/* GitHub 卡片主副信息区域 */
+.github-card__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow: hidden;
+}
+
+/* 卡片第一行主要文本：开发团队名称 */
+.github-card__authors {
+    font-weight: 700 !important;
+    color: var(--md-sys-color-on-surface);
+    font-size: 0.75rem !important;
+    line-height: 1.2 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block !important;
+    max-width: 170px;
+}
+
+/* 卡片第二行次要文本：插件当前版本号 */
+.github-card__version {
+    display: block !important;
+    opacity: 0.6;
+    line-height: 1.2 !important;
+    font-size: 0.7rem !important;
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+/* 页脚求星提示 */
+.sidebar-star-hint {
+    display: block !important;
+    text-align: center;
+    margin-top: 8px !important;
+    opacity: 0.7;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+}
+
+/* ==========================================================================
+   3. 全局 Toast 吐司提示层 (Toast Notifications Stack)
+   ========================================================================== */
+
+/* 吐司提示气泡定位挂载栈 */
+.toast-stack {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 400px;
+}
+
+/* 提示气泡定位方式重置：防止第三方组件自带定位覆盖我们配置的栈定位 */
+.toast-snackbar {
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+}
+
+/* 提示卡片本体修饰 */
+.toast-alert {
+    width: 100%;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+}
+
+.toast-alert .MuiAlert-icon {
+    font-size: 22px;
+}
+
+/* ==========================================================================
+   4. 分页控制条组件 (Pagination Bar)
+   ========================================================================== */
+
+/* 分页组件最外层容器 */
+.pagination-bar {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 左右分页组件排版排布行 */
+.pagination-bar__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+/* 包含输入跳转、页码切换等多个操作组 */
+.pagination-bar__control-group,
+.pagination-bar__pages {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pagination-bar__pages {
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* 分页栏辅助及次级低对比度文字 */
+.pagination-bar__muted {
+    opacity: 0.7;
+}
+
+.pagination-bar__subtle {
+    opacity: 0.6;
+}
+
+/* 快速跳转输入框 */
+.pagination-input {
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: var(--md-sys-color-surface);
+    color: inherit;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.pagination-input--jump {
+    width: 92px;
+}
+
+/* 分页前后翻页及具体页码按钮 */
+.pagination-button {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    background: var(--md-sys-color-surface-variant);
+    cursor: pointer;
+    opacity: 1;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.pagination-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.pagination-button--page {
+    min-width: 34px;
+    background: var(--md-sys-color-surface);
+}
+
+/* 激活态（当前所在页）按钮 */
+.pagination-button--active {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    font-weight: 700;
+}
+
+/* 分页多余页码省略指示器 (...) */
+.pagination-ellipsis {
+    opacity: 0.6;
+    padding: 0 2px;
+}
+
+/* ==========================================================================
+   5. 响应式布局组件适配媒体查询 (Responsive Components Adaption)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .header-actions {
+        gap: 12px;
+    }
+
+    /* 移动端下侧边栏收回，主导航变为横向滑动条 */
+    .sidebar-nav {
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        margin-top: 0;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    .sidebar-footer {
+        display: none; /* 移动端在屏幕较窄时，侧栏页脚自动隐藏，保持界面清爽 */
+    }
+}
+
+/* 横屏且短屏场景（如手机打横）下的侧边栏还原 */
+@media (max-height: 600px) and (orientation: landscape) {
+    .sidebar-nav {
+        flex-direction: column;
+        overflow-x: visible;
+        overflow-y: auto;
+    }
+
+    .sidebar-footer {
+        display: block;
+    }
+}
