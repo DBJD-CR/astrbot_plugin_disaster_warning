@@ -131,6 +131,8 @@ class ScaleConverter:
         raw_value = ScaleConverter.normalize_p2p_scale_value(value)
         if raw_value is None:
             return ""
+        if raw_value == 99:
+            return "以上"
         converted = ScaleConverter.convert_p2p_scale(raw_value)
         if converted is not None:
             return ScaleConverter.format_jma_cwa_scale_display(converted)
@@ -153,6 +155,8 @@ class ScaleConverter:
             return to_display
         if not to_display:
             return from_display
+        if to_value == 99:
+            return f"{from_display}{to_display}"
         return f"{from_display} ～ {to_display}"
 
     @staticmethod
