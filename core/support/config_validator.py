@@ -479,6 +479,15 @@ class ConfigValidator:
 
         ConfigValidator._ensure_bool(cfg, "enable_weather_icon", True)
 
+        # 气象卡片配置校验
+        ConfigValidator._ensure_bool(cfg, "use_weather_card", False)
+        weather_card_template = cfg.get("weather_card_template")
+        valid_card_templates = ["Aurora", "DarkNight"]
+        if weather_card_template and weather_card_template not in valid_card_templates:
+            logger.warning(
+                f"[灾害预警] 配置警告: 气象卡片模板 '{weather_card_template}' 不在标准列表中。"
+            )
+
         return cfg
 
     @staticmethod

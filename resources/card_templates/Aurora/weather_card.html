@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Alert Card</title>
+
+    <style>
+        :root {
+            --aurora-low: #34d399;
+            --aurora-med: #fbbf24;
+            --aurora-high: #f43f5e;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --text-light: #94a3b8;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: fit-content;
+            height: fit-content;
+            background-color: transparent !important;
+            overflow: hidden;
+        }
+
+        #card-wrapper {
+            display: inline-block;
+            padding: 40px;
+            position: relative;
+        }
+
+        .aurora-glow {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            filter: blur(60px);
+            opacity: 0.6;
+            z-index: 0;
+            background: var(--aurora-low);
+        }
+
+        .glow-low { background: var(--aurora-low); }
+        .glow-med { background: var(--aurora-med); }
+        .glow-high { background: var(--aurora-high); }
+
+        .glass-card {
+            width: 540px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 32px;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
+            font-family: system-ui, -apple-system, sans-serif;
+            color: var(--text-main);
+            position: relative;
+            z-index: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-section {
+            padding: 32px 32px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .title-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .weather-emoji {
+            font-size: 36px;
+            line-height: 1;
+        }
+
+        .title-text {
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1.25;
+            letter-spacing: -0.5px;
+        }
+
+        .color-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 700;
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .time-label {
+            margin-top: 10px;
+            display: inline-flex;
+            font-size: 13px;
+            color: var(--text-sub);
+            font-weight: 500;
+            background: rgba(0, 0, 0, 0.03);
+            padding: 6px 12px;
+            border-radius: 12px;
+        }
+
+        .description-section {
+            padding: 0 32px 24px;
+        }
+
+        .description-box {
+            background: rgba(248, 250, 252, 0.7);
+            border-radius: 16px;
+            padding: 20px;
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text-main);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .footer-grid {
+            background: rgba(248, 250, 252, 0.6);
+            border-top: 1px solid rgba(0, 0, 0, 0.03);
+            padding: 16px 32px 10px 32px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .footer-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .f-label {
+            font-size: 10px;
+            color: var(--text-light);
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .f-val {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-sub);
+            word-break: break-all;
+        }
+
+        .bottom-bar {
+            background: rgba(248, 250, 252, 0.9);
+            padding: 8px 32px 14px;
+            border-top: 1px solid rgba(0, 0, 0, 0.02);
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="card-wrapper">
+        <div class="aurora-glow {{ glow_class }}"></div>
+
+        <div class="glass-card">
+            <div class="header-section">
+                <div>
+                    <div class="title-area">
+                        <span class="weather-emoji">{{ emoji }}</span>
+                        <span class="title-text">{{ title }}</span>
+                    </div>
+                    {% if color_emoji %}<span class="color-badge">{{ color_emoji }} {{ color_level }}预警</span>{% endif %}
+                    <div class="time-label">{{ time_str }}</div>
+                </div>
+            </div>
+
+            {% if description %}
+            <div class="description-section">
+                <div class="description-box">{{ description }}</div>
+            </div>
+            {% endif %}
+
+            {% if footer_items %}
+            <div class="footer-grid" style="grid-template-columns: repeat({{ [footer_items|length, 3]|min }}, 1fr);">
+                {% for item in footer_items %}
+                <div class="footer-item">
+                    <span class="f-label">{{ item.label }}</span>
+                    <span class="f-val">{{ item.value }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="bottom-bar">
+                <span>ID: {{ event_id }}</span>
+                <span>Source: {{ source_name }}</span>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

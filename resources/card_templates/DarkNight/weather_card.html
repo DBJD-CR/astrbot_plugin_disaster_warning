@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Alert Card</title>
+
+    <style>
+        :root {
+            --font-stack: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --bg-body: transparent;
+            --bg-card: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --color-mag-low: #10b981;
+            --color-mag-med: #f59e0b;
+            --color-mag-high: #ef4444;
+            --color-update: #3b82f6;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: fit-content;
+            height: fit-content;
+            background-color: var(--bg-body);
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .quake-card {
+            width: 520px;
+            margin: 10px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .card-header {
+            padding: 20px 20px 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .weather-emoji {
+            font-size: 32px;
+            line-height: 1;
+        }
+
+        .header-info {
+            flex: 1;
+        }
+
+        .title-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .title-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
+            line-height: 1.2;
+        }
+
+        .color-badge {
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .badge-red {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid #ef4444;
+        }
+
+        .badge-orange {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid #f59e0b;
+        }
+
+        .badge-yellow {
+            background: rgba(250, 204, 21, 0.2);
+            color: #fde047;
+            border: 1px solid #eab308;
+        }
+
+        .badge-blue {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid #3b82f6;
+        }
+
+        .badge-white {
+            background: rgba(148, 163, 184, 0.2);
+            color: #cbd5e1;
+            border: 1px solid #94a3b8;
+        }
+
+        .time-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        .description-section {
+            padding: 16px 20px;
+        }
+
+        .description-box {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            padding: 14px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .footer-grid {
+            padding: 12px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px 15px;
+        }
+
+        .footer-item {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.75rem;
+        }
+
+        .f-label {
+            color: #475569;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .f-val {
+            color: var(--text-secondary);
+            font-family: monospace;
+            font-size: 0.75rem;
+            word-break: break-all;
+        }
+
+        .card-footer {
+            padding: 10px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="quake-card">
+        <div class="card-header">
+            <span class="weather-emoji">{{ emoji }}</span>
+            <div class="header-info">
+                <div class="title-row">
+                    <span class="title-text">{{ title }}</span>
+                    {% if color_emoji %}<span class="color-badge badge-{{ color_level }}">{{ color_emoji }} {{ color_level }}预警</span>{% endif %}
+                </div>
+                <div class="time-text">{{ time_str }}</div>
+            </div>
+        </div>
+
+        {% if description %}
+        <div class="description-section">
+            <div class="description-box">{{ description }}</div>
+        </div>
+        {% endif %}
+
+        {% if footer_items %}
+        <div class="footer-grid" style="grid-template-columns: repeat({{ [footer_items|length, 2]|min }}, 1fr);">
+            {% for item in footer_items %}
+            <div class="footer-item">
+                <span class="f-label">{{ item.label }}</span>
+                <span class="f-val">{{ item.value }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="card-footer">
+            <span>ID: {{ event_id }}</span>
+            <span>Source: {{ source_name }}</span>
+        </div>
+    </div>
+</body>
+
+</html>

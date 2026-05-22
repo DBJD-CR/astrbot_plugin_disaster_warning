@@ -118,6 +118,68 @@ class WeatherFormatter(BaseMessageFormatter):
     """气象预警格式化器"""
 
     @staticmethod
+    def get_render_context(weather: WeatherAlarmData, options: dict = None) -> dict:
+        """获取气象预警卡片渲染上下文"""
+        if options is None:
+            options = {}
+
+        title = weather.title or ""
+        headline = weather.headline or ""
+        match_text = title or headline
+        emoji = "⛈️"
+
+        for name in SORTED_WEATHER_TYPES:
+            if name in match_text:
+                emoji = WEATHER_EMOJI_MAP[name]
+                break
+
+        color_emoji = ""
+        color_level = ""
+        for color, icon in COLOR_LEVEL_EMOJI.items():
+            if color in match_text:
+                color_emoji = icon
+                color_level = color
+                break
+
+        timezone_str = options.get("timezone", "UTC+8")
+        time_str = (
+            WeatherFormatter.format_time(weather.issue_time, timezone_str)
+            if weather.issue_time
+            else "Unknown Time"
+        )
+
+        description = weather.description or ""
+        max_len = options.get(
+            "max_description_length", DEFAULT_MAX_DESCRIPTION_LENGTH
+        )
+        if max_len > 0 and len(description) > max_len:
+            description = description[: max_len - 3] + "..."
+
+        # 根据颜色确定主题色（用于光晕/强调色）
+        glow_class = "glow-high"  # 红色/橙色 → high
+        if color_level in ("黄色",):
+            glow_class = "glow-med"
+        elif color_level in ("蓝色", "白色"):
+            glow_class = "glow-low"
+
+        footer_items = []
+        if headline and headline != title:
+            footer_items.append({"label": "副标题", "value": headline})
+
+        return {
+            "source_name": "中国气象局",
+            "emoji": emoji,
+            "title": title or headline or "气象预警",
+            "color_emoji": color_emoji,
+            "color_level": color_level,
+            "description": description,
+            "time_str": time_str,
+            "glow_class": glow_class,
+            "event_id": weather.id or "N/A",
+            "footer_items": footer_items,
+        }
+
+    @staticmethod
     def format_message(weather: WeatherAlarmData, options: dict = None) -> str:
         """格式化气象预警消息"""
         if options is None:

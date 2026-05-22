@@ -645,6 +645,22 @@
         "type": "bool",
         "hint": "启用后将根据预警类型自动在消息末尾附加中国气象局官方图标。",
         "default": true
+      },
+      "use_weather_card": {
+        "description": "启用气象卡片消息",
+        "type": "bool",
+        "hint": "开启后，气象预警将以图片卡片的形式推送（需要消耗少量系统资源进行渲染并增加一点延迟）",
+        "default": false
+      },
+      "weather_card_template": {
+        "description": "气象卡片模板",
+        "type": "string",
+        "hint": "选择使用的卡片模板。Aurora：极光主题，浅色背景；DarkNight：暗夜主题，深色背景",
+        "default": "Aurora",
+        "options": [
+          "Aurora",
+          "DarkNight"
+        ]
       }
     }
   },
