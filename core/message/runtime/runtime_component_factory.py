@@ -102,6 +102,22 @@ class MessageRuntimeComponentFactory:
         if isinstance(nested_weather_filter, dict):
             weather_filter_config.update(nested_weather_filter)
 
+        legacy_provinces = weather_filter_config.get("provinces")
+        if not isinstance(legacy_provinces, list):
+            legacy_provinces = []
+        else:
+            legacy_provinces = [
+                str(item).strip() for item in legacy_provinces if str(item).strip()
+            ]
+        weather_filter_config["provinces"] = legacy_provinces
+
+        keywords = weather_filter_config.get("keywords")
+        if not isinstance(keywords, list):
+            keywords = []
+        else:
+            keywords = [str(item).strip() for item in keywords if str(item).strip()]
+        weather_filter_config["keywords"] = keywords
+
         weather_filter_config["emit_enable_log"] = emit_enable_log
         return weather_filter_config
 
