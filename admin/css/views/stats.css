@@ -1,0 +1,943 @@
+/* 数据统计分析视图样式 (Stats & Analysis View Styles) */
+
+/* ==========================================================================
+   1. 统计控制栏大纲格架系统 (Stats View Grid Layout)
+   ========================================================================== */
+
+.stats-overview-grid {
+    grid-column: span 12;
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 24px;
+    align-items: stretch;
+}
+
+/* 主数据报表区域（居左） */
+.stats-overview-main {
+    grid-column: span 8;
+    display: flex;
+}
+
+/* 侧边机构、区域排行面板（居右） */
+.stats-overview-side {
+    grid-column: span 4;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.stats-fill-column {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.stats-flex-fill {
+    flex: 1;
+    height: 100%;
+}
+
+/* 核心图表卡片基础排布 */
+.magnitude-chart-card,
+.trend-chart-card,
+.calendar-heatmap-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.magnitude-chart-card--empty {
+    text-align: center;
+    padding: 60px;
+}
+
+.magnitude-chart-empty-text {
+    opacity: 0.6;
+}
+
+/* 统计折线趋势图等高规格高度 */
+.stats-chart-tall {
+    height: 100%;
+    min-height: 300px;
+}
+
+/* 日历热力图等低矮规格高度 */
+.stats-chart-heatmap {
+    height: 100%;
+    min-height: 220px;
+}
+
+/* ==========================================================================
+   2. 统计摘要总览卡片 (Summary Header Cards)
+   ========================================================================== */
+.stats-summary-card {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border: none;
+}
+
+.stats-summary-title {
+    font-weight: 800;
+    margin-bottom: 12px;
+}
+
+.stats-summary-text {
+    font-size: 14px;
+    opacity: 0.8;
+    line-height: 1.6;
+}
+
+.stats-card,
+.top-list-card {
+    height: 100%;
+    min-height: 200px;
+}
+
+.stats-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.stats-card-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+/* 统计卡片头部的修饰小背景色块 */
+.stats-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.stats-card-header-icon {
+    font-size: 20px;
+}
+
+.stats-card-title {
+    font-weight: 700 !important;
+}
+
+.stats-card-main {
+    padding: 8px 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* 特大号统计数字展示区 */
+.stats-card-total {
+    font-weight: 800 !important;
+    color: var(--md-sys-color-primary);
+    line-height: 1 !important;
+    letter-spacing: -2px !important;
+}
+
+.stats-card-total-label {
+    opacity: 0.6;
+    font-weight: 600 !important;
+    margin-top: 8px !important;
+    margin-left: 4px !important;
+}
+
+/* 卡片内部下方的双栏多维度细化统计项 (如今天次数/昨天次数等对比) */
+.stats-card-breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.stats-card-breakdown-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.stats-card-breakdown-value {
+    font-weight: 700 !important;
+    font-size: 1.1rem !important;
+}
+
+.stats-card-breakdown-label {
+    opacity: 0.5;
+    font-weight: 600 !important;
+}
+
+/* 统计卡片骨架屏加载样式 */
+.stats-card-total-skeleton {
+    height: 48px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.stats-card-breakdown-skeleton {
+    height: 64px;
+    border-radius: 8px;
+}
+
+/* ==========================================================================
+   3. 地震/灾害/地区频次 TOP 排行榜组件 (Top Ranking Lists)
+   ========================================================================== */
+
+/* 绑定排行榜单点缀高亮色主题变量 */
+.top-list-card--earthquake { --top-list-color: var(--stats-tone-earthquake, #FF9800); }
+.top-list-card--weather { --top-list-color: var(--stats-tone-weather, #4CAF50); }
+.top-list-card--source { --top-list-color: var(--stats-tone-source, #2196F3); }
+.top-list-card--region { --top-list-color: var(--stats-tone-region, #00ACC1); }
+.top-list-card--primary { --top-list-color: var(--md-sys-color-primary); }
+
+.top-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.top-list-empty-text {
+    opacity: 0.5;
+    text-align: center;
+    padding-top: 32px;
+    padding-bottom: 32px;
+}
+
+.top-list-row {
+    position: relative;
+    padding: 6px 8px;
+    border-radius: 8px;
+    z-index: 1;
+    overflow: hidden;
+}
+
+/* 排行榜单项内的条形对比进度条背景 */
+.top-list-progress {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 40px;
+    right: 8px;
+    z-index: -1;
+}
+
+.top-list-progress-bar {
+    width: var(--top-list-percent, 0%);
+    height: 100%;
+    background: var(--top-list-color);
+    opacity: 0.2;
+    border-radius: 4px;
+    transition: width 0.5s ease-out;
+}
+
+.top-list-content,
+.top-list-label-wrap {
+    display: flex;
+    align-items: center;
+}
+
+.top-list-content {
+    justify-content: space-between;
+    position: relative;
+}
+
+.top-list-label-wrap {
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
+}
+
+/* 排行名次序号小盒子 */
+.top-list-rank {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--md-sys-color-surface-variant);
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* 前三名高亮 */
+.top-list-rank--podium {
+    background: var(--top-list-color);
+    color: #fff;
+}
+
+.top-list-label {
+    font-weight: 600 !important;
+    font-size: 13px !important;
+}
+
+.mag-value-cluster {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 100px;
+    justify-content: flex-end;
+}
+
+.mag-value-cluster .mag-value {
+    text-align: right;
+}
+
+/* 百分比/占比数据标签 */
+.mag-ratio {
+    font-size: 12px;
+    opacity: 0.6;
+    font-weight: 500;
+    min-width: 55px;
+    text-align: right;
+}
+
+/* 震级直方图说明板块 */
+.magnitude-chart-note-wrap {
+    margin-top: auto;
+    padding-top: 36px;
+}
+
+.magnitude-chart-note {
+    background: var(--md-sys-color-surface-variant);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.magnitude-chart-note-icon {
+    font-size: 18px;
+    margin-top: -2px;
+}
+
+.magnitude-chart-note-text {
+    opacity: 0.7;
+    line-height: 1.6 !important;
+    text-align: justify;
+    font-size: 14px !important;
+}
+
+/* ==========================================================================
+   4. 灾害发生趋势线型图 (Trend SVG Linear Chart)
+   ========================================================================== */
+.trend-chart-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.trend-chart-header {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.trend-chart-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 鼠标在SVG图表上滑过时的悬浮气泡槽 */
+.trend-chart-hover-slot {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s;
+    height: 24px;
+}
+
+.trend-chart-hover-slot.is-visible {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* 悬浮气泡芯片详情（展示具体日期及警报数量） */
+.trend-chart-hover-pill {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    padding: 2px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.trend-chart-hover-separator {
+    opacity: 0.5;
+}
+
+.trend-chart-body {
+    flex: 1;
+    position: relative;
+    min-height: 120px;
+    margin-top: 10px;
+}
+
+.trend-chart-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair; /* 精细标尺手势，便于划选 */
+}
+
+/* SVG 内坐标轴刻度及网格样式定义 */
+.trend-chart-axis-label {
+    font-size: 10px;
+    opacity: 0.5;
+    font-weight: 600;
+}
+
+.trend-chart-grid-line {
+    opacity: 0.2;
+}
+
+.trend-chart-tick-label {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+/* SVG 折线样式 */
+.trend-chart-line {
+    opacity: 0.8;
+}
+
+.trend-chart-hover-layer {
+    pointer-events: none;
+}
+
+.trend-chart-axis-line {
+    opacity: 0.5;
+}
+
+/* 图表的时间量度区间筛选切换器 (如 7天/30天/全部) */
+.trend-chart-range-toggle {
+    height: 28px;
+}
+
+.trend-chart-range-toggle__option {
+    font-size: 11px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+}
+
+.trend-chart-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+
+.trend-chart-empty-text {
+    opacity: 0.5;
+}
+
+/* ==========================================================================
+   5. 年度灾害打卡日历热力图 (Calendar Frequency Heatmap)
+   ========================================================================== */
+.calendar-heatmap-header {
+    margin-bottom: 8px;
+}
+
+.calendar-heatmap-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 年度选择切换下拉菜单 */
+.calendar-heatmap-year-control {
+    margin: 0 !important;
+    min-width: 80px !important;
+    margin-right: 16px !important;
+}
+
+.calendar-heatmap-year-select {
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    color: var(--md-sys-color-primary) !important;
+}
+
+.calendar-heatmap-year-select .MuiSelect-select {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+}
+
+.calendar-heatmap-header-spacer {
+    flex: 1;
+}
+
+/* 频率高低对照图例（Legend Cells） */
+.calendar-heatmap-legend,
+.calendar-heatmap-legend-cells {
+    display: flex;
+    align-items: center;
+}
+
+.calendar-heatmap-legend {
+    gap: 4px;
+}
+
+.calendar-heatmap-legend-label {
+    opacity: 0.5;
+}
+
+.calendar-heatmap-legend-cells {
+    gap: 2px;
+}
+
+.calendar-heatmap-legend-cell {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+/* 热力图画布横向溢出滚动窗口 */
+.calendar-heatmap-scroll {
+    flex: 1;
+    overflow-x: auto;
+    padding: 8px 0;
+    position: relative;
+    scrollbar-width: thin;
+}
+
+.calendar-heatmap-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 140px;
+}
+
+.calendar-heatmap-canvas {
+    position: relative;
+    min-width: max-content;
+    padding-right: 16px;
+}
+
+/* 月份标签横向排布行 */
+.calendar-heatmap-month-row {
+    display: flex;
+    margin-bottom: 6px;
+    height: 14px;
+    position: relative;
+}
+
+.calendar-heatmap-month-label {
+    position: absolute;
+    left: var(--calendar-heatmap-label-left, 0px); /* 由JS依据所处周数精准偏移 */
+    font-size: 10px !important;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+/* 年日历热力矩阵 (Flex纵排或横排，包含53周的矩阵列) */
+.calendar-heatmap-grid {
+    display: flex;
+    gap: var(--heatmap-cell-gap, 3px);
+}
+
+/* 热力图单周小竖列 (包含周日到周六共7个单元格) */
+.calendar-heatmap-week {
+    display: flex;
+    flex-direction: column;
+    gap: var(--heatmap-cell-gap, 3px);
+}
+
+.top-list-count {
+    font-weight: 700 !important;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+/* ==========================================================================
+   6. 最大地震发生及频发天气预警级别展示区 (Max Earthquake & Weather Levels)
+   ========================================================================== */
+
+.max-mag-card,
+.weather-level-card,
+.log-stats-card {
+    height: 100%;
+    min-height: 200px;
+}
+
+/* 本期最大地震卡片：采用特殊渐变警告红/橙色强调灾害烈度 */
+.max-mag-card {
+    background: linear-gradient(135deg, var(--md-sys-color-error-container) 0%, var(--md-sys-color-surface) 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.max-mag-card--empty {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.max-mag-card-empty-icon {
+    font-size: 48px;
+    opacity: 0.2;
+}
+
+.max-mag-card-empty-text {
+    opacity: 0.5;
+    margin-top: 8px !important;
+}
+
+/* 水印艺术背景图，显示大号字母 M 或地震波纹，增强卡片海报感 */
+.max-mag-card-watermark {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    font-size: 100px;
+    opacity: 0.05;
+    pointer-events: none;
+    user-select: none;
+}
+
+.max-mag-card-header {
+    margin-bottom: 16px;
+}
+
+.max-mag-card-title,
+.max-mag-card-place,
+.max-mag-card-time,
+.max-mag-card-source-chip {
+    color: var(--md-sys-color-on-error-container) !important;
+}
+
+.max-mag-card-mag-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+/* 最大震级超级数字展示 */
+.max-mag-card-mag-value {
+    font-weight: 800 !important;
+    color: var(--md-sys-color-error) !important;
+    line-height: 1 !important;
+}
+
+.max-mag-card-mag-prefix {
+    margin-right: 8px;
+}
+
+.max-mag-card-source-chip {
+    height: 24px !important;
+    font-size: 12px !important;
+    background: rgba(255, 255, 255, 0.3) !important;
+}
+
+.max-mag-card-place {
+    font-weight: 800 !important;
+    margin-bottom: 8px !important;
+}
+
+.max-mag-card-time {
+    opacity: 0.7;
+}
+
+/* 天气警报级别卡片 */
+.weather-level-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.weather-level-card-empty-text {
+    opacity: 0.5;
+    text-align: center;
+    padding: 32px 0 !important;
+}
+
+.weather-level-card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 16px 0;
+}
+
+/* 环形比例甜甜圈饼图 (Donut Chart) 框架 */
+.weather-level-card-donut {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    position: relative;
+    margin-bottom: 32px;
+}
+
+/* 甜甜圈中央圆环遮罩，内部展示警报累计总量 */
+.weather-level-card-donut-inner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%;
+    height: 60%;
+    background: var(--md-sys-color-surface);
+    background-color: #e5e7eb;
+    background-image: linear-gradient(var(--md-sys-color-surface), var(--md-sys-color-surface));
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.weather-level-card-total {
+    font-weight: 800 !important;
+    line-height: 1 !important;
+}
+
+.weather-level-card-total-label {
+    opacity: 0.6;
+    font-size: 11px !important;
+    margin-top: 4px !important;
+}
+
+.weather-level-card-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.weather-level-card-row,
+.weather-level-card-row-label,
+.weather-level-card-row-metrics {
+    display: flex;
+    align-items: center;
+}
+
+.weather-level-card-row {
+    justify-content: space-between;
+    font-size: 13px;
+}
+
+.weather-level-card-row-label,
+.weather-level-card-row-metrics {
+    gap: 8px;
+}
+
+.weather-level-card-level {
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.weather-level-card-count {
+    font-weight: 700;
+}
+
+.weather-level-card-ratio {
+    opacity: 0.5;
+    min-width: 45px;
+    text-align: right;
+}
+
+/* ==========================================================================
+   7. 系统数据库/运行日志存储分析卡片 (Database/Log Statistics)
+   ========================================================================== */
+
+.log-stats-empty-text {
+    opacity: 0.6;
+    margin-bottom: 8px !important;
+}
+
+.log-stats-muted {
+    opacity: 0.7;
+}
+
+.log-stats-strong-text {
+    font-weight: 600 !important;
+    font-size: 13px !important;
+}
+
+.log-stats-strong-heading {
+    font-weight: 700 !important;
+}
+
+.log-stats-percent-text {
+    font-weight: 700 !important;
+    opacity: 0.7;
+    font-size: 11px !important;
+}
+
+.log-stats-strong-caption {
+    font-weight: 700 !important;
+}
+
+.log-stats-body-sm {
+    font-size: 13px !important;
+}
+
+.log-stats-body-sm--strong,
+.log-stats-value-text--strong {
+    font-weight: 700 !important;
+}
+
+.log-stats-value-text {
+    font-weight: 600 !important;
+}
+
+.log-stats-card {
+    height: 100%;
+    min-height: 200px;
+}
+
+.log-stats-header {
+    justify-content: space-between;
+}
+
+.log-stats-header-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.log-stats-header-icon {
+    font-size: 20px;
+}
+
+/* 快速调出原始日志文本弹窗按钮 */
+.log-stats-open-button {
+    padding: 6px 12px;
+    font-size: 12px;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.log-stats-open-button__icon {
+    font-size: 14px;
+}
+
+/* 细粒度日志数据展示网格 */
+.log-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.log-stats-panel {
+    background: var(--md-sys-color-surface-variant);
+    padding: 12px;
+    border-radius: 8px;
+}
+
+.log-stats-panel--wide {
+    grid-column: span 2;
+}
+
+.log-stats-range-separator {
+    opacity: 0.5;
+    margin: 0 4px;
+}
+
+.log-stats-storage-head,
+.log-stats-storage-status,
+.log-stats-filter-row {
+    display: flex;
+    align-items: center;
+}
+
+.log-stats-storage-head,
+.log-stats-filter-row {
+    justify-content: space-between;
+}
+
+.log-stats-storage-head {
+    margin-bottom: 8px;
+}
+
+.log-stats-storage-status {
+    gap: 8px;
+}
+
+/* 日志健康呼吸小绿/红点 */
+.log-stats-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--log-stats-status-color, var(--md-sys-color-primary));
+    box-shadow: 0 0 4px var(--log-stats-status-color, var(--md-sys-color-primary));
+}
+
+/* 存储占用比例轨道滑槽 */
+.log-stats-progress-track {
+    width: 100%;
+    height: 6px;
+    background: var(--md-sys-color-surface-container-highest);
+    opacity: 1;
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px var(--md-sys-color-outline-variant);
+}
+
+@media (max-width: 1024px) {
+    .stats-overview-main,
+    .stats-overview-side {
+        grid-column: span 12;
+    }
+}
+
+.log-stats-progress-bar {
+    width: var(--log-stats-progress-width, 0%);
+    height: 100%;
+    background: var(--log-stats-progress-color, var(--md-sys-color-primary));
+    border-radius: 3px;
+    transition: width 0.5s ease-out;
+}
+
+/* 包含过滤条件及统计子项列表 */
+.log-stats-filter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+/* 底部总计项加深线条修饰 */
+.log-stats-filter-row--total {
+    border-top: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+    margin-top: 4px;
+    padding-top: 4px;
+}
+
+/* ==========================================================================
+   8. 响应式布局大断点媒体查询适配
+   ========================================================================== */
+
+/* 中尺寸屏幕设备（如PC窄窗口或平板电脑） */
+@media (max-width: 1024px) {
+    /* 此时左右统计面板堆叠显示 */
+    .stats-overview-main,
+    .stats-overview-side {
+        grid-column: span 12;
+    }
+}
