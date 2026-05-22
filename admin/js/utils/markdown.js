@@ -1,9 +1,9 @@
 /**
- * 文件职责：提供管理端通用的 Markdown 渲染与安全清洗能力，供多个视图复用。
+ * 提供管理端通用的 Markdown 渲染与安全清洗能力，供多个视图复用。
  */
 
+// 代码块展示标签的配置字典
 const MARKDOWN_CODE_LANGUAGE_LABELS = {
-    // 这里维护“代码块语言名 -> 展示标签”的映射，供代码块头部语言徽标使用。
     js: 'JavaScript',
     jsx: 'JSX',
     ts: 'TypeScript',
@@ -25,33 +25,41 @@ const MARKDOWN_CODE_LANGUAGE_LABELS = {
     plaintext: 'Text',
 };
 
+// 安全清洗白名单参数
 const MARKDOWN_SANITIZE_OPTIONS = {
-    // 白名单只开放管理端实际需要的 Markdown 标签，减少攻击面。
+    // 仅放行基础展示标签，拦截高风险标签防止脚本注入
     ALLOWED_TAGS: [
         'a', 'blockquote', 'br', 'code', 'del', 'details', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'hr', 'img', 'li', 'ol', 'p', 'pre', 'span', 'strong', 'summary', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
     ],
+    // 仅放行图片、链接及图表自定义属性
     ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'data-language', 'data-mermaid-source', 'src', 'alt', 'title', 'width', 'height', 'align', 'open', 'loading', 'decoding', 'referrerpolicy'],
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
     FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick', 'onmouseover', 'onfocus'],
     RETURN_DOM_FRAGMENT: true,
 };
 
+/**
+ * 规范化文本换行符为标准 LF
+ */
 function normalizeMarkdownContent(content) {
     return String(content || '')
-        // 兼容真实换行与被序列化成字符串字面量的“\n”。
         .replace(/\r\n/g, '\n')
         .replace(/\\n/g, '\n')
-        // 最后统一收敛为 LF，避免后续正则与分行逻辑在不同平台行为不一致。
         .replace(/\r\n?/g, '\n');
 }
 
+/**
+ * 通过正则特征粗筛是否属于 Markdown 排版语法
+ */
 function isProbablyMarkdown(content) {
     const normalized = normalizeMarkdownContent(content);
-    // 这里不是严格 Markdown 语法解析，而是用启发式规则快速判断“是否值得进入 Markdown 渲染管线”。
     return /(^|\n)\s{0,3}(#{1,6}\s|>\s|[-*+]\s)|(\n|^)\s*\d+\.\s|(^|\n)\s*```|(^|\n)\|.+\|/m.test(normalized);
 }
 
+/**
+ * 对普通字符串进行安全的 HTML 实体转义
+ */
 function escapeMarkdownHtml(text) {
     return String(text || '')
         // 所有 fallback 渲染路径都先做 HTML 转义，防止原始文本直接进入 innerHTML。
@@ -62,43 +70,55 @@ function escapeMarkdownHtml(text) {
         .replace(/'/g, '&#39;');
 }
 
+
+/**
+ * 净化并规整代码语言标识符
+ */
 function normalizeMarkdownLanguageName(language) {
     const normalized = String(language || '').trim().toLowerCase();
     if (!normalized) return 'text';
-    // 限制语言名字符集，避免把奇怪 class 名直接拼进 DOM。
     return normalized.replace(/[^a-z0-9_-]/g, '') || 'text';
 }
 
+/**
+ * 获取友好的语言展示标签
+ */
 function getMarkdownLanguageLabel(language) {
     const normalized = normalizeMarkdownLanguageName(language);
-    // 优先使用预定义标签；若没有映射，则退化为大写原语言名。
     return MARKDOWN_CODE_LANGUAGE_LABELS[normalized] || normalized.toUpperCase() || 'Text';
 }
 
+/**
+ * 链接协议安全性拦截过滤
+ */
 function getSafeMarkdownLinkHref(href) {
     const value = String(href || '').trim();
-    // 仅放行 http(s)、站内绝对路径和锚点链接，避免 javascript: 等危险协议。
     if (/^https?:\/\//i.test(value) || value.startsWith('/') || value.startsWith('#')) {
         return value;
     }
     return '#';
 }
 
+/**
+ * 图片资源路径安全性拦截过滤
+ */
 function getSafeMarkdownImageSrc(src) {
     const value = String(src || '').trim();
-    // 图片仅放行 http(s) 与站内相对路径，避免 data/javascript/blob 等协议带来的注入或追踪风险。
     if (/^https?:\/\//i.test(value) || value.startsWith('/') || value.startsWith('./') || value.startsWith('../')) {
         return value;
     }
     return '';
 }
 
+/**
+ * 对代码文本进行极轻量级的高亮着色替换
+ */
 function highlightMarkdownCode(code, language) {
     const escaped = escapeMarkdownHtml(code);
     const normalizedLanguage = normalizeMarkdownLanguageName(language);
 
+    // JSON 语法高亮
     if (normalizedLanguage === 'json') {
-        // JSON 重点高亮 key / value / boolean / number，保持实现轻量而不引入大型高亮库。
         return escaped
             .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span class="token token-key">$1</span><span class="token token-punctuation">:</span>')
             .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span class="token token-string">$1</span>')
@@ -106,8 +126,8 @@ function highlightMarkdownCode(code, language) {
             .replace(/\b(-?\d+(?:\.\d+)?)\b/g, '<span class="token token-number">$1</span>');
     }
 
+    // JavaScript / TypeScript 语法高亮
     if (['js', 'jsx', 'ts', 'tsx', 'javascript', 'typescript'].includes(normalizedLanguage)) {
-        // JS / TS 采用最常用语法成分的正则高亮，目标是“可读性增强”而非完整语义解析。
         return escaped
             .replace(/\b(function|const|let|var|return|if|else|new|throw|class|async|await|import|from|export|default|try|catch)\b/g, '<span class="token token-keyword">$1</span>')
             .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span class="token token-string">$1</span>')
@@ -116,8 +136,8 @@ function highlightMarkdownCode(code, language) {
             .replace(/\b([A-Za-z_$][\w$]*)\s*(?=\()/g, '<span class="token token-function">$1</span>');
     }
 
+    // Shell 语法高亮
     if (['bash', 'shell', 'sh'].includes(normalizedLanguage)) {
-        // Shell 场景重点强化命令名、flag 和字符串，提升安装命令 / 运维命令的扫读效率。
         const lines = escaped.split('\n');
         return lines
             .map((line) => {
@@ -141,6 +161,9 @@ function highlightMarkdownCode(code, language) {
     return escaped;
 }
 
+/**
+ * 拼装 Mermaid 图表源码容器块 HTML
+ */
 function buildMarkdownMermaidBlockHtml(code) {
     const normalizedCode = normalizeMarkdownContent(code).trim();
     const escapedCode = escapeMarkdownHtml(normalizedCode);
@@ -154,6 +177,9 @@ function buildMarkdownMermaidBlockHtml(code) {
     ].join('');
 }
 
+/**
+ * 拼装常规语法高亮代码块 HTML
+ */
 function buildMarkdownCodeBlockHtml(code, language) {
     const normalizedLanguage = normalizeMarkdownLanguageName(language);
     if (normalizedLanguage === 'mermaid') {
@@ -163,7 +189,6 @@ function buildMarkdownCodeBlockHtml(code, language) {
     const languageLabel = getMarkdownLanguageLabel(normalizedLanguage);
     const highlightedCode = highlightMarkdownCode(code, normalizedLanguage);
     return [
-        // 代码块外层统一使用 notification-md 的样式体系，便于通知页和文档页复用同一套 CSS。
         `<div class="notification-md-code-block${languageClass}">`,
         '<div class="notification-md-code-header">',
         `<span class="notification-md-code-lang">${escapeMarkdownHtml(languageLabel)}</span>`,
@@ -173,6 +198,9 @@ function buildMarkdownCodeBlockHtml(code, language) {
     ].join('');
 }
 
+/**
+ * 提取内联 code 代码段并暂时用占位符替换，防止受后续段落级正则解析干扰
+ */
 function extractInlineCodePlaceholders(text) {
     const placeholders = [];
     let output = '';
@@ -208,7 +236,6 @@ function extractInlineCodePlaceholders(text) {
             continue;
         }
 
-        // 先把内联 code 提取成占位符，避免后续粗粒度正则误伤其中内容。
         const placeholderIndex = placeholders.push(`<code>${escapeMarkdownHtml(code)}</code>`) - 1;
         output += `@@INLINE_CODE_${placeholderIndex}@@`;
         index = closingIndex + fenceLength;
@@ -217,19 +244,26 @@ function extractInlineCodePlaceholders(text) {
     return { output, placeholders };
 }
 
+/**
+ * 还原占位符为 HTML 内联 code 样式
+ */
 function restoreInlineCodePlaceholders(text, placeholders) {
     return String(text || '').replace(/@@INLINE_CODE_(\d+)@@/g, (_, index) => placeholders[Number(index)] || '');
 }
 
+/**
+ * 转换内联的超链接、加粗、斜体与删除线标记
+ */
 function applyInlineMarkdownTokens(text) {
     const extracted = extractInlineCodePlaceholders(text);
     let output = extracted.output;
 
+    // 解析 [文本](链接) 为可点亮超链接
     output = output.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
         const safeHref = getSafeMarkdownLinkHref(href);
         return `<a href="${escapeMarkdownHtml(safeHref)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
     });
-    // 这里按从“强语义到弱语义”的顺序处理，减少星号 / 下划线匹配互相影响。
+    // 解析粗体斜体与删除线
     output = output.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     output = output.replace(/__([^_]+)__/g, '<strong>$1</strong>');
     output = output.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
@@ -248,6 +282,9 @@ function splitMarkdownTableCells(line) {
     return trimmed.split('|').map((cell) => cell.trim());
 }
 
+/**
+ * 段落缓冲栈结算为 HTML p 元素
+ */
 function flushMarkdownParagraph(paragraphBuffer, htmlParts) {
     if (!paragraphBuffer.length) return [];
     const safeText = paragraphBuffer
@@ -263,26 +300,47 @@ function closeMarkdownList(listState, htmlParts) {
     return null;
 }
 
+/**
+ * 引用块缓冲栈结算为 HTML blockquote 元素
+ */
 function flushMarkdownBlockquote(blockquoteBuffer, htmlParts) {
     if (!blockquoteBuffer.length) return [];
-    // 引用块递归复用同一渲染器，避免另外维护一套局部语法分支。
+    // 递归解析块引用内部的子排版标记
     const quoteHtml = fallbackRenderMarkdownHtml(blockquoteBuffer.join('\n'));
     htmlParts.push(`<blockquote>${quoteHtml}</blockquote>`);
     return [];
 }
 
+/**
+ * 特殊判定是否为命令别名对照表格，用于加载特定宽度的 CSS 样式
+ */
+function isMarkdownCommandAliasTableHeader(headerCells) {
+    const normalizedHeader = (headerCells || []).map((cell) => String(cell || '').trim());
+    return normalizedHeader.length === 3
+        && normalizedHeader[0] === '命令'
+        && normalizedHeader[1] === '别名'
+        && normalizedHeader[2] === '描述';
+}
+
+/**
+ * 表格缓存栈结算为 HTML table 元素并添加包裹层
+ */
 function flushMarkdownTable(tableHeader, tableRows, htmlParts) {
     if (!tableHeader) {
         return { tableHeader: null, tableRows: [] };
     }
+    const tableClass = isMarkdownCommandAliasTableHeader(tableHeader) ? ' class="notification-md-command-alias-table"' : '';
     const headCells = tableHeader.map((cell) => `<th>${renderInlineMarkdownText(cell)}</th>`).join('');
     const bodyRows = tableRows
         .map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdownText(cell)}</td>`).join('')}</tr>`)
         .join('');
-    htmlParts.push(`<div class="notification-md-table-wrap"><table><thead><tr>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`);
+    htmlParts.push(`<div class="notification-md-table-wrap"><table${tableClass}><thead><tr>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`);
     return { tableHeader: null, tableRows: [] };
 }
 
+/**
+ * 原生极简 Markdown 逐行编译逻辑
+ */
 function fallbackRenderMarkdownHtml(md) {
     const normalized = normalizeMarkdownContent(md);
     const lines = normalized.split('\n');
@@ -299,8 +357,8 @@ function fallbackRenderMarkdownHtml(md) {
         const line = rawLine.trimEnd();
         const trimmed = line.trim();
 
+        // 处于 fenced 代码块内部，直接添加至缓存并忽略解析
         if (codeFence) {
-            // 进入 fenced code block 后，直到遇到下一个 ``` 才退出，并原样保留中间内容。
             if (/^```/.test(trimmed)) {
                 htmlParts.push(buildMarkdownCodeBlockHtml(codeFence.lines.join('\n'), codeFence.language));
                 codeFence = null;
@@ -310,22 +368,22 @@ function fallbackRenderMarkdownHtml(md) {
             continue;
         }
 
+        // 代码块开启标识
         if (/^```/.test(trimmed)) {
             paragraphBuffer = flushMarkdownParagraph(paragraphBuffer, htmlParts);
             listState = closeMarkdownList(listState, htmlParts);
             blockquoteBuffer = flushMarkdownBlockquote(blockquoteBuffer, htmlParts);
             ({ tableHeader, tableRows } = flushMarkdownTable(tableHeader, tableRows, htmlParts));
             codeFence = {
-                // ``` 后方内容作为语言名，例如 ```js。
                 language: trimmed.slice(3).trim(),
                 lines: [],
             };
             continue;
         }
 
+        // 表格数据填充
         const tableSeparator = /^\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\|?$/.test(trimmed);
         if (tableHeader && !tableSeparator && trimmed.includes('|')) {
-            // 表头建立后，连续的“含竖线行”都会被视作表格正文。
             tableRows.push(splitMarkdownTableCells(trimmed));
             continue;
         }
@@ -333,8 +391,8 @@ function fallbackRenderMarkdownHtml(md) {
             ({ tableHeader, tableRows } = flushMarkdownTable(tableHeader, tableRows, htmlParts));
         }
 
+        // 空行结算
         if (!trimmed) {
-            // 空行会触发段落 / 列表 / 引用 / 表格等块级结构的结算。
             paragraphBuffer = flushMarkdownParagraph(paragraphBuffer, htmlParts);
             listState = closeMarkdownList(listState, htmlParts);
             blockquoteBuffer = flushMarkdownBlockquote(blockquoteBuffer, htmlParts);
@@ -342,18 +400,19 @@ function fallbackRenderMarkdownHtml(md) {
             continue;
         }
 
+        // 新表格表头解析判定
         const nextLine = String(lines[index + 1] || '').trim();
         if (!tableHeader && trimmed.includes('|') && /^\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\|?$/.test(nextLine)) {
             paragraphBuffer = flushMarkdownParagraph(paragraphBuffer, htmlParts);
             listState = closeMarkdownList(listState, htmlParts);
             blockquoteBuffer = flushMarkdownBlockquote(blockquoteBuffer, htmlParts);
-            // 当前行认定为表头，下一行是分隔线，因此这里手动跳过一行。
             tableHeader = splitMarkdownTableCells(trimmed);
             tableRows = [];
-            index += 1;
+            index += 1; // 跳过下一行分隔线
             continue;
         }
 
+        // H1-H6 标题级别解析
         const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
         if (heading) {
             paragraphBuffer = flushMarkdownParagraph(paragraphBuffer, htmlParts);
@@ -365,6 +424,7 @@ function fallbackRenderMarkdownHtml(md) {
             continue;
         }
 
+        // HR 水平分割线解析
         if (/^---+$/.test(trimmed) || /^\*\*\*+$/.test(trimmed)) {
             paragraphBuffer = flushMarkdownParagraph(paragraphBuffer, htmlParts);
             listState = closeMarkdownList(listState, htmlParts);
@@ -374,9 +434,9 @@ function fallbackRenderMarkdownHtml(md) {
             continue;
         }
 
+        // 块引用解析
         const quote = line.match(/^>\s?(.*)$/);
         if (quote) {
-            // 相邻引用行会累积到同一 buffer，最终递归渲染为一个 blockquote。
             paragraphBuffer = flushMarkdownParagraph(paragraphBuffer, htmlParts);
             listState = closeMarkdownList(listState, htmlParts);
             ({ tableHeader, tableRows } = flushMarkdownTable(tableHeader, tableRows, htmlParts));
@@ -385,6 +445,7 @@ function fallbackRenderMarkdownHtml(md) {
         }
         blockquoteBuffer = flushMarkdownBlockquote(blockquoteBuffer, htmlParts);
 
+        // 无序及有序列表解析
         const unorderedItem = trimmed.match(/^[-*+]\s+(.+)$/);
         const orderedItem = trimmed.match(/^\d+\.\s+(.+)$/);
         const listType = unorderedItem ? 'ul' : orderedItem ? 'ol' : null;
@@ -405,18 +466,16 @@ function fallbackRenderMarkdownHtml(md) {
 
         listState = closeMarkdownList(listState, htmlParts);
         ({ tableHeader, tableRows } = flushMarkdownTable(tableHeader, tableRows, htmlParts));
-        // 兜底情况视为普通段落内容，延迟到 flushParagraph 时统一输出为 <p>。
         paragraphBuffer.push(line);
     }
 
-    // 文件结束后把剩余 buffer 全部结算，避免最后一段内容丢失。
+    // 清理最终残存缓存
     paragraphBuffer = flushMarkdownParagraph(paragraphBuffer, htmlParts);
     listState = closeMarkdownList(listState, htmlParts);
     blockquoteBuffer = flushMarkdownBlockquote(blockquoteBuffer, htmlParts);
     ({ tableHeader, tableRows } = flushMarkdownTable(tableHeader, tableRows, htmlParts));
 
     if (codeFence) {
-        // 若文档意外缺少结尾 ```，仍尽量把已收集内容渲染出来，而不是整体丢弃。
         htmlParts.push(buildMarkdownCodeBlockHtml(codeFence.lines.join('\n'), codeFence.language));
     }
 
@@ -431,6 +490,9 @@ const MARKDOWN_CALLOUT_META = {
     caution: { label: 'Caution', icon: '🚨' },
 };
 
+/**
+ * 转换 GFM 格式的警告提示卡片 (Callout Blockquotes)
+ */
 function enhanceMarkdownCalloutBlockquotes(sanitizedFragment) {
     sanitizedFragment.querySelectorAll('blockquote').forEach((blockquote) => {
         const firstChild = blockquote.firstElementChild;
@@ -456,6 +518,7 @@ function enhanceMarkdownCalloutBlockquotes(sanitizedFragment) {
         }
 
         const inlineTitle = String(match[2] || '').trim();
+        blockquote.className = ''; // 清空并赋给警告类名
         blockquote.classList.add('notification-md-callout', `is-${calloutType}`);
 
         const header = document.createElement('div');
@@ -486,10 +549,13 @@ function enhanceMarkdownCalloutBlockquotes(sanitizedFragment) {
     });
 }
 
+/**
+ * 对三方渲染的 HTML 片段进行深度后处理：注入安全属性、包裹表结构、附加代码高亮等
+ */
 function enhanceMarkdownFragment(sanitizedFragment) {
+    // 强制赋予超链接外跳安全性属性
     sanitizedFragment.querySelectorAll('a[href]').forEach((link) => {
         const href = String(link.getAttribute('href') || '').trim();
-        // 二次校验链接协议，即使 marked 解析出 <a>，也不允许危险 href 流入最终 DOM。
         if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
             link.setAttribute('href', '#');
         }
@@ -497,6 +563,7 @@ function enhanceMarkdownFragment(sanitizedFragment) {
         link.setAttribute('rel', 'noopener noreferrer');
     });
 
+    // 强制赋予图片安全懒加载属性
     sanitizedFragment.querySelectorAll('img[src]').forEach((img) => {
         const safeSrc = getSafeMarkdownImageSrc(img.getAttribute('src'));
         if (!safeSrc) {
@@ -509,8 +576,13 @@ function enhanceMarkdownFragment(sanitizedFragment) {
         img.setAttribute('referrerpolicy', 'no-referrer');
     });
 
+    // 表格样式重载及外包横向滑动容器
     sanitizedFragment.querySelectorAll('table').forEach((table) => {
-        // 自动为表格包一层横向滚动容器，避免窄屏下表格把布局撑爆。
+        const headerCells = Array.from(table.querySelectorAll('thead th')).map((cell) => String(cell.textContent || '').trim());
+        if (isMarkdownCommandAliasTableHeader(headerCells)) {
+            table.classList.add('notification-md-command-alias-table');
+        }
+
         if (!table.parentElement || !table.parentElement.classList.contains('notification-md-table-wrap')) {
             const wrapper = document.createElement('div');
             wrapper.className = 'notification-md-table-wrap';
@@ -521,6 +593,7 @@ function enhanceMarkdownFragment(sanitizedFragment) {
 
     enhanceMarkdownCalloutBlockquotes(sanitizedFragment);
 
+    // 折叠菜单样式重定义
     sanitizedFragment.querySelectorAll('details').forEach((detailsEl) => {
         detailsEl.classList.add('notification-md-details');
         const firstSummary = Array.from(detailsEl.children).find((child) => child.tagName === 'SUMMARY');
@@ -534,6 +607,7 @@ function enhanceMarkdownFragment(sanitizedFragment) {
         }
     });
 
+    // 为普通 code 代码段添加复制、语言标签与轻量高亮效果
     sanitizedFragment.querySelectorAll('pre > code').forEach((codeEl) => {
         const originalClass = String(codeEl.getAttribute('class') || '');
         const languageMatch = originalClass.match(/language-([a-z0-9_-]+)/i);
@@ -560,7 +634,6 @@ function enhanceMarkdownFragment(sanitizedFragment) {
         langChip.textContent = getMarkdownLanguageLabel(language);
         header.appendChild(langChip);
 
-        // 把代码内容替换为轻量高亮结果，同时保留原本 <pre><code> 结构供样式复用。
         codeEl.className = `language-${language}`;
         codeEl.innerHTML = highlightMarkdownCode(rawCodeText, language);
 
@@ -570,6 +643,9 @@ function enhanceMarkdownFragment(sanitizedFragment) {
     });
 }
 
+/**
+ * 入口方法：将原始 Markdown 文本渲染并编译输出为安全的 HTML 代码段
+ */
 function renderMarkdownToHtml(content) {
     const normalized = normalizeMarkdownContent(content);
 
@@ -577,9 +653,9 @@ function renderMarkdownToHtml(content) {
         const marked = window.marked;
         const DOMPurify = window.DOMPurify;
 
+        // 如果存在外部注入的 marked 解析器和 Purify 安全库，进行高防度渲染
         if (marked && DOMPurify) {
             const parseMarkdown = (md) => {
-                // 优先适配 marked.parse 新接口，同时兼容老版本把 marked 作为函数调用的形式。
                 if (typeof marked.parse === 'function') {
                     return marked.parse(md, { gfm: true, breaks: true });
                 }
@@ -590,6 +666,7 @@ function renderMarkdownToHtml(content) {
             };
 
             const rawHtml = parseMarkdown(normalized);
+            // 执行 DOMPurify 清洗以消除 XSS 盲区
             const sanitizedFragment = DOMPurify.sanitize(rawHtml, MARKDOWN_SANITIZE_OPTIONS);
             enhanceMarkdownFragment(sanitizedFragment);
 
@@ -598,14 +675,14 @@ function renderMarkdownToHtml(content) {
             return container.innerHTML;
         }
     } catch (e) {
-        // 解析失败时回退到内置渲染器，保证页面仍然可读。
+        // 出错则降级到本地自研编译器兜底
     }
 
     return fallbackRenderMarkdownHtml(normalized);
 }
 
+// 绑定全局暴露
 window.MarkdownRenderUtil = {
-    // 暴露为全局工具对象，供通知页与文档页在无打包环境下直接复用。
     normalizeMarkdownContent,
     isProbablyMarkdown,
     renderMarkdownToHtml,
