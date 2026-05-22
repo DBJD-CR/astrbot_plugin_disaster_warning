@@ -93,6 +93,14 @@
             <div class="boot-loader__title">灾害预警管理端</div>
             <div class="boot-loader__subtitle boot-loader__subtitle--login">请输入访问密码</div>
             <div class="bl-error" id="bl-login-error"></div>
+            <input
+                id="bl-username"
+                type="text"
+                autocomplete="username"
+                tabindex="-1"
+                aria-hidden="true"
+                style="position:absolute;opacity:0;pointer-events:none;height:0;width:0;border:0;padding:0;"
+            >
             <div class="bl-input-wrap">
                 <input id="bl-password" class="bl-input" type="password" placeholder="密码" autocomplete="current-password">
                 <button class="bl-toggle-pw" type="button" id="bl-toggle-pw" title="显示/隐藏密码">👁️</button>
