@@ -259,6 +259,18 @@ class CEAEEWFormatter(BaseMessageFormatter):
         if earthquake.max_pga is not None:
             footer_items.append({"label": "最大加速度 (PGA)", "value": f"{earthquake.max_pga:.1f} gal"})
 
+        # 本地烈度预估
+        if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
+            local_est = earthquake.raw_data.get("local_estimation")
+            if local_est:
+                dist = local_est.get("distance", 0.0)
+                inte = local_est.get("intensity", 0.0)
+                place = local_est.get("place_name", "本地")
+                desc = IntensityCalculator.get_intensity_description(inte)
+                footer_items.append(
+                    {"label": f"{place}预估", "value": f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})"}
+                )
+
         ctx["footer_items"] = footer_items
         return ctx
 
@@ -360,6 +372,18 @@ class CWAEEWFormatter(BaseMessageFormatter):
             impact_area = earthquake.province
         if impact_area:
             footer_items.append({"label": "影响区域", "value": str(impact_area)})
+
+        # 本地烈度预估
+        if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
+            local_est = earthquake.raw_data.get("local_estimation")
+            if local_est:
+                dist = local_est.get("distance", 0.0)
+                inte = local_est.get("intensity", 0.0)
+                place = local_est.get("place_name", "本地")
+                desc = IntensityCalculator.get_intensity_description(inte)
+                footer_items.append(
+                    {"label": f"{place}预估", "value": f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})"}
+                )
 
         ctx["footer_items"] = footer_items
         return ctx

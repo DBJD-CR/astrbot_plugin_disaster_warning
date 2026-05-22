@@ -3,6 +3,7 @@
 统一处理时间的解析、时区转换和格式化
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 
 # 时区定义映射
@@ -78,6 +79,12 @@ class TimeConverter:
             try:
                 # 处理 Python < 3.11 对 Z 的兼容性 (虽然 3.11+ 支持 Z，但为了稳健)
                 clean_str = time_str.replace("Z", "+00:00")
+                # 归一化不足6位的小数秒，兼容低版本 Python 的 fromisoformat
+                clean_str = re.sub(
+                    r"\.(\d{1,5})([+-]|$)",
+                    lambda m: "." + m.group(1).ljust(6, "0") + (m.group(2) if m.group(2) != "$" else ""),
+                    clean_str,
+                )
                 return datetime.fromisoformat(clean_str)
             except ValueError:
                 pass
