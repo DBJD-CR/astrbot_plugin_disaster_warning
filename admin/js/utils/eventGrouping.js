@@ -76,8 +76,16 @@
             const group = groups[id];
             group.events.sort(compareEvents); // 组内排序
             group.latestEvent = group.events[0];
+            
+            const source = group.latestEvent.source || group.latestEvent.source_id || '';
+            const sourceLower = String(source).toLowerCase();
+            
+            // 像 Wolfx 地震测定等 HTTP 定时拉取/低频补偿列表数据，不应算作多报更新，
+            // 它们本身没有多报/增量更新概念（通常 report_num 固定为 1，但可能因为定时获取而多次入库或多条数据相同而被聚合为多更新）
+            const isHttpListBased = sourceLower === 'cenc_wolfx' || sourceLower === 'jma_wolfx_info';
+
             const backendCount = group.latestEvent.update_count || 0;
-            group.updateCount = Math.max(group.events.length, backendCount);
+            group.updateCount = isHttpListBased ? 1 : Math.max(group.events.length, backendCount);
 
             // 合并历史事件备份
             if (group.latestEvent.history && Array.isArray(group.latestEvent.history)) {
@@ -91,7 +99,7 @@
                 if (historyEvents.length > 0) {
                     group.events.push(...historyEvents);
                     group.events.sort(compareEvents); // 再次排序
-                    group.updateCount = Math.max(group.events.length, backendCount);
+                    group.updateCount = isHttpListBased ? 1 : Math.max(group.events.length, backendCount);
                 }
             }
         });
