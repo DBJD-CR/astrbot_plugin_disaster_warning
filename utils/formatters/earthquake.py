@@ -12,13 +12,16 @@ from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
 
 # 各数据源对应的默认时区（用于 naive datetime 的修复）
+# key 使用 DataSource 枚举值，与 source.value 一致
 _SOURCE_TIMEZONE_MAP = {
-    "jma_fanstudio": timezone(timedelta(hours=9)),
-    "jma_p2p": timezone(timedelta(hours=9)),
-    "jma_p2p_info": timezone(timedelta(hours=9)),
-    "jma_wolfx": timezone(timedelta(hours=9)),
-    "jma_wolfx_info": timezone(timedelta(hours=9)),
-    "global_quake": timezone.utc,
+    # JMA / P2P 数据源使用 JST (UTC+9)
+    DataSource.FAN_STUDIO_JMA.value: timezone(timedelta(hours=9)),
+    DataSource.P2P_EEW.value: timezone(timedelta(hours=9)),
+    DataSource.P2P_EARTHQUAKE.value: timezone(timedelta(hours=9)),
+    DataSource.WOLFX_JMA_EEW.value: timezone(timedelta(hours=9)),
+    DataSource.WOLFX_JMA_EQ.value: timezone(timedelta(hours=9)),
+    # Global Quake 使用 UTC
+    DataSource.GLOBAL_QUAKE.value: timezone.utc,
 }
 _SOURCE_TZ_CST = timezone(timedelta(hours=8))
 
