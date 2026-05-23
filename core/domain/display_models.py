@@ -28,8 +28,11 @@ class EarthquakeDisplayModel:
 class TsunamiDisplayModel:
     """海啸展示模型。"""
 
+    # 展示主标题文案
     title: str
+    # 行级内容明细
     lines: list[str] = field(default_factory=list)
+    # 附加的渲染定制化参数
     extras: dict[str, Any] = field(default_factory=dict)
 
 
@@ -37,6 +40,9 @@ class TsunamiDisplayModel:
 class WeatherDisplayModel:
     """气象展示模型。"""
 
+    # 气象预警的主标题文案
     title: str
+    # 格式化后的通知行级内容
     lines: list[str] = field(default_factory=list)
+    # 模板和特定气象渠道所需的其他自定义数据
     extras: dict[str, Any] = field(default_factory=dict)

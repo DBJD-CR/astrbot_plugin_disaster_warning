@@ -24,6 +24,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
         self.plugin = plugin
 
     async def handle_disaster_reconnect(self, event):
+        """处理强制重连命令，尝试对所有离线或异常的数据源触发重连尝试。"""
         # 管理类命令统一在入口先做管理员校验，避免内部逻辑重复散落权限判断。
         if not await self.plugin.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
@@ -58,6 +59,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             lines.append(
                 f"📊 统计: 触发 {success_count}, 跳过 {skip_count}, 失败 {fail_count}"
             )
+            # 匿名上报功能执行遥测
             await self._track_command_feature(
                 "command_force_reconnect",
                 {
@@ -77,6 +79,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             yield event.plain_result(f"❌ 重连操作失败: {str(e)}")
 
     async def handle_disaster_status(self, event):
+        """处理运行状态查询命令，以合并转发多节点消息形式展示各个连接状态与子数据源情况。"""
         if not self.plugin.disaster_service:
             yield event.plain_result("❌ 灾害预警服务未启动")
             return
@@ -90,6 +93,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             bot_id = event.get_self_id() or "0"
             bot_name = "灾害预警"
 
+            # 对应展示名称映射
             connection_label_map = OrderedDict(
                 [
                     ("fan_studio_all", "FAN Studio"),
@@ -148,6 +152,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             }
 
             def _build_forward_nodes(blocks: list[str]) -> Comp.Nodes | None:
+                """生成便于客户端折叠阅读的合并转发节点。"""
                 if not blocks:
                     return None
                 nodes = Comp.Nodes([])
@@ -161,6 +166,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 return nodes
 
             def _map_sub_source_name(group_display_name: str, raw_key: str) -> str:
+                """将原始的子源键名映射为好看的展示名称。"""
                 normalized_key = str(raw_key or "").strip()
                 if not normalized_key:
                     return normalized_key
@@ -170,6 +176,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     source_label_map.get(normalized_key, normalized_key),
                 )
 
+            # 1. 总体概览行
             overview_lines = [
                 "📊 灾害预警服务状态",
                 "",
@@ -178,6 +185,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 f"🔗 活跃连接：{status['active_websocket_connections']} / {status['total_connections']}",
             ]
 
+            # 2. 连接状态详情行
             connection_lines = ["📡 连接详情"]
             conn_details = status.get("connection_details", {})
             for conn_name, display_name in connection_label_map.items():
@@ -186,6 +194,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 state_text = "🟢 正常" if connected else "🔴 异常"
                 connection_lines.append(f"• {display_name}：{state_text}")
 
+            # 3. 各子数据源的细化开关状况行
             data_source_lines = ["📚 子数据源启用状况"]
             active_sources = status.get("data_sources", [])
             grouped_sources: dict[str, list[str]] = {}
@@ -260,6 +269,8 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             )
 
     async def handle_disaster_stats(self, event):
+        """处理统计详情命令，聚合展示本地内存中的去重与过滤指标。"""
+
         def _quoted_plain_result(text: str):
             return quoted_plain_result(self.plugin, event, text)
 
@@ -298,6 +309,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             yield _quoted_plain_result(f"❌ 获取统计信息失败: {str(e)}")
 
     async def handle_disaster_logs(self, event):
+        """查看原始日志记录文件的体积、条目数与起止时间（需管理员权限）。"""
         if not await self.plugin.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
@@ -356,6 +368,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             yield event.plain_result(f"❌ 获取日志信息失败: {str(e)}")
 
     async def handle_toggle_message_logging(self, event):
+        """开启或关闭原始 WebSocket 日志记录器，切换运行配置。"""
         if not await self.plugin.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
@@ -388,6 +401,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             yield event.plain_result(f"❌ 切换日志状态失败: {str(e)}")
 
     async def handle_clear_message_logs(self, event):
+        """清空本地生成的原始 JSON 消息日志文件。"""
         if not await self.plugin.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
@@ -409,6 +423,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             yield event.plain_result(f"❌ 清除日志失败: {str(e)}")
 
     async def handle_clear_statistics(self, event):
+        """重置本地 SQLite 数据库与统计 JSON 快照（需管理员权限）。"""
         if not await self.plugin.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
@@ -434,6 +449,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             yield event.plain_result(f"❌ 清除统计失败: {str(e)}")
 
     async def handle_toggle_push(self, event):
+        """快速切换当前会话的推送名单启用状态。"""
         if not await self.plugin.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return
@@ -479,6 +495,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
     async def handle_disaster_config(
         self, event, action: str = None, target: str = None
     ):
+        """查看指定会话的覆写配置与合并后生效配置（需管理员权限）。"""
         if not await self.plugin.is_plugin_admin(event):
             yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
             return

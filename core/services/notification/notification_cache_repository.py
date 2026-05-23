@@ -15,6 +15,7 @@ class NotificationCacheRepository:
 
     def __init__(self, data_dir: str | Path):
         self.data_dir = Path(data_dir)
+        # 本地通知缓存文件全路径
         self.cache_file = self.data_dir / "notifications_cache.json"
 
     @staticmethod
@@ -30,6 +31,7 @@ class NotificationCacheRepository:
         """将磁盘内容收敛为稳定缓存结构。"""
         if not isinstance(payload, dict):
             raise ValueError("通知缓存文件格式无效")
+        # 确保关键键值初始化，避免上层逻辑出现 KeyValue 获取缺失异常
         return {
             "last_sync_at": payload.get("last_sync_at"),
             "items": payload.get("items")
@@ -46,9 +48,11 @@ class NotificationCacheRepository:
             return self.empty_cache()
 
         try:
+            # 异步非阻塞执行磁盘文本读取
             content = await asyncio.to_thread(
                 self.cache_file.read_text, encoding="utf-8"
             )
+            # 异步非阻塞反序列化缓存数据
             payload = await asyncio.to_thread(json.loads, content)
             return self._normalize_cache(payload)
         except Exception as e:
@@ -58,10 +62,13 @@ class NotificationCacheRepository:
     async def save(self, cache: dict[str, Any]) -> None:
         """将通知缓存写入磁盘。"""
         try:
+            # 确保父路径目录存在
             await asyncio.to_thread(self.data_dir.mkdir, parents=True, exist_ok=True)
+            # 序列化为 JSON 文本
             content = await asyncio.to_thread(
                 json.dumps, cache, indent=4, ensure_ascii=False
             )
+            # 异步持久化写入到磁盘
             await asyncio.to_thread(
                 self.cache_file.write_text, content, encoding="utf-8"
             )

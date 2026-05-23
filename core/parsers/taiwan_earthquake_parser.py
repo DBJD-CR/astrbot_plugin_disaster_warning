@@ -26,7 +26,9 @@ class CwaReportParser(BaseParser):
 
     def _build_envelope(self, msg_data: dict[str, object]) -> EventEnvelope:
         """把台湾地震报告原始字典封装为统一事件包裹体。"""
+        # 读取静态数据源配置
         source_entry = get_source_entry(self.source_id)
+
         # 报告图与震度图链接保留在元数据中，供后续媒体展示链复用。
         metadata = {
             "source_family": "fan_studio",
@@ -38,6 +40,8 @@ class CwaReportParser(BaseParser):
             "shakemap_uri": msg_data.get("shakemapURI"),
         }
         event_id = str(msg_data.get("id", "") or "")
+
+        # 实例化统一的地震数据模型，提取震级、深度、震中地点及发震时间
         domain_event = EarthquakeEvent(
             occurred_at=self._parse_datetime(msg_data.get("shockTime", "")),
             latitude=safe_float_convert(msg_data.get("latitude")),
@@ -47,6 +51,8 @@ class CwaReportParser(BaseParser):
             depth=safe_float_convert(msg_data.get("depth")),
             metadata=dict(metadata),
         )
+
+        # 构造并注入事件全局唯一的身份模型
         identity = EventIdentity(
             event_id=event_id,
             source_id=self.source_id,
@@ -66,6 +72,8 @@ class CwaReportParser(BaseParser):
                 "config_key": source_entry.config_key if source_entry else "",
             },
         )
+
+        # 最终组装为 EventEnvelope 返回给 Ingress 消息路由层
         return EventEnvelope(
             identity=identity,
             event=domain_event,
@@ -90,12 +98,13 @@ class CwaReportParser(BaseParser):
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
-            # 报告类消息至少应具备发震时间与报告图片地址，否则通常不是正式报告。
+            # 台湾地震报告类消息至少应具备发震时间与报告图片地址，否则通常不是来自 CWA 的地震报告
             if "shockTime" not in msg_data or "imageURI" not in msg_data:
                 logger.debug(f"[灾害预警] {self.source_id} 非 CWA 地震报告数据，跳过")
                 return None
 
             envelope = self._build_envelope(msg_data)
+            # 在外层元数据中附加媒体字段，保证主流水线取值正常
             envelope.metadata.update(
                 {
                     "image_uri": msg_data.get("imageURI"),
@@ -105,7 +114,7 @@ class CwaReportParser(BaseParser):
 
             domain_event = envelope.event
             logger.info(
-                f"[灾害预警] CWA地震报告解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}"
+                f"[灾害预警] CWA 地震报告解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}"
             )
             return envelope
         except Exception as exc:

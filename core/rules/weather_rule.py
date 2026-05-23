@@ -19,6 +19,7 @@ class WeatherRule(BaseRule):
     def evaluate(self, context: RuleContext) -> RuleDecision:
         """按颜色等级与地区关键词对白名单气象事件做过滤。"""
         domain_event = context.domain_event
+        # 仅针对气象预警事件生效
         if not isinstance(domain_event, WeatherEvent):
             return RuleDecision.accept(reason="非气象事件，跳过气象规则")
 
@@ -26,6 +27,7 @@ class WeatherRule(BaseRule):
         if not weather_filter:
             return RuleDecision.accept(reason="未配置气象过滤器")
 
+        # 检查是否启用了气象过滤器开关
         if not weather_filter.get("enabled", False):
             return RuleDecision.accept(reason="气象规则未启用")
 
@@ -51,6 +53,8 @@ class WeatherRule(BaseRule):
             or ""
         )
         min_color_level = weather_filter.get("min_color_level", "白色")
+
+        # 规范化关键字过滤列表
         keywords = [
             str(keyword).strip()
             for keyword in weather_filter.get("keywords", [])
@@ -61,12 +65,12 @@ class WeatherRule(BaseRule):
             for keyword in weather_filter.get("provinces", [])
             if str(keyword).strip()
         ]
-        # 若未显式配置关键词，则退化为使用省份列表作为区域白名单；
-        # 若两者同时存在，也保留旧字段作为补充命中源，确保老用户过滤继续生效。
+        # 兼容老版本用户遗留的 provinces 属性作为区域白名单
         if not keywords:
             keywords = legacy_provinces
         elif legacy_provinces:
             keywords = list(dict.fromkeys([*keywords, *legacy_provinces]))
+
         color_levels = {"白色": 0, "蓝色": 1, "黄色": 2, "橙色": 3, "红色": 4}
 
         # 颜色按由高到低的优先级识别，命中后即可停止继续扫描。
@@ -76,6 +80,7 @@ class WeatherRule(BaseRule):
                 detected_color = color
                 break
 
+        # 对比颜色等级阈值进行过滤
         if color_levels.get(detected_color, 0) < color_levels.get(min_color_level, 0):
             return RuleDecision.reject(
                 reason="气象颜色级别过滤",
@@ -86,6 +91,7 @@ class WeatherRule(BaseRule):
                 },
             )
 
+        # 整理气象灾害具体描述文本
         headline_text = (
             getattr(domain_event, "headline", "")
             or metadata.get("headline", "")
@@ -94,7 +100,8 @@ class WeatherRule(BaseRule):
             or payload.get("description", "")
             or ""
         )
-        # 标题与正文任一命中关键词即可视为满足区域筛选条件。
+
+        # 白名单关键词校验：要求标题或灾害描述正文中必须命中省市等地区关键词
         if keywords:
             title_hits = [keyword for keyword in keywords if keyword in title_text]
             headline_hits = [

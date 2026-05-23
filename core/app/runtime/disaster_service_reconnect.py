@@ -18,15 +18,17 @@ class DisasterServiceReconnectService:
 
     def __init__(self, service):
         # 主服务中维护了连接计划与连接管理器，本服务只负责在其之上做重连编排。
-        self.service = service
+        self.service = service  # 主服务 DisasterWarningService 实例
 
     async def reconnect_all_sources(self) -> dict[str, str]:
         """强制重连所有已启用但离线的数据源。"""
         results: dict[str, str] = {}
+        # 校验 WebSocket 管理器是否正常就绪
         if not self.service.ws_manager:
             return {"error": "WebSocket管理器未初始化"}
 
         reconnect_count = 0
+        # 遍历已配置的所有数据源连接计划
         for conn_name, conn_config in self.service.connections.items():
             # 已在线连接无需重复触发重连，避免无谓打断。
             if self._is_connected(conn_name):
@@ -37,6 +39,7 @@ class DisasterServiceReconnectService:
                 # 某些连接可能尚未完成首次建连，因此连接管理器内部还没有对应附加信息；
                 # 在强制重连前先补齐这些字段，方便底层重连逻辑与状态展示复用。
                 self._ensure_connection_info(conn_name, conn_config)
+                # 触发底层数据源物理连接重连操作
                 triggered = await self._force_reconnect(conn_name)
                 if triggered:
                     results[conn_name] = "✅ 已触发重连"
@@ -44,6 +47,7 @@ class DisasterServiceReconnectService:
                 else:
                     results[conn_name] = "⚠️ 重连未触发"
             except Exception as e:
+                # 记录单个连接的失败详情，但不阻断其他连接的重试流程
                 results[conn_name] = f"❌ 失败: {e}"
                 logger.error(f"[灾害预警] 手动重连 {conn_name} 失败: {e}")
 
@@ -51,17 +55,25 @@ class DisasterServiceReconnectService:
         return results
 
     def _is_connected(self, conn_name: str) -> bool:
-        """检查指定连接当前是否已连接。"""
+        """
+        检查指定连接当前是否已连接。
+
+        Args:
+            conn_name (str): 连接的标识名
+        """
+        # 如果底层 WebSocket 映射表不存在，则未连接
         if conn_name not in self.service.ws_manager.connections:
             return False
         ws = self.service.ws_manager.connections[conn_name]
-        return not ws.closed
+        return not ws.closed  # 判断底层 socket 连接是否已关闭
 
     def _ensure_connection_info(self, conn_name: str, conn_config: dict) -> None:
-        """确保连接管理器中存在连接附加信息。"""
+        """确保连接管理器中存在连接的动态属性附加信息。"""
+        # 如果已经存在相关信息，跳过不重复覆盖
         if conn_name in self.service.ws_manager.connection_info:
             return
 
+        # 组装连接基础元数据信息
         connection_info = {
             "connection_name": conn_name,
             "handler_type": conn_config["handler"],
@@ -81,7 +93,7 @@ class DisasterServiceReconnectService:
         }
 
     async def _force_reconnect(self, conn_name: str) -> bool:
-        """调用 WebSocketManager 执行强制重连。"""
+        """调用 WebSocketManager 执行底层强制物理重连。"""
         # 并非所有连接管理器实现都强制要求提供该接口，
         # 因此这里先做能力检查，再决定是否触发主动重连。
         if not hasattr(self.service.ws_manager, "force_reconnect"):

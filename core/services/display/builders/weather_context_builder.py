@@ -14,20 +14,25 @@ def _extract_weather_projection_details(
     metadata, domain_metadata, title: str, headline: str
 ):
     """提取气象事件展示所需的投影细节。"""
+    # 强制安全合并，合并领域上下文与外部元数据，形成基础投影视图字典
     projection_view = build_projection_view(
         domain_metadata=domain_metadata,
         metadata=metadata,
     )
+    # 获取详细的预警气象事件防御指南或受灾范围描述
     description = first_non_empty(
         projection_view.get("description"),
         projection_view.get("summary"),
         "",
     )
     return {
+        # 提取事件大标题/头条
         "headline": str(
             first_non_empty(headline, projection_view.get("headline"), "")
         ).strip(),
+        # 详细防御指南及受灾区域说明文本
         "description": description,
+        # 兼容多种不同预警级别键名，确定气象预警颜色级别
         "severity_color": str(
             first_non_empty(
                 projection_view.get("severity_color"),
@@ -36,6 +41,7 @@ def _extract_weather_projection_details(
                 "",
             )
         ).strip(),
+        # 提取预警的气象类型，使用多级优先级回退逻辑以确保解析出合理的中文气象类型
         "weather_type": str(
             first_non_empty(
                 projection_view.get("weather_type"),
@@ -61,6 +67,7 @@ def build_weather_display_context(projection: dict, options: dict | None = None)
 
     # 标题、头条与说明字段可能散落在领域对象和元数据中，这里先统一归并。
     domain_metadata = coerce_dict(getattr(domain_event, "metadata", None))
+    # 合并头条内容
     headline = str(
         first_non_empty(
             getattr(domain_event, "headline", None),
@@ -69,6 +76,7 @@ def build_weather_display_context(projection: dict, options: dict | None = None)
             "",
         )
     )
+    # 调用气象投影明细信息提取工具
     payload_details = _extract_weather_projection_details(
         metadata,
         domain_metadata,
@@ -88,6 +96,7 @@ def build_weather_display_context(projection: dict, options: dict | None = None)
         title=title,
         headline=payload_details["headline"],
         description=payload_details["description"],
+        # 提取预警发布时间或生效时间
         effective_at=(
             getattr(domain_event, "effective_at", None)
             or getattr(domain_event, "issued_at", None)

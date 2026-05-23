@@ -37,6 +37,7 @@ class ApiResponse:
             return ApiResponse.error("服务未初始化", status_code=503)
 
         if manager_name and getattr(service, manager_name, None) is None:
+            # 转换系统内部组件标识为友好的中文显示名称
             manager_display = {
                 "statistics_manager": "统计管理器",
                 "ws_manager": "WebSocket 管理器",

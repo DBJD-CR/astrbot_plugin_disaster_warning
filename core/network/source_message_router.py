@@ -21,6 +21,7 @@ from ..sources.source_router import (
 )
 from .websocket.websocket_manager import WebSocketManager
 
+# 从服务路由器预加载 FAN Studio 数据源名称到系统 ID 的双向映射表
 FAN_STUDIO_PROVIDER_SOURCE_MAP = get_provider_source_map(ProviderFamily.FAN_STUDIO)
 
 
@@ -28,6 +29,7 @@ def _build_connection_metadata(connection_name, connection_info, source_channel=
     """整理连接元数据，写入事件附加信息。"""
     if not connection_info:
         return None
+    # 抽取当前套接字基本参数，以便回溯来源
     metadata = {
         "connection_name": connection_name,
         "uri": connection_info.get("uri"),
@@ -49,6 +51,7 @@ def _attach_event_connection_metadata(
     if not metadata:
         return
 
+    # 若事件支持元数据属性，将当前活跃网络连接信息复制进去
     if hasattr(event, "metadata") and isinstance(event.metadata, dict):
         event.metadata["connection_info"] = dict(metadata)
 
@@ -68,12 +71,14 @@ class SourceMessageRouter:
         """初始化路由器并缓存事件分发相关依赖。"""
         self.service = service
         self._parser_map_checked = False
+        # 缓存事件分发及副作用服务引用
         self._dispatch_service = service.event_ingress_dispatch_service
         self._side_effect_service = service.source_ingress_side_effect_service
         self._source_runtime_query = service.source_runtime_query
 
     def register_all(self, ws_manager: WebSocketManager):
         """把各连接族处理器注册到 WebSocket 管理器。"""
+        # 将各不同协议族的消息接收回调挂载到 WebSocket 连接管理器中
         ws_manager.register_handler("fan_studio", self._create_fan_studio_handler())
         ws_manager.register_handler("p2p", self._create_p2p_handler())
         ws_manager.register_handler("wolfx", self._create_wolfx_handler())
@@ -86,6 +91,7 @@ class SourceMessageRouter:
         source_id: str,
         source_label: str,
     ) -> None:
+        # 交由分发服务去判断是否启动后台 Task 还是同步处理
         await self._dispatch_service.dispatch_event(
             event,
             source_id=source_id,
@@ -109,11 +115,13 @@ class SourceMessageRouter:
 
     def _is_source_routable(self, source_id: str, source_label: str) -> bool:
         config_key = _resolve_config_key(source_id)
+        # 校验：1. 数据源是否在当前配置中被启用
         if not self._source_runtime_query.is_source_enabled(source_id):
             logger.debug(
                 f"[灾害预警] 数据源 {config_key} ({source_label}) 未启用，忽略"
             )
             return False
+        # 校验：2. 相应的消息解析器是否存在，避免解析抛错
         if not self._has_parser(source_id):
             logger.warning(f"[灾害预警] 未找到解析器: {source_id}")
             return False
@@ -131,15 +139,16 @@ class SourceMessageRouter:
         source_channel=None,
         parser_log_label: str | None = None,
     ) -> bool:
-        # 只有“已启用且已装配解析器”的数据源才允许进入正式解析链。
+        # 只有“已启用且已装配解析器”的数据源才允许进入正式解析链
         if not self._is_source_routable(source_id, source_label):
             return False
 
+        # 将收到的报文或结构化数据送入具体解析器
         event = self.service.parse_event(source_id, parser_input)
         if not event:
             return False
 
-        # 把连接来源补到事件元数据，便于后续展示来源通道与追踪链路。
+        # 把连接来源补到事件元数据，便于后续展示来源通道与追踪链路
         _attach_event_connection_metadata(
             event,
             connection_name=connection_name,
@@ -148,6 +157,8 @@ class SourceMessageRouter:
         )
         log_label = parser_log_label or source_label or source_id
         logger.debug(f"[灾害预警] {log_label} 解析成功: {event.id}")
+
+        # 将解析好的事件丢给分发流水线处理
         await self._dispatch_event(
             event,
             source_id=source_id,
@@ -175,6 +186,7 @@ class SourceMessageRouter:
         source_channel=None,
         source_label_resolver: Callable[[str], str] | None = None,
     ) -> bool:
+        # 依次尝试匹配候选的数据源解析器
         for source_id in source_ids:
             try:
                 dispatched = await self._parse_and_dispatch(
@@ -191,6 +203,7 @@ class SourceMessageRouter:
                     source_channel=source_channel,
                     parser_log_label=source_id,
                 )
+                # 只要有一路解析分发成功，就立即中断候选链并返回 True
                 if dispatched:
                     return True
             except Exception as error:
@@ -205,6 +218,7 @@ class SourceMessageRouter:
                     error,
                     exc_info=True,
                 )
+                # 对捕获到的具体解析异常进行遥测跟踪，保证健壮性
                 await self._track_router_error(
                     error,
                     module=f"core.source_message_router.parse_candidate.{source_id}",
@@ -215,6 +229,7 @@ class SourceMessageRouter:
         """首次处理 FAN 消息前校验路由表与解析器是否对应齐全。"""
         if self._parser_map_checked:
             return
+        # 遍历静态数据源配置中的所有 fan studio 定义，校验其解析器是否存在
         for source_name, source_id in FAN_STUDIO_PROVIDER_SOURCE_MAP.items():
             if source_id and not self._has_parser(source_id):
                 logger.warning(
@@ -240,10 +255,11 @@ class SourceMessageRouter:
                 try:
                     data = json.loads(message)
                 except json.JSONDecodeError as error:
+                    # 避免非 JSON 报文引起程序崩溃
                     logger.error(f"[灾害预警] JSON解析失败: {error}")
                     return None
 
-                # 先校验路由映射，再把一条总线消息拆成多个候选数据源消息。
+                # 先校验路由映射，再把一条总线消息拆成多个候选数据源消息
                 self._ensure_fan_studio_parser_mapping()
                 routed_messages = route_fan_studio_message(data)
                 messages_to_process = [
@@ -253,6 +269,7 @@ class SourceMessageRouter:
                 msg_type = data.get("type")
                 processed_count = 0
 
+                # 遍历被分配出来的数据源及负载，分别尝试分发
                 for source, source_id, payload in messages_to_process:
                     if not self._is_source_routable(source_id, source):
                         continue
@@ -273,13 +290,14 @@ class SourceMessageRouter:
                     if dispatched:
                         processed_count += 1
 
-                # 没有任何子消息被路由时，只对真正异常或未识别数据做调试记录，避免心跳刷屏。
+                # 没有任何子消息被路由时，只对真正异常或未识别数据做调试记录，避免心跳刷屏
                 if processed_count == 0 and not messages_to_process:
                     is_heartbeat = (
                         data.get("type") in ["heartbeat", "ping", "pong"]
                         or "timestamp" in data
                         and len(data) <= 3
                     )
+                    # 过滤心跳包后，对其他未知包进行 debug 日志留存
                     if not is_heartbeat:
                         has_data = "Data" in data or "data" in data
                         is_unhandled_initial = msg_type == "initial_all"
@@ -311,6 +329,7 @@ class SourceMessageRouter:
                     error,
                     exc_info=True,
                 )
+                # 路由异常遥测
                 await self._track_router_error(
                     error,
                     module="core.source_message_router.fan_studio_handler",
@@ -334,6 +353,7 @@ class SourceMessageRouter:
             try:
                 data = json.loads(message)
                 code = str(data.get("code") or "").strip()
+                # 556 代表紧急地震速报 EEW
                 if code == "556":
                     logger.info(
                         "[灾害预警] P2P 处理器收到紧急地震速报，业务码为 556，准备解析"
@@ -341,18 +361,21 @@ class SourceMessageRouter:
             except (json.JSONDecodeError, AttributeError, TypeError):
                 data = {}
 
-            # P2P 先按业务码归类，再映射到一组可尝试的解析数据源。
+            # P2P 先按业务码归类，再映射到一组可尝试的解析数据源
             dispatch_family = {
                 "556": "p2p_eew",
                 "551": "p2p_report",
                 "552": "p2p_tsunami",
             }.get(code or "")
+
+            # 根据派发族获取所有关联的静态数据源候选 ID
             candidate_source_ids = (
                 get_source_ids_by_dispatch_family(dispatch_family)
                 if dispatch_family
                 else []
             )
 
+            # 启动候选者解析轮询
             dispatched = await self._parse_candidate_source_ids(
                 source_ids=list(candidate_source_ids),
                 parser_input=message,
@@ -384,9 +407,11 @@ class SourceMessageRouter:
                     return None
 
                 msg_type = data.get("type")
+                # 心跳直接跳过不作处理
                 if msg_type in ["heartbeat", "pong"]:
                     return None
 
+                # 获取 Wolfx 当前子报文类型对应的系统内 source_id
                 source_id = get_wolfx_source_id(msg_type)
                 if source_id is None:
                     logger.debug(
@@ -400,13 +425,14 @@ class SourceMessageRouter:
                 logger.debug(
                     f"[灾害预警] 将使用 Wolfx 解析器 {source_id} 处理类型为 {msg_type} 的消息"
                 )
-                # 某些 Wolfx 消息在正式解析前需要先触发附带状态更新等副作用处理。
+                # 某些 Wolfx 消息在正式解析前需要先触发旁路副作用（比如缓存 eqlist）
                 await self._side_effect_service.process_message(
                     source_id=source_id,
                     message_type=msg_type,
                     payload_data=data,
                 )
 
+                # 解析并分发
                 await self._parse_and_dispatch(
                     source_id=source_id,
                     source_label=msg_type,
@@ -430,6 +456,7 @@ class SourceMessageRouter:
                     error,
                     exc_info=True,
                 )
+                # 遥测路由层异常
                 await self._track_router_error(
                     error,
                     module="core.source_message_router.wolfx_handler",
@@ -451,11 +478,13 @@ class SourceMessageRouter:
                 connection_info=connection_info,
             )
 
+            # 校验是否配备了 global_quake 对应专有 protobuf 解析模块
             if not self._has_parser("global_quake"):
                 logger.warning("[灾害预警] 未找到 Global Quake 解析器")
                 return
 
             try:
+                # 这里的 message 为 bytes 二进制序列，不走 json.loads
                 await self._parse_and_dispatch(
                     source_id="global_quake",
                     source_label="global_quake",
@@ -477,6 +506,7 @@ class SourceMessageRouter:
                     error,
                     exc_info=True,
                 )
+                # 异常遥测
                 await self._track_router_error(
                     error,
                     module="core.source_message_router.global_quake_handler",

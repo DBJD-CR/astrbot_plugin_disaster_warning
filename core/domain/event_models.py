@@ -20,16 +20,16 @@ from .event_payload import SourcePayload
 class EarthquakeEvent:
     """地震领域事件。"""
 
-    occurred_at: datetime | None
-    latitude: float | None
-    longitude: float | None
-    place_name: str
-    magnitude: float | None = None
-    depth: float | None = None
-    intensity: float | None = None
-    scale: float | None = None
-    headline: str = ""
-    province: str | None = None
+    occurred_at: datetime | None  # 震中发生时间
+    latitude: float | None  # 纬度
+    longitude: float | None  # 经度
+    place_name: str  # 发生地点/震中位置
+    magnitude: float | None = None  # 震级 M
+    depth: float | None = None  # 深度 (km)
+    intensity: float | None = None  # 预警本地预估烈度或最大烈度
+    scale: float | None = None  # 震度等级
+    headline: str = ""  # 事件简短标题/摘要
+    province: str | None = None  # 省份/行政区划
     # metadata 用于承接不适合上升为固定字段的附加信息。
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -38,9 +38,9 @@ class EarthquakeEvent:
 class TsunamiEvent:
     """海啸领域事件。"""
 
-    title: str
-    level: str
-    issued_at: datetime | None = None
+    title: str  # 海啸事件标题
+    level: str  # 警报等级
+    issued_at: datetime | None = None  # 发布时间
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -48,9 +48,9 @@ class TsunamiEvent:
 class WeatherEvent:
     """气象领域事件。"""
 
-    title: str
-    headline: str
-    effective_at: datetime | None = None
+    title: str  # 预警名称/灾种名称
+    headline: str  # 预警简报正文
+    effective_at: datetime | None = None  # 生效起始时间
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

@@ -19,14 +19,14 @@ class MessageSystemNotificationService:
 
     def __init__(self, manager):
         # 通过主消息管理器复用统一的会话发送能力与配置访问能力。
-        self.manager = manager
+        self.manager = manager  # 主消息推送管理器 MessagePushManager 实例
 
     async def push_system_message(
         self,
         message: str,
         target_sessions: list[str] | None = None,
     ) -> int:
-        """推送系统提示消息（不走事件过滤）。"""
+        """推送系统提示消息（不走事件过滤与复杂模版渲染，用于直接向控制台或运维群广播警告信息）。"""
         sessions = (
             target_sessions
             if target_sessions is not None
@@ -39,9 +39,10 @@ class MessageSystemNotificationService:
         # 系统消息没有事件上下文，因此只构造最小文本消息链直接发送。
         msg_chain = MessageChain([Comp.Plain(message)])
         success_count = 0
+        # 遍历目标会话并同步下发纯文本提示
         for session in sessions:
             try:
-                await self.manager.session_sender.send(session, msg_chain)
+                await self.manager.session_sender.send(session, msg_chain)  # 发送消息
                 success_count += 1
             except Exception as e:
                 logger.error(f"[灾害预警] 系统提示消息发送到 {session} 失败: {e}")

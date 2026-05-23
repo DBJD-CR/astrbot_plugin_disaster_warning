@@ -29,7 +29,7 @@ class JmaEewFanStudioParser(BaseParser):
     def _build_envelope(self, msg_data: dict[str, Any]) -> EventEnvelope:
         """把 FAN Studio 日本预警原始字典封装为统一事件包裹体。"""
         source_entry = get_source_entry(self.source_id)
-        # FAN Studio 报次字段通常来自 updates，这里统一规整为整数。
+        # FAN Studio 报次字段通常来自 updates，这里统一规整为整数
         report_num = (
             msg_data.get("updates", 1)
             if isinstance(msg_data.get("updates"), int)
@@ -49,6 +49,8 @@ class JmaEewFanStudioParser(BaseParser):
             "jma_warning_areas": [],
             "jma_warning_area_ranges": [],
         }
+
+        # 实例化地震预警领域模型
         domain_event = EarthquakeEvent(
             occurred_at=self._parse_datetime(msg_data.get("shockTime", "")),
             latitude=safe_float_convert(msg_data.get("latitude")),
@@ -59,7 +61,10 @@ class JmaEewFanStudioParser(BaseParser):
             scale=ScaleConverter.parse_jma_cwa_scale(msg_data.get("epiIntensity", "")),
             metadata=dict(metadata),
         )
+
         created_at = self._parse_datetime(msg_data.get("createTime", ""))
+
+        # 构建事件身份模型
         identity = EventIdentity(
             event_id=str(msg_data.get("id", "") or ""),
             source_id=self.source_id,
@@ -81,6 +86,8 @@ class JmaEewFanStudioParser(BaseParser):
                 "config_key": source_entry.config_key if source_entry else "",
             },
         )
+
+        # 包装为统一包裹体返回
         return EventEnvelope(
             identity=identity,
             event=domain_event,
@@ -105,12 +112,12 @@ class JmaEewFanStudioParser(BaseParser):
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
-            # 预计震度与情报类型至少应命中其一，否则通常不是正式预警消息。
+            # 预计震度与情报类型至少应命中其一，否则通常不是正式预警消息
             if "epiIntensity" not in msg_data and "infoTypeName" not in msg_data:
                 logger.debug(f"[灾害预警] {self.source_id} 非 JMA 地震预警数据，跳过")
                 return None
 
-            # 取消报在当前推送链中不作为正式地震事件继续向后处理。
+            # 取消报在当前推送链中不作为正式地震事件继续向后处理
             if msg_data.get("cancel", False):
                 logger.info(f"[灾害预警] {self.source_id} 收到取消报，跳过")
                 return None
@@ -153,7 +160,7 @@ class JmaEewP2PParser(BaseParser):
             data = json.loads(message)
             code = data.get("code")
 
-            # P2P 用业务码区分不同类型，其中 556 才是正式紧急地震速报。
+            # P2P 用业务码区分不同类型，其中 556 才是正式紧急地震速报
             if code == 556:
                 logger.debug(f"[灾害预警] {self.source_id} 收到紧急地震速报（警报）")
                 return self._parse_eew_data(data)
@@ -180,7 +187,7 @@ class JmaEewP2PParser(BaseParser):
             issue_info = data.get("issue", {})
             areas = data.get("areas", [])
 
-            # 最大震度可能直接给出，也可能需要从区域列表中推导。
+            # 最大震度可能直接给出，也可能需要从区域列表中推导
             max_scale_raw = -1
             if "maxScale" in earthquake_info:
                 max_scale_raw = earthquake_info.get("maxScale", -1)
@@ -217,6 +224,7 @@ class JmaEewP2PParser(BaseParser):
                 else None
             )
 
+            # 获取发震时间
             shock_time = None
             if "time" in earthquake_info:
                 shock_time = self._parse_datetime(earthquake_info.get("time", ""))
@@ -225,6 +233,7 @@ class JmaEewP2PParser(BaseParser):
             else:
                 logger.warning(f"[灾害预警] {self.source_id} 缺少地震时间信息")
 
+            # 校验关键字段完整度
             required_hypocenter_fields = ["latitude", "longitude", "name"]
             missing_fields = []
             for field in required_hypocenter_fields:
@@ -236,7 +245,7 @@ class JmaEewP2PParser(BaseParser):
                     f"[灾害预警] {self.source_id} 缺少震源必填字段: {missing_fields}，继续处理..."
                 )
 
-            # 取消报、测试报与假定震源都作为附加元数据保留，供后续展示层使用。
+            # 取消报、测试报与假定震源判定
             is_cancelled = data.get("cancelled", False)
             if is_cancelled:
                 logger.info(f"[灾害预警] {self.source_id} 收到取消的EEW事件")
@@ -259,7 +268,7 @@ class JmaEewP2PParser(BaseParser):
             )
             warning_areas: list[str] = []
             warning_area_ranges: list[str] = []
-            # 日本预警区域列表会同时用于文本展示与影响范围提示，这里先归一化整理。
+            # 日本预警区域列表会同时用于文本展示与影响范围提示，这里先归一化整理
             for area in areas:
                 if not isinstance(area, dict):
                     continue
@@ -277,6 +286,7 @@ class JmaEewP2PParser(BaseParser):
                     else None
                 )
 
+                # 震度在 4.5 (5弱) 及以上的警报区域需要保留进警报范围中
                 if area_name and max_area_scale is not None and max_area_scale >= 45:
                     kind = str(area.get("kindCode", "") or "").strip()
                     status = "已到达" if kind == "11" else "未到达"
@@ -305,6 +315,8 @@ class JmaEewP2PParser(BaseParser):
                 "jma_warning_areas": warning_areas,
                 "jma_warning_area_ranges": warning_area_ranges,
             }
+
+            # 实例化地震预警领域模型
             domain_event = EarthquakeEvent(
                 occurred_at=shock_time,
                 latitude=safe_float_convert(hypocenter.get("latitude")),
@@ -315,6 +327,8 @@ class JmaEewP2PParser(BaseParser):
                 scale=scale,
                 metadata=dict(metadata),
             )
+
+            # 构造身份模型
             identity = EventIdentity(
                 event_id=str(issue_info.get("eventId", "") or data.get("id", "") or ""),
                 source_id=self.source_id,
@@ -336,6 +350,8 @@ class JmaEewP2PParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 包装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,
@@ -372,7 +388,7 @@ class JmaEewWolfxParser(BaseParser):
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
         """解析 Wolfx 日本地震预警数据。"""
         try:
-            # Wolfx 会混发多类日本消息，这里只接收日本地震预警类型。
+            # Wolfx 会混发多类日本消息，这里只接收日本地震预警类型
             if data.get("type") != "jma_eew":
                 logger.debug(f"[灾害预警] {self.source_id} 非 JMA 地震预警数据，跳过")
                 return None
@@ -413,6 +429,8 @@ class JmaEewWolfxParser(BaseParser):
                 "jma_warning_areas": [jma_warn_area] if jma_warn_area else [],
                 "jma_warning_area_ranges": warning_area_ranges,
             }
+
+            # 实例化地震领域模型
             domain_event = EarthquakeEvent(
                 occurred_at=self._parse_datetime(data.get("OriginTime", "")),
                 latitude=safe_float_convert(data.get("Latitude")),
@@ -425,6 +443,8 @@ class JmaEewWolfxParser(BaseParser):
                 scale=ScaleConverter.parse_jma_cwa_scale(data.get("MaxIntensity", "")),
                 metadata=dict(metadata),
             )
+
+            # 构造身份模型
             identity = EventIdentity(
                 event_id=str(data.get("EventID", "") or ""),
                 source_id=self.source_id,
@@ -448,6 +468,8 @@ class JmaEewWolfxParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 封装为统一包裹层返回
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,

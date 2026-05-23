@@ -276,9 +276,7 @@ class ScaleConverter:
 
     @classmethod
     def convert_roman_intensity(cls, intensity_str: str) -> float | None:
-        """
-        将罗马数字烈度转换为浮点数。
-        """
+        """将罗马数字烈度转换为浮点数。"""
         if not intensity_str:
             return None
 

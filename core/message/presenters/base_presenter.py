@@ -22,5 +22,11 @@ class BasePresenter:
     def present(
         cls, display_context: DisplayContext, options: dict[str, Any] | None = None
     ) -> str:
-        """把展示上下文转换为最终文本。"""
+        """
+        把展示上下文转换为最终文本。
+
+        Args:
+            display_context (DisplayContext): 标准化展示上下文
+            options (Optional[dict]): 额外控制参数
+        """
         raise NotImplementedError

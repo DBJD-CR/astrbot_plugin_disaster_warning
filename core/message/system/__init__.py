@@ -5,3 +5,9 @@
 后续若需要统一导出系统通知相关服务，
 可在此处集中整理。
 """
+
+from .system_notification_service import MessageSystemNotificationService
+
+__all__ = [
+    "MessageSystemNotificationService",  # 导出系统通知服务类
+]

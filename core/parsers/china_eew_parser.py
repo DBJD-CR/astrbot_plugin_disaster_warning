@@ -27,7 +27,7 @@ class CEAEEWParser(BaseParser):
     def _build_envelope(self, msg_data: dict[str, Any]) -> EventEnvelope:
         """把中国地震预警原始字典封装为统一事件包裹体。"""
         occurred_at = self._parse_datetime(msg_data.get("shockTime", ""))
-        # 报次字段可能来自不同键名，这里统一归一化为正整数。
+        # 报次字段可能来自不同键名，这里统一归一化为正整数
         raw_report_num = msg_data.get("reportNum", msg_data.get("updates", 1))
         try:
             report_num = int(raw_report_num)
@@ -38,6 +38,8 @@ class CEAEEWParser(BaseParser):
 
         source_entry = get_source_entry(self.source_id)
         event_id = str(msg_data.get("eventId", "") or msg_data.get("id", "") or "")
+
+        # 整理元数据
         metadata = {
             "source_family": "fan_studio",
             "source_enum": source_entry.source_enum if source_entry else "",
@@ -50,6 +52,8 @@ class CEAEEWParser(BaseParser):
             "is_final": bool(msg_data.get("isFinal", False)),
             "updates": msg_data.get("updates", 1),
         }
+
+        # 实例化地震领域模型，注意包含省份和预计最大烈度信息
         domain_event = EarthquakeEvent(
             occurred_at=occurred_at,
             latitude=safe_float_convert(msg_data.get("latitude")),
@@ -61,6 +65,8 @@ class CEAEEWParser(BaseParser):
             province=msg_data.get("province"),
             metadata=dict(metadata),
         )
+
+        # 构造身份模型
         identity = EventIdentity(
             event_id=event_id,
             source_id=self.source_id,
@@ -80,6 +86,8 @@ class CEAEEWParser(BaseParser):
                 "config_key": source_entry.config_key if source_entry else "",
             },
         )
+
+        # 封装为统一事件包裹层返回
         return EventEnvelope(
             identity=identity,
             event=domain_event,
@@ -104,7 +112,7 @@ class CEAEEWParser(BaseParser):
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
-            # 中国地震预警数据至少应携带预计烈度字段，否则大概率不是目标消息。
+            # 中国地震预警数据至少应携带预计烈度字段，否则大概率不是目标消息
             if "epiIntensity" not in msg_data:
                 logger.debug(f"[灾害预警] {self.source_id} 非地震预警数据，跳过")
                 return None
@@ -156,7 +164,7 @@ class CEAEEWWolfxParser(BaseParser):
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
         """解析 Wolfx 中国地震预警数据。"""
         try:
-            # Wolfx 会混发多类消息，这里只接收中国地震预警类型。
+            # Wolfx 会混发多类消息，这里只接收中国地震预警类型
             if data.get("type") != "cenc_eew":
                 logger.debug(f"[灾害预警] {self.source_id} 非 CENC 地震预警数据，跳过")
                 return None
@@ -182,6 +190,8 @@ class CEAEEWWolfxParser(BaseParser):
                 "updates": report_num,
                 "is_final": bool(data.get("isFinal", False)),
             }
+
+            # 实例化地震领域事件
             domain_event = EarthquakeEvent(
                 occurred_at=self._parse_datetime(data.get("OriginTime", "")),
                 latitude=safe_float_convert(data.get("Latitude")),
@@ -192,6 +202,8 @@ class CEAEEWWolfxParser(BaseParser):
                 place_name=data.get("HypoCenter", ""),
                 metadata=dict(metadata),
             )
+
+            # 构建事件身份模型
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -213,6 +225,8 @@ class CEAEEWWolfxParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 封装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,

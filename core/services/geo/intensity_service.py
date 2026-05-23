@@ -18,9 +18,12 @@ class IntensityService:
         计算两点间的地表距离
         使用海夫赛文公式估算球面距离，返回值单位为公里
         """
+        # 地球平均半径，单位：千米
         earth_radius_km = 6371.0
+        # 经纬度差值转换为弧度
         d_lat = math.radians(lat2 - lat1)
         d_lon = math.radians(lon2 - lon1)
+        # 海夫赛文公式核心三角函数计算
         a = (
             math.sin(d_lat / 2) ** 2
             + math.cos(math.radians(lat1))

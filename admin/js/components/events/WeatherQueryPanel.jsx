@@ -178,7 +178,7 @@ function WeatherQueryPanel() {
                     <Typography variant="h6" className="weather-query-title">气象预警快捷查询</Typography>
                 </div>
                 <Typography variant="caption" className="weather-query-caption-subtle">
-                    与机器人指令 /气象预警查询 运行机制同步
+                    等价于 /气象预警查询 指令
                 </Typography>
             </div>
 
@@ -214,11 +214,6 @@ function WeatherQueryPanel() {
                     <option value="黄色">黄色</option>
                     <option value="蓝色">蓝色</option>
                     <option value="白色">白色</option>
-                    <option value="红">红</option>
-                    <option value="橙">橙</option>
-                    <option value="黄">黄</option>
-                    <option value="蓝">蓝</option>
-                    <option value="白">白</option>
                 </select>
 
                 {/* 4. 执行与重置按钮 */}

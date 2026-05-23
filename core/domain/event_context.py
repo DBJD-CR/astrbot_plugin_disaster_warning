@@ -30,10 +30,10 @@ class EarthquakeDisplayContext:
     title: str
     # 震中时间；若上游无法解析，则允许为空。
     occurred_at: datetime | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    magnitude: float | None = None
-    depth: float | None = None
+    latitude: float | None = None  # 纬度
+    longitude: float | None = None  # 经度
+    magnitude: float | None = None  # 震级
+    depth: float | None = None  # 震源深度 (km)
     # intensity 与 scale 用于承接不同来源的震度或等级信息。
     intensity: float | None = None
     scale: float | None = None
@@ -93,10 +93,10 @@ class TsunamiDisplayContext:
     org_unit: str = ""
     place_name: str = ""
     subtitle: str = ""
-    latitude: float | None = None
-    longitude: float | None = None
-    magnitude: float | None = None
-    depth: float | None = None
+    latitude: float | None = None  # 纬度
+    longitude: float | None = None  # 经度
+    magnitude: float | None = None  # 震级
+    depth: float | None = None  # 深度 (km)
     # forecasts 与 monitoring_stations 分别承接预报区域和站点观测信息。
     forecasts: list[dict[str, Any]] = field(default_factory=list)
     monitoring_stations: list[dict[str, Any]] = field(default_factory=list)

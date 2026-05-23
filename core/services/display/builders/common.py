@@ -1,7 +1,7 @@
 """
 展示投影公共工具。
 负责 metadata/payload 归一化、source/title 解析与投影输入准备，
-为各类 display context builder 提供统一输入。
+为各类 display context builder 提供统一 input。
 """
 
 from __future__ import annotations
@@ -17,10 +17,14 @@ from ....sources.source_catalog import get_source_entry
 def normalize_display_text(value: Any) -> str | None:
     """把展示字段统一归一化为可直接显示的文本。"""
     if isinstance(value, list):
+        # 提取列表中每个元素的非空字符串表达
         parts = [str(item).strip() for item in value if str(item).strip()]
+        # 对列表中的有效字符元素使用“、”拼接，例如 ["台北市", "新北市"] -> "台北市、新北市"
         return "、".join(parts) if parts else None
     if isinstance(value, str):
+        # 对单独的字符串剥离首尾空格
         text = value.strip()
+        # 规避空字符串干扰，若为空字符串则返回 None 以便后续判定兜底
         return text or None
     return None
 
@@ -31,6 +35,7 @@ def first_non_empty(*values: Any) -> Any:
         if value is None:
             continue
         if isinstance(value, str) and not value.strip():
+            # 剥离无效空格后的空字符串视作无效值，继续搜索下一个候选值
             continue
         return value
     return None
@@ -38,6 +43,7 @@ def first_non_empty(*values: Any) -> Any:
 
 def coerce_dict(value: Any) -> dict[str, Any]:
     """把输入安全转换为字典。"""
+    # 强制将入参转为字典类型，防止因类型不匹配（如 None 或 字符串）导致后续的 update 操作报错
     return dict(value) if isinstance(value, dict) else {}
 
 
@@ -49,6 +55,7 @@ def build_projection_view(
 ) -> dict[str, Any]:
     """把多个元数据层合并为单一投影视图。"""
     projection_view: dict[str, Any] = {}
+    # 按来源优先级逐步覆盖合并，层级越高优先级越强 (领域字典 -> 原始载荷 -> 外部注入元数据)
     for layer in (domain_metadata, payload_attributes, metadata):
         if isinstance(layer, dict):
             projection_view.update(layer)
@@ -59,7 +66,9 @@ def normalize_projection_metadata(
     envelope: EventEnvelope,
 ) -> tuple[SourcePayload | None, dict[str, Any]]:
     """归一化展示投影使用的 payload 与 metadata。"""
+    # 提取包装信封中的内部负载对象
     source_payload_input = getattr(envelope, "payload", None)
+    # 提取信封附带的自定义元数据字典
     metadata_payload = getattr(envelope, "metadata", None)
     metadata = dict(metadata_payload) if isinstance(metadata_payload, dict) else {}
     source_payload = (
@@ -67,6 +76,7 @@ def normalize_projection_metadata(
         if isinstance(source_payload_input, SourcePayload)
         else None
     )
+    # 若存在原始来源属性字典，则与外部元数据进行合并，保证物理原始载荷属性具备第一处理顺位
     if source_payload is not None and isinstance(source_payload.attributes, dict):
         merged = dict(source_payload.attributes)
         merged.update(metadata)
@@ -76,10 +86,12 @@ def normalize_projection_metadata(
 
 def resolve_projection_source_id(event: EventEnvelope, source_id: str) -> str:
     """统一解析展示投影使用的 source_id。"""
+    # 优先使用显式传递给投影器的 source_id 字符串
     resolved_source_id = (source_id or "").strip()
     if resolved_source_id:
         return resolved_source_id
 
+    # 兜底从事件信封实体 (EventEnvelope) 中提取其注册绑定的原始数据源 ID
     if (
         hasattr(event, "source_id")
         and isinstance(event.source_id, str)
@@ -97,8 +109,10 @@ def build_projection_payload(
 ) -> SourcePayload:
     """构建投影阶段使用的来源载荷对象。"""
     provider_family = ""
+    # 若注册目录中含有该数据源描述，则直接取出所属服务商家族分类（如 wolfx / fan_studio）
     if source_descriptor is not None:
         provider_family = getattr(source_descriptor, "provider_family", "") or ""
+    # 统一转换消息格式标志字段
     message_type = str(
         metadata.get("message_type") or metadata.get("type") or ""
     ).strip()
@@ -120,6 +134,7 @@ def resolve_projection_title(
 
     优先使用地点、标题或头条字段，最后才退回到事件标识。
     """
+    # 按照严格的缺省降级层级抽取事件标题
     return (
         getattr(domain_event, "place_name", None)
         or getattr(domain_event, "title", None)
@@ -133,9 +148,11 @@ def resolve_projection_title(
 
 def _build_source_descriptor(source_id: str) -> SourceDescriptor | None:
     """直接从数据源目录构建展示层来源描述对象。"""
+    # 从统一数据源静态配置文件中定位条目
     entry = get_source_entry(source_id)
     if entry is None:
         return None
+    # 抽取并浅拷贝映射为运行态 SourceDescriptor 对象，隔绝外部模块直接侵染配置目录
     return SourceDescriptor(
         source_id=entry.source_id,
         source_enum=entry.source_enum,
@@ -172,17 +189,22 @@ def prepare_display_projection(event: EventEnvelope, source_id: str) -> dict[str
     该步骤会统一补齐来源标识、来源描述、标题、载荷与元数据，供后续展示上下文构建器直接使用。
     """
     envelope = event
+    # 校验并提取可用的数据源 ID
     resolved_source_id = resolve_projection_source_id(event, source_id)
     if not resolved_source_id:
         resolved_source_id = getattr(envelope, "source_id", "") or ""
 
+    # 解析载荷对象及其合并元数据字典
     source_payload_input, metadata = normalize_projection_metadata(envelope)
+    # 取出该数据源对应的静态定义信息描述器
     source_descriptor = _build_source_descriptor(resolved_source_id)
+    # 若信封中无 SourcePayload 副本，则在内存中实时生成一份供下游消费
     source_payload = source_payload_input or build_projection_payload(
         resolved_source_id,
         source_descriptor,
         metadata,
     )
+    # 渲染构建最终用于展示的简报首部标题
     title = resolve_projection_title(
         envelope.event,
         metadata,

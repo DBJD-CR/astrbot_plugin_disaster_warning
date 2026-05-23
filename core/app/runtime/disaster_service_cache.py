@@ -17,17 +17,19 @@ class DisasterServiceCacheService:
     """灾害服务缓存持久化服务。"""
 
     def __init__(self, service):
-        self.service = service
+        self.service = service  # 主服务 DisasterWarningService 实例
 
     def load_earthquake_lists_cache(self) -> None:
-        """从文件加载地震列表缓存。"""
+        """从本地文件恢复已保存的地震列表历史缓存。"""
         try:
+            # 校验缓存文件是否存在
             if os.path.exists(self.service.cache_file):
                 with open(self.service.cache_file, encoding="utf-8") as f:
                     data = json.load(f)
+                    # 校验缓存数据的类型与字段，防止版本更新后格式错乱
                     if isinstance(data, dict) and "cenc" in data and "jma" in data:
-                        self.service.earthquake_lists.clear()
-                        self.service.earthquake_lists.update(data)
+                        self.service.earthquake_lists.clear()  # 清理旧数据
+                        self.service.earthquake_lists.update(data)  # 载入新缓存
                         logger.debug("[灾害预警] 已恢复 Wolfx 地震列表本地缓存")
             else:
                 logger.debug("[灾害预警] 本地缓存文件不存在，将使用空的 Wolfx 地震列表")
@@ -35,9 +37,12 @@ class DisasterServiceCacheService:
             logger.warning(f"[灾害预警] 加载 Wolfx 地震列表缓存失败: {e}")
 
     def save_earthquake_lists_cache(self) -> None:
-        """保存地震列表缓存到文件。"""
-        temp_file = self.service.cache_file + ".tmp"
+        """保存地震列表缓存到本地文件，并在写入成功后进行原子替换。"""
+        temp_file = (
+            self.service.cache_file + ".tmp"
+        )  # 使用临时文件写入，避免直接写入覆盖破坏数据
         try:
+            # 确保存储目录存在
             if not os.path.exists(self.service.storage_dir):
                 os.makedirs(self.service.storage_dir, exist_ok=True)
 
@@ -60,7 +65,7 @@ class DisasterServiceCacheService:
                     pass
 
     def load_eew_query_cache(self) -> None:
-        """从文件加载 EEW 查询状态缓存。"""
+        """从本地文件恢复紧急地震预警(EEW)的查询状态缓存。"""
         restored: dict[str, dict[str, Any]] = {}
         try:
             if os.path.exists(self.service.eew_query_cache_file):
@@ -71,6 +76,7 @@ class DisasterServiceCacheService:
                     logger.warning("[灾害预警] EEW 查询缓存格式无效，已忽略")
                 else:
                     active_state = getattr(self.service, "eew_query_state", {})
+                    # 获取当前支持的发布机构集合，以支持新版本向后兼容
                     if isinstance(active_state, dict) and active_state:
                         supported_institutions = set(active_state.keys())
                     else:
@@ -87,14 +93,16 @@ class DisasterServiceCacheService:
                             continue
                         if not value.get("issued_at"):
                             continue
-                        restored[key] = value
+                        restored[key] = value  # 校验通过，载入缓存
             else:
                 logger.debug("[灾害预警] EEW 查询缓存文件不存在，将使用空状态")
         except Exception as e:
             logger.warning(f"[灾害预警] 加载 EEW 查询缓存失败: {e}")
 
         self.service.eew_query_state = restored
+        # 兜底逻辑：如果缓存丢失或缓存内缺少部分机构的数据，从内存中的近期事件记录中尝试恢复
         self._restore_eew_query_state_from_recent_pushes()
+        # 二次兜底逻辑：如果统计管理器初始化完成，还可以尝试从本地 sqlite 数据库读取近期历史来补齐
         if (
             self.service.statistics_manager
             and self.service.statistics_manager._db_initialized
@@ -110,7 +118,7 @@ class DisasterServiceCacheService:
             logger.debug("[灾害预警] 已恢复 EEW 查询缓存/近期状态")
 
     def _restore_eew_query_state_from_recent_pushes(self) -> None:
-        """当缓存缺项时，使用近期事件记录补齐机构级 EEW 状态。"""
+        """从统计管理器的内存近期推送中恢复机构级 EEW 状态。"""
         recent_pushes = getattr(self.service.statistics_manager, "stats", {}).get(
             "recent_pushes", []
         )
@@ -119,11 +127,13 @@ class DisasterServiceCacheService:
 
         state = self.service.eew_query_state
         institutions = getattr(self.service.eew_query_service, "institutions", {})
+        # 建立“数据源ID”到“发布机构键”的映射关系，用于快速归类
         source_to_institution: dict[str, str] = {}
         for institution_key, meta in institutions.items():
             for source_id in meta.get("source_ids", []):
                 source_to_institution[str(source_id).strip()] = institution_key
 
+        # 遍历近期推送，提取其中的地震预警(earthquake_warning)事件
         for record in recent_pushes:
             if not isinstance(record, dict):
                 continue
@@ -133,11 +143,13 @@ class DisasterServiceCacheService:
                 record.get("source_id") or record.get("source") or ""
             ).strip()
             institution_key = source_to_institution.get(source_id)
+            # 如果对应发布机构已有最新状态，则跳过（内存列表中较早的记录代表更老的状态）
             if not institution_key or institution_key in state:
                 continue
             issued_at = str(record.get("time") or "").strip()
             if not issued_at:
                 continue
+            # 组装 EEW 查询状态字典
             state[institution_key] = {
                 "source_id": source_id,
                 "event_id": str(
@@ -161,12 +173,13 @@ class DisasterServiceCacheService:
             }
 
     async def _restore_eew_query_state_from_db_recent_events(self) -> None:
-        """从本地数据库最近事件中补齐缺失的机构级 EEW 状态。"""
+        """从数据库近期历史记录中补齐缺失的机构级 EEW 状态。"""
         manager = getattr(self.service, "statistics_manager", None)
         if manager is None or not getattr(manager, "_db_initialized", False):
             return
 
         try:
+            # 载入最多最近 1000 条事件记录
             recent_events = await manager.db.get_recent_events(1000)
         except Exception as e:
             logger.debug(f"[灾害预警] 从数据库补齐 EEW 查询状态失败: {e}")
@@ -182,6 +195,7 @@ class DisasterServiceCacheService:
             for source_id in meta.get("source_ids", []):
                 source_to_institution[str(source_id).strip()] = institution_key
 
+        # 遍历数据库近期事件并填补状态
         for record in recent_events:
             if not isinstance(record, dict):
                 continue
@@ -196,6 +210,7 @@ class DisasterServiceCacheService:
             issued_at = str(record.get("time") or "").strip()
             if not issued_at:
                 continue
+            # 组装状态元数据
             state[institution_key] = {
                 "source_id": source_id,
                 "event_id": str(
@@ -219,7 +234,7 @@ class DisasterServiceCacheService:
             }
 
     def save_eew_query_cache(self) -> None:
-        """保存 EEW 查询状态缓存到文件。"""
+        """保存 EEW 查询状态到本地文件，并在写入成功后进行原子替换。"""
         temp_file = self.service.eew_query_cache_file + ".tmp"
         try:
             if not os.path.exists(self.service.storage_dir):

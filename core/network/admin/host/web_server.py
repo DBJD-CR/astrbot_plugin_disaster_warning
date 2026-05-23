@@ -20,6 +20,7 @@ from ..payloads.connections_payload_builder import ConnectionsPayloadBuilder
 from ..payloads.realtime_payload_builder import RealtimePayloadBuilder
 from .web_server_runtime_service import WebServerRuntimeService
 
+# 动态探测 FastAPI 与 Uvicorn 环境
 try:
     import uvicorn
     from fastapi import FastAPI, Request, WebSocket
@@ -39,8 +40,6 @@ class WebAdminServer:
 
     def __init__(self, disaster_service, config: dict[str, Any]):
         """初始化管理端宿主，并装配运行时依赖。"""
-        # WebAdminServer 现在主要承担宿主和装配入口职责，
-        # 具体的路由注册、WebSocket 广播与实时数据拼装已拆给独立服务/构建器。
         self.disaster_service = disaster_service
         self.config = config
         self.config_accessor = ConfigAccessor(config)
@@ -50,9 +49,12 @@ class WebAdminServer:
         self._broadcast_task = None
         self._ping_task = None
         self._ws_hub = WebSocketHub()
-        # 延迟缓存由健康监控器写入，再由连接状态与实时载荷构建器复用。
+
+        # 延迟缓存容器，用于在健康监控与连接面板展示之间共享探测数值
         self._latency_cache: dict[str, float | None] = {}
         self._source_health_monitor = SourceHealthMonitor(self._latency_cache)
+
+        # 注入各不同职责的 Payload 生成器
         self._connections_payload_builder = ConnectionsPayloadBuilder(
             disaster_service=self.disaster_service,
             config=self.config,
@@ -66,6 +68,8 @@ class WebAdminServer:
         )
         self._auth_enabled = False
         self._auth_token: str | None = None
+
+        # 注入后台运行时调度管理服务
         self._runtime_service = WebServerRuntimeService(self)
 
         if not FASTAPI_AVAILABLE:
@@ -75,7 +79,6 @@ class WebAdminServer:
 
     def _setup_app(self):
         """配置 FastAPI 应用。"""
-
         self.app = FastAPI(
             title="灾害预警管理端",
             description="灾害预警插件 Web 管理界面",
@@ -88,13 +91,18 @@ class WebAdminServer:
         @self.app.middleware("http")
         async def auth_middleware(request: Request, call_next):
             """拦截管理端 API 请求并执行令牌鉴权。"""
+            # 若未设置鉴权密码，直接放行
             if not self._auth_enabled:
                 return await call_next(request)
+
+            # 放行非 API 接口及登录鉴权专有端点
             path = request.url.path
             if path in {"/api/login", "/api/auth-info"}:
                 return await call_next(request)
             if not path.startswith("/api"):
                 return await call_next(request)
+
+            # 从 HTTP query params 或 Authorization Bearer 头部提取 Token 字段
             token = request.query_params.get("token", "")
             if not token:
                 auth_header = request.headers.get("Authorization", "")
@@ -104,12 +112,16 @@ class WebAdminServer:
                     if len(auth_parts) == 2 and auth_parts[0].lower() == "bearer"
                     else ""
                 )
+
+            # 时序安全防爆破校验
             if not self._auth_token or not secrets.compare_digest(
                 token, self._auth_token
             ):
                 return ApiResponse.error("未授权，请先登录", status_code=401)
+
             return await call_next(request)
 
+        # 支持跨域访问
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
@@ -120,6 +132,7 @@ class WebAdminServer:
 
         self._register_routes()
 
+        # 装载静态网页资源目录
         admin_dir = Path(__file__).resolve().parents[4] / "admin"
         if admin_dir.exists():
             self.app.mount(
@@ -128,6 +141,7 @@ class WebAdminServer:
 
     def _register_routes(self):
         """注册 API 路由。"""
+        # 装载全部 HTTP 端点路由定义
         self._runtime_service.register_routes()
 
         @self.app.websocket("/ws")
@@ -185,6 +199,7 @@ class WebAdminServer:
         host = web_config.get("host", "0.0.0.0")
         port = web_config.get("port", 8089)
 
+        # 构造 Uvicorn 运行配置
         config = uvicorn.Config(
             self.app, host=host, port=port, log_level="warning", access_log=False
         )
@@ -192,13 +207,14 @@ class WebAdminServer:
 
         logger.info(f"[灾害预警] Web 管理端已启动: http://{host}:{port}")
 
-        # 服务主循环、广播循环、延迟探测三类任务分开维护，便于停机时逐项回收。
+        # 将服务进程、心跳/延迟检测循环与广播事件的协程单独开启 Task 挂载
         self._server_task = asyncio.create_task(self.server.serve())
         self._broadcast_task = asyncio.create_task(self._broadcast_loop())
         self._ping_task = asyncio.create_task(self._background_ping_loop())
 
     async def stop(self):
         """停止 Web 服务器。"""
+        # 1. 终止后台延迟 TCP ping 检测循环
         if self._ping_task:
             self._ping_task.cancel()
             try:
@@ -206,6 +222,7 @@ class WebAdminServer:
             except asyncio.CancelledError:
                 pass
 
+        # 2. 终止定时数据广播推送循环
         if self._broadcast_task:
             self._broadcast_task.cancel()
             try:
@@ -213,14 +230,16 @@ class WebAdminServer:
             except asyncio.CancelledError:
                 pass
 
-        # 先关闭管理端前端连接，再继续释放其他外部资源。
+        # 3. 强行断开并清理所有前端 websocket 句柄连接
         await self._runtime_service.close_all_websockets()
 
+        # 4. 释放全局的 GeoIP 会话
         try:
             await close_geoip_session()
         except Exception as e:
             logger.debug(f"[灾害预警] 关闭 GeoIP 会话时出错: {e}")
 
+        # 5. 退出 Uvicorn Web 服务器实例并等待服务 Task 彻底终止
         if self.server:
             self.server.should_exit = True
             if self._server_task:

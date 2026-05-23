@@ -39,6 +39,7 @@ def format_earthquake_list_text(data_list: list[dict], source: str) -> str:
         f"    📋 sample_events ({len(data_list)}项):",
     ]
 
+    # 循环写入地震条目文本
     for i, item in enumerate(data_list):
         idx = i + 1
         lines.append(f"      [{idx}]:")
@@ -57,6 +58,6 @@ def format_earthquake_list_text(data_list: list[dict], source: str) -> str:
             lines.append(f"        📋 震度: {item['intensity_display']}")
 
     lines.append("")
-    version = get_plugin_version()
+    version = get_plugin_version()  # 获取当前插件的版本号
     lines.append(f"🔧 @DBJD-CR/astrbot_plugin_disaster_warning (灾害预警) {version}")
     return "\n".join(lines)

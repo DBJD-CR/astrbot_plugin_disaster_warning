@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+# 导入所有具体的解析器子类
 from ..sources.source_catalog import SOURCE_CATALOG, get_source_entry
 from .china_earthquake_parser import CencEarthquakeParser, CencEarthquakeWolfxParser
 from .china_eew_parser import CEAEEWParser, CEAEEWPRParser, CEAEEWWolfxParser
@@ -16,6 +17,7 @@ from .taiwan_eew_parser import CwaEewParser, CwaEewWolfxParser
 from .tsunami_parser import JmaTsunamiP2PParser, TsunamiParser
 from .weather_parser import WeatherAlarmParser
 
+# 静态映射：配置中的解析器名(parser_name) -> 数据源解析器类(Parser Class)
 PARSER_CLASS_BY_NAME = {
     "china_eew_parser": CEAEEWParser,
     "china_report_parser": CencEarthquakeParser,
@@ -45,7 +47,7 @@ def create_parser_for_source(source_id: str, *args, **kwargs):
     if entry is None:
         return None
 
-    # 同名 parser 可能对应多个具体来源实现，这里按 source_id 再做一次细分分派。
+    # 细化分派 1：中国地震预警，按数据源拆分为 FAN Studio、省级网 或 Wolfx 版本
     if entry.parser_name == "china_eew_parser":
         parser_class = {
             "cea_fanstudio": CEAEEWParser,
@@ -56,7 +58,7 @@ def create_parser_for_source(source_id: str, *args, **kwargs):
             return None
         return parser_class(*args, **kwargs)
 
-    # 日本预警与日本地震情报会按具体来源拆成多个解析器实现，因此这里再做一次细分分派。
+    # 细化分派 2：日本地震预警，拆分为 FAN Studio、P2P 还是 Wolfx 接收版本
     if entry.parser_name == "japan_eew_parser":
         parser_class = {
             "jma_fanstudio": JmaEewFanStudioParser,
@@ -67,6 +69,7 @@ def create_parser_for_source(source_id: str, *args, **kwargs):
             return None
         return parser_class(*args, **kwargs)
 
+    # 细化分派 3：日本地震情报，拆分为 P2P 还是 Wolfx 地震列表版本
     if entry.parser_name == "japan_report_parser":
         parser_class = {
             "jma_p2p_info": JmaEarthquakeP2PParser,
@@ -76,6 +79,7 @@ def create_parser_for_source(source_id: str, *args, **kwargs):
             return None
         return parser_class(*args, **kwargs)
 
+    # 细化分派 4：中国地震台网地震测定，拆分为 FAN Studio 还是 Wolfx 接收版本
     if entry.parser_name == "china_report_parser":
         parser_class = {
             "cenc_fanstudio": CencEarthquakeParser,
@@ -85,6 +89,7 @@ def create_parser_for_source(source_id: str, *args, **kwargs):
             return None
         return parser_class(*args, **kwargs)
 
+    # 细化分派 5：台湾地震预警，拆分为 FAN Studio 还是 Wolfx 接收版本
     if entry.parser_name == "taiwan_eew_parser":
         parser_class = {
             "cwa_fanstudio": CwaEewParser,
@@ -94,6 +99,7 @@ def create_parser_for_source(source_id: str, *args, **kwargs):
             return None
         return parser_class(*args, **kwargs)
 
+    # 其他无细化子类分发的常规数据源解析器，直接按映射返回
     parser_class = resolve_parser_class(entry.parser_name)
     if parser_class is None:
         return None
@@ -102,11 +108,13 @@ def create_parser_for_source(source_id: str, *args, **kwargs):
 
 def validate_catalog_parser_names() -> None:
     """校验数据源目录中引用的解析器名称都能被解析。"""
+    # 抽取静态数据源配置名录中所有引用的解析器名称，与已注册的解析器表做一致性对齐
     missing_names = {
         entry.parser_name
         for entry in SOURCE_CATALOG.values()
         if entry.parser_name not in PARSER_CLASS_BY_NAME
     }
+    # 若存在名录中有定义，但实际上解析器静态字典内未注册的配置，强行抛出运行时异常
     if missing_names:
         missing_text = ", ".join(sorted(missing_names))
         raise RuntimeError(

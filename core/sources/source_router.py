@@ -24,9 +24,9 @@ class RoutedMessage:
     用于把原始提供方消息转换为统一数据源标识和对应载荷的组合对象。
     """
 
-    source_name: str
-    source_id: str
-    payload: dict[str, Any]
+    source_name: str  # 原始提供方定义的来源名称或通道名
+    source_id: str  # 匹配成功后的统一数据源标识
+    payload: dict[str, Any]  # 解包后的实际业务数据载荷
 
 
 def _unwrap_nested_payload(data: dict[str, Any], max_depth: int = 3) -> dict[str, Any]:
@@ -36,6 +36,7 @@ def _unwrap_nested_payload(data: dict[str, Any], max_depth: int = 3) -> dict[str
     """
     msg_data: Any = data
     depth = 0
+    # 循环提取嵌套的 data 或 Data 字典，限制最大深度防死循环
     while (
         isinstance(msg_data, dict)
         and ("Data" in msg_data or "data" in msg_data)
@@ -54,16 +55,16 @@ def _payload_has_signature(payload: dict[str, Any], signature: tuple[str, ...]) 
 
 
 def _payload_matches_predicate(payload: dict[str, Any], predicate: str) -> bool:
-    # 这里集中维护少量需要代码判断的谓词规则，用于补足仅靠字段签名无法识别的来源。
+    """依据高级自定义规则对特定数据源进行精细匹配。"""
     if predicate == "weather_alert":
-        # 气象预警至少应具备标题类字段和类型字段。
+        # 气象预警必须具有标题类字段并且有 type 标识
         return ("title" in payload or "headline" in payload) and "type" in payload
     if predicate == "cenc_report":
-        # 中国地震台网正式测定和自动测定消息都会在类型名中带出固定字样。
+        # 中国地震台网正式测定和自动测定消息都会在类型名中带出固定字样
         info_type_name = str(payload.get("infoTypeName", "") or "")
         return "[正式测定]" in info_type_name or "[自动测定]" in info_type_name
     if predicate == "usgs_report":
-        # USGS 报文通常会附带官方详情地址，可作为辅助识别条件。
+        # USGS 报文通常会附带官方详情地址，可作为辅助识别条件
         return "usgs.gov" in str(payload.get("url", "") or "")
     return False
 
@@ -73,7 +74,7 @@ def _matches_payload_rule(payload: dict[str, Any], entry: SourceEntry) -> bool:
     if not isinstance(payload, dict):
         return False
 
-    # 先检查必要签名字段，只要有一组命中即可进入下一步。
+    # 先检查必要签名字段，只要有一组命中即可进入下一步
     if entry.payload_signatures:
         signature_ok = any(
             _payload_has_signature(payload, signature)
@@ -82,13 +83,13 @@ def _matches_payload_rule(payload: dict[str, Any], entry: SourceEntry) -> bool:
         if not signature_ok:
             return False
 
-    # 若命中了排除字段组合，则说明这条消息更可能属于其他来源，直接剔除。
+    # 若命中了排除字段组合，则说明这条消息更可能属于其他来源，直接剔除
     if entry.payload_exclusions:
         for excluded_keys in entry.payload_exclusions:
             if all(key in payload for key in excluded_keys):
                 return False
 
-    # 当仅靠字段签名仍不足以区分来源时，再用补充谓词做细判。
+    # 当仅靠字段签名仍不足以区分来源时，再用补充谓词做细判
     if entry.payload_predicates:
         return any(
             _payload_matches_predicate(payload, predicate)
@@ -101,7 +102,7 @@ def _matches_payload_rule(payload: dict[str, Any], entry: SourceEntry) -> bool:
 def get_provider_source_map(provider_family: ProviderFamily) -> dict[str, str]:
     """按提供方家族导出名称到数据源标识的映射。"""
     result: dict[str, str] = {}
-    # FAN Studio 主要按来源名映射，Wolfx 主要按消息类型映射。
+    # FAN Studio 主要按来源名映射，Wolfx 主要按消息类型映射
     for source_id in get_source_ids_by_family(provider_family):
         entry = SOURCE_CATALOG[source_id]
         if provider_family == ProviderFamily.FAN_STUDIO:
@@ -135,15 +136,14 @@ def detect_fan_studio_source_entry(data: dict[str, Any]) -> SourceEntry | None:
         return None
 
     payload = _unwrap_nested_payload(data)
-    # 仅挑出具备来源名声明的 FAN Studio 注册项，并按优先级排序后逐个匹配。
+    # 仅挑出具备来源名声明的 FAN Studio 注册项，并按优先级排序后逐个匹配
     fan_entries = [
         entry
         for source_id in get_source_ids_by_family(ProviderFamily.FAN_STUDIO)
         if (entry := SOURCE_CATALOG[source_id]).provider_source_names
     ]
+    # 按优先级从高到低排序，高优先级优先检测，防止通用宽松规则覆盖了精确规则
     fan_entries.sort(key=lambda entry: (entry.priority, entry.source_id))
-
-    # 优先级越高越先匹配，避免较宽松的规则提前吞掉更具体的来源。
 
     for entry in fan_entries:
         if _matches_payload_rule(payload, entry):
@@ -170,7 +170,7 @@ def route_fan_studio_message(data: dict[str, Any]) -> list[RoutedMessage]:
     routed_messages: list[RoutedMessage] = []
     msg_type = str(data.get("type") or "").strip()
 
-    # initial_all 表示一条消息里携带多个来源的初始化快照，需要逐项拆包。
+    # initial_all 表示一条消息里携带多个来源的初始化快照，需要逐项拆包
     if msg_type == "initial_all":
         for key, value in data.items():
             if not isinstance(value, dict):
@@ -184,7 +184,7 @@ def route_fan_studio_message(data: dict[str, Any]) -> list[RoutedMessage]:
 
     if msg_type == "update":
         # update 消息虽然通常携带显式 source，但像 cea / cea-pr 这类同族来源
-        # 仍可能共用同一个外层 source 值，因此优先结合载荷特征做精确识别。
+        # 仍可能共用同一个外层 source 值，因此优先结合载荷特征做精确识别
         source_name = str(data.get("source") or "").strip()
         detected_entry = detect_fan_studio_source_entry(data)
         if detected_entry is not None:
@@ -210,12 +210,12 @@ def route_fan_studio_message(data: dict[str, Any]) -> list[RoutedMessage]:
             ]
 
     explicit_source = str(data.get("source") or "").strip()
-    # 若显式来源存在却没匹配成功，则不再做特征猜测，避免误路由。
+    # 若显式来源存在却没匹配成功，则不再做特征猜测，避免误路由
     if explicit_source:
         return []
 
     detected_entry = detect_fan_studio_source_entry(data)
-    # 最后一层兜底：对缺少来源字段的兼容消息尝试按载荷特征反推来源。
+    # 最后一层兜底：对缺少来源字段的兼容消息尝试按载荷特征反推来源
     if detected_entry is None:
         return []
 
@@ -233,7 +233,7 @@ def route_fan_studio_message(data: dict[str, Any]) -> list[RoutedMessage]:
     ]
 
 
-# 预构建两类常用注册表，便于上层快速按来源名或消息类型查找统一数据源标识。
+# 预构建两类常用注册表，便于上层快速按来源名或消息类型查找统一数据源标识
 FAN_STUDIO_SOURCE_REGISTRY = get_provider_source_map(ProviderFamily.FAN_STUDIO)
 WOLFX_SOURCE_REGISTRY = get_provider_source_map(ProviderFamily.WOLFX)
 

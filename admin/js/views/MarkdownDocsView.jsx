@@ -7,7 +7,7 @@
  *           配合 Mermaid 渲染器实现架构图与时序图的可视化展示。
  */
 
-const { Box, Typography, Button, Chip } = MaterialUI;
+const { Box, Typography, Button, Chip, CircularProgress } = MaterialUI;
 
 /**
  * 文档浏览视图主组件
@@ -107,11 +107,16 @@ function MarkdownDocsView() {
                             </div>
 
                             {/* 条件渲染列表内容 */}
-                            {markdownFiles.length === 0 ? (
+                            {loadingList ? (
+                                <div className="tasks-empty-card markdown-docs-empty-side-card" style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                    <CircularProgress size={24} style={{ marginBottom: '12px' }} />
+                                    <Typography variant="body2" color="text.secondary">正在加载文档列表…</Typography>
+                                </div>
+                            ) : markdownFiles.length === 0 ? (
                                 <div className="tasks-empty-card markdown-docs-empty-side-card">
                                     <div className="tasks-empty-icon">📚</div>
                                     <Typography variant="body1" className="markdown-docs-empty-title">
-                                        {loadingList ? '正在加载文档列表…' : '暂无可浏览文档'}
+                                        暂无可浏览文档
                                     </Typography>
                                 </div>
                             ) : (
@@ -162,9 +167,9 @@ function MarkdownDocsView() {
                             </div>
                         ) : loadingDocument && !markdownDocument ? (
                             // 状态 2：正在发起网络请求时的骨架加载屏
-                            <div className="tasks-empty-card markdown-docs-empty-card">
-                                <div className="tasks-empty-icon">⏳</div>
-                                <Typography variant="h6" className="markdown-docs-empty-title">
+                            <div className="tasks-empty-card markdown-docs-empty-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '200px' }}>
+                                <CircularProgress size={32} style={{ marginBottom: '16px' }} />
+                                <Typography variant="body2" color="text.secondary">
                                     正在加载文档内容…
                                 </Typography>
                             </div>

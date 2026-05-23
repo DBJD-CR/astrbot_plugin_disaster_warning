@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from .source_entry import FusionRole, ProviderFamily, SourceEntry, SourceType
 
+# 统一数据源注册表目录，保存了系统中所有支持接入的数据源及其配置、路由和展示的元数据。
 SOURCE_CATALOG: dict[str, SourceEntry] = {
+    # cea_fanstudio: 中国地震预警网 - 来自 FAN Studio
     "cea_fanstudio": SourceEntry(
         source_id="cea_fanstudio",
         source_enum="fan_studio_cea",
@@ -21,7 +23,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         presentation_type="earthquake_eew",
         text_presenter_key="cea_eew",
         report_policy="cea_cwa",
-        intensity_mode="intensity",
+        intensity_mode="intensity",  # 使用中国烈度标准
         priority=1,
         display_name="中国地震预警网",
         description="中国地震预警网（CEA）- FAN Studio WebSocket",
@@ -45,6 +47,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         payload_signatures=(("epiIntensity", "eventId", "updates"),),
         payload_exclusions=(("province",),),
     ),
+    # cea_pr_fanstudio: 中国地震预警网(省级) - 提供省级细颗粒度的地震预警推送
     "cea_pr_fanstudio": SourceEntry(
         source_id="cea_pr_fanstudio",
         source_enum="fan_studio_cea_pr",
@@ -79,6 +82,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         routing_tags=("fan_studio", "china", "eew", "provincial"),
         payload_signatures=(("epiIntensity", "eventId", "updates", "province"),),
     ),
+    # cea_wolfx: 中国地震预警网 - 来自 Wolfx API
     "cea_wolfx": SourceEntry(
         source_id="cea_wolfx",
         source_enum="wolfx_cenc_eew",
@@ -111,6 +115,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("wolfx_cenc_eew", "cenc_eew", "sc_eew", "fj_eew"),
         routing_tags=("wolfx", "china", "eew"),
     ),
+    # cwa_fanstudio: 台湾中央气象署地震预警 - 来自 FAN Studio
     "cwa_fanstudio": SourceEntry(
         source_id="cwa_fanstudio",
         source_enum="fan_studio_cwa",
@@ -122,7 +127,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         presentation_type="earthquake_eew",
         text_presenter_key="cwa_eew",
         report_policy="cea_cwa",
-        intensity_mode="scale",
+        intensity_mode="scale",  # 台湾地震震度制式
         priority=1,
         display_name="台湾中央气象署",
         description="台湾中央气象署地震预警（CWA）- FAN Studio WebSocket",
@@ -147,6 +152,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         routing_tags=("fan_studio", "taiwan", "eew"),
         payload_signatures=(("shockTime", "updates", "locationDesc"),),
     ),
+    # cwa_fanstudio_report: 台湾中央气象署地震报告 - 正式地震报告(包含等震度图等)
     "cwa_fanstudio_report": SourceEntry(
         source_id="cwa_fanstudio_report",
         source_enum="fan_studio_cwa_report",
@@ -176,6 +182,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         routing_tags=("fan_studio", "taiwan", "report"),
         payload_signatures=(("imageURI", "shockTime"),),
     ),
+    # cwa_wolfx: 台湾中央气象署地震预警 - 来自 Wolfx API
     "cwa_wolfx": SourceEntry(
         source_id="cwa_wolfx",
         source_enum="wolfx_cwa_eew",
@@ -210,6 +217,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("wolfx_cwa_eew", "cwa_eew"),
         routing_tags=("wolfx", "taiwan", "eew"),
     ),
+    # jma_fanstudio: 日本气象厅紧急地震速报 - 来自 FAN Studio
     "jma_fanstudio": SourceEntry(
         source_id="jma_fanstudio",
         source_enum="fan_studio_jma",
@@ -220,8 +228,8 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         parser_name="japan_eew_parser",
         presentation_type="earthquake_eew",
         text_presenter_key="jma_eew",
-        report_policy="jma",
-        intensity_mode="scale",
+        report_policy="jma",  # 日本特定的 EEW 多报次策略
+        intensity_mode="scale",  # 日本震度制式
         priority=1,
         display_name="日本气象厅",
         description="日本气象厅：紧急地震速报 - FAN Studio WebSocket",
@@ -245,6 +253,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         routing_tags=("fan_studio", "japan", "eew"),
         payload_signatures=(("infoTypeName", "final", "epiIntensity"),),
     ),
+    # jma_p2p: 日本气象厅紧急地震速报 - P2P 地震情报
     "jma_p2p": SourceEntry(
         source_id="jma_p2p",
         source_enum="p2p_eew",
@@ -278,6 +287,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("p2p_eew",),
         routing_tags=("p2p", "japan", "eew"),
     ),
+    # jma_wolfx: 日本气象厅紧急地震速报 - 来自 Wolfx API
     "jma_wolfx": SourceEntry(
         source_id="jma_wolfx",
         source_enum="wolfx_jma_eew",
@@ -311,6 +321,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("wolfx_jma_eew", "jma_eew"),
         routing_tags=("wolfx", "japan", "eew"),
     ),
+    # global_quake: 全球地震监测模拟系统客户端推送源 (自建或官方 WebSocket 地址)
     "global_quake": SourceEntry(
         source_id="global_quake",
         source_enum="global_quake",
@@ -338,6 +349,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("global_quake",),
         routing_tags=("global_quake", "global", "eew"),
     ),
+    # cenc_fanstudio: 中国地震台网地震测定数据 - 来自 FAN Studio
     "cenc_fanstudio": SourceEntry(
         source_id="cenc_fanstudio",
         source_enum="fan_studio_cenc",
@@ -371,6 +383,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         payload_signatures=(("infoTypeName",),),
         payload_predicates=("cenc_report",),
     ),
+    # cenc_wolfx: 中国地震台网地震测定数据 - 来自 Wolfx API
     "cenc_wolfx": SourceEntry(
         source_id="cenc_wolfx",
         source_enum="wolfx_cenc_eq",
@@ -401,6 +414,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("wolfx_cenc_eq", "cenc_eqlist"),
         routing_tags=("wolfx", "china", "report"),
     ),
+    # jma_p2p_info: 日本气象厅地震情报报告 - 来自 P2P 地震情报
     "jma_p2p_info": SourceEntry(
         source_id="jma_p2p_info",
         source_enum="p2p_earthquake",
@@ -430,6 +444,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("p2p_earthquake",),
         routing_tags=("p2p", "japan", "report"),
     ),
+    # jma_wolfx_info: 日本气象厅地震情报报告
     "jma_wolfx_info": SourceEntry(
         source_id="jma_wolfx_info",
         source_enum="wolfx_jma_eq",
@@ -459,6 +474,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("wolfx_jma_eq", "jma_eqlist"),
         routing_tags=("wolfx", "japan", "report"),
     ),
+    # usgs_fanstudio: 美国地质调查局全球地震测定报告
     "usgs_fanstudio": SourceEntry(
         source_id="usgs_fanstudio",
         source_enum="fan_studio_usgs",
@@ -470,7 +486,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         presentation_type="earthquake_report",
         text_presenter_key="usgs_report",
         report_policy="none",
-        intensity_mode="magnitude",
+        intensity_mode="magnitude",  # 默认使用震级单位呈现，因为没有烈度数据
         priority=1,
         display_name="美国地质调查局",
         description="美国地质调查局（USGS）：地震测定 - FAN Studio WebSocket",
@@ -490,6 +506,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         payload_signatures=(("url",),),
         payload_predicates=("usgs_report",),
     ),
+    # china_tsunami_fanstudio: 自然资源部海啸预警中心的海啸警报推送
     "china_tsunami_fanstudio": SourceEntry(
         source_id="china_tsunami_fanstudio",
         source_enum="fan_studio_tsunami",
@@ -519,6 +536,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         routing_tags=("fan_studio", "china", "tsunami"),
         payload_signatures=(("warningInfo", "code"),),
     ),
+    # jma_tsunami_p2p: 日本气象厅海啸预报/警报 - 来自 P2P 地震情报
     "jma_tsunami_p2p": SourceEntry(
         source_id="jma_tsunami_p2p",
         source_enum="p2p_tsunami",
@@ -546,6 +564,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_aliases=("p2p_tsunami",),
         routing_tags=("p2p", "japan", "tsunami"),
     ),
+    # china_weather_fanstudio: 中国气象局发布的气象预警
     "china_weather_fanstudio": SourceEntry(
         source_id="china_weather_fanstudio",
         source_enum="fan_studio_weather",

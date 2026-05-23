@@ -24,7 +24,7 @@ class PushFlowHandler:
 
     def __init__(self, manager):
         # 该处理器专注于推送链中的轻量流程编排，不直接承担消息构建细节。
-        self.manager = manager
+        self.manager = manager  # 主消息管理器 MessagePushManager 实例
 
     async def execute_push(
         self,
@@ -39,17 +39,20 @@ class PushFlowHandler:
         """执行完整推送流程：去重、会话执行、后处理与异常遥测。"""
         logger.debug(f"[灾害预警] 执行事件推送流程: {event.id}")
 
+        # 地震重复与烈度/警报合并过滤判断
         if not skip_dedup and not self.manager.deduplicator.should_push_event(event):
             logger.debug(f"[灾害预警] 事件 {event.id} 被去重器过滤")
             return False
 
         try:
+            # 委托消息推送执行服务进行多会话分发与降级尝试
             execution_result = await self.manager.push_execution_service.execute(
                 event,
                 target_sessions=target_sessions,
                 session_config_getter=session_config_getter,
                 commit_state=commit_state,
             )
+            # 执行完成后处理，例如发送分离地图、输出统计过滤摘要与上报指标
             success = await self.handle_execution_result(event, execution_result)
             if return_details:
                 execution_result["success"] = bool(success)
@@ -88,6 +91,7 @@ class PushFlowHandler:
             session_message_format_config=session_message_format_config,
         )
 
+        # 打印本次推送的中文日志摘要 (如通过几个，拦截几个，什么原因拦截等)
         self._log_filter_summary(
             event,
             push_success_count=push_success_count,
@@ -109,6 +113,7 @@ class PushFlowHandler:
             filter_reason_detail_stats=filter_reason_detail_stats,
             send_failure_stats=send_failure_stats,
         )
+        # 上报遥测统计
         await self._track_push_result(
             event,
             push_success_count=push_success_count,
@@ -199,6 +204,7 @@ class PushFlowHandler:
                 grouped_config[config_key] = msg_cfg
             grouped_sessions[config_key].append(session)
 
+        # 启动异步截图并多路发送的后台协程
         for config_key, sessions in grouped_sessions.items():
             # 按消息格式配置分组后再异步派发，避免不同地图样式被错误混发。
             asyncio.create_task(

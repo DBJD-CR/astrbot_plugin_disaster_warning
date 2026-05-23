@@ -23,28 +23,29 @@ class WebSocketManager:
     """WebSocket 连接管理器。"""
 
     def __init__(self, config: dict[str, Any], message_logger=None, telemetry=None):
-        # manager 本体保留共享状态与 façade 接口，
-        # 实际的生命周期、重连、消息循环处理已分别拆到独立服务。
+        # 共享配置与日志、遥测工具依赖注入
         self.config = config
         self.message_logger = message_logger
         self._telemetry = telemetry
+
+        # 共享状态维护
         self.connections: dict[str, ClientWebSocketResponse] = {}
         self.message_handlers: dict[str, Callable] = {}
         self.reconnect_tasks: dict[str, asyncio.Task] = {}
         self.connection_retry_counts: dict[str, int] = {}
         self.fallback_retry_counts: dict[str, int] = {}  # 兜底重试计数
-        self.connection_info: dict[
-            str, dict
-        ] = {}  # 连接元信息，供状态展示/重连/通知复用
+        self.connection_info: dict[str, dict] = {}  # 存放连接 URI, header 等元数据
         self.running = False
         self.session: aiohttp.ClientSession | None = None
-        self.heartbeat_tasks: dict[str, asyncio.Task] = {}  # 心跳任务
-        self.last_heartbeat_time: dict[str, float] = {}  # 最近活跃时间/心跳时间
+        self.heartbeat_tasks: dict[str, asyncio.Task] = {}  # 保活协程任务集合
+        self.last_heartbeat_time: dict[str, float] = {}  # 上一次接收到数据的时间戳
         self._stop_lock = asyncio.Lock()
         self._stopping = False
         self._offline_notify_callback: (
             Callable[[dict[str, Any]], Awaitable[None]] | None
         ) = None
+
+        # 实例化委托服务，保持高内聚低耦合
         self._reconnect_service = WebSocketReconnectService(self)
         self._runtime_service = WebSocketRuntimeService(self)
         self._dispatch_service = WebSocketDispatchService(self)
@@ -63,7 +64,7 @@ class WebSocketManager:
         connection_info: dict[str, Any] | None = None,
     ):
         """建立 WebSocket 连接并托管整个会话生命周期。"""
-        # 多个连接复用同一个 aiohttp 会话，便于统一管理超时、连接池与资源回收。
+        # 复用 aiohttp 会话，保证连接池管理更合理
         if not self.session or self.session.closed:
             logger.warning(f"[灾害预警] WebSocket会话未就绪，正在重新初始化: {name}")
             if self.session and not self.session.closed:
@@ -71,13 +72,13 @@ class WebSocketManager:
                     await self.session.close()
                 except Exception:
                     pass
-            # 复用 http_timeout 配置，避免 ws/http 两套连接超时策略完全脱节。
+            # 引入全局超时配置
             timeout_val = self.config.get("http_timeout", 30)
             timeout = aiohttp.ClientTimeout(total=timeout_val)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
         try:
-            # 连接元数据会同时服务于状态查询、断线重连与离线通知。
+            # 记录连接参数以便重连或状态上报
             self.connection_info[name] = {
                 "uri": uri,
                 "headers": headers,
@@ -87,35 +88,37 @@ class WebSocketManager:
                 **(connection_info or {}),
             }
 
-            # 重试连接要累加计数，首次连接则重置为零。
+            # 递增重试次数
             if is_retry:
                 current_retry = self.connection_retry_counts.get(name, 0) + 1
                 self.connection_retry_counts[name] = current_retry
             else:
                 logger.debug(f"[灾害预警] 正在连接 {name}")
-                # 首次连接时重置重试计数
                 self.connection_retry_counts[name] = 0
 
-            # 统一整理 aiohttp 握手参数，避免连接配置散落各处。
+            # 统一配置建连的超时时间及负载限制
             conn_timeout = self.config.get("connection_timeout", 30)
             connect_kwargs = {
                 "url": uri,
                 "headers": headers or {},
                 "heartbeat": self.config.get("heartbeat_interval", 60),
-                "timeout": conn_timeout,  # aiohttp 内部握手超时
-                "max_msg_size": self.config.get("max_message_size", 2**20),  # 1MB默认
+                "timeout": conn_timeout,  # aiohttp 握手超时限制
+                "max_msg_size": self.config.get(
+                    "max_message_size", 2**20
+                ),  # 默认 1MB 限制
             }
 
-            # 按配置决定是否跳过证书校验。
+            # 按需取消证书校验
             if self.config.get("ssl_verify", True) is False:
                 connect_kwargs["ssl"] = False
 
-            # 额外套一层等待上限，避免底层握手在异常网络环境下长期卡住。
+            # 外挂一层超时保护，防止 DNS 解析或三次握手长久卡死
             websocket = await asyncio.wait_for(
                 self.session.ws_connect(**connect_kwargs),
-                timeout=conn_timeout + 5,  # 略大于内部超时
+                timeout=conn_timeout + 5,
             )
 
+            # 建连成功，记录状态并注册生命周期及心跳协程
             async with websocket:
                 self.connections[name] = websocket
                 self.connection_info[name]["established_time"] = (
@@ -124,16 +127,18 @@ class WebSocketManager:
                 self.connection_info[name].pop("offline_since", None)
                 self.connection_info[name].pop("short_retry_notified", None)
                 logger.info(f"[灾害预警] WebSocket连接成功: {name}")
-                # 连接一旦成功，相关重试计数与活跃时间都要刷新。
+
+                # 重置重连相关的状态变量
                 self.connection_retry_counts[name] = 0
                 self.fallback_retry_counts[name] = 0
                 self.last_heartbeat_time[name] = asyncio.get_running_loop().time()
 
-                # 独立心跳任务负责主动保活与失活检测。
+                # 启动后台应用层心跳保活协程
                 self.heartbeat_tasks[name] = asyncio.create_task(
                     self._heartbeat_loop(name, websocket)
                 )
 
+                # 开启并阻塞在消息循环派发服务中，直到断开
                 await self._dispatch_service.handle_connection_session(
                     name=name,
                     uri=uri,
@@ -142,20 +147,20 @@ class WebSocketManager:
                 )
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            # 网络异常统一进入重连策略。
+            # 常见网络错误或握手超时，走重试容灾逻辑
             logger.warning(f"[灾害预警] 连接中断或失败 {name}: {e}")
             self._handle_connection_error(name, uri, headers, e)
 
         except asyncio.CancelledError:
-            # 停止流程主动取消时不应再触发重连。
+            # 主动关闭或插件卸载引发的任务取消，不做额外处理，正常退出
             logger.info(f"[灾害预警] WebSocket连接任务被取消: {name}")
             self.connections.pop(name, None)
             self.connection_info.pop(name, None)
             raise
         except Exception as e:
+            # 非预期类型错误，上报异常遥测
             logger.error(f"[灾害预警] 未知连接错误 {name}: {type(e).__name__} - {e}")
             logger.debug(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
-            # 未知异常额外上报遥测，便于后续排查真实运行环境问题。
             if self._telemetry and self._telemetry.enabled:
                 asyncio.create_task(
                     self._telemetry.track_error(
@@ -205,11 +210,11 @@ class WebSocketManager:
 
     async def force_reconnect(self, name: str) -> bool:
         """强制立即重连指定连接，跳过原有等待队列。"""
-        # 当前连接仍然健康时，不重复发起重连。
+        # 若已有健康连接，没必要强行断开
         if name in self.connections and not self.connections[name].closed:
             return False
 
-        # 若已有挂起中的重连任务，先取消旧任务，避免重复竞争。
+        # 取消已处于等待计时队列中的待执行重试任务，避免竞争
         if name in self.reconnect_tasks:
             task = self.reconnect_tasks[name]
             if not task.done():
@@ -217,7 +222,7 @@ class WebSocketManager:
                 logger.debug(f"[灾害预警] 取消了 {name} 正在等待的重连任务 (强制重连)")
             self.reconnect_tasks.pop(name, None)
 
-        # 重新连接仍然依赖上次保存的连接元信息。
+        # 检查是否保留了该连接的配置元信息
         info = self.connection_info.get(name)
         if not info:
             logger.warning(f"[灾害预警] 无法重连 {name}: 找不到连接信息")
@@ -226,7 +231,7 @@ class WebSocketManager:
         uri = info.get("uri")
         headers = info.get("headers")
 
-        # 手动重连视为一次全新尝试，因此清空历史重试计数和离线累计状态。
+        # 手动重连开始，所有失败统计和时间标记必须置空
         self.connection_retry_counts[name] = 0
         self.fallback_retry_counts[name] = 0
         info.pop("offline_since", None)
@@ -234,13 +239,13 @@ class WebSocketManager:
 
         logger.info(f"[灾害预警] 正在手动重连 {name}...")
 
-        # 立即异步发起连接，避免阻塞当前调用链。
+        # 异步启动物理连接，不卡死调用线程
         asyncio.create_task(
             self.connect(
                 name,
                 uri,
                 headers,
-                is_retry=False,  # 视为新连接，重置状态
+                is_retry=False,
                 connection_info=info,
             )
         )
@@ -343,7 +348,7 @@ class HTTPDataFetcher:
         self.session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self):
-        # 按次创建短生命周期会话，适合定时拉取场景，避免长期闲置连接占用资源。
+        # 采用 session 上下文模式，每次 fetch 使用完自动回收套接字资源，防止连接池泄漏
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=self.config.get("http_timeout", 30))
         )
@@ -363,6 +368,7 @@ class HTTPDataFetcher:
             return None
 
         try:
+            # 异步拉取 HTTP 接口
             async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()

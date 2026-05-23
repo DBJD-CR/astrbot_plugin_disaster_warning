@@ -159,13 +159,14 @@ class ConfigValidator:
         if not isinstance(cfg, dict):
             return cfg
 
-        # 经纬度校验
+        # 经纬度校验：防止经纬度配置越界导致地图定位或烈度估算崩溃
         lat = cfg.get("latitude")
         if isinstance(lat, (int, float)):
             if lat < -90 or lat > 90:
                 logger.warning(
                     f"[灾害预警] 配置警告: 纬度 {lat} 超出范围 (-90~90)，已自动修正。"
                 )
+                # 限制纬度在 -90.0 至 90.0 度区间内
                 cfg["latitude"] = max(-90.0, min(90.0, float(lat)))
 
         lon = cfg.get("longitude")
@@ -174,22 +175,24 @@ class ConfigValidator:
                 logger.warning(
                     f"[灾害预警] 配置警告: 经度 {lon} 超出范围 (-180~180)，已自动修正。"
                 )
+                # 限制经度在 -180.0 至 180.0 度区间内
                 cfg["longitude"] = max(-180.0, min(180.0, float(lon)))
 
-        # 阈值校验
+        # 阈值校验：本地预计烈度报警下限阈值
         threshold = cfg.get("intensity_threshold")
         if isinstance(threshold, (int, float)):
             if threshold < 0 or threshold > 12:
                 logger.warning(
                     f"[灾害预警] 配置警告: 烈度阈值 {threshold} 超出范围 (0~12)，已自动修正。"
                 )
+                # 烈度通常在 0 至 12 级范围内
                 cfg["intensity_threshold"] = max(0.0, min(12.0, float(threshold)))
 
-        # 地名校验
+        # 地名校验：确保本地监控参考地名为字符串
         if "place_name" in cfg and not isinstance(cfg["place_name"], str):
             cfg["place_name"] = str(cfg["place_name"])
 
-        # 布尔值校验
+        # 布尔值校验：校验本地预计烈度监控开关及严格模式开关
         ConfigValidator._ensure_bool(cfg, "enabled", False)
         ConfigValidator._ensure_bool(cfg, "strict_mode", False)
 
@@ -590,7 +593,7 @@ class ConfigValidator:
             )
             return []
 
-        # 过滤非字符串项
+        # 过滤非字符串项，清洗空字符串或类型错误的会话标识
         valid_sessions = [s for s in sessions if isinstance(s, str) and s.strip()]
         if len(valid_sessions) != len(sessions):
             logger.warning(
@@ -793,7 +796,7 @@ class ConfigValidator:
         if not isinstance(cfg, dict):
             return cfg
 
-        # 确保主要分类存在且为字典
+        # 确保主要分类存在且为字典，规避非字典类型在运行时发生键提取错误
         for key in ["fan_studio", "p2p_earthquake", "wolfx", "global_quake"]:
             if key in cfg:
                 if not isinstance(cfg[key], dict):

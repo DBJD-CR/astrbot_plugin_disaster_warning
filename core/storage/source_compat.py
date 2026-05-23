@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-# 历史别名映射表：把旧来源名、展示名和外部兼容名统一折叠到规范 source_id。
+# 历史别名映射表：把旧来源名、展示名和外部兼容名统一折叠到规范 source_id
+# 包含各种历史插件版本产生的 key 以及 WebSocket 连接中发送的 label
 _ALIAS_MAP: dict[str, str] = {
     "fan_studio_cenc": "cenc_fanstudio",
     "fan_studio_cea": "cea_fanstudio",
@@ -111,6 +112,7 @@ def normalize_source_name(source: str) -> str:
 def format_source_name(source: str) -> str:
     """把来源标识格式化为更适合展示的中文标签。"""
     normalized = normalize_source_name(source)
+    # 如果映射字典里找不到对应的漂亮展示名，则使用归一化后的去重字符串作为兜底
     return _DISPLAY_MAP.get(normalized) or str(source or "").strip() or "未知来源"
 
 

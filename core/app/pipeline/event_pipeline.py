@@ -23,10 +23,17 @@ class EventPipeline:
     def __init__(self, service):
         # 这里保存的是主服务实例引用，不复制任何运行时状态，
         # 以确保流水线始终读取到最新的配置、连接状态与消息推送结果。
-        self.service = service
+        self.service = service  # 主服务 DisasterWarningService 的引用
 
     async def handle(self, event: EventEnvelope) -> None:
-        """执行事件主处理流程。"""
+        """
+        执行事件主处理流程。
+
+        流水线执行过程：
+        1. 获取订阅会话并异步推送事件消息（包含动态渲染、推送过滤等）；
+        2. 记录推送统计（包括最终成功订阅的会话）；
+        3. 向 Web 管理端异步广播最小化的轻量级事件摘要。
+        """
         # 这里保留 envelope 别名，便于后续阅读时明确：
         # 流水线处理的是已经标准化完成的事件对象，而非原始数据源消息。
         envelope = event
@@ -37,7 +44,9 @@ class EventPipeline:
         # 第二阶段：按会话级配置执行推送。
         # 目标会话列表给出候选范围，会话配置读取函数则按会话返回生效配置，
         # 两者组合后，消息管理器即可在一次事件处理中执行差异化过滤与渲染。
-        target_sessions = self.service.session_config_manager.list_target_sessions()
+        target_sessions = (
+            self.service.session_config_manager.list_target_sessions()
+        )  # 获取所有目标会话
         push_result = await self.service.message_manager.push_event(
             event,
             target_sessions=target_sessions,
@@ -51,7 +60,7 @@ class EventPipeline:
         # 统计记录与实际是否推送成功解耦，这样后续仍可分析规则过滤命中率、会话覆盖情况，以及“收到事件但未推送”的业务原因。
         await self.service.statistics_manager.record_push(
             event,
-            pushed_sessions=self.service.message_manager.last_success_sessions,
+            pushed_sessions=self.service.message_manager.last_success_sessions,  # 上一次推送成功的会话列表
         )
 
         # 第四阶段：向管理端广播轻量摘要。
@@ -60,10 +69,10 @@ class EventPipeline:
         if self.service.web_admin_server:
             try:
                 event_summary = {
-                    "id": envelope.id,
-                    "type": envelope.event_type,
-                    "source": envelope.source_id,
-                    "time": datetime.now().isoformat(),
+                    "id": envelope.id,  # 事件唯一标识
+                    "type": envelope.event_type,  # 灾害事件类型 (如 earthquake, tsunami)
+                    "source": envelope.source_id,  # 数据来源
+                    "time": datetime.now().isoformat(),  # 广播到达应用的本地时间
                 }
                 await self.service.web_admin_server.notify_event(event_summary)
             except Exception as ws_e:

@@ -16,9 +16,13 @@ class RuleDecision:
     该对象同时承担链路调试信息载体的职责，便于后续记录过滤原因。
     """
 
+    # 规则最终是否通过
     accepted: bool
+    # 判定放行或拒绝的摘要性陈述
     reason: str = ""
+    # 具体的过滤细节描述，便于在日志调试时查阅详细上下文
     detail: str = ""
+    # 可随决策结果带回上层调用的数据变量字典
     context: dict[str, Any] = field(default_factory=dict)
 
     @classmethod

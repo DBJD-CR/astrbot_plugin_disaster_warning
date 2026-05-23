@@ -27,11 +27,10 @@ except ImportError:
 class TimeConverter:
     """时间转换工具类"""
 
-    # 增加 TIMEZONES 类属性，指向全局的 TIMEZONES 字典
-    # 这是为了解决 type object 'TimeConverter' has no attribute 'TIMEZONES' 错误
+    # 对应预定义的时区字典映射，防止类方法无法获取 TIMEZONES 属性
     TIMEZONES = TIMEZONES
 
-    # 时区缓存
+    # 时区缓存，避免高频创建 ZoneInfo 时区对象造成性能耗损
     _timezone_cache = {}
 
     @staticmethod
@@ -200,6 +199,6 @@ class TimeConverter:
             dt = dt.astimezone(target_tz)
 
         # 返回格式化字符串 + 时区名
-        # 使用 _safe_strftime 替代直接调用 strftime
+        # 使用 _safe_strftime 替代直接调用 strftime，规避 Windows 下 GBK 编码缺陷
         time_str = TimeConverter._safe_strftime(dt, fmt)
         return f"{time_str} ({target_timezone})"

@@ -23,6 +23,7 @@ class CommandTelemetryMixin:
         log_context: str = "命令行为遥测",
     ) -> bool:
         """安全上报命令匿名行为事件。"""
+        # 统一尝试在命令类实例中安全提取插件中的遥测对象
         telemetry = getattr(getattr(self, "plugin", None), "telemetry", None)
         return await track_feature_safely(
             telemetry,

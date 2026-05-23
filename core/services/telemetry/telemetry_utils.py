@@ -20,6 +20,7 @@ async def track_feature_safely(
     log_context: str = "遥测行为事件",
 ) -> bool:
     """安全上报匿名行为事件。"""
+    # 优先检查遥测模块实体是否存在及其内部开启状态
     if not telemetry or not getattr(telemetry, "enabled", False):
         return False
     try:
@@ -39,6 +40,7 @@ async def track_error_safely(
     """安全上报错误事件。"""
     if not telemetry or not getattr(telemetry, "enabled", False):
         return False
+    # 统一转换模块前缀为小写，确保上报规范
     normalized_module = str(module).lower() if module is not None else None
     try:
         return bool(await telemetry.track_error(exception, module=normalized_module))

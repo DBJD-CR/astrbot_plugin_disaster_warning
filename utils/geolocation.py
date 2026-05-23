@@ -7,6 +7,7 @@ import aiohttp
 
 from astrbot.api import logger
 
+# 模块级共享会话，防止高频查询时重复创建和销毁 session 对象从而耗尽系统文件句柄
 _geoip_session: aiohttp.ClientSession | None = None
 
 
@@ -44,9 +45,6 @@ async def fetch_location_from_ip(
 
     返回值：
     - 包含经纬度和地址信息的字典
-
-    异常说明：
-    - 请求失败时抛出异常
     """
     api_url = "https://api.wolfx.jp/geoip.php"
     params = {}

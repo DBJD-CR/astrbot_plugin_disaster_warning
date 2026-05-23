@@ -39,10 +39,15 @@ class SimulationBuildResult:
 class SimulationParamsDefaults:
     """前后端统一使用的默认模拟参数。"""
 
+    # 默认纬度：北京
     latitude: float = 39.9
+    # 默认经度：北京
     longitude: float = 116.4
+    # 默认震级
     magnitude: float = 5.5
+    # 默认震源深度
     depth: float = 10.0
+    # 默认数据源
     source: str = "cea_fanstudio"
 
 
@@ -74,6 +79,7 @@ def get_simulation_params(config: dict[str, Any]) -> dict[str, Any]:
         "earthquake": {
             "label": "地震",
             "icon": "🌍",
+            # 前台模拟参数面板支持的模拟渠道表，确保与静态数据源目录保持同步映射
             "formats": [
                 {
                     "value": "cea_fanstudio",
@@ -163,6 +169,7 @@ def build_earthquake_simulation(
     ts = int(now.timestamp())
     seq = _next_sim_event_sequence()
     sim_id_suffix = f"{ts}_{seq}"
+    # 调用行政区划网格服务解析并翻译模拟震中的位置地名
     final_place_name = region_service.translate_place_name("模拟震中", lat, lon)
 
     payload_attributes: dict[str, Any] = {"test": True, "source_id": source}
@@ -173,6 +180,7 @@ def build_earthquake_simulation(
         "source_enum": source_entry.source_enum,
         "source_type": source_entry.source_type.value,
         "test": True,
+        # 该特权标志允许模拟事件在核心路由链路中绕过对时效、去重等强物理属性的硬过滤限制
         "simulation_bypass_regular_filters": True,
     }
     if source == "usgs_fanstudio":
@@ -221,7 +229,7 @@ def build_earthquake_simulation(
     ]
 
     runtime_config = dict(runtime_config or getattr(manager, "config", {}) or {})
-    # 模拟链路用于验证展示、渲染、发送与本地预估，不应被震级/烈度/报次等规律过滤器拦截。
+    # 模拟链路用于验证展示、渲染、发送与本地预估，不应被震级/烈度/报次等过滤器拦截。
     runtime_config["__simulation_bypass_regular_filters"] = True
     build_policy_state = getattr(manager, "_build_policy_state", None)
     if callable(build_policy_state):
@@ -238,6 +246,7 @@ def build_earthquake_simulation(
         commit_state=False,
     )
 
+    # 评估全局过滤判定结果并收集报告
     global_decision = EarthquakeThresholdRule().evaluate(simulation_context)
     global_pass = global_decision.accepted
     if global_pass:
@@ -245,6 +254,7 @@ def build_earthquake_simulation(
     else:
         report_lines.append("❌ 全局过滤: 拦截 (不满足最小震级/烈度要求)")
 
+    # 评估本地烈度监控触发规则并收集报告
     local_decision = LocalIntensityRule().evaluate(simulation_context)
     local_pass = local_decision.accepted
     local_monitor = policy_state.get("local_monitor")

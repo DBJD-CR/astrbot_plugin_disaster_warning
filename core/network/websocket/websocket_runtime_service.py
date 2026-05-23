@@ -22,24 +22,27 @@ class WebSocketRuntimeService:
 
     async def heartbeat_loop(self, name: str, websocket) -> None:
         """应用层心跳循环。"""
-        # 心跳周期直接复用统一配置，避免不同连接采用不一致的保活节奏。
+        # 读取心跳发送频率配置，若未指定则默认为 30 秒
         interval = self.manager.config.get("heartbeat_interval", 30)
         try:
             while True:
                 await asyncio.sleep(interval)
+                # 套接字连接已断开，心跳循环直接退出
                 if websocket.closed:
                     break
 
                 last_time = self.manager.last_heartbeat_time.get(name, 0)
                 current_time = asyncio.get_running_loop().time()
-                # 若超过两个心跳周期仍无活跃信号，则主动发送 ping 做保活探测。
+                # 判定保活失效：超过两个心跳周期，没有任何数据包到达
                 if current_time - last_time > interval * 2:
                     try:
+                        # 尝试通过 websocket 发送应用层 ping 帧检测死链接
                         await websocket.ping()
                     except Exception as e:
                         logger.warning(
                             f"[灾害预警] WebSocket {name} 的 Ping 保活失败，错误为 {e}"
                         )
+                        # 写入超时原因，物理断开底层套接字
                         await websocket.close(code=1001, message=b"Heartbeat timeout")
                         break
         except asyncio.CancelledError:
@@ -49,6 +52,7 @@ class WebSocketRuntimeService:
 
     async def disconnect(self, name: str) -> None:
         """断开连接。"""
+        # 断开指定命名的物理连接并释放资源
         if name in self.manager.connections:
             try:
                 await self.manager.connections[name].close()
@@ -56,19 +60,22 @@ class WebSocketRuntimeService:
             except Exception as e:
                 logger.error(f"[灾害预警] WebSocket {name} 断开连接时出错，错误为 {e}")
             finally:
-                # 断开后同步清理连接句柄、元数据与心跳任务，避免残留脏状态。
+                # 无论 close 最终是否成功，都必须彻底清理管理器持有的状态，避免脏数据挂载
                 self.manager.connections.pop(name, None)
                 self.manager.connection_info.pop(name, None)
+                # 取消该连接对应的主动心跳保活循环任务
                 if name in self.manager.heartbeat_tasks:
                     self.manager.heartbeat_tasks[name].cancel()
                     self.manager.heartbeat_tasks.pop(name, None)
 
+        # 清除处于等待队列中的重连任务
         if name in self.manager.reconnect_tasks:
             self.manager.reconnect_tasks[name].cancel()
             self.manager.reconnect_tasks.pop(name, None)
 
     async def cancel_and_wait(self, tasks: list[asyncio.Task]) -> None:
         """取消并等待任务结束。"""
+        # 遍历取消全部异步任务，并聚合等待回收
         for task in tasks:
             task.cancel()
         if tasks:
@@ -79,7 +86,7 @@ class WebSocketRuntimeService:
         self.manager.running = True
         self.manager._stopping = False
 
-        # 启动时若共享会话不存在，则先创建，供后续所有连接复用。
+        # 如果共享的 ClientSession 还没就绪或已关闭，在此进行物理初始化
         if not self.manager.session or self.manager.session.closed:
             timeout = aiohttp.ClientTimeout(
                 total=self.manager.config.get("http_timeout", 30)
@@ -93,6 +100,7 @@ class WebSocketRuntimeService:
     async def stop(self) -> None:
         """停止管理器。"""
         async with self.manager._stop_lock:
+            # 引入防止重复停止的并发锁保护
             if self.manager._stopping:
                 logger.debug("[灾害预警] WebSocket管理器已在停止流程中，跳过重复调用")
                 return
@@ -101,11 +109,12 @@ class WebSocketRuntimeService:
                 logger.info("[灾害预警] WebSocket管理器正在停止...")
                 self.manager.running = False
 
-                # 先停重连和心跳，再断开连接，最后关闭共享会话，避免停机期任务继续拉起连接。
+                # 1. 优先关闭所有重连等待任务，防止在停止期间因为连接关闭而触发重连，陷入恶性循环
                 reconnect_tasks = list(self.manager.reconnect_tasks.values())
                 await self.cancel_and_wait(reconnect_tasks)
                 self.manager.reconnect_tasks.clear()
 
+                # 2. 取消所有还在运行的心跳保活任务
                 heartbeat_tasks = [
                     task
                     for task in self.manager.heartbeat_tasks.values()
@@ -114,13 +123,16 @@ class WebSocketRuntimeService:
                 await self.cancel_and_wait(heartbeat_tasks)
                 self.manager.heartbeat_tasks.clear()
 
+                # 3. 物理切断所有现存的 WebSocket 连接句柄
                 for name in list(self.manager.connections.keys()):
                     await self.disconnect(name)
 
+                # 4. 彻底释放并关闭共享的 ClientSession
                 if self.manager.session:
                     await self.manager.session.close()
                     self.manager.session = None
 
+                # 5. 彻底清空所有状态缓存
                 self.manager.connections.clear()
                 self.manager.connection_info.clear()
                 self.manager.connection_retry_counts.clear()

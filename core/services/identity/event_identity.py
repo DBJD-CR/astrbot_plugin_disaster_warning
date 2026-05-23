@@ -31,8 +31,10 @@ class EventIdentityService:
         """从统一事件中解析数据源标识。"""
         identity = getattr(event, "identity", None)
         source_id = ""
+        # 优先从身份对象中抽取
         if isinstance(identity, EventIdentity):
             source_id = identity.source_id
+        # 若未成功获取，则直接从信封顶级属性中索取
         if not source_id:
             source_id = getattr(event, "source_id", "")
         if isinstance(source_id, str) and source_id.strip():
@@ -68,6 +70,7 @@ class EventIdentityService:
                 return value
 
         source_entry = cls.get_source_entry_for_event(event)
+        # 获取源数据解析时绑定的物理报数定义键名
         report_field_name = (
             source_entry.resolve_metadata_field("report_num_field")
             if source_entry is not None
@@ -84,6 +87,7 @@ class EventIdentityService:
         field_names: list[str] = []
         if report_field_name:
             field_names.append(str(report_field_name))
+        # 通用兜底后备搜索键列表
         for fallback_name in (
             "report_num",
             "ReportNum",
@@ -95,6 +99,7 @@ class EventIdentityService:
             if fallback_name not in field_names:
                 field_names.append(fallback_name)
 
+        # 依次从不同数据嵌套层中尝试取回候选报数值，保证鲁棒性
         for field_name in field_names:
             if isinstance(domain_metadata, dict):
                 candidates.append(domain_metadata.get(field_name))
@@ -133,6 +138,7 @@ class EventIdentityService:
             return None
         if dt.tzinfo is not None:
             return dt
+        # 补全缺省时区信息
         inferred_tz = cls.infer_source_timezone(source_id)
         return dt.replace(tzinfo=inferred_tz)
 
@@ -152,6 +158,7 @@ class EventIdentityService:
         """获取事件发生时间并补齐时区信息。"""
         envelope = event
         raw_time = None
+        # 根据领域事件的具体业务形态提取主时间字段
         if isinstance(envelope.event, EarthquakeEvent):
             raw_time = envelope.event.occurred_at
         elif isinstance(envelope.event, TsunamiEvent):
@@ -235,11 +242,13 @@ class EventIdentityService:
         domain_event = envelope.event
         source_id = envelope.source_id or self.resolve_source_id(event)
 
+        # 优先读取由信源解析层显式映射封装出的 EventIdentity 稳定事件 ID
         if isinstance(identity, EventIdentity):
             stable_event_id = str(identity.event_id or "").strip()
             if stable_event_id:
                 return "|".join([source_id, stable_event_id])
 
+        # 无稳定身份 ID 时的保底唯一键策略，按时空属性合并以区分不同实体
         if isinstance(domain_event, EarthquakeEvent):
             place_name = (getattr(domain_event, "place_name", None) or "").strip()
             shock_time = self.resolve_event_time_utc(event)

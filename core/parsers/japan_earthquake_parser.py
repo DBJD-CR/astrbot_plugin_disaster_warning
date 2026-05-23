@@ -46,8 +46,9 @@ class JmaEarthquakeP2PParser(BaseParser):
             return None
 
     def _parse_earthquake_data(self, data: dict[str, Any]) -> EventEnvelope | None:
-        """解析地震情报。"""
+        """解析地震情报数据。"""
         try:
+            # 深入提取 P2P 嵌套结构中的字段
             earthquake_info = data.get("earthquake", {})
             hypocenter = earthquake_info.get("hypocenter", {})
 
@@ -59,10 +60,11 @@ class JmaEarthquakeP2PParser(BaseParser):
             issue_type = issue.get("type", "") if isinstance(issue, dict) else ""
 
             magnitude = safe_float_convert(magnitude_raw)
+            # 过滤 P2P 默认的缺省值
             if magnitude == -1:
                 magnitude = None
 
-            # 仅在非震度速报场景下把震级视为硬性字段，兼容日本震度速报消息。
+            # 仅在非震度速报场景下把震级视为硬性字段，兼容日本震度速报消息
             if magnitude is None and issue_type != "ScalePrompt":
                 logger.error(
                     f"[灾害预警] {self.source_id} 震级解析失败: {magnitude_raw}"
@@ -82,6 +84,7 @@ class JmaEarthquakeP2PParser(BaseParser):
                 )
                 return None
 
+            # 提取最大震度并转换为浮点数值形式
             max_scale_raw = earthquake_info.get("maxScale", -1)
             scale = (
                 ScaleConverter.convert_p2p_scale(max_scale_raw)
@@ -92,7 +95,7 @@ class JmaEarthquakeP2PParser(BaseParser):
             depth = safe_float_convert(hypocenter.get("depth"))
             shock_time = self._parse_datetime(earthquake_info.get("time", ""))
 
-            # 日本地震情报可能带有订正类型，这里统一映射为中文说明。
+            # 日本地震情报可能带有订正类型，这里统一映射为中文说明
             correct_type = data.get("issue", {}).get("correct", "")
             correct_mapping = {
                 "ScaleOnly": "震度订正",
@@ -102,7 +105,7 @@ class JmaEarthquakeP2PParser(BaseParser):
             correct_str = correct_mapping.get(correct_type, "")
 
             source_entry = get_source_entry(self.source_id)
-            # 原始观测点与自由评论保留到元数据中，供后续详情展示复用。
+            # 原始观测点与自由评论保留到元数据中，供后续详情展示复用
             jma_points = [
                 point
                 for point in list(data.get("points") or [])
@@ -115,6 +118,7 @@ class JmaEarthquakeP2PParser(BaseParser):
                 if isinstance(free_form_comment, str):
                     jma_comment = free_form_comment.strip()
 
+            # 整合元数据
             metadata = {
                 "source_family": "p2p",
                 "source_enum": source_entry.source_enum if source_entry else "",
@@ -132,6 +136,7 @@ class JmaEarthquakeP2PParser(BaseParser):
                 "jma_warning_area_ranges": [],
             }
             event_id = str(data.get("id", "") or "").strip()
+            # 缺少正式事件ID时使用时间与地点拼出稳定回退ID
             if not event_id:
                 fallback_time = (
                     shock_time.strftime("%Y%m%d%H%M%S")
@@ -142,6 +147,8 @@ class JmaEarthquakeP2PParser(BaseParser):
                     str(place_name or "unknown_place").strip() or "unknown_place"
                 )
                 event_id = f"jma_info_{fallback_time}_{fallback_place}"
+
+            # 实例化地震领域事件
             domain_event = EarthquakeEvent(
                 occurred_at=shock_time,
                 latitude=lat,
@@ -152,6 +159,8 @@ class JmaEarthquakeP2PParser(BaseParser):
                 scale=scale,
                 metadata=dict(metadata),
             )
+
+            # 构造身份模型
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -171,6 +180,8 @@ class JmaEarthquakeP2PParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 包装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,
@@ -206,13 +217,13 @@ class JmaEarthquakeWolfxParser(BaseParser):
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
         """解析 Wolfx 日本气象厅地震列表。"""
         try:
-            # Wolfx 中只对日本地震列表消息做处理，其余类型直接跳过。
+            # Wolfx 中只对日本地震列表消息做处理，其余类型直接跳过
             if data.get("type") != "jma_eqlist":
                 logger.debug(f"[灾害预警] {self.source_id} 非 JMA 地震列表数据，跳过")
                 return None
 
             eq_info = None
-            # Wolfx 列表消息通常以 No1、No2 等键承载首条记录，这里取首个有效项。
+            # Wolfx 列表消息通常以 No1、No2 等键承载首条记录，这里取首个有效项
             for key, value in data.items():
                 if key.startswith("No") and isinstance(value, dict):
                     eq_info = value
@@ -221,6 +232,7 @@ class JmaEarthquakeWolfxParser(BaseParser):
             if not eq_info:
                 return None
 
+            # 处理带有 "km" 单位的深度字符串
             depth_raw = eq_info.get("depth")
             depth = None
             if depth_raw:
@@ -235,6 +247,7 @@ class JmaEarthquakeWolfxParser(BaseParser):
             magnitude = safe_float_convert(eq_info.get("magnitude"))
             info_type = data.get("Title", "")
 
+            # 收集自由文本评论
             comments = eq_info.get("comments")
             jma_comment = ""
             if isinstance(comments, dict):
@@ -247,6 +260,8 @@ class JmaEarthquakeWolfxParser(BaseParser):
                 for point in list(eq_info.get("points") or [])
                 if isinstance(point, dict)
             ]
+
+            # 解析预警区域范围与震度区间
             warn_area = eq_info.get("WarnArea")
             jma_warn_area = ""
             jma_warning_area_ranges: list[str] = []
@@ -275,7 +290,10 @@ class JmaEarthquakeWolfxParser(BaseParser):
                 "jma_warning_areas": [jma_warn_area] if jma_warn_area else [],
                 "jma_warning_area_ranges": jma_warning_area_ranges,
             }
+
             event_id = str(eq_info.get("md5", "") or "")
+
+            # 实例化地震领域模型
             domain_event = EarthquakeEvent(
                 occurred_at=self._parse_datetime(eq_info.get("time", "")),
                 latitude=safe_float_convert(eq_info.get("latitude")),
@@ -286,6 +304,8 @@ class JmaEarthquakeWolfxParser(BaseParser):
                 place_name=eq_info.get("location", ""),
                 metadata=dict(metadata),
             )
+
+            # 构造身份模型
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -307,6 +327,8 @@ class JmaEarthquakeWolfxParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 封装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,

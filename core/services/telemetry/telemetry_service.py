@@ -34,7 +34,9 @@ class TelemetryManager:
     负责异步发送匿名遥测数据，并集中管理实例标识、脱敏与上报策略。
     """
 
+    # 统一接收遥测的云端接入服务端点
     _ENDPOINT = "https://telemetry.aloys233.top/api/ingest"
+    # App Key 经过 base64 编码，增加源码探测复杂度
     _ENCODED_KEY = "dGtfVFMxaVEtcGVJbUlKczFVM3VBcGM4anREUlRhbC00VGY="
     _APP_KEY = base64.b64decode(_ENCODED_KEY).decode()
 
@@ -152,6 +154,7 @@ class TelemetryManager:
                 "X-App-Key": self._APP_KEY,
             }
 
+            # 异步非阻塞发起匿名上报请求
             async with session.post(
                 self._ENDPOINT, json=payload, headers=headers
             ) as response:
@@ -233,6 +236,7 @@ class TelemetryManager:
         try:
             config_copy = copy.deepcopy(config)
 
+            # 对可能存有敏感信息的键进行严格删除脱敏，确保用户隐私安全
             if "admin_users" in config_copy:
                 del config_copy["admin_users"]
             if "target_sessions" in config_copy:
@@ -278,6 +282,7 @@ class TelemetryManager:
         - module: 发生错误的模块名
         """
         raw_message = str(exception)
+        # 通过预设规则判定，忽略常规网络抖动或主动取消等高频无价值错误，减少服务器遥测数据噪声
         if self._should_skip_error_telemetry(exception, raw_message, module):
             logger.debug(
                 "[灾害预警] 命中遥测噪声过滤规则，跳过错误上报："
@@ -299,6 +304,7 @@ class TelemetryManager:
                 type(exception), exception, exception.__traceback__
             )
         )
+        # 对异常堆栈进行强力脱敏过滤，剔除涉及宿主机私人用户名及本地系统特有文件绝对路径的信息
         data["stack"] = self._sanitize_stack(stack)[:4000]
 
         return await self.track("error", data)
@@ -314,9 +320,11 @@ class TelemetryManager:
         message = (raw_message or "").lower()
         module_name = (module or "").lower()
 
+        # 协程撤销和生成器主动回收不属于运行期错误，无需遥测
         if error_type in {"CancelledError", "GeneratorExit"}:
             return True
 
+        # Playwright 主动或被动关闭错误无需遥测
         if error_type == "TargetClosedError":
             return True
         if "target page, context or browser has been closed" in message:
@@ -326,6 +334,7 @@ class TelemetryManager:
         ):
             return True
 
+        # 宿主机上 Playwright 二进制依赖缺失错误不应归结为插件逻辑错误，跳过遥测
         if (
             "executable doesn't exist" in message
             or "playwright install" in message
@@ -333,6 +342,7 @@ class TelemetryManager:
         ):
             return True
 
+        # WebSocket 物理断线或心跳心跳响应超时等网络扰动无需遥测
         if "websocket异常关闭" in message and "1006" in message:
             return True
         if module_name.startswith("core.websocket_manager.connect") and any(
@@ -348,6 +358,7 @@ class TelemetryManager:
         ):
             return True
 
+        # Playwright 渲染地图卡片由于不可抗力网络原因（如地图瓦片服务请求限流或阻断）而导航超时的错误，跳过遥测
         if module_name.startswith("core.browser_manager.render_card") and any(
             marker in message
             for marker in (

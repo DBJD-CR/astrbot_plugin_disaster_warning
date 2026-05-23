@@ -66,6 +66,7 @@ def _is_source_enabled_by_catalog(source_id: str, data_sources: dict[str, Any]) 
     if source_entry is None:
         return True
 
+    # 获取数据源组配置，如果组被禁用，则该数据源禁用
     group_cfg = data_sources.get(source_entry.config_group, {})
     if not isinstance(group_cfg, dict):
         return True
@@ -73,6 +74,7 @@ def _is_source_enabled_by_catalog(source_id: str, data_sources: dict[str, Any]) 
     if group_cfg.get("enabled", True) is False:
         return False
 
+    # 返回具体数据源开关的布尔值
     return bool(group_cfg.get(source_entry.config_key, True))
 
 
@@ -84,20 +86,24 @@ class DisasterWarningService:
 
     def __init__(self, config: dict[str, Any], context):
         # 主服务负责持有全局依赖、共享状态，并装配生命周期、运行时调度、通知与缓存等子服务。
-        self.config = config
-        self.context = context
-        self.running = False
+        self.config = config  # 插件的全局配置字典
+        self.context = context  # 框架上下文环境
+        self.running = False  # 运行状态标识
         # 启停锁用于避免重复启动或并发停止时出现状态竞争。
         self._start_lock = asyncio.Lock()
         self._stop_lock = asyncio.Lock()
-        self._stopping = False
+        self._stopping = False  # 正在停止标识
 
         # 这一组对象属于全局基础能力，基本会被多个子服务共享使用。
-        self.message_logger = MessageLogger(config, "disaster_warning")
-        self.statistics_manager = StatisticsManager(config)
-        self._telemetry: TelemetryManager | None = None
-        self.session_config_manager = SessionConfigManager(config)
-        self.source_runtime_query = SourceRuntimeQueryService(config)
+        self.message_logger = MessageLogger(
+            config, "disaster_warning"
+        )  # 消息日志持久化服务
+        self.statistics_manager = StatisticsManager(config)  # 灾害事件统计管理器
+        self._telemetry: TelemetryManager | None = None  # 遥测服务管理器
+        self.session_config_manager = SessionConfigManager(config)  # 临时会话配置管理器
+        self.source_runtime_query = SourceRuntimeQueryService(
+            config
+        )  # 数据源运行时查询辅助服务
 
         # WebSocket 管理器与消息推送管理器属于核心基础设施，需在初始化阶段提前装配。
         self.ws_manager = WebSocketManager(
@@ -118,14 +124,17 @@ class DisasterWarningService:
         self._initialize_parsers()
 
         # 这些运行时容器会被生命周期服务与运行时服务共同维护。
-        self.connections = {}
-        self.connection_tasks = []
-        self.scheduled_tasks = []
-        self.background_tasks: set[asyncio.Task] = set()
-        self.web_admin_server = None
+        self.connections = {}  # 启用的连接方案配置表
+        self.connection_tasks = []  # WebSocket 监听任务句柄列表
+        self.scheduled_tasks = []  # 定时轮询拉取任务句柄列表
+        self.background_tasks: set[asyncio.Task] = set()  # 通用异步后台任务集合
+        self.web_admin_server = None  # Web管理后台服务器实例
 
         # 地震列表缓存主要服务于命令查询与管理端展示。
-        self.earthquake_lists = {"cenc": {}, "jma": {}}
+        self.earthquake_lists = {
+            "cenc": {},
+            "jma": {},
+        }  # 中国地震局及日本气象厅地震列表数据缓存
         self.earthquake_list_service = EarthquakeListService(self.earthquake_lists)
 
         # 缓存文件统一落在插件数据目录下，便于跨重启恢复运行状态。
@@ -148,15 +157,27 @@ class DisasterWarningService:
     def _setup_runtime_services(self) -> None:
         """装配灾害服务运行时子服务。"""
         # 以下服务分别承接事件流水线、生命周期、运行时调度、缓存、状态整理、通知、重连与接入旁路编排，主服务本身只保留高层协调职责。
-        self.event_pipeline = EventPipeline(self)
-        self.lifecycle_service = DisasterServiceLifecycleService(self)
-        self.runtime_service = DisasterServiceRuntimeService(self)
-        self.cache_service = DisasterServiceCacheService(self)
-        self.status_service = DisasterServiceStatusService(self)
-        self.notice_service = DisasterServiceNoticeService(self)
-        self.reconnect_service = DisasterServiceReconnectService(self)
-        self.source_ingress_side_effect_service = SourceIngressSideEffectService(self)
-        self.event_ingress_dispatch_service = EventIngressDispatchService(self)
+        self.event_pipeline = EventPipeline(self)  # 事件流处理流水线
+        self.lifecycle_service = DisasterServiceLifecycleService(
+            self
+        )  # 服务启停生命周期服务
+        self.runtime_service = DisasterServiceRuntimeService(
+            self
+        )  # 运行时网络/轮询驱动服务
+        self.cache_service = DisasterServiceCacheService(self)  # 历史缓存管理服务
+        self.status_service = DisasterServiceStatusService(self)  # 运行状态统计上报服务
+        self.notice_service = DisasterServiceNoticeService(
+            self
+        )  # 服务通知、下线广播服务
+        self.reconnect_service = DisasterServiceReconnectService(
+            self
+        )  # 重连机制决策服务
+        self.source_ingress_side_effect_service = SourceIngressSideEffectService(
+            self
+        )  # 数据流入的副作用处理服务
+        self.event_ingress_dispatch_service = EventIngressDispatchService(
+            self
+        )  # 数据流入分配服务
 
     def _initialize_parsers(self):
         """初始化各数据源对应的解析器。"""
@@ -175,7 +196,7 @@ class DisasterWarningService:
         return parser.parse_message(message)
 
     def _check_registry_integrity(self):
-        """检查数据源目录与展示注册入口的一致性。"""
+        """检查数据源目录与展示注册入口的一致性，缺少对应渲染器时输出警告日志。"""
         source_presentation_types = {
             entry.presentation_type for entry in SOURCE_CATALOG.values()
         }
@@ -191,6 +212,7 @@ class DisasterWarningService:
             if isinstance(entry.source_enum, str) and entry.source_enum.strip()
         }
 
+        # 检查未匹配的卡片/文本渲染器
         unresolved_presenters = {
             presentation_type
             for presentation_type in source_presentation_types
@@ -235,8 +257,8 @@ class DisasterWarningService:
             # 初始化阶段只做“静态装配”：校验注册表、加载基础数据、注册解析器调度、生成连接计划。
             validate_catalog_parser_names()
             self._check_registry_integrity()
-            await region_service.load_data_async()
-            self.http_fetcher = HTTPDataFetcher(self.config)
+            await region_service.load_data_async()  # 加载地理省份数据文件
+            self.http_fetcher = HTTPDataFetcher(self.config)  # 初始化 HTTP 轮询拉取组件
             self._register_handlers()
             self._configure_connections()
             logger.info("[灾害预警] 灾害预警服务初始化完成")
@@ -314,6 +336,7 @@ class DisasterWarningService:
         except Exception as e:
             logger.debug(f"[灾害预警] 更新 EEW 查询状态失败（已忽略）: {e}")
 
+        # 启动静默期过滤逻辑，防止插件重载后反复造成消息推送
         if self.is_in_silence_period():
             debug_config = self.config.get("debug_config", {})
             silence_duration = debug_config.get("startup_silence_duration", 0)
@@ -387,7 +410,7 @@ _disaster_service: DisasterWarningService | None = None
 async def get_disaster_service(
     config: dict[str, Any], context
 ) -> DisasterWarningService:
-    """获取灾害预警服务实例。"""
+    """获取灾害预警服务单例实例。"""
     global _disaster_service
 
     if _disaster_service is None:
@@ -398,7 +421,7 @@ async def get_disaster_service(
 
 
 async def stop_disaster_service():
-    """停止灾害预警服务。"""
+    """停止并注销灾害预警服务。"""
     global _disaster_service
 
     if _disaster_service:

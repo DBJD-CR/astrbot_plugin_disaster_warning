@@ -21,13 +21,15 @@ class DisasterServiceStatusService:
 
     def __init__(self, service):
         # 主服务提供运行标志、连接任务、统计管理器等原始状态来源。
-        self.service = service
+        self.service = service  # 主服务 DisasterWarningService 实例
         # 运行时查询服务负责把配置层的数据源开关整理成管理端可消费的状态结构。
         self._source_runtime_query = SourceRuntimeQueryService(service.config)
 
     def get_service_status(self) -> dict[str, Any]:
         """获取服务状态。"""
-        connection_status = self.service.ws_manager.get_all_connections_status()
+        connection_status = (
+            self.service.ws_manager.get_all_connections_status()
+        )  # 物理 WebSocket 连接活跃表
         # 该值反映的是“当前已连上的 WebSocket 连接数量”，
         # 与配置中声明了多少连接、启动过多少任务并不完全等价。
         active_websocket_connections = sum(
@@ -64,9 +66,11 @@ class DisasterServiceStatusService:
 
     def get_uptime(self) -> str:
         """获取服务运行时间。"""
+        # 未启动时直接返回说明文本
         if not self.service.running or not hasattr(self.service, "start_time"):
             return "未运行"
 
+        # 计算自启动到当前时间的间隔
         delta = datetime.now(timezone.utc) - self.service.start_time
         days = delta.days
         hours, remainder = divmod(delta.seconds, 3600)
@@ -84,6 +88,6 @@ class DisasterServiceStatusService:
         return "".join(parts)
 
     def get_active_data_sources(self) -> list[str]:
-        """获取活跃的数据源。"""
+        """获取当前配置中已启用的活跃数据源列表。"""
         # 这里返回的是“配置上启用”的数据源标签集合，不等同于实时连接一定在线。
         return self._source_runtime_query.get_enabled_source_labels()

@@ -27,12 +27,15 @@ class TsunamiParser(BaseParser):
 
     def _build_envelope(self, tsunami_data: dict[str, Any]) -> EventEnvelope | None:
         """把海啸原始字典封装为统一事件包裹体。"""
+        # 兼容各不同子属性块
         warning_info = tsunami_data.get("warningInfo", {}) or {}
         time_info = tsunami_data.get("timeInfo", {}) or {}
-        shock_info = tsunami_data.get("shockInfo", {}) or {}
+        default_shock_info = tsunami_data.get("shockInfo")
+        # 兼容无嵌套属性的直接取值
+        shock_info = default_shock_info if isinstance(default_shock_info, dict) else {}
         details = tsunami_data.get("details", {}) or {}
 
-        # 发布时间、更新时间与震源时间在不同来源中键名并不一致，这里统一兼容提取。
+        # 兼容三种不同的发震、更新与发布时间键名
         issue_time_str = (
             time_info.get("alarmDate")
             or time_info.get("issueTime")
@@ -43,6 +46,7 @@ class TsunamiParser(BaseParser):
         update_time_str = time_info.get("updateDate") or ""
         shock_time_str = shock_info.get("shockTime") or ""
 
+        # 解析时间字符串为日期对象
         issue_time = (
             self._parse_datetime(issue_time_str)
             if issue_time_str
@@ -54,7 +58,7 @@ class TsunamiParser(BaseParser):
         level = (warning_info.get("level") or tsunami_data.get("level") or "").strip()
         title = (warning_info.get("title") or tsunami_data.get("title") or "").strip()
 
-        # 若原始消息没有直接给出标题，则根据警报等级补出可展示标题。
+        # 根据海啸警报级别自动归纳缺省的展示标题
         if not title and level:
             if level == "信息":
                 title = "海啸信息"
@@ -63,13 +67,14 @@ class TsunamiParser(BaseParser):
             else:
                 title = f"海啸{level}警报"
 
+        # 若依然缺失标题，视为无法解析，打印节流警告后返回 None
         if not title:
             warning_msg = f"[灾害预警] {self.source_id} 海啸消息缺少标题，跳过处理"
             if self._should_log_warning("missing_tsunami_title", warning_msg):
                 logger.debug(warning_msg)
             return None
 
-        # 预报列表、监测站与附图链接都保留到元数据中，供后续展示层直接复用。
+        # 收集预报地区列表、海啸波位水位监测站及分布图附件
         forecasts = tsunami_data.get("forecasts", []) or []
         monitoring_stations = (
             tsunami_data.get("waterLevelMonitoring")
@@ -79,7 +84,7 @@ class TsunamiParser(BaseParser):
         maps = details.get("maps", {}) or {}
 
         event_id = str(tsunami_data.get("id", "") or "").strip()
-        # 缺少稳定事件标识时，退化为由编号、批次、标题和发布时间拼成的稳定键。
+        # 缺失 Event ID 时根据海啸报文特征（编号、批次、发布时间等）拼合出回退 ID
         if not event_id:
             stable_parts = [
                 str(tsunami_data.get("code", "") or "").strip(),
@@ -97,6 +102,7 @@ class TsunamiParser(BaseParser):
                 f"[灾害预警] {self.source_id} 海啸消息缺少稳定id，已使用回退事件ID: {event_id}"
             )
 
+        # 整理副标题与发布机构名称
         subtitle = (
             warning_info.get("subtitle")
             or warning_info.get("caption")
@@ -147,12 +153,16 @@ class TsunamiParser(BaseParser):
             if source_entry
             else "tsunami",
         }
+
+        # 实例化海啸领域模型
         domain_event = TsunamiEvent(
             title=title,
             level=level,
             issued_at=issue_time,
             metadata=dict(metadata),
         )
+
+        # 构造事件身份对象
         identity = EventIdentity(
             event_id=event_id,
             source_id=self.source_id,
@@ -201,7 +211,7 @@ class TsunamiParser(BaseParser):
             if self._is_heartbeat_message(msg_data):
                 return None
 
-            # 海啸来源有时返回单对象，有时返回列表，这里统一整理为列表后处理。
+            # 支持列表和单对象两种封装形态
             events = []
             if isinstance(msg_data, dict):
                 events = [msg_data]
@@ -239,7 +249,7 @@ class JmaTsunamiP2PParser(BaseParser):
             data = json.loads(message)
             code = data.get("code")
 
-            # P2P 中 552 表示日本海啸预报，其余业务码直接忽略。
+            # P2P 中 552 业务码专指日本津波予報（海啸警报），其余直接跳过
             if code == 552:
                 logger.debug(f"[灾害预警] {self.source_id} 收到津波予報(code:552)")
                 return self._parse_tsunami_data(data)
@@ -260,7 +270,7 @@ class JmaTsunamiP2PParser(BaseParser):
             areas = data.get("areas", [])
             cancelled = data.get("cancelled", False)
 
-            # 日本海啸预报会按区域给出不同等级，这里先归并出一个最高等级用于标题展示。
+            # 日本海啸按等级高低依次划分为：MajorWarning（大津波警报）、Warning（津波警报）、Watch（注意报）、None、Unknown
             max_grade = "Unknown"
             if cancelled:
                 max_grade = "解除"
@@ -272,6 +282,7 @@ class JmaTsunamiP2PParser(BaseParser):
                     grade = area.get("grade", "Unknown")
                     if grade in grades:
                         idx = grades.index(grade)
+                        # 在所有受影响的海域中找出最严重的警报类型作为主标题
                         if idx > max_grade_idx:
                             max_grade_idx = idx
                             max_grade = grade
@@ -297,6 +308,8 @@ class JmaTsunamiP2PParser(BaseParser):
                 "org_unit": "日本气象厅",
                 "forecasts": areas,
             }
+
+            # 使用发布时间、标题等构造回退 ID
             event_id = str(data.get("id", "") or data.get("_id", "") or "").strip()
             if not event_id:
                 stable_parts = [
@@ -310,12 +323,16 @@ class JmaTsunamiP2PParser(BaseParser):
                     if stable_parts
                     else "jma_tsunami_unknown"
                 )
+
+            # 构造海啸领域模型
             domain_event = TsunamiEvent(
                 title=title,
                 level=max_grade,
                 issued_at=issue_time,
                 metadata=dict(metadata),
             )
+
+            # 构建唯一的身份标识
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -332,6 +349,8 @@ class JmaTsunamiP2PParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 包装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,

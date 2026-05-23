@@ -33,7 +33,7 @@ class MessageBuildService:
 
     def __init__(self, manager):
         # 通过主消息管理器复用构建器、发送器、缓存和配置能力。
-        self.manager = manager
+        self.manager = manager  # 主消息管理器 MessagePushManager 实例
 
     @staticmethod
     def _get_envelope(event: EventEnvelope):
@@ -64,7 +64,7 @@ class MessageBuildService:
 
     @staticmethod
     def _get_split_map_source_ids() -> set[str]:
-        """返回需要分离发送地图的地震预警来源集合。"""
+        """返回需要分离发送地图的地震预警来源集合（如 EEW 数据源排除 global_quake）。"""
         return set(get_source_ids_by_type(SourceType.EARTHQUAKE_WARNING)) - {
             "global_quake"
         }
@@ -159,12 +159,14 @@ class MessageBuildService:
             )
             return False
 
+        # 调用抓取服务拉取远程图片二进制数据
         fetch_result = await self.manager.fetch_remote_media(
             normalized_url,
             expected_kind="image",
         )
         if fetch_result and fetch_result.get("data"):
             try:
+                # 转换为 Base64 结构插入消息链
                 b64_data = base64.b64encode(fetch_result["data"]).decode()
                 chain.chain.append(Comp.Image.fromBase64(b64_data))
                 return True
@@ -184,6 +186,7 @@ class MessageBuildService:
                 f"error={fetch_result.get('exception_type') or 'FetchError'}: {fetch_result.get('error')}"
             )
 
+        # 抓取或 Base64 转换失败后，若开启 URL 回退，则尝试利用 URL 方式插入图片组件
         if allow_url_fallback:
             try:
                 chain.chain.append(Comp.Image.fromURL(normalized_url))
@@ -197,7 +200,7 @@ class MessageBuildService:
         return False
 
     def build_message(self, event: EventEnvelope) -> MessageChain:
-        """构建同步消息。"""
+        """构建消息（同步单文本）。"""
         # 同步构建路径只生成文本消息，适用于不需要额外附件的轻量场景。
         source_id = self._resolve_source_id(event)
         message_format_config = self.manager.config.get("message_format", {})
@@ -217,7 +220,7 @@ class MessageBuildService:
         source_id = self._resolve_source_id(event)
         message_format_config = active_config.get("message_format", {})
 
-        # 若当前事件满足 Global Quake 卡片条件，则优先直接返回整张卡片消息。
+        # 若当前事件满足 Global Quake 卡片条件，则优先直接返回整张卡片消息（包含内置地图和指标图）。
         global_quake_card = await self._try_build_global_quake_card(
             event,
             source_id=source_id,
@@ -227,6 +230,7 @@ class MessageBuildService:
         if global_quake_card is not None:
             return global_quake_card
 
+        # 否则常规构建普通文本消息
         chain = self.manager.text_message_builder.build(
             event,
             source_id,
@@ -234,14 +238,18 @@ class MessageBuildService:
             full_config=active_config,
         )
 
+        # 地图渲染与插入
         await self._append_map_if_needed(
             chain,
             event,
             source_id=source_id,
             message_format_config=message_format_config,
         )
+        # 气象警报图标附加
         await self._append_weather_icon_if_needed(chain, event, active_config)
+        # 海啸观测与预报图附加
         await self._append_tsunami_media_if_needed(chain, event)
+        # 台湾正式地震报告图片与等震度图附加
         await self._append_cwa_report_media_if_needed(chain, event, source_id)
         return chain
 
@@ -267,14 +275,17 @@ class MessageBuildService:
             ):
                 return
 
+            # 调用 Playwright 动态渲染地图图片
             map_image_path = await self.render_map_image(lat, lon, config)
             if not map_image_path:
                 return
 
+            # 以 Base64 读取渲染后的图片数据并封装为消息链
             with open(map_image_path, "rb") as f:
                 b64_data = base64.b64encode(f.read()).decode()
 
             map_message = MessageChain([Comp.Image.fromBase64(b64_data)])
+            # 循环向各个订阅了地图分离的会话推送地图图片消息
             for session in target_sessions:
                 try:
                     await self.manager.session_sender.send(session, map_message)
@@ -307,6 +318,7 @@ class MessageBuildService:
         active_config: dict[str, Any],
         message_format_config: dict[str, Any],
     ) -> MessageChain | None:
+        """尝试构建 Global Quake 信息展示卡片。"""
         use_gq_card = message_format_config.get("use_global_quake_card", False)
         domain_event = self._get_domain_event(event)
         if not (
@@ -382,7 +394,7 @@ class MessageBuildService:
         event: EventEnvelope,
         active_config: dict[str, Any],
     ) -> None:
-        """按配置为气象事件附加预警图标。"""
+        """按配置为气象事件附加预警级别图标组件。"""
         weather_config = active_config.get("weather_config", {})
         enable_weather_icon = weather_config.get("enable_weather_icon", True)
         domain_event = self._get_domain_event(event)
@@ -402,6 +414,7 @@ class MessageBuildService:
 
         p_code = p_code.strip()
 
+        # 根据预警代码组装中央气象台对应的标准预警级别透明图件链接
         icon_url = f"https://image.nmc.cn/assets/img/alarm/{p_code}.png"
         try:
             chain.chain.append(Comp.Image.fromURL(icon_url))
@@ -414,7 +427,7 @@ class MessageBuildService:
         chain: MessageChain,
         event: EventEnvelope,
     ) -> None:
-        """按需把海啸图件附加到消息链。"""
+        """按需把海啸图件（如等震度、波幅观测点等）附加到消息链。"""
         domain_event = self._get_domain_event(event)
         if not isinstance(domain_event, TsunamiEvent):
             return
@@ -425,6 +438,7 @@ class MessageBuildService:
         if not isinstance(map_urls, dict):
             return
 
+        # 遍历可能存在的海啸媒体图片列表
         for map_key in self.TSUNAMI_MEDIA_KEYS:
             map_url = map_urls.get(map_key)
             if isinstance(map_url, str) and map_url.strip():
@@ -441,7 +455,7 @@ class MessageBuildService:
         event: EventEnvelope,
         source_id: str,
     ) -> None:
-        """按需附加台湾地震报告相关图件。"""
+        """按需附加台湾地震报告相关等震度报告图件。"""
         if source_id != "cwa_fanstudio_report":
             return
 
@@ -458,6 +472,7 @@ class MessageBuildService:
                 if normalized_url and normalized_url not in report_image_urls:
                     report_image_urls.append(normalized_url)
 
+        # 将筛选出的有效地震报告图片转 Base64/回退 URL 发送并附加至消息链中
         for idx, image_url in enumerate(report_image_urls, start=1):
             await self._append_remote_image_component(
                 chain,

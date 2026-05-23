@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import re
+
 from ....utils.converters import ScaleConverter
 from ....utils.time_converter import TimeConverter
 from ...domain.event_context import EarthquakeDisplayContext
@@ -35,7 +37,6 @@ def _get_intensity_emoji(value, is_eew: bool = True, is_shindo: bool = False) ->
     try:
         val_str = str(value)
         num_val = None
-        import re
 
         match = re.search(r"(\d+(\.\d+)?)", val_str)
         if match:
@@ -46,6 +47,7 @@ def _get_intensity_emoji(value, is_eew: bool = True, is_shindo: bool = False) ->
             # 日本、台湾震度体系既可能传入数值，也可能传入带符号的字符串，
             # 因此这里同时兼容数字阈值判断与字符串兜底识别。
             if num_val is not None:
+                # 判断日本气象厅的十级 shindo 震度标尺
                 if num_val >= 9:
                     if num_val < 20:
                         idx = 0
@@ -91,6 +93,7 @@ def _get_intensity_emoji(value, is_eew: bool = True, is_shindo: bool = False) ->
             else:
                 idx = 0
         else:
+            # 中国 CENC 的十二级烈度体系映射判断
             if num_val is not None:
                 if num_val < 2.5:
                     idx = 0
@@ -179,6 +182,7 @@ class CeaEewPresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """构建地震预警的基础中文文本消息内容。"""
         if not _is_earthquake_view(data):
             return "🚨[地震预警] 数据类型错误"
 
@@ -228,6 +232,7 @@ class CeaEewPresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示 CeaEew 消息入口，并附带本地影响距离估值。"""
         rendered = cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
@@ -249,6 +254,7 @@ class CwaEewPresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """构建台湾 CWA 地震预警中文基础文本。"""
         if not _is_earthquake_view(data):
             return "🚨[地震预警] 数据类型错误"
 
@@ -292,6 +298,7 @@ class CwaEewPresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示入口，并拼接影响区域及本地最大震级预估。"""
         rendered = cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
@@ -329,6 +336,7 @@ class JmaEewPresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """格式化日本紧急地震速报的文本摘要。"""
         if not _is_earthquake_view(data):
             return "🚨[紧急地震速报] 数据类型错误"
 
@@ -403,6 +411,7 @@ class JmaEewPresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示速报，并拼装细分的警报覆盖县市与预估范围。"""
         rendered = cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
@@ -490,6 +499,7 @@ class CencEarthquakePresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """格式化 CENC 信息为展示文本。"""
         if not _is_earthquake_view(data):
             return "🚨[地震情报] 数据类型错误"
 
@@ -522,6 +532,7 @@ class CencEarthquakePresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示中国地震台网测定。"""
         return cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
@@ -561,6 +572,7 @@ class UsgsEarthquakePresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """格式化 USGS 地震事件情报。"""
         if not _is_earthquake_view(data):
             return "🚨[地震情报] 数据类型错误"
 
@@ -590,6 +602,7 @@ class UsgsEarthquakePresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示 USGS 测定。"""
         return cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
@@ -630,6 +643,7 @@ class JmaEarthquakeInfoPresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """拼装日本气象厅正式地震速报/情报基础文本。"""
         if not _is_earthquake_view(data):
             return "🚨[地震情报] 数据类型错误"
 
@@ -704,6 +718,7 @@ class JmaEarthquakeInfoPresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示日本地震情报，可根据配置展开显示每个具体观测点的详细震度。"""
         merged_options = _resolve_options(display_context, options)
         rendered = cls.format_message(display_context, merged_options)
         if not _is_earthquake_view(display_context):
@@ -782,6 +797,7 @@ class GlobalQuakeTextPresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """构建 GlobalQuake 测定情报文本消息。"""
         if not _is_earthquake_view(data):
             return "🚨[地震预警] 数据类型错误"
 
@@ -830,6 +846,7 @@ class GlobalQuakeTextPresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示 GlobalQuake 消息。"""
         return cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
@@ -850,12 +867,13 @@ class CwaReportPresenter(BasePresenter):
     def format_message(
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
+        """构建台湾 CWA 地震报告的富文本/图片链接消息。"""
         if not _is_earthquake_view(data):
             return "🚨[地震报告] 数据类型错误"
 
         merged_options = dict(options or {})
         timezone = merged_options.get("timezone", "UTC+8")
-        # 报告类消息会额外带上报告图片和等震度图地址。
+        # 台湾报告类消息会额外带上报告图片和等震度图地址。
         image_uri = merged_options.get("image_uri")
         shakemap_uri = merged_options.get("shakemap_uri")
         lines = ["🚨[地震报告] 台湾中央气象署"]
@@ -886,6 +904,7 @@ class CwaReportPresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
+        """展示报告，并优先从上下文载入等震度图。"""
         merged_options = _resolve_options(display_context, options)
         # 若调用方未显式覆盖图片地址，则优先使用展示上下文自带的链接。
         merged_options.setdefault("image_uri", display_context.image_uri)

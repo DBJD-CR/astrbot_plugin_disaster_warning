@@ -22,10 +22,11 @@ class PluginCommandSupportService:
 
     async def is_plugin_admin(self, event) -> bool:
         """检查用户是否为插件管理员或 Bot 管理员。"""
+        # 如果是宿主机器人全局管理员，直接拥有权限
         if event.is_admin():
             return True
 
-        # 插件管理员名单来自插件配置，作为宿主管理员权限之外的补充入口。
+        # 插件管理员名单来自插件配置，作为宿主管理员权限之外的补充入口
         sender_id = event.get_sender_id()
         plugin_admins = self.plugin.config.get("admin_users", [])
         return sender_id in plugin_admins
@@ -35,6 +36,7 @@ class PluginCommandSupportService:
         """为消息链添加引用回复段（若可用）。"""
         message_obj = getattr(event, "message_obj", None)
         message_id = getattr(message_obj, "message_id", None) if message_obj else None
+        # 如果能拿到原始消息的消息ID，则在消息链头部插入回复节点，用于生成“回复”气泡效果
         if not message_id:
             return chain
         return [Comp.Reply(id=str(message_id)), *chain]
@@ -72,20 +74,21 @@ class PluginCommandSupportService:
 
         translated: dict[str, Any] = {}
         schema_item = schema_item or {}
+        # 兼容旧版本中未注册在 schema 里的局部特殊键名
         legacy_alias_map = {
             "provinces": "省份白名单(旧版兼容)",
             "province": "省份(旧版兼容)",
             "push_enable": "单会话推送开关(旧版字段)",
         }
         for key, value in config_item.items():
-            # 每个配置项都优先使用结构定义中的中文说明；schema 外旧字段走兼容别名，避免展示错位。
+            # 每个配置项都优先使用结构定义中的中文说明；schema 外旧字段走兼容别名，避免展示错位
             item_schema = (
                 schema_item.get(key, {}) if isinstance(schema_item, dict) else {}
             )
             description = item_schema.get("description", legacy_alias_map.get(key, key))
 
             if isinstance(value, dict):
-                # 嵌套配置继续按子结构递归翻译，保持整棵配置树的展示风格一致。
+                # 嵌套配置继续按子结构递归翻译，保持整棵配置树的展示风格一致
                 sub_schema = item_schema.get("items", {})
                 translated[description] = self.translate_config_recursive(
                     value, sub_schema

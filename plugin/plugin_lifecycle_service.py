@@ -26,6 +26,7 @@ class PluginLifecycleService:
         self.plugin = plugin
 
     def sync_admin_users_from_global(self) -> None:
+        """从 AstrBot 全局管理员配置自动同步管理员身份到插件配置中。"""
         config = self.plugin.config
         # 仅当插件未显式配置 admin_users 时，才回退同步 AstrBot 全局管理员，避免覆盖用户自定义设置。
         if "admin_users" not in config or config.get("admin_users") is None:
@@ -38,6 +39,7 @@ class PluginLifecycleService:
                 )
 
     def validate_and_fix_config(self) -> None:
+        """调用 ConfigValidator 对配置文件进行校验与自动类型纠偏。"""
         try:
             # 校验时先复制一份配置快照，避免在校验过程中直接污染运行中的原始配置对象。
             config_copy = copy.deepcopy(dict(self.plugin.config))
@@ -55,6 +57,7 @@ class PluginLifecycleService:
             logger.error(f"[灾害预警] 配置校验失败: {e}")
 
     def setup_telemetry(self) -> None:
+        """初始化并注入遥测上报管理器。"""
         # 遥测初始化与主服务解耦，便于在生命周期阶段统一注入和关闭。
         self.plugin.telemetry = TelemetryManager(
             config=dict(self.plugin.config),
@@ -64,6 +67,7 @@ class PluginLifecycleService:
             self.plugin.disaster_service.set_telemetry(self.plugin.telemetry)
 
     def install_asyncio_exception_handler(self) -> None:
+        """为事件循环注册未处理异步异常处理器，将插件后台任务错误上报到遥测服务器。"""
         if not self.plugin.telemetry or not self.plugin.telemetry.enabled:
             return
         loop = asyncio.get_running_loop()
@@ -73,6 +77,7 @@ class PluginLifecycleService:
         logger.debug("[灾害预警] 已设置全局异常处理器")
 
     def start_telemetry_tasks(self) -> None:
+        """启动阶段上报启动与配置遥测事件，并初始化心跳循环。"""
         if not self.plugin.telemetry or not self.plugin.telemetry.enabled:
             return
 
@@ -91,6 +96,7 @@ class PluginLifecycleService:
         logger.debug("[灾害预警] 已启动遥测心跳任务 (间隔: 12小时)")
 
     async def cleanup_telemetry_tasks(self) -> None:
+        """等待并回收未完成的后台遥测任务协程。"""
         if not self.plugin._telemetry_tasks:
             return
         pending_tasks = list(self.plugin._telemetry_tasks)
@@ -103,6 +109,7 @@ class PluginLifecycleService:
         self.plugin._telemetry_tasks.clear()
 
     async def stop_heartbeat_task(self) -> None:
+        """停止遥测心跳任务定时循环。"""
         if self.plugin._heartbeat_task:
             self.plugin._heartbeat_task.cancel()
             try:
@@ -112,6 +119,7 @@ class PluginLifecycleService:
             logger.debug("[灾害预警] 已停止心跳任务")
 
     def restore_asyncio_exception_handler(self) -> None:
+        """卸载未处理异步异常处理器，还原原有事件循环异常处理器。"""
         if self.plugin._original_exception_handler is not None:
             loop = asyncio.get_running_loop()
             loop.set_exception_handler(self.plugin._original_exception_handler)
@@ -119,6 +127,7 @@ class PluginLifecycleService:
             logger.debug("[灾害预警] 已恢复全局异常处理器")
 
     async def shutdown_plugin_resources(self) -> None:
+        """在插件卸载/关闭时，依次安全终止后台任务、连接会话与资源引用。"""
         # 插件停机时按“服务任务 -> 主服务 -> 子资源”顺序清理，尽量降低悬挂任务与残留连接风险。
         if self.plugin._service_task:
             self.plugin._service_task.cancel()
@@ -170,10 +179,11 @@ class PluginLifecycleService:
                 logger.debug(f"[灾害预警] 遥测会话关闭时出错（已忽略）: {te}")
 
         if self.plugin.web_server:
-            # 最后停止管理端服务，避免资源尚未清理完时前端仍继续访问。
+            # 最后停止管理端 Web 服务器，避免外部仍尝试进行网络交互
             await self.plugin.web_server.stop()
 
     def handle_asyncio_exception(self, loop, context) -> None:
+        """事件循环未处理异步异常拦截入口，判断来源若为本插件则执行遥测收集上报。"""
         exception = context.get("exception")
         message = context.get("message", "未知异常")
 
@@ -234,6 +244,7 @@ class PluginLifecycleService:
             error_task.add_done_callback(self.plugin._telemetry_tasks.discard)
 
     async def heartbeat_loop(self) -> None:
+        """遥测心跳定时上报循环。"""
         heartbeat_interval = 43200
         # 心跳间隔固定为 12 小时，用于上报插件长期运行状态。
         try:

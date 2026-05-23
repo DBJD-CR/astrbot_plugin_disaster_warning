@@ -26,10 +26,13 @@ class ConnectionPlanBuilder:
         entry: SourceEntry,
     ) -> tuple[str, dict[str, Any]] | None:
         """从单个数据源目录项解析连接分组键与连接参数。"""
+        # 构建物理连接配置计划（例如 WebSocket URL、Headers、类型等）
         plan = entry.build_connection_plan()
         group_key = str(plan.get("group_key") or "").strip()
+        # 若分组键为空，则说明此数据源无需直接建立常驻 WebSocket 物理连接
         if not group_key:
             return None
+        # 清理过滤掉空值或不需要的参数，同时剥离内部逻辑使用的 group_key
         return group_key, {
             key: value
             for key, value in plan.items()
@@ -39,6 +42,7 @@ class ConnectionPlanBuilder:
     @classmethod
     def build(cls, config: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """根据统一数据源目录与启用状态构建连接计划。"""
+        # 使用运行时查询服务拉取当前的物理数据源启用列表
         runtime_query = SourceRuntimeQueryService(config)
         connections: dict[str, dict[str, Any]] = {}
 
@@ -55,7 +59,7 @@ class ConnectionPlanBuilder:
             if resolved is None:
                 continue
             group_key, plan = resolved
-            # 同一连接分组只保留一份计划，避免多个子源重复覆盖同一连接。
+            # 同一连接分组只保留一份计划，避免多个子源重复覆盖/创建同一连接。
             if group_key in connections:
                 continue
             connections[group_key] = plan

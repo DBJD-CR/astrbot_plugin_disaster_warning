@@ -25,7 +25,7 @@ class DisasterServiceNoticeService:
 
     def __init__(self, service):
         # 与生命周期服务类似，这里只保留主服务引用，便于共享配置、状态与消息发送能力。
-        self.service = service
+        self.service = service  # 主服务 DisasterWarningService 实例
 
     async def handle_offline_notification(self, payload: dict[str, Any]) -> None:
         """处理 WebSocket 管理器离线通知回调。"""
@@ -51,21 +51,23 @@ class DisasterServiceNoticeService:
         retry_count: int | None = None,
         fallback_count: int | None = None,
     ) -> bool:
-        """推送数据源离线通知（兜底重试/停止重连）。"""
+        """推送数据源离线系统警告通知（支持防刷频节流、重连阶段兜底）。"""
         # 若消息管理器不存在，说明当前运行环境不具备发送系统消息的条件，直接返回即可。
         if not self.service.message_manager:
             return False
 
-        key = f"{connection_name}:{stage}"
-        now = asyncio.get_running_loop().time()
+        key = f"{connection_name}:{stage}"  # 拼装唯一的连接阶段节流键
+        now = asyncio.get_running_loop().time()  # 获取当前系统相对时间
         state = self.service._offline_notification_state.get(key, {})
         last_ts = state.get("last_ts", 0.0)
+        # “离线时间过长(short_retry)”不进行节流，“兜底重试”与“停止重连”防刷屏限制半小时
         ttl_seconds = 1800 if stage != "short_retry" else 0
         # 节流粒度为“同一连接 + 同一阶段”。
         # 相同连接在同一 stage 下 30 分钟内最多通知一次，避免离线抖动造成刷屏。
         if now - last_ts < ttl_seconds:
             return False
 
+        # 生成具体推送文本
         message = self.build_offline_notification_message(
             connection_name=connection_name,
             data_source=data_source,
@@ -75,7 +77,10 @@ class DisasterServiceNoticeService:
             retry_count=retry_count,
             fallback_count=fallback_count,
         )
-        offline_sessions = self.resolve_offline_notification_sessions()
+        offline_sessions = (
+            self.resolve_offline_notification_sessions()
+        )  # 计算推送会话列表
+        # 调用系统通知中心推送提醒
         success = await self.service.message_manager.system_notification_service.push_system_message(
             message,
             target_sessions=offline_sessions,
@@ -86,7 +91,7 @@ class DisasterServiceNoticeService:
         return bool(success)
 
     def resolve_offline_notification_sessions(self) -> list[str]:
-        """解析离线通知目标会话列表。"""
+        """解析离线警告通知的目标群组/私聊会话列表。"""
         # 优先使用独立的离线通知会话，适用于希望把运维告警与普通灾情推送拆分的场景；
         # 若未配置，再回退到通用目标会话，保证通知能力默认可用。
         offline_sessions = ConfigValidator._validate_target_sessions(
@@ -94,7 +99,8 @@ class DisasterServiceNoticeService:
             key_name="offline_notification_sessions",
         )
         if offline_sessions:
-            return offline_sessions
+            return offline_sessions  # 使用专用运维通知会话
+        # 回退至默认的推送目标会话
         return ConfigValidator._validate_target_sessions(
             self.service.config.get("target_sessions", []),
             key_name="target_sessions",
@@ -111,7 +117,7 @@ class DisasterServiceNoticeService:
         retry_count: int | None,
         fallback_count: int | None,
     ) -> str:
-        """构建离线通知文本。"""
+        """构建具体展示的离线通知富文本消息。"""
         # 阶段文案、重试次数和下一次重试时间会一起展示，
         # 目的是让使用者能在一条通知里快速判断当前处于“短时抖动”还是“长期离线”。
         stage_text = self._OFFLINE_STAGE_MAP.get(stage, stage)
@@ -142,7 +148,7 @@ class DisasterServiceNoticeService:
         return "\n".join(message_lines)
 
     def get_eew_query_text(self) -> str:
-        """生成 /地震预警查询 文本。"""
+        """生成 /地震预警查询 主命令返回的结构化统计展示文本。"""
         # 文本生成并不直接读取原始事件，而是消费查询状态服务产出的结构化结果，
         # 这样命令输出与管理端展示可以复用同一份状态基础。
         data_sources_cfg = ConfigAccessor(self.service.config).data_sources_config()
@@ -232,7 +238,7 @@ class DisasterServiceNoticeService:
 
     @staticmethod
     def _format_magnitude(magnitude: Any) -> str:
-        """格式化震级显示文本。"""
+        """格式化震级显示文本为保留一位小数。"""
         # 震级来源可能是数字、字符串甚至空值；这里统一转换为适合展示的一位小数字符串。
         if magnitude is None:
             return "?"

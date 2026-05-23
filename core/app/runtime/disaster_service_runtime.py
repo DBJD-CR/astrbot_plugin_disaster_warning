@@ -38,6 +38,7 @@ class DisasterServiceRuntimeService:
             # 这里封装成局部协程，是为了让每个连接都能作为独立任务运行，
             # 并在日志中清晰标识是哪一个连接任务异常终止。
             try:
+                # 建立底层连接
                 await self.service.ws_manager.connect(
                     name=name,
                     uri=uri,
@@ -60,13 +61,14 @@ class DisasterServiceRuntimeService:
                     "backup_url": conn_config.get("backup_url"),
                 }
 
+                # 异步建连后台任务
                 task = asyncio.create_task(
                     _connect_with_timeout(
                         conn_name, conn_config["url"], connection_info
                     ),
                     name=f"dw_ws_connect_{conn_name}",
                 )
-                self.service.connection_tasks.append(task)
+                self.service.connection_tasks.append(task)  # 记录任务便于生命周期回收
 
                 backup_info = (
                     f", 备用: {conn_config.get('backup_url')}"
@@ -96,6 +98,7 @@ class DisasterServiceRuntimeService:
                     # 抓取器由主服务统一创建，这里通过上下文协议复用其会话资源。
                     async with self.service.http_fetcher as fetcher:
                         try:
+                            # 获取并解析中国地震局最新记录
                             cenc_data = await asyncio.wait_for(
                                 fetcher.fetch_json(
                                     "https://api.wolfx.jp/cenc_eqlist.json"
@@ -126,6 +129,7 @@ class DisasterServiceRuntimeService:
                             logger.error(f"[灾害预警] 获取 CENC 数据出错: {e}")
 
                         try:
+                            # 获取并解析日本气象厅最新记录
                             jma_data = await asyncio.wait_for(
                                 fetcher.fetch_json(
                                     "https://api.wolfx.jp/jma_eqlist.json"
@@ -155,6 +159,7 @@ class DisasterServiceRuntimeService:
                     # 外层兜底保证后台循环不会因单次异常直接退出。
                     logger.error(f"[灾害预警] 定时 HTTP 数据获取失败: {e}")
 
+        # 启动定时拉取后台任务
         task = asyncio.create_task(fetch_wolfx_data(), name="dw_http_fetch_wolfx")
         self.service.scheduled_tasks.append(task)
 
@@ -166,9 +171,10 @@ class DisasterServiceRuntimeService:
                 try:
                     # 每日一次清理消息侧历史记录与临时渲染文件，避免长期运行后磁盘膨胀。
                     await asyncio.sleep(86400)
-                    self.service.message_manager.cleanup_old_records()
+                    self.service.message_manager.cleanup_old_records()  # 清理本地过期磁盘缓存和历史记录
                 except Exception as e:
                     logger.error(f"[灾害预警] 清理任务失败: {e}")
 
+        # 启动定时清理任务
         task = asyncio.create_task(cleanup(), name="dw_cleanup")
         self.service.scheduled_tasks.append(task)

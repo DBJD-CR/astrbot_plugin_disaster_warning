@@ -23,15 +23,18 @@ class RuleChain:
     """
 
     def __init__(self, rules=None):
+        # 接收并按传入顺序实例化过滤规则链表
         self.rules = list(rules or [])
 
     def evaluate(self, context: RuleContext) -> RuleDecision:
         """依次执行规则链中的每个规则。"""
         for rule in self.rules:
-            # 任一规则拒绝后立即返回，避免继续执行后续不必要的判断。
+            # 依次执行各过滤子项评估
             decision = rule.evaluate(context)
+            # 任一规则判定不放行时，执行短路保护，停止后续链式判断并立即向上层返回拒信结果
             if not decision.accepted:
                 return decision
+        # 全部通过，生成放行决策
         return RuleDecision.accept(reason="规则链通过")
 
 
@@ -40,6 +43,7 @@ def build_default_rule_chain() -> RuleChain:
 
     默认顺序从基础有效性校验开始，再逐步进入来源、气象、关键词、震动强度、报次与本地烈度判断。
     """
+    # 顺次装配 7 个核心的过滤逻辑规则实例
     return RuleChain(
         [
             EventTimeRule(),

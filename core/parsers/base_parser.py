@@ -24,21 +24,28 @@ class BaseParser:
     def __init__(self, source_id: str, message_logger=None):
         """初始化解析器共享状态与运行时缓存。"""
         self.source_id = source_id
+        # 获取当前数据源的静态名录定义
         self.source_entry = get_source_entry(source_id)
         self.source_config = self.source_entry
         self.message_logger = message_logger
+
+        # 存放上一次接收到心跳或空载荷数据的时间戳，用于节流检测，避免过多 debug 日志输出
         self._last_heartbeat_check: dict[str, float] = {}
+
+        # 定义心跳包判定规则
         self._heartbeat_patterns = {
             "empty_coordinates": {"latitude": 0, "longitude": 0},
             "empty_fields": ["", None, {}],
         }
+
+        # 警告日志去重缓存：{cache_key: (时间戳, 警告消息内容)}
         self._warning_cache: dict[str, tuple[float, str]] = {}
-        self._warning_cache_timeout = 3600
+        self._warning_cache_timeout = 3600  # 去重去噪缓存生存期（秒）
 
     def parse_message(self, message: str | bytes) -> Any | None:
         """解析原始消息。"""
         try:
-            # 统一先做解码，再交给领域事件构建入口，便于子类按需覆写其中某一步。
+            # 统一先做解码，再交给领域事件构建入口，便于子类按需覆写其中某一步
             payload = self.decode_message(message)
             return self.build_event(payload)
         except json.JSONDecodeError as exc:
@@ -51,8 +58,10 @@ class BaseParser:
 
     def decode_message(self, message: str | bytes) -> Any:
         """解码原始消息。"""
+        # 如果是 bytes 类型的二进制数据则直接返回，供 protobuf 等特异解析器处理
         if isinstance(message, bytes):
             return message
+        # 默认使用 JSON 解码
         return json.loads(message)
 
     def parse_payload(self, payload: Any):
@@ -73,12 +82,15 @@ class BaseParser:
 
     def _extract_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """提取实际业务数据，兼容多种外层包装格式。"""
+        # 兼容首字母大写的 "Data" 键
         if "Data" in data:
             logger.debug(f"[灾害预警] {self.source_id} 使用 Data 字段获取数据")
             return data["Data"] or {}
+        # 兼容小写的 "data" 键
         if "data" in data:
             logger.debug(f"[灾害预警] {self.source_id} 使用 data 字段获取数据")
             return data["data"] or {}
+        # 无包装时，直接视整个载荷为数据体
         logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
         return data
 
@@ -87,13 +99,14 @@ class BaseParser:
         current_time = time.time()
         cache_key = f"{self.source_id}_last_check"
 
-        # 心跳检测本身也做节流，避免在高频数据流中反复执行同类检查。
+        # 对心跳检测本身进行 30 秒节流去噪，避免过多空心跳包引起频繁计算
         if cache_key in self._last_heartbeat_check:
             if current_time - self._last_heartbeat_check[cache_key] < 30:
                 return False
 
         self._last_heartbeat_check[cache_key] = current_time
 
+        # 规则 1：检查坐标值是否为 (0,0) 的空心跳包
         if "latitude" in msg_data and "longitude" in msg_data:
             lat = msg_data.get("latitude")
             lon = msg_data.get("longitude")
@@ -103,7 +116,7 @@ class BaseParser:
                 )
                 return True
 
-        # 某些数据源缺少关键字段时，通常也是一种无业务意义的占位心跳。
+        # 规则 2：根据各数据源特定的必填字段，检查是否大面积为空
         critical_fields = {
             "usgs_fanstudio": ["id", "magnitude", "placeName"],
             "china_tsunami_fanstudio": ["warningInfo", "code", "timeInfo"],
@@ -119,6 +132,7 @@ class BaseParser:
                 if field_value in self._heartbeat_patterns["empty_fields"]:
                     missing_count += 1
 
+            # 若有一半以上的核心必填字段为空，视为无实际有效业务内容的心跳空包
             if missing_count >= len(required_fields) / 2:
                 logger.debug(
                     f"[灾害预警] {self.source_id} 检测到空数据心跳包，静默过滤"
@@ -132,6 +146,7 @@ class BaseParser:
         current_time = time.time()
         cache_key = f"{self.source_id}_{warning_type}"
 
+        # 检查缓存是否在 1 小时内已经输出过完全相同的警告，是则节流不输出
         if cache_key in self._warning_cache:
             last_time, last_message = self._warning_cache[cache_key]
             if (
@@ -149,6 +164,7 @@ class BaseParser:
 
     def _parse_datetime(self, time_str: str) -> datetime | None:
         """解析时间字符串。"""
+        # 调用时间转换工具进行多格式兼容解析
         dt = TimeConverter.parse_datetime(time_str)
         if dt is None and time_str:
             logger.warning(f"[灾害预警] 时间解析失败: '{time_str}'")

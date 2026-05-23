@@ -1,4 +1,4 @@
-const { Box, Typography, Button, Paper } = MaterialUI;
+const { Box, Typography, Button, Paper, CircularProgress } = MaterialUI;
 const { useRef, useLayoutEffect, useEffect } = React;
 
 /**
@@ -59,12 +59,13 @@ function ConfigRenderer() {
         return bindScrollPersistence(el);
     }, [bindScrollPersistence, loading, mode, selectedSession]);
 
-    // 1. 状态：正在从服务端加载配置或 Schema 时，渲染精美的全局齿轮加载指示器
+    // 1. 状态：正在从服务端加载配置或 Schema 时，渲染全局齿轮图标以及转圈圈加载动画
     if (loading) {
         return (
-            <Box className="config-renderer-state config-renderer-state--loading">
+            <Box className="config-renderer-state config-renderer-state--loading" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
                 <Box className="config-renderer-state__icon">⚙️</Box>
-                <Typography variant="body1" color="text.secondary">加载配置中...</Typography>
+                <CircularProgress size={28} style={{ marginBottom: '16px' }} />
+                <Typography variant="body2" color="text.secondary">正在加载配置，请稍候...</Typography>
             </Box>
         );
     }

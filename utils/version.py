@@ -10,7 +10,7 @@ from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 
-# 优先使用标准库 tomllib；若运行环境较旧，则回退到 tomli。
+# 优先使用标准库 tomllib；若运行环境较旧，则回退到 tomli
 try:
     import tomllib
 except ImportError:
@@ -39,7 +39,7 @@ def get_plugin_version() -> str:
     通过读取插件根目录下的 metadata.yaml 文件获取版本信息。
     """
     try:
-        # 获取当前文件所在目录的父目录作为插件根目录。
+        # 获取当前文件所在目录的父目录作为插件根目录
         current_dir = os.path.dirname(os.path.abspath(__file__))
         plugin_root = os.path.dirname(current_dir)
         metadata_path = os.path.join(plugin_root, "metadata.yaml")
@@ -70,6 +70,7 @@ def _build_unknown_version_info(
 
 def _get_astrbot_version_from_core_config() -> AstrBotVersionInfo | None:
     """优先从 AstrBot 运行时核心配置模块读取版本。"""
+    # 尝试兼容不同包结构设计的 AstrBot 核心配置模块
     module_candidates = (
         "astrbot.core.config",
         "astrbot.core.config.default",
@@ -93,6 +94,7 @@ def _get_astrbot_version_from_core_config() -> AstrBotVersionInfo | None:
 
 def _get_astrbot_version_from_distribution() -> AstrBotVersionInfo | None:
     """从 AstrBot 安装分发元数据读取版本。"""
+    # 针对已打包发布形态安装的环境进行探测
     for dist_name in ("AstrBot", "astrbot"):
         try:
             version = str(importlib_metadata.version(dist_name)).strip()
@@ -112,6 +114,7 @@ def _get_astrbot_version_from_distribution() -> AstrBotVersionInfo | None:
 
 def _get_astrbot_version_from_cli_module() -> AstrBotVersionInfo | None:
     """从 AstrBot CLI 模块常量读取版本。"""
+    # 尝试从命令行入口模块中直接解析 __version__ 属性
     try:
         from astrbot.cli import __version__ as cli_version
 
@@ -128,7 +131,7 @@ def _get_astrbot_version_from_cli_module() -> AstrBotVersionInfo | None:
 def _get_astrbot_version_from_pyproject(default: str = "unknown") -> AstrBotVersionInfo:
     """从 AstrBot 安装目录附近的 pyproject.toml 中兜底读取版本。"""
     try:
-        # 从 astrbot 包路径定位 pyproject.toml。
+        # 从 astrbot 包路径定位 pyproject.toml
         astrbot_path = Path(astrbot.__file__).resolve().parent.parent
         pyproject_path = astrbot_path / "pyproject.toml"
 
@@ -147,10 +150,12 @@ def _get_astrbot_version_from_pyproject(default: str = "unknown") -> AstrBotVers
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
 
+        # 尝试标准 PEP 621 的 project.version 节点
         project_version = str(data.get("project", {}).get("version", "")).strip()
         if project_version:
             return AstrBotVersionInfo(version=project_version, source="pyproject")
 
+        # 尝试 Poetry 定义的 tool.poetry.version 节点
         poetry_version = str(
             data.get("tool", {}).get("poetry", {}).get("version", "")
         ).strip()
@@ -170,6 +175,7 @@ def _get_astrbot_version_from_pyproject(default: str = "unknown") -> AstrBotVers
 @lru_cache(maxsize=8)
 def get_astrbot_version_info(default: str = "unknown") -> AstrBotVersionInfo:
     """获取带来源与错误码的 AstrBot 版本探测结果。"""
+    # 逐个探测器尝试，按可靠性优先级从高到低回退
     for resolver in (
         _get_astrbot_version_from_core_config,
         _get_astrbot_version_from_distribution,

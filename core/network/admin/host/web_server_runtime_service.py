@@ -13,11 +13,13 @@ from typing import Any
 
 from astrbot.api import logger
 
+# 引入 FastAPI FileResponse
 try:
     from fastapi.responses import FileResponse
-except ImportError:  # pragma: no cover - 与 web_server.py 的可选依赖策略保持一致
+except ImportError:  # pragma: no cover
     FileResponse = None
 
+# 导入各类子模块的路由装配器
 from ..api.analytics_routes import register_analytics_routes
 from ..api.auth_routes import register_auth_routes
 from ..api.config_routes import register_config_routes
@@ -39,10 +41,12 @@ class WebServerRuntimeService:
 
     def configure_auth(self) -> None:
         """按当前配置初始化管理端鉴权状态。"""
+        # 读取配置中的管理端访问密码
         password = self.server.config_accessor.web_admin_password()
-        # 管理端启用密码时，登录成功后依靠随机令牌维持会话，而非反复传输明文密码。
+        # 管理端启用密码时，登录成功后依靠随机令牌维持会话，而非反复传输明文密码
         if password:
             self.server._auth_enabled = True
+            # 生成 32 字节的安全随机 Hex Token
             self.server._auth_token = secrets.token_hex(32)
 
     def register_routes(self) -> None:
@@ -59,6 +63,7 @@ class WebServerRuntimeService:
         @app.get("/logo.png")
         async def get_logo():
             """返回插件管理端使用的 Logo 图片。"""
+            # 向上递归查找项目根路径下的 logo.png
             logo_path = os.path.join(
                 os.path.dirname(
                     os.path.dirname(
@@ -67,10 +72,12 @@ class WebServerRuntimeService:
                 ),
                 "logo.png",
             )
+            # 若文件存在则以 FileResponse 发送给前端
             if os.path.exists(logo_path) and FileResponse is not None:
                 return FileResponse(logo_path)
             return ApiResponse.error("未找到插件 Logo 的图片文件", status_code=404)
 
+        # 依次调用并装配其他子模块的 API 路由端点
         register_status_routes(
             app,
             disaster_service=self.server.disaster_service,
@@ -111,6 +118,7 @@ class WebServerRuntimeService:
         # 若启用了鉴权，则优先从查询参数或 Authorization 头提取令牌。
         if self.server._auth_enabled:
             token = websocket.query_params.get("token", "")
+            # 若 query params 中不存在，则在 HTTP Header 的 Authorization Bearer 字段中匹配提取
             if not token:
                 auth_header = websocket.headers.get("Authorization", "")
                 auth_parts = auth_header.split(" ", 1)
@@ -119,6 +127,7 @@ class WebServerRuntimeService:
                     if len(auth_parts) == 2 and auth_parts[0].lower() == "bearer"
                     else ""
                 )
+            # 安全比对 Token 是否一致，防止时序攻击
             if not self.server._auth_token or not secrets.compare_digest(
                 token, self.server._auth_token
             ):
@@ -126,15 +135,16 @@ class WebServerRuntimeService:
                 await websocket.close(code=1008)
                 return
 
+        # 接收并开启 websocket 会话
         await websocket.accept()
-        # 连接建立后立即纳入 hub，便于统一广播与连接计数。
+        # 连接建立后立即纳入 hub，便于统一广播与连接计数
         self.server._ws_hub.add(websocket)
         logger.info(
             f"[灾害预警] 有 WebSocket 客户端已连接，当前连接数: {self.server._ws_hub.count()}"
         )
 
         try:
-            # 新客户端接入后先推送完整快照，再进入增量交互循环。
+            # 新客户端接入后先推送完整快照，再进入增量交互循环
             if not await self.send_full_update(websocket):
                 return
             while True:
@@ -143,19 +153,22 @@ class WebServerRuntimeService:
 
                     data = await websocket.receive_text()
                     msg = json.loads(data)
+                    # 响应心跳
                     if msg.get("type") == "ping":
                         await websocket.send_json({"type": "pong"})
+                    # 响应前端要求强刷的请求
                     elif msg.get("type") == "refresh":
-                        # 管理端可主动请求一次完整刷新，便于页面恢复同步。
                         if not await self.send_full_update(websocket):
                             return
                 except json.JSONDecodeError:
                     pass
         except Exception as e:
             disconnect_name = type(e).__name__
+            # 过滤正常的断连类型，其他未预期网络传输报错打印 debug
             if disconnect_name != "WebSocketDisconnect":
                 logger.debug(f"[灾害预警] WebSocket 连接异常: {e}")
         finally:
+            # 断连后必须从 Hub 容器中注销，防止内存泄漏和僵尸发包
             self.server._ws_hub.remove(websocket)
             logger.info(
                 f"[灾害预警] 有 WebSocket 客户端已断开，当前连接数: {self.server._ws_hub.count()}"
@@ -174,6 +187,7 @@ class WebServerRuntimeService:
     async def get_realtime_data(self) -> dict[str, Any]:
         """构建管理端实时面板所需的数据载荷。"""
         try:
+            # 通过构建器构建出当前的实时状态（在线状态、延迟、最近事件等）
             return await self.server._realtime_payload_builder.build(
                 self.server.get_expected_data_sources()
             )
@@ -194,6 +208,7 @@ class WebServerRuntimeService:
                 import asyncio
 
                 await asyncio.sleep(interval_seconds)
+                # 周期性定时广播最新数据，保证前端界面状态最终一致
                 await self.broadcast_data()
             except asyncio.CancelledError:
                 break

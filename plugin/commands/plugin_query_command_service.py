@@ -32,6 +32,8 @@ class PluginQueryCommandService(CommandTelemetryMixin):
         optional_a: str | None = None,
         optional_b: str | None = None,
     ):
+        """处理气象预警查询命令，支持指定地区、类型与级别，全国模式下支持分批合并转发展示。"""
+
         def _quoted_plain_result(text: str):
             return quoted_plain_result(self.plugin, event, text)
 
@@ -64,6 +66,7 @@ class PluginQueryCommandService(CommandTelemetryMixin):
             return nodes
 
         async def _send_forward_batches(blocks: list[str]) -> bool:
+            """将全国级海量数据分批打包为合并转发气泡发送给会话。"""
             if not blocks:
                 return False
 
@@ -90,6 +93,7 @@ class PluginQueryCommandService(CommandTelemetryMixin):
             return True
 
         async def _send_text_blocks(blocks: list[str], total_count: int) -> None:
+            """若合并转发节点被平台拒绝，则降级为分段文本气泡发送。"""
             if not blocks:
                 return
 
@@ -158,6 +162,7 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                 return
 
             if result.get("query_mode") == "id":
+                # 按预警ID检索，生成详细指南说明
                 detail = result.get("data") or {}
                 title_text = str(detail.get("title_text") or "").strip()
                 headline_text = str(detail.get("headline_text") or "").strip()
@@ -218,6 +223,7 @@ class PluginQueryCommandService(CommandTelemetryMixin):
 
             if is_nationwide and text_blocks:
                 try:
+                    # 全国级查询优先走分段合并转发通道发送
                     ok = await _send_forward_batches(text_blocks)
                     if ok:
                         await self._track_command_feature(
@@ -255,6 +261,7 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                     except Exception as text_error:
                         logger.warning(f"[灾害预警] 文本回退发送失败: {text_error}")
 
+            # 正常区域搜索，组装文字概要
             lines = [f"📋 气象预警列表（共 {total} 条）"]
             for idx, item in enumerate(items):
                 lines.append(f"发布时间：{item.get('issue_time') or '未知时间'}")
@@ -283,6 +290,8 @@ class PluginQueryCommandService(CommandTelemetryMixin):
             yield _quoted_plain_result(f"❌ 查询失败: {e}")
 
     async def handle_query_earthquake_warning(self, event):
+        """处理地震预警状态查询命令，展示当前的地震预警缓存快照。"""
+
         def _quoted_plain_result(text: str):
             return quoted_plain_result(self.plugin, event, text)
 
@@ -308,6 +317,8 @@ class PluginQueryCommandService(CommandTelemetryMixin):
         count: int = 9,
         mode: str = "card",
     ):
+        """处理历史地震列表查询命令，支持渲染多媒体卡片图或回退文本格式。"""
+
         def _quoted_plain_result(text: str):
             return quoted_plain_result(self.plugin, event, text)
 
@@ -391,6 +402,8 @@ class PluginQueryCommandService(CommandTelemetryMixin):
         depth: float,
         source: str = "cea_fanstudio",
     ):
+        """处理虚拟地震模拟命令，构建事件包并运行规则评估与渲染效果测试。"""
+
         def _quoted_plain_result(text: str):
             return quoted_plain_result(self.plugin, event, text)
 
@@ -417,6 +430,7 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                 runtime_config=runtime_config,
             )
 
+            # 模拟时评估过滤决策
             if simulation_result.global_pass and simulation_result.local_pass:
                 push_result = await manager.push_event(
                     simulation_result.disaster_event,
@@ -458,6 +472,7 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                     ).strip()
                 if not failure_reason:
                     effective_runtime_config = dict(runtime_config)
+                    # 模拟绕过去重标志
                     effective_runtime_config["__simulation_bypass_regular_filters"] = (
                         True
                     )

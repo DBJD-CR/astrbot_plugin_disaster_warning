@@ -10,7 +10,7 @@ const { useMemo, useRef, useEffect, useState, useCallback } = React;
  * 2. 鼠标抓取手势拖拽 (Drag & Grab) 流畅滑行。
  * 3. 动态展示条数选择菜单（包含 20条、50条、100条、不限等，点击外部自动关闭）。
  * 4. 智能判断各类灾害并应用警告判色，鼠标 hover 气泡提示事件详情。
- * 5. 首屏或接收到全新事件时自动滑行至最右端。
+ * 5. 首屏或接收到全新事件时自动滑行至最右端，且具备对不同展示限制切换与组件重载下的横向滚动位置恢复/记忆。
  *
  * @param {Object} props
  * @param {Object} [props.style] 外部注入的自定义样式
@@ -145,7 +145,7 @@ function HorizontalTimeline({ style }) {
     // 用于追踪记录上一次事件项的数目，以此精确定位是有新事件推入还是数据源初始化
     const prevItemsLengthRef = useRef(0);
 
-    // 数据变动监听：当有新的大事件加入或首次初始化时，自动滚动到最右端最新事件上
+    // 数据变动监听：当有新的大事件加入或首次初始化时，自动滚动到最右端最新事件上，或者还原记忆的滚动位置
     useEffect(() => {
         const hasNewItems = timelineItems.length > prevItemsLengthRef.current;
         const isFirstRender = prevItemsLengthRef.current === 0;
@@ -153,17 +153,61 @@ function HorizontalTimeline({ style }) {
         // 更新历史快照数目
         prevItemsLengthRef.current = timelineItems.length;
 
-        if (scrollContainerRef.current && !isUserScrolling.current && !isInteractingWithLimitSelect.current) {
-            // 首次加载或检测到新数据追加，平滑滑动到终点
-            if (isFirstRender || hasNewItems) {
-                setTimeout(() => {
-                    if (!isUserScrolling.current && scrollContainerRef.current) {
-                        scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
-                    }
-                }, 100);
+        if (scrollContainerRef.current) {
+            const el = scrollContainerRef.current;
+            const scrollKey = `astrbot_scroll_horizontal_timeline_${displayLimit}`;
+            const savedScrollLeft = localStorage.getItem(scrollKey);
+
+            if (savedScrollLeft !== null) {
+                // 如果本地有保存的滚动条位置，直接恢复它
+                const targetScrollLeft = parseInt(savedScrollLeft, 10);
+                // 采用双重 requestAnimationFrame 确保 DOM 挂载和排版渲染完毕
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (el) {
+                            el.scrollLeft = targetScrollLeft;
+                        }
+                    });
+                });
+            } else if (!isUserScrolling.current && !isInteractingWithLimitSelect.current) {
+                // 如果没有记忆位置，且是首次加载或检测到新数据追加，平滑/直接滑动到最右侧终点（最新事件处）
+                if (isFirstRender || hasNewItems) {
+                    setTimeout(() => {
+                        if (!isUserScrolling.current && el) {
+                            el.scrollLeft = el.scrollWidth;
+                        }
+                    }, 100);
+                }
             }
         }
-    }, [timelineItems]);
+    }, [timelineItems, displayLimit]);
+
+    // 滚动条事件监听：在用户主动拖拽/滚动时，使用防抖技术实时记忆滚动位置
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+
+        let writeTimeout = null;
+        const handleScrollMemory = () => {
+            if (!el) return;
+            const scrollKey = `astrbot_scroll_horizontal_timeline_${displayLimit}`;
+            // 写入本地存储
+            localStorage.setItem(scrollKey, el.scrollLeft);
+        };
+
+        const debouncedScroll = () => {
+            clearTimeout(writeTimeout);
+            writeTimeout = setTimeout(handleScrollMemory, 100); // 100ms 防抖
+        };
+
+        el.addEventListener('scroll', debouncedScroll);
+        return () => {
+            if (el) {
+                el.removeEventListener('scroll', debouncedScroll);
+            }
+            clearTimeout(writeTimeout);
+        };
+    }, [displayLimit, timelineItems]);
 
     // 条数限制下拉菜单配置列表
     const LIMIT_OPTIONS = [

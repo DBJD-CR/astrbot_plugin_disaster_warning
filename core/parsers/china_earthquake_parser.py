@@ -26,7 +26,7 @@ class CencEarthquakeParser(BaseParser):
 
     def _build_envelope(self, msg_data: dict[str, Any]) -> EventEnvelope:
         """把中国地震测定原始字典封装为统一事件包裹体。"""
-        # 震级与深度统一在解析阶段做一位小数归一化，减少后续展示层重复处理。
+        # 震级与深度统一在解析阶段做一位小数归一化，减少后续展示层重复处理
         magnitude = safe_float_convert(msg_data.get("magnitude"))
         if magnitude is not None:
             magnitude = round(magnitude, 1)
@@ -37,6 +37,8 @@ class CencEarthquakeParser(BaseParser):
 
         source_entry = get_source_entry(self.source_id)
         event_id = str(msg_data.get("eventId", "") or "")
+
+        # 整理事件的元数据字典，包含来源族、数据源静态标识、信息类别及事件ID
         metadata = {
             "source_family": "fan_studio",
             "source_enum": source_entry.source_enum if source_entry else "",
@@ -46,6 +48,8 @@ class CencEarthquakeParser(BaseParser):
             "info_type": msg_data.get("infoTypeName", ""),
             "event_id": event_id,
         }
+
+        # 实例化地震领域模型
         domain_event = EarthquakeEvent(
             occurred_at=self._parse_datetime(msg_data.get("shockTime", "")),
             latitude=safe_float_convert(msg_data.get("latitude")),
@@ -55,6 +59,8 @@ class CencEarthquakeParser(BaseParser):
             depth=depth,
             metadata=dict(metadata),
         )
+
+        # 构建唯一的事件身份模型
         identity = EventIdentity(
             event_id=event_id,
             source_id=self.source_id,
@@ -74,6 +80,8 @@ class CencEarthquakeParser(BaseParser):
                 "config_key": source_entry.config_key if source_entry else "",
             },
         )
+
+        # 封装为统一事件包裹层返回
         return EventEnvelope(
             identity=identity,
             event=domain_event,
@@ -98,7 +106,7 @@ class CencEarthquakeParser(BaseParser):
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
-            # 这类消息至少应具备情报类型与事件标识，否则通常不是正式测定数据。
+            # 这类消息至少应具备情报类型与事件标识，否则通常不是正式测定数据
             if "infoTypeName" not in msg_data or "eventId" not in msg_data:
                 logger.debug(f"[灾害预警] {self.source_id} 非 CENC 地震测定数据，跳过")
                 return None
@@ -147,7 +155,7 @@ class CencEarthquakeWolfxParser(BaseParser):
                 return None
 
             eq_info = None
-            # 列表消息通常以 No1、No2 这类键名承载首条地震记录，这里取首个有效项。
+            # 列表消息通常以 No1、No2 这类键名承载首条地震记录，这里取首个有效项
             for key, value in data.items():
                 if key.startswith("No") and isinstance(value, dict):
                     eq_info = value
@@ -170,10 +178,7 @@ class CencEarthquakeWolfxParser(BaseParser):
                 or ""
             ).strip()
 
-            # CENC 地震测定链路并不存在稳定的“第几报”语义。
-            # Wolfx cenc_eqlist 文档仅提供列表项与 md5/intensity/type 等字段，
-            # 重构后继续沿用 EEW/JMA 的报次分槽会把同一事件错误拆成多个缓存槽位，
-            # 反而降低 Fan/Wolfx 融合命中率，因此统一回退为单槽 1。
+            # CENC 地震测定链路并不存在稳定的“第几报”语义，因此统一回退为单槽 1
             report_num = 1
 
             source_record_id = str(eq_info.get("md5") or event_id or "").strip()
@@ -191,6 +196,8 @@ class CencEarthquakeWolfxParser(BaseParser):
                 "report_num": report_num,
                 "info_type": eq_info.get("type", ""),
             }
+
+            # 实例化地震领域事件
             domain_event = EarthquakeEvent(
                 occurred_at=self._parse_datetime(eq_info.get("time", "")),
                 latitude=safe_float_convert(eq_info.get("latitude")),
@@ -201,6 +208,8 @@ class CencEarthquakeWolfxParser(BaseParser):
                 place_name=eq_info.get("location", ""),
                 metadata=dict(metadata),
             )
+
+            # 构建事件身份模型
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -219,6 +228,8 @@ class CencEarthquakeWolfxParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 封装并返回统一事件包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,

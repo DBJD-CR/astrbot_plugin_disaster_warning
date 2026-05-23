@@ -25,6 +25,7 @@ def normalize_weather_color(color_token: str | None) -> str | None:
     if not token:
         return None
 
+    # 对输入的中文字符缩写进行对齐转换
     color_map = {
         "红": "红色",
         "橙": "橙色",
@@ -60,6 +61,7 @@ def parse_weather_query_filters(
             weather_color = normalized_color
             continue
 
+        # 排除颜色后的普通字符串，默认视作气象灾害类型关键字（如暴雨、台风）
         if weather_type is None:
             weather_type = token.strip()
 
@@ -75,6 +77,7 @@ def parse_event_time_to_utc(time_value: Any) -> datetime | None:
     if parsed is None:
         return None
 
+    # 中国气象预警中心下发的数据默认不带时区，使用北京时间（UTC+8）强制修饰
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=TimeConverter._get_timezone("UTC+8"))
 
@@ -96,6 +99,7 @@ def extract_weather_org(title_text: str, headline_text: str) -> str:
     if not candidate:
         return "未知发布机构"
 
+    # 正则提取发布/更新前缀的单位机构名称（如“北京市气象台”）
     match = re.search(r"^(.+?)(?:发布|更新)", candidate)
     if match:
         return match.group(1)
@@ -113,6 +117,7 @@ def extract_weather_org(title_text: str, headline_text: str) -> str:
 def detect_weather_type(title_text: str, weather_type_code: str | None) -> str:
     """识别预警类型。"""
     text = title_text or ""
+    # 按预设的 24 种常见气象大类匹配（如雷雨大风、寒潮、道路结冰）
     for weather_type in SORTED_WEATHER_TYPES:
         if weather_type in text:
             return weather_type
@@ -140,6 +145,7 @@ def extract_weather_warning_core(title_text: str) -> str | None:
     if not text:
         return None
 
+    # 正则截取预警核心段落，用于精简大段啰嗦的标题，如“北京市气象台发布暴雨黄色预警信号” -> “暴雨黄色预警信号”
     tail_match = re.search(
         r"([\u4e00-\u9fffA-Za-z0-9]{1,12}(?:红色|橙色|黄色|蓝色|白色)?预警(?:信号)?)$",
         text,
@@ -207,6 +213,7 @@ def chunk_weather_blocks(blocks: list[str], max_chars: int = 1024) -> list[str]:
 
     for block in blocks:
         block_len = len(block)
+        # 单块超出预设的最大分片字数限制时，进行切分封装，规避超过 QQ 等通信软件单次字数发送上限而失败
         if bucket and (bucket_len + block_len + 2 > max_chars):
             chunks.append("\n\n".join(bucket))
             bucket = [block]
@@ -247,6 +254,7 @@ async def query_weather_alarm_data(
     id_query = bool(re.match(r"^\d+_\d{12,14}$", normalized_keyword))
     if id_query:
         target_id = normalized_keyword
+        # 从本地数据库快速按主键拉取
         matched = await db.find_weather_event_by_alarm_id(target_id)
         if not matched:
             return {
@@ -268,6 +276,7 @@ async def query_weather_alarm_data(
         color_emoji = COLOR_LEVEL_EMOJI.get(detected_color, "")
 
         guideline_text = None
+        # 裁剪说明字段提取官方防灾指南部分
         if "防御指南" in body_text:
             guideline_idx = body_text.find("防御指南")
             guideline_text = body_text[guideline_idx:].strip()
@@ -294,6 +303,7 @@ async def query_weather_alarm_data(
             },
         }
 
+    # 模糊条件搜索分支，最大加载 5000 条事件以限制开销
     weather_events = await db.get_recent_weather_events(limit=5000)
     if not weather_events:
         return {
@@ -315,6 +325,7 @@ async def query_weather_alarm_data(
     matched_items = []
     for item in weather_events:
         event_time_utc = parse_event_time_to_utc(item.get("time"))
+        # 过滤掉 72 小时前的预警
         if event_time_utc is None or event_time_utc < threshold_utc:
             continue
 
@@ -324,15 +335,18 @@ async def query_weather_alarm_data(
         weather_type_code = str(item.get("weather_type_code") or "").strip()
         haystack = f"{title_text} {headline_text}"
 
+        # 行政区域地名碰撞过滤
         if location_keyword and location_keyword not in haystack:
             continue
 
         detected_type = detect_weather_type(title_text, weather_type_code)
         detected_color = detect_weather_color(level_text, title_text)
 
+        # 气象警报种类过滤
         if query_type and query_type not in haystack and query_type != detected_type:
             continue
 
+        # 警报色彩级别过滤
         if (
             query_color
             and query_color != detected_color
@@ -351,6 +365,7 @@ async def query_weather_alarm_data(
             }
         )
 
+    # 排序使最新的气象预警记录最先展示
     matched_items.sort(key=lambda entry: entry["event_time_utc"], reverse=True)
 
     if not matched_items:

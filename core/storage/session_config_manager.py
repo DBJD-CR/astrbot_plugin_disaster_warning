@@ -88,7 +88,6 @@ class SessionConfigManager:
 
         # 新格式不存在时，再尝试兼容旧版“按会话保存完整配置”的历史文件。
         # 迁移完成后会统一落为差异补丁，减少后续默认配置变化带来的冗余存储。
-        # 兼容旧格式: session_configs.json (存的是完整配置)
         if self._legacy_full_configs:
             try:
                 migrated = 0
@@ -128,6 +127,7 @@ class SessionConfigManager:
                     pass
 
     def _load_legacy_full_configs(self) -> dict[str, dict[str, Any]]:
+        """加载旧版全量配置字典。"""
         if not os.path.exists(self.legacy_full_configs_file):
             return {}
         try:
@@ -147,6 +147,7 @@ class SessionConfigManager:
     def _extract_legacy_weather_filter_patch(
         self, full_conf: dict[str, Any]
     ) -> dict[str, Any] | None:
+        """提取旧版气象过滤器省份补丁。"""
         weather_config = full_conf.get("weather_config")
         if not isinstance(weather_config, dict):
             return None
@@ -165,6 +166,7 @@ class SessionConfigManager:
         return {"weather_config": {"weather_filter": legacy_patch}}
 
     def _restore_legacy_weather_fields_from_full_configs(self) -> None:
+        """从旧配置恢复气象预警过滤器省份兼容项。"""
         if not self._legacy_full_configs or not self._overrides:
             return
 
@@ -214,6 +216,7 @@ class SessionConfigManager:
 
     @staticmethod
     def _is_legacy_weather_filter_key(key: str, value: Any) -> bool:
+        """检查是否是遗留的气象过滤器字段。"""
         if key == "provinces" and isinstance(value, list):
             return True
         if key == "province" and isinstance(value, str):

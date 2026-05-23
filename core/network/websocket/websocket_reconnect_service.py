@@ -23,12 +23,13 @@ class WebSocketReconnectService:
         self, name: str, uri: str, headers: dict | None, error: Exception
     ) -> None:
         """统一处理连接错误。"""
-        # 一旦连接异常，先清理运行时连接句柄与心跳任务，避免旧状态残留影响下一次重连。
+        # 断开连接时，先从管理器活跃连接字典中移除句柄，并取消与之绑定的保活心跳任务
         self.manager.connections.pop(name, None)
         if name in self.manager.heartbeat_tasks:
             self.manager.heartbeat_tasks[name].cancel()
             self.manager.heartbeat_tasks.pop(name, None)
 
+        # 记录首次断开连接的时间戳，为后续判断“已持续离线多长时间”做数据支撑
         connection_info = self.manager.connection_info.get(name, {})
         offline_since = connection_info.get("offline_since")
         if offline_since is None:
@@ -36,10 +37,11 @@ class WebSocketReconnectService:
             connection_info["offline_since"] = offline_since
             self.manager.connection_info[name] = connection_info
 
+        # 若管理器本身正处于 stop 阶段，则不再生成新的重连定时任务
         if not self.manager.running:
             return
 
-        # 证书配置错误通常不是暂时性故障，继续重连意义不大，直接停止并通知上层。
+        # 若属于 SSL 或 证书配置错误这类不可自行恢复的问题，直接终止重试，并发送系统离线通知
         error_msg = str(error).lower()
         if "ssl" in error_msg or "certificate" in error_msg:
             logger.warning(f"[灾害预警] {name} 遇到 SSL 配置错误，停止重连: {error}")
@@ -52,18 +54,20 @@ class WebSocketReconnectService:
             )
             return
 
-        # 关键错误可跳过短时重试，直接进入更保守的兜底阶段。
+        # 判断是否需要强行跳过短时重连阶段（如 401, 403 授权失败，大概率需要管理员修改 Token，短时爆破重试无意义）
         force_fallback = self.is_critical_error(error)
         if force_fallback:
             logger.warning(
                 f"[灾害预警] {name} 遇到关键错误，将直接进入兜底重连阶段: {error}"
             )
 
+        # 若该连接已存在活跃的挂起重连任务，避免重复拉起重试任务
         existing_task = self.manager.reconnect_tasks.get(name)
         if existing_task and not existing_task.done():
             logger.debug(f"[灾害预警] {name} 已有正在运行的重连任务，跳过重复创建")
             return
 
+        # 创建并挂载对应的异步重连调度协程
         reconnect_task = asyncio.create_task(
             self.schedule_reconnect(
                 name, uri, headers, connection_info, force_fallback=force_fallback
@@ -75,6 +79,7 @@ class WebSocketReconnectService:
     def is_critical_error(self, error: Exception) -> bool:
         """判断是否为需要直接进入兜底重连的关键错误。"""
         error_msg = str(error).lower()
+        # 授权拒绝错误，或由业务层主动认定的不可瞬时重试的关闭帧
         if "401" in error_msg or "403" in error_msg:
             return True
         if "协议错误关闭（不重连）" in error_msg:
@@ -90,6 +95,7 @@ class WebSocketReconnectService:
         force_fallback: bool = False,
     ) -> None:
         """计划重连。"""
+        # 再次确认管理器依然处于运转状态
         if not self.manager.running:
             return
 
@@ -101,24 +107,28 @@ class WebSocketReconnectService:
                 connection_info["offline_since"] = offline_since
                 self.manager.connection_info[name] = connection_info
 
-            # 重连策略分成“短时重试 + 长周期兜底重试”两层，兼顾快速恢复与长期稳定性。
+            # 读取管理器配置文件中关于短重试、兜底长周期重试的详细策略
             max_retries = self.manager.config.get("max_reconnect_retries", 3)
             reconnect_interval = self.manager.config.get("reconnect_interval", 10)
             fallback_enabled = self.manager.config.get("fallback_retry_enabled", True)
             fallback_interval = self.manager.config.get("fallback_retry_interval", 1800)
             fallback_max_count = self.manager.config.get("fallback_retry_max_count", -1)
 
-            # 短时重试计数与兜底重试计数分开维护，便于日志展示和策略判断。
+            # 获取该连接当前的重试情况
             current_retry = self.manager.connection_retry_counts.get(name, 0)
             current_fallback = self.manager.fallback_retry_counts.get(name, 0)
             has_backup = connection_info and connection_info.get("backup_url")
+            # 存在备用地址时，短时最大重试次数翻倍（主地址试完后在备用地址再试同等次数）
             total_max_retries = max_retries * 2 if has_backup else max_retries
 
+            # 如果触发了关键错误需要强行降级，直接把当前短时重试计数拉满以切入长兜底周期
             if force_fallback:
                 current_retry = total_max_retries
                 self.manager.connection_retry_counts[name] = total_max_retries
 
+            # 短时尝试彻底耗尽，准备转长周期兜底
             if current_retry >= total_max_retries:
+                # 若配置中压根未启用长周期兜底，宣告彻底离线并发送停止重连通知
                 if not fallback_enabled:
                     logger.error(
                         f"[灾害预警] {name} 重连失败，已达到最大重试次数 ({total_max_retries})，停止重连"
@@ -132,6 +142,7 @@ class WebSocketReconnectService:
                     )
                     return
 
+                # 若配置了兜底最大次数，且已超限，同样宣告彻底离线
                 if fallback_max_count != -1 and current_fallback >= fallback_max_count:
                     logger.error(
                         f"[灾害预警] {name} 兜底重试失败，已达到最大兜底重试次数 ({fallback_max_count})，停止重连"
@@ -145,6 +156,7 @@ class WebSocketReconnectService:
                     )
                     return
 
+                # 累加长周期重试计数并整理时间显示格式
                 self.manager.fallback_retry_counts[name] = current_fallback + 1
                 fallback_display = current_fallback + 1
                 fallback_max_display = (
@@ -165,6 +177,8 @@ class WebSocketReconnectService:
                     f"[灾害预警] {name} 短时重连失败，将在 {fallback_interval_display} 后进行兜底重试 "
                     f"({fallback_display}/{fallback_max_display})"
                 )
+
+                # 发送离线降级到长兜底阶段的通知，通知群组和管理员
                 self.emit_offline_notification(
                     connection_name=name,
                     stage="fallback",
@@ -174,10 +188,12 @@ class WebSocketReconnectService:
                     fallback_count=self.manager.fallback_retry_counts.get(name, 0),
                 )
 
+                # 睡眠指定长周期
                 await asyncio.sleep(fallback_interval)
                 if not self.manager.running:
                     return
 
+                # 释放占位 task，在后台发起全新连接请求
                 self.manager.reconnect_tasks.pop(name, None)
                 await self.manager.connect(
                     name,
@@ -188,7 +204,7 @@ class WebSocketReconnectService:
                 )
                 return
 
-            # 若配置了备用地址，则在主地址短时重试耗尽后切到备用地址继续尝试。
+            # 短时重连仍在进行中，判定下一轮连主服务器还是备服务器
             target_uri = uri
             server_type = "主服务器"
             if has_backup and current_retry >= max_retries:
@@ -197,6 +213,7 @@ class WebSocketReconnectService:
                     target_uri = backup_url
                     server_type = "备用服务器"
 
+            # 整理日志展示用的第几次重试
             display_retry = current_retry + 1
             if server_type == "备用服务器":
                 display_retry = current_retry - max_retries + 1
@@ -205,6 +222,7 @@ class WebSocketReconnectService:
                 f"[灾害预警] {name} 将在 {reconnect_interval} 秒后尝试重连{server_type} ({display_retry}/{max_retries})"
             )
 
+            # 评估是否需要对“短暂离线了较长时间，但仍未耗尽短时次数”的中间状态发送警报通知
             offline_elapsed = asyncio.get_running_loop().time() - offline_since
             short_retry_notify_threshold = reconnect_interval * 3
             short_retry_notified = bool(
@@ -229,10 +247,12 @@ class WebSocketReconnectService:
                 connection_info["short_retry_notified"] = True
                 self.manager.connection_info[name] = connection_info
 
+            # 睡眠指定的短周期
             await asyncio.sleep(reconnect_interval)
             if not self.manager.running:
                 return
 
+            # 释放占位 task，并发起物理重连
             self.manager.reconnect_tasks.pop(name, None)
             await self.manager.connect(
                 name,
@@ -259,7 +279,7 @@ class WebSocketReconnectService:
         if not self.manager._offline_notify_callback:
             return
 
-        # 回调载荷尽量保持扁平，便于通知层直接格式化输出。
+        # 整理离线载荷数据
         info = self.manager.connection_info.get(connection_name, {})
         payload = {
             "connection_name": connection_name,
@@ -272,4 +292,5 @@ class WebSocketReconnectService:
             "retry_count": retry_count,
             "fallback_count": fallback_count,
         }
+        # 以非阻塞异步任务方式抛出给外层订阅者
         asyncio.create_task(self.manager._offline_notify_callback(payload))

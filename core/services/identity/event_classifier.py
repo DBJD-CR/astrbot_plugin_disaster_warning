@@ -15,8 +15,11 @@ from ...domain.event_models import (
 )
 from ...domain.event_payload import SourcePayload
 
+# 重大地震震级触发标准
 MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD = 6.0
+# 重大灾害预警颜色关键字
 MAJOR_WEATHER_LEVEL_KEYWORD = "红"
+# 重大灾害预警文本短语匹配列表
 MAJOR_WEATHER_TEXT_PHRASES = ("红色预警",)
 
 
@@ -29,6 +32,7 @@ def is_major_weather_level(*candidates: Any) -> bool:
 
 def is_major_weather_text(*candidates: Any) -> bool:
     """判断标题或描述文本是否明确表示红色预警。"""
+    # 只要有任何一条文本匹配到“红色预警”即判定为重大
     return any(
         phrase in text
         for phrase in MAJOR_WEATHER_TEXT_PHRASES
@@ -49,6 +53,7 @@ def is_major_record(record: dict[str, Any]) -> bool:
             magnitude is not None and magnitude >= MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD
         )
     if record_type == "tsunami":
+        # 海啸事件因为罕见且危险性高，一律判定为重大事件
         return True
     if record_type == "weather_alarm":
         level = str(record.get("level") or "")
@@ -67,25 +72,30 @@ def is_major_event(event: EventEnvelope) -> bool:
 
     # 地震、海啸和气象事件采用不同的重大性判断标准。
     if isinstance(domain_event, EarthquakeEvent):
+        # 震级大于等于 6.0 的地震视为重大地震
         return (
             domain_event.magnitude is not None
             and domain_event.magnitude >= MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD
         )
     if isinstance(domain_event, TsunamiEvent):
+        # 海啸事件一律视为重大事件
         return True
     if isinstance(domain_event, WeatherEvent):
+        # 获取源数据载荷字典
         payload = (
             envelope.payload.to_dict()
             if isinstance(envelope.payload, SourcePayload)
             else {}
         )
         metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
+        # 提取警报级别字符串
         level = str(
             getattr(domain_event, "alert_level", "")
             or metadata.get("level", "")
             or payload.get("alert_level")
             or payload.get("level")
         )
+        # 提取警报标题
         title = str(
             domain_event.title
             or domain_event.headline

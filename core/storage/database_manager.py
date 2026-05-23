@@ -65,13 +65,14 @@ class DatabaseManager:
 
     async def _ensure_schema(self, cursor):
         """检测并补齐数据表字段，再创建表和索引。"""
+        # 检查 events 主表是否存在
         await cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
         )
         events_exists = bool(await cursor.fetchone())
 
         if events_exists:
-            # 补齐早期 v2 版本可能缺失的列，避免建索引失败
+            # 补齐早期 v2 版本可能缺失的列，避免由于 schema 差异造成运行故障
             await cursor.execute("PRAGMA table_info(events)")
             columns = {row[1] for row in await cursor.fetchall()}
             if "source_id" not in columns:
@@ -87,7 +88,7 @@ class DatabaseManager:
             if "place_name" not in columns:
                 await cursor.execute("ALTER TABLE events ADD COLUMN place_name TEXT")
 
-        # event_updates 表保存每次推送或报次更新的快照，用于重建历史记录。
+        # 检查 event_updates 报次更新表是否存在
         await cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='event_updates'"
         )
@@ -98,10 +99,12 @@ class DatabaseManager:
             if "level" not in updates_columns:
                 await cursor.execute("ALTER TABLE event_updates ADD COLUMN level TEXT")
 
+        # 创建不存在的表
         await self._create_tables(cursor)
 
     async def _create_tables(self, cursor):
         """创建当前版本所需的表结构与索引。"""
+        # 主事件表：保存每个物理事件的最新综合状态
         await cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS events (
@@ -131,6 +134,7 @@ class DatabaseManager:
             )
             """
         )
+        # 事件更新表：保存每次历史报次的详细快照，用于重建更新轨迹
         await cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS event_updates (
@@ -147,7 +151,7 @@ class DatabaseManager:
             )
             """
         )
-        # 索引集中覆盖事件标识、来源、类型、时间等高频检索维度。
+        # 索引集中覆盖事件标识、来源、类型、时间等高频检索维度，加速分页与汇总查询
         for sql in (
             "CREATE INDEX IF NOT EXISTS idx_ev_real_id   ON events(real_event_id)",
             "CREATE INDEX IF NOT EXISTS idx_ev_unique_id ON events(unique_id)",
@@ -169,9 +173,10 @@ class DatabaseManager:
         """
         try:
             cursor = await self.connection.cursor()
-            # 是否重大事件既允许外部直接传入，也允许在入库前重新按规则补判一次。
+            # 是否重大事件既允许外部直接传入，也允许在入库前重新按规则补判一次
             is_major = bool(event_data.get("is_major")) or is_major_record(event_data)
 
+            # 向 events 表插入主记录
             await cursor.execute(
                 """
                 INSERT INTO events (
@@ -207,7 +212,7 @@ class DatabaseManager:
             )
             new_id = cursor.lastrowid
 
-            # 首次写入主事件表后，同步写入一条更新记录，保证历史链条从首报开始完整。
+            # 首次写入主事件表后，同步写入一条更新记录，保证历史链条从首报开始完整
             await cursor.execute(
                 """
                 INSERT INTO event_updates
@@ -228,7 +233,7 @@ class DatabaseManager:
 
             await self.connection.commit()
 
-            # 引入缓存清除机制
+            # 清理缓存，保证接口能够立刻加载出最新写入的数据
             try:
                 from ..network.admin.api.events_routes import invalidate_sources_cache
 
@@ -275,6 +280,7 @@ class DatabaseManager:
             if db_id is None:
                 return False
 
+            # 更新主表中的事件字段
             await cursor.execute(
                 """
                 UPDATE events SET
@@ -318,7 +324,7 @@ class DatabaseManager:
                 ),
             )
 
-            # 主事件表字段更新后，再追加一条报次记录，保留每次演进轨迹。
+            # 主事件表字段更新后，再追加一条报次快照记录，保留每次演进轨迹
             await cursor.execute(
                 """
                 INSERT INTO event_updates
@@ -339,7 +345,7 @@ class DatabaseManager:
 
             await self.connection.commit()
 
-            # 引入缓存清除机制
+            # 更新完毕后清理缓存
             try:
                 from ..network.admin.api.events_routes import invalidate_sources_cache
 
@@ -390,6 +396,7 @@ class DatabaseManager:
         for event in events_need_history:
             updates = updates_by_event.get(event["id"], [])
             if len(updates) > 1:
+                # 历史链条中去掉了当前最新报本身，只保存以前的变更快照
                 event["history"] = list(reversed(updates[:-1]))
 
         return events

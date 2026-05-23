@@ -16,8 +16,8 @@ class SourcePayload:
 
     # source_id 标识该原始数据来自哪个接入源。
     source_id: str
-    provider_family: str = ""
-    message_type: str = ""
+    provider_family: str = ""  # 数据服务商标识家族
+    message_type: str = ""  # 原始消息类型字段
     # raw 存放原始字典内容；attributes 存放补充描述信息。
     raw: dict[str, Any] = field(default_factory=dict)
     attributes: dict[str, Any] = field(default_factory=dict)

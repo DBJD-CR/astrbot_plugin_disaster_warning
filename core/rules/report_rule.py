@@ -20,6 +20,7 @@ class ReportRule(BaseRule):
     def evaluate(self, context: RuleContext) -> RuleDecision:
         """根据来源报次策略决定当前事件是否应被推送。"""
         domain_event = context.domain_event
+        # 报次限频主要应用在地震预警推送中
         if not isinstance(domain_event, EarthquakeEvent):
             return RuleDecision.accept(reason="非地震事件，跳过报数规则")
 
@@ -37,19 +38,25 @@ class ReportRule(BaseRule):
             return RuleDecision.accept(reason="当前数据源无报数控制")
 
         push_config = context.runtime_config.get("push_frequency_control", {})
+        # 获取当前是第几报
         report_num = resolve_report_num(context.event) or 1
         event_id = context.envelope.id or context.source_id or "unknown_event"
-        # 状态存储用于记录某个事件最近一次已接受的报次，便于后续规则复用。
+
+        # 存放本次调用的限频拦截决策修改状态
         state_store = context.extras.setdefault("report_rule_state", {})
 
-        # 先以大陆和台湾预警的默认值初始化，再根据不同来源覆写。
+        # 根据报数频控策略决定每隔多少报推送一次
         push_every_n = int(push_config.get("cea_cwa_report_n", 1) or 1)
         supports_final = True
+
+        # 策略 1：日本气象厅，日本预警更新迅速且测定频繁，适合多间隔推送
         if report_policy == "jma":
             push_every_n = int(push_config.get("jma_report_n", 3) or 3)
+        # 策略 2：Global Quake，由于网络波动更新极大，默认每 5 报推一次，不设最终报标志
         elif report_policy == "global_quake":
             push_every_n = int(push_config.get("gq_report_n", 5) or 5)
             supports_final = False
+        # 策略 3：中国与台湾预警，不区分最终报
         elif report_policy == "cea_cwa":
             supports_final = False
 
@@ -59,6 +66,7 @@ class ReportRule(BaseRule):
         ignore_non_final_reports = bool(
             push_config.get("ignore_non_final_reports", False)
         )
+
         identity = getattr(context.envelope, "identity", None)
         metadata = (
             context.envelope.metadata
@@ -74,7 +82,7 @@ class ReportRule(BaseRule):
             else False
         )
 
-        # 若配置要求最终报始终放行，则优先于常规报次间隔判断。
+        # 规则 1：若是最终报且配置开启了最终报必推送，直接通过
         if is_final and final_report_always_push:
             if context.commit_state:
                 state_store[event_id] = report_num
@@ -83,7 +91,7 @@ class ReportRule(BaseRule):
                 context={"event_id": event_id, "report_num": report_num},
             )
 
-        # 首报通常信息最关键，默认直接放行。
+        # 规则 2：首报（第 1 报）承载最先预警信息，强制直接放行
         if report_num == 1:
             if context.commit_state:
                 state_store[event_id] = report_num
@@ -92,6 +100,7 @@ class ReportRule(BaseRule):
                 context={"event_id": event_id, "report_num": report_num},
             )
 
+        # 规则 3：如果配置项要求忽略非最终报，那么在这类非首报且非最终报的情况下一律过滤掉
         if ignore_non_final_reports and supports_final and not is_final:
             return RuleDecision.reject(
                 reason="忽略非最终报",
@@ -99,10 +108,11 @@ class ReportRule(BaseRule):
                 context={"event_id": event_id, "report_num": report_num},
             )
 
-        # 兜底防御非法配置，避免出现除零或恒不命中的情况。
+        # 兜底防御非法配置项，规避除零或恒不命中的情况
         if push_every_n <= 0:
             push_every_n = 1
 
+        # 规则 4：整除模计算，例如每 3 报推送一次，则在第 3, 6, 9 报时放行通过
         if report_num % push_every_n == 0:
             if context.commit_state:
                 state_store[event_id] = report_num
@@ -116,6 +126,7 @@ class ReportRule(BaseRule):
                 },
             )
 
+        # 拦截过滤
         return RuleDecision.reject(
             reason="报数规则过滤",
             detail=f"事件 {event_id} 第 {report_num} 报未命中间隔值 {push_every_n}",

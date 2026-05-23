@@ -18,12 +18,16 @@ class RuleContext:
     用于在规则链各节点之间传递事件对象、运行时配置、策略状态与临时附加数据。
     """
 
+    # 接收到的事件实例
     event: Any
+    # 插件当前的全局运行时会话配置
     runtime_config: dict[str, Any]
+    # 策略相关的共享状态（如已推送事件记录等）
     policy_state: dict[str, Any]
     session_id: str | None = None
     commit_state: bool = True
     logger_instance: Any = None
+    # 临时附加数据存储，供规则节点间或下游流程共享计算结果
     extras: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -35,6 +39,7 @@ class RuleContext:
         cached = self.extras.get("event_envelope")
         if isinstance(cached, EventEnvelope):
             return cached
+        # 严格限制输入类型为 EventEnvelope
         if not isinstance(self.event, EventEnvelope):
             raise TypeError(
                 f"RuleContext.event 仅接受 EventEnvelope，收到: {type(self.event)}"
@@ -45,6 +50,7 @@ class RuleContext:
     @property
     def domain_event(self) -> Any:
         """统一领域事件访问入口。"""
+        # 返回被 identity 包裹的实际领域事件
         return self.envelope.event
 
     @property
@@ -55,6 +61,7 @@ class RuleContext:
     @property
     def source_id(self) -> str:
         """统一数据源标识访问入口。"""
+        # 返回本事件所属的数据源唯一编码
         return self.envelope.source_id
 
 

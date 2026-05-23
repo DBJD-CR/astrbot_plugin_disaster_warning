@@ -29,6 +29,7 @@ class GlobalQuakeParser(BaseParser):
 
     def decode_message(self, message: str | bytes):
         """解码 Global Quake 原始消息。"""
+        # 返回原始载荷，交由下层进一步判断类型
         return message
 
     def parse_payload(self, payload):
@@ -47,7 +48,7 @@ class GlobalQuakeParser(BaseParser):
             ws_msg = WsMessage()
             ws_msg.ParseFromString(message)
 
-            # 二进制通道会混发地震、心跳和状态消息，这里只把地震消息送入正式解析链。
+            # 二进制通道会混发地震、心跳和状态消息，这里只把地震消息送入正式解析链
             if ws_msg.type == MessageType.EARTHQUAKE:
                 return self._parse_earthquake_protobuf(ws_msg)
             if ws_msg.type == MessageType.HEARTBEAT:
@@ -100,11 +101,12 @@ class GlobalQuakeParser(BaseParser):
                     eq_data.origin_time_ms / 1000, tz=timezone.utc
                 )
 
+            # 解析罗马数字格式的最大烈度
             intensity = ScaleConverter.convert_roman_intensity(eq_data.intensity)
             magnitude = round(eq_data.magnitude, 1) if eq_data.magnitude else None
             depth = round(eq_data.depth, 1) if eq_data.depth is not None else None
 
-            # 全球震中地点优先翻译为适合中文展示的地名，必要时保留原始地区名。
+            # 全球震中地点优先翻译为适合中文展示的地名，必要时保留原始英文地名
             place_name = region_service.translate_place_name(
                 eq_data.region,
                 eq_data.latitude,
@@ -112,6 +114,7 @@ class GlobalQuakeParser(BaseParser):
                 fallback_to_original=True,
             )
 
+            # 获取测站数量统计
             station_count = None
             if eq_data.HasField("station_count"):
                 station_count = {
@@ -121,6 +124,7 @@ class GlobalQuakeParser(BaseParser):
                     "matching": eq_data.station_count.matching,
                 }
 
+            # 获取定位精度质量
             quality_data = None
             if eq_data.HasField("quality"):
                 quality_data = {
@@ -138,6 +142,7 @@ class GlobalQuakeParser(BaseParser):
                 "data": {"quality": quality_data} if quality_data else {},
             }
 
+            # 获取版本报次
             raw_report_num = eq_data.revision_id or 1
             try:
                 report_num = int(raw_report_num)
@@ -159,6 +164,8 @@ class GlobalQuakeParser(BaseParser):
                 "quality": quality_data,
             }
             event_id = str(eq_data.id or "")
+
+            # 实例化地震领域事件
             domain_event = EarthquakeEvent(
                 occurred_at=shock_time or datetime.now(timezone.utc),
                 latitude=eq_data.latitude,
@@ -169,6 +176,8 @@ class GlobalQuakeParser(BaseParser):
                 place_name=place_name,
                 metadata=dict(metadata),
             )
+
+            # 构造身份标识
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -189,6 +198,8 @@ class GlobalQuakeParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 包装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,
@@ -226,7 +237,7 @@ class GlobalQuakeParser(BaseParser):
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
-            # JSON 格式同样兼容两种时间表达，优先用更明确的字符串时间。
+            # JSON 格式同样兼容两种时间表达，优先用更明确的字符串时间
             shock_time = None
             origin_time_iso = eq_data.get("originTimeIso")
             if origin_time_iso:
@@ -249,6 +260,7 @@ class GlobalQuakeParser(BaseParser):
             if depth is not None:
                 depth = round(depth, 1)
 
+            # 中文翻译地名
             original_region = eq_data.get("region", "未知地点")
             place_name = region_service.translate_place_name(
                 original_region, latitude, longitude, fallback_to_original=True
@@ -275,6 +287,8 @@ class GlobalQuakeParser(BaseParser):
                 "report_num": report_num,
             }
             event_id = str(eq_data.get("id", "") or "")
+
+            # 领域模型
             domain_event = EarthquakeEvent(
                 occurred_at=shock_time or datetime.now(timezone.utc),
                 latitude=latitude,
@@ -285,6 +299,8 @@ class GlobalQuakeParser(BaseParser):
                 place_name=place_name,
                 metadata=dict(metadata),
             )
+
+            # 身份模型
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -305,6 +321,8 @@ class GlobalQuakeParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 封装包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,
@@ -350,7 +368,7 @@ class UsgsEarthquakeParser(BaseParser):
 
     @staticmethod
     def _get_field(data: dict[str, Any], field_name: str):
-        # USGS 来源字段大小写并不总是稳定，因此同时兼容首字母大写写法。
+        # USGS 来源字段大小写并不总是稳定，因此同时兼容首字母大写与全小写两种写法。
         return data.get(field_name) or data.get(field_name.capitalize())
 
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
@@ -361,10 +379,11 @@ class UsgsEarthquakeParser(BaseParser):
                 logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
+            # 过滤空心跳包
             if self._is_heartbeat_message(msg_data):
                 return None
 
-            # 这组字段足以支撑基础地震事件落盘与展示，即便个别非关键字段缺失也继续处理。
+            # 检测关键字段完整度
             required_fields = ["id", "magnitude", "latitude", "longitude", "shockTime"]
             missing_fields = []
             for field in required_fields:
@@ -399,6 +418,7 @@ class UsgsEarthquakeParser(BaseParser):
             )
             usgs_place_name_en = self._get_field(msg_data, "placeName") or ""
 
+            # 地震唯一ID缺失时判定为无法入去重链的脏数据，不予继续解析
             if not usgs_id:
                 if not self._is_heartbeat_message(msg_data):
                     warning_msg = f"[灾害预警] {self.source_id} 缺少地震ID，跳过处理"
@@ -420,6 +440,7 @@ class UsgsEarthquakeParser(BaseParser):
                         logger.warning(warning_msg)
                 return None
 
+            # 翻译全球震中地点英文名称为中文
             usgs_place_name = region_service.translate_place_name(
                 usgs_place_name_en,
                 usgs_latitude,
@@ -440,6 +461,8 @@ class UsgsEarthquakeParser(BaseParser):
                 "update_time": update_time,
             }
             event_id = str(usgs_id or "")
+
+            # 实例化地震领域事件
             domain_event = EarthquakeEvent(
                 occurred_at=self._parse_datetime(
                     self._get_field(msg_data, "shockTime")
@@ -451,6 +474,8 @@ class UsgsEarthquakeParser(BaseParser):
                 place_name=usgs_place_name,
                 metadata=dict(metadata),
             )
+
+            # 构造身份模型
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -468,6 +493,8 @@ class UsgsEarthquakeParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 封装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,

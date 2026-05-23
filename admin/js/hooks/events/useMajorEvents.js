@@ -12,13 +12,24 @@ function useMajorEvents(displayLimit, refreshSignal) {
 
     /**
      * 并发拉取最近发生的重大事件
+     * @param {boolean} [silent=false] 是否为后台静默刷新，静默刷新时不开启 loading 骨架屏以保留当前 DOM 挂载和滚动位置
      */
-    const fetchMajorEvents = React.useCallback(() => {
-        setLoading(true);
+    const fetchMajorEvents = React.useCallback((silent = false) => {
+        if (!silent) {
+            setLoading(true);
+        }
         eventsApi.getMajorEvents(displayLimit)
             .then((data) => {
                 if (Array.isArray(data.events)) {
-                    setMajorEvents(data.events);
+                    setMajorEvents((prev) => {
+                        // 精细化比对数据，若完全一致则不触发 React 引用更新，防范无意义的子组件重绘
+                        const isIdentical = prev.length === data.events.length &&
+                            prev.every((evt, idx) => (evt.id || evt.event_id) === (data.events[idx].id || data.events[idx].event_id));
+                        if (isIdentical) {
+                            return prev;
+                        }
+                        return data.events;
+                    });
                 }
                 setLoading(false);
             })
@@ -28,14 +39,14 @@ function useMajorEvents(displayLimit, refreshSignal) {
             });
     }, [eventsApi, displayLimit]);
 
-    // 挂载或上限设置改变时触发载入
+    // 挂载或上限设置改变时触发载入（非静默，显示加载状态）
     React.useEffect(() => {
-        fetchMajorEvents();
+        fetchMajorEvents(false);
     }, [fetchMajorEvents]);
 
-    // 当触发外部业务刷新信号时触发重拉
+    // 当触发外部业务刷新信号时触发静默重拉，不让界面闪烁或导致 Scroll Container 被卸载
     React.useEffect(() => {
-        fetchMajorEvents();
+        fetchMajorEvents(true);
     }, [refreshSignal, fetchMajorEvents]);
 
     return {

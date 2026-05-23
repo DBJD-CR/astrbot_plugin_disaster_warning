@@ -14,7 +14,9 @@ from ....utils.version import get_plugin_version
 class NotificationRemoteClient:
     """负责构造远端通知接口请求并拉取原始通知数据。"""
 
+    # 插件统一系统推送的接口服务主域名
     NOTIFICATION_BASE_URL = "https://pluginpush.aloys23.link"
+    # 应用的身份识别码 GUID
     NOTIFICATION_APP_SLUG = "17bdeac6-bd59-461d-a436-2072f862b031"
 
     def __init__(self, plugin_version_getter=None):
@@ -26,6 +28,7 @@ class NotificationRemoteClient:
             version = self._plugin_version_getter()
         else:
             version = get_plugin_version()
+        # 清理版本号的 V 前缀或多余空格
         normalized = str(version or "0.0.0").strip().lstrip("vV")
         return normalized if normalized and normalized != "unknown" else "0.0.0"
 
@@ -35,6 +38,7 @@ class NotificationRemoteClient:
         app_slug = self.NOTIFICATION_APP_SLUG.strip().strip("/")
         if not base_url or not app_slug:
             return ""
+        # 携带版本号参数，实现针对低版本插件的专属通知及停更提醒等高级过滤投递
         query = urlencode({"plugin_version": self._get_plugin_version()})
         return f"{base_url}/api/v1/{app_slug}/notifications/updates?{query}"
 
@@ -55,7 +59,9 @@ class NotificationRemoteClient:
                 "Chrome/133.0.0.0 Safari/537.36"
             ),
         }
+        # 单次 HTTP 请求全局超时限制为 10 秒
         timeout = aiohttp.ClientTimeout(total=10)
+        # 采用阶梯递增两次重试机制，应对微弱网络扰动
         retry_delays = (0.5, 1.0)
         last_error: Exception | None = None
 
@@ -75,6 +81,7 @@ class NotificationRemoteClient:
                 return payload
             except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError) as e:
                 last_error = e
+                # 重试次数耗尽，直接跳出重试循环抛出异常
                 if attempt >= len(retry_delays):
                     break
                 await asyncio.sleep(retry_delays[attempt])

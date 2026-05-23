@@ -19,14 +19,18 @@ class RegionService:
     """
 
     def __init__(self):
+        # 缓存区划网格矩阵数组
         self._fe_numbers = None
+        # 缓存区划编码对应的中文地名名称列表
         self._fe_names = None
+        # 预设的区划 JSON 数据文件位置
         self._data_file = (
             Path(__file__).resolve().parents[3] / "resources" / "fe_regions_data.json"
         )
 
     async def load_data_async(self) -> None:
         """异步预加载 F-E 区划数据。"""
+        # 使用线程池执行同步文件加载，避免阻塞 asyncio 异步主事件循环
         await asyncio.to_thread(self._load_data)
 
     def _load_data(self) -> None:
@@ -43,6 +47,7 @@ class RegionService:
             logger.warning(
                 f"[灾害预警] FE 区划数据文件不存在，回退默认空映射: {self._data_file}"
             )
+            # 文件不存在时，初始化大小为 180x360 且值全部为 729（未定义编码）的矩阵，防止运行时异常
             self._fe_numbers = [[729] * 360 for _ in range(180)]
             self._fe_names = ["未定义"] * 729
         except Exception as exc:
@@ -57,20 +62,24 @@ class RegionService:
 
         可按需补上“附近”后缀，以便直接用于展示文案。
         """
+        # 确保数据已同步加载
         self._load_data()
 
         if self._fe_numbers is None or self._fe_names is None:
             return None
 
         try:
+            # 经纬度映射到 180x360 矩阵网格索引
             lat_i = min(max(int(lat + 90), 0), 179)
             lng_i = min(max(int(lng + 180), 0), 359)
             region_number = self._fe_numbers[lat_i][lng_i]
 
+            # 区划编号 1-based，获取列表对应的中文地名
             if 1 <= region_number <= len(self._fe_names):
                 region_name = self._fe_names[region_number - 1]
                 if region_name == "未定义":
                     return None
+                # 根据配置决定是否向地名后附加“附近”以修饰模糊定位描述
                 if add_suffix and not region_name.endswith("附近"):
                     region_name += "附近"
                 return region_name

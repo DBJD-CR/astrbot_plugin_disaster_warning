@@ -22,7 +22,7 @@ class PushExecutionService:
 
     def __init__(self, manager):
         # 执行服务通过主消息管理器获取会话发送、消息构建与规则评估能力。
-        self.manager = manager
+        self.manager = manager  # 主消息管理器 MessagePushManager 实例
 
     @staticmethod
     def _build_plaintext_fallback_message(message: MessageChain) -> MessageChain | None:
@@ -48,6 +48,7 @@ class PushExecutionService:
             data_attr = getattr(component, "data", None)
             base64_attr = getattr(component, "base64", None)
 
+            # 只保留非 HTTP 外部网络地址的安全本地物理路径图片及 Base64 字符图片做降级发送，过滤危险的不在线网络大图
             if (
                 isinstance(file_attr, str)
                 and file_attr.strip()
@@ -91,7 +92,7 @@ class PushExecutionService:
         session_config_getter=None,
         commit_state: bool = True,
     ) -> dict[str, Any]:
-        """执行会话级推送流程并返回结果摘要。"""
+        """执行会话级消息过滤评估、动态并发渲染与最终投递派发。"""
         # 每次执行前重置成功会话列表，避免旧批次结果污染当前事件。
         self.manager.last_success_sessions = []
 
@@ -123,6 +124,7 @@ class PushExecutionService:
         # 统计实际发送阶段的失败原因，避免与规则拦截混淆。
         send_failure_stats: dict[str, int] = {}
 
+        # 收集预筛选通过的所有会话名单与配置
         push_candidates = self._collect_push_candidates(
             event,
             sessions,
@@ -184,6 +186,7 @@ class PushExecutionService:
                 async with message_task_lock:
                     task = message_task_cache.get(cache_key)
                     if task is None:
+                        # 触发异步消息渲染任务 (包含文本和地图卡片渲染)
                         task = asyncio.create_task(
                             self.manager.message_build_service.build_message_async(
                                 event,
@@ -221,7 +224,9 @@ class PushExecutionService:
                 logger.debug(
                     f"[灾害预警] 事件 {event.id} 通过会话 {session} 的发送前复核，准备发送消息"
                 )
+                # 获取复用或动态渲染的图片/卡片消息链
                 message = await get_or_build_message(runtime_config)
+                # 调用底座 Session 发送器下发消息
                 await self.manager.session_sender.send(session, message)
                 logger.debug(f"[灾害预警] 事件 {event.id} 已推送到 {session}")
                 return True, session, runtime_config.get("message_format", {}), None
@@ -308,6 +313,7 @@ class PushExecutionService:
         filter_reason_stats: dict[str, int] | None = None,
         filter_reason_detail_stats: dict[str, int] | None = None,
     ) -> list[tuple[str, dict[str, Any]]]:
+        """收集所有通过初筛的待发送目标会话名单（commit_state为False，在此阶段不污染报数状态）。"""
         # 这里仅做“预筛”，所以 commit_state=False，避免在真正发送前就提前消耗报数状态。
         candidates: list[tuple[str, dict[str, Any]]] = []
         if filter_reason_stats is None:
@@ -343,6 +349,7 @@ class PushExecutionService:
                     logger.debug(f"[灾害预警] 会话 {session} 推送开关关闭，跳过")
                     continue
 
+            # 过滤判定评估
             decision = self.manager.evaluate_push_decision(
                 event,
                 runtime_config=runtime_config,

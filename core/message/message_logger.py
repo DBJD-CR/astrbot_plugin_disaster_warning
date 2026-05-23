@@ -43,7 +43,9 @@ class MessageLogger:
         self.plugin_name = plugin_name
         self.config_accessor = ConfigAccessor(config)
 
-        self.p2p_area_mapping = self._load_p2p_area_mapping()
+        self.p2p_area_mapping = (
+            self._load_p2p_area_mapping()
+        )  # 载入 P2P 气象预警区域代码对应表
         debug_config = self.config_accessor.debug_config()
 
         # 是否启用、文件名、轮转大小与保留份数都由调试配置控制。
@@ -51,8 +53,10 @@ class MessageLogger:
         self.log_file_name = debug_config.get(
             "raw_message_log_path", "raw_messages.log"
         )
-        self.max_size_mb = debug_config.get("log_max_size_mb", 50)
-        self.max_files = debug_config.get("log_max_files", 5)
+        self.max_size_mb = debug_config.get(
+            "log_max_size_mb", 50
+        )  # 单个日志文件最大 MB 数
+        self.max_files = debug_config.get("log_max_files", 5)  # 最大保留备份日志文件数
 
         # 过滤项用于裁剪高频噪声消息，降低日志体积并提升可读性。
         self.filter_heartbeat = debug_config.get("filter_heartbeat_messages", True)
@@ -96,7 +100,7 @@ class MessageLogger:
         )
         self._log_summary_service = LogSummaryService()
         self._log_stats_repository = LogStatsRepository(self.stats_file)
-        self._load_stats()
+        self._load_stats()  # 恢复持久化的日志过滤统计数据
 
         self.plugin_version = get_plugin_version()
         self._log_helper_service = MessageLogHelperService()
@@ -141,7 +145,7 @@ class MessageLogger:
         return self._raw_message_filter.should_filter_message(payload_data, source_id)
 
     def _is_duplicate_event(self, data: dict[str, Any], source_id: str) -> bool:
-        """判断是否为重复事件"""
+        """判断是否为重复事件（利用历史哈希滑动窗口）"""
         try:
             event_hash = self._generate_event_hash(data, source_id)
             if event_hash in self.recent_event_hashes:
@@ -149,6 +153,7 @@ class MessageLogger:
 
             self.recent_event_hashes[event_hash] = datetime.now().timestamp()
 
+            # 超出滑动窗口最大限制时淘汰最老条目
             if len(self.recent_event_hashes) > self.max_cache_size:
                 oldest = next(iter(self.recent_event_hashes))
                 self.recent_event_hashes.pop(oldest)
@@ -222,7 +227,7 @@ class MessageLogger:
         """同步写入日志文件（在线程池中运行）"""
         success = self._log_file_store.write(content)
         if not success:
-            self.enabled = False
+            self.enabled = False  # 写入失败则关闭落盘开关
 
     def log_websocket_message(
         self, connection_name: str, message: Any, url: str | None = None
@@ -279,7 +284,7 @@ class MessageLogger:
         )
 
     def clear_logs(self):
-        """清除所有日志文件"""
+        """清除所有日志文件与去重缓存"""
         try:
             if self.log_file_path.exists():
                 self.log_file_path.unlink()

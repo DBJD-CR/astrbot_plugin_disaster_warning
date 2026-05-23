@@ -12,6 +12,7 @@ import aiohttp
 
 from astrbot.api import logger
 
+# 中国 34 个省级行政区划简称与全名关键字定义列表
 CHINA_PROVINCES = [
     "北京",
     "天津",
@@ -57,13 +58,18 @@ class WeatherRegionResolver:
     """
 
     def __init__(self):
+        # 缓存行政地名反查省份成功与失败的结果字典，避免过度发起外部 HTTP 请求
         self._location_province_cache: dict[str, str | None] = {}
+        # 缓存地名过期时间戳字典
         self._cache_expire: dict[str, float] = {}
+        # 失败请求的缓存有效期限制（秒），防止瞬时重试打满带宽
         self._failure_ttl = 60.0
+        # 内部重用的 HTTP ClientSession 客户端会话
         self._session: aiohttp.ClientSession | None = None
 
     def extract_province(self, title_text: str) -> str | None:
         """直接从标题中提取省级行政区名称。"""
+        # 简单快速的字符串子串判定
         for province in CHINA_PROVINCES:
             if province in title_text:
                 return province
@@ -74,6 +80,7 @@ class WeatherRegionResolver:
         normalized = province_name.strip()
         if not normalized:
             return None
+        # 查找标准列表中匹配的简称
         for province in CHINA_PROVINCES:
             if province in normalized:
                 return province
@@ -83,6 +90,7 @@ class WeatherRegionResolver:
         """从头条文本中尽量提取市县级地名。"""
         if not headline_text:
             return None
+        # 通过正则表达式抽取各种行政区划结尾的地名段落
         matches = re.findall(
             r"([\u4e00-\u9fa5]{2,30}(?:特别行政区|自治州|自治县|自治旗|地区|盟|市|区|县|旗))",
             headline_text,
@@ -92,8 +100,10 @@ class WeatherRegionResolver:
                 continue
             return place
 
+        # 兜底截取气象局或气象台前面的汉字作为备选地名
         fallback_text = re.split(r"气象(?:站|台)", headline_text, maxsplit=1)[0].strip()
         if fallback_text:
+            # 清理非中文字符前缀和后缀
             fallback_text = re.sub(r"^[^\u4e00-\u9fa5]+", "", fallback_text)
             fallback_text = re.sub(r"[^\u4e00-\u9fa5]+$", "", fallback_text)
             if fallback_text:
@@ -123,6 +133,7 @@ class WeatherRegionResolver:
             if now < self._cache_expire.get(place_name, 0):
                 return None
 
+        # 拼接民政部全国地名公共接口查询参数
         params = {
             "stName": place_name,
             "searchType": "模糊",
@@ -144,6 +155,7 @@ class WeatherRegionResolver:
             self._cache_expire[place_name] = now + self._failure_ttl
             return None
 
+        # 从返回条目中依次匹配标准省份名称
         for record in payload.get("records", []):
             province_name = record.get("province_name", "")
             province = self._normalize_province_name(province_name)
@@ -159,9 +171,11 @@ class WeatherRegionResolver:
         self, title_text: str, headline_text: str = ""
     ) -> str | None:
         """按“标题直取 -> 头条提取 -> 外部查询”顺序解析省份。"""
+        # 第一阶段：尝试从标题文本直接提取
         province = self.extract_province(title_text)
         if province is not None:
             return province
+        # 第二阶段：提取更小的地名段，并发起民政部地名数据库的模糊关联搜索
         place_name = self._extract_place_from_headline(headline_text)
         if not place_name:
             return None

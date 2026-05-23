@@ -20,9 +20,11 @@ class RemoteMediaFetcher:
         content_type_guesser: Callable[[str | None], str | None],
     ):
         # 抓取器通过注入回调访问网络会话与内容类型判定能力，保持自身轻量。
-        self._session_getter = session_getter
-        self._image_type_checker = image_type_checker
-        self._content_type_guesser = content_type_guesser
+        self._session_getter = session_getter  # 网络 session 异步获取回调
+        self._image_type_checker = image_type_checker  # 图片 MIME 类型合法性校验回调
+        self._content_type_guesser = (
+            content_type_guesser  # URL 扩展名后缀 MIME 类型猜测回调
+        )
 
     async def fetch(
         self,
@@ -47,7 +49,10 @@ class RemoteMediaFetcher:
         }
 
         try:
-            session = await self._session_getter(timeout_seconds)
+            session = await self._session_getter(
+                timeout_seconds
+            )  # 异步获取 ClientSession
+            # 执行带有重定向跟踪的 HTTP GET 请求
             async with session.get(normalized_url, allow_redirects=True) as response:
                 # 把最终跳转地址、状态码与响应头统一记录下来，便于上层诊断抓取失败原因。
                 result["status"] = response.status
@@ -63,12 +68,14 @@ class RemoteMediaFetcher:
                         )
                         return result
 
+                # 仅处理 HTTP 200 成功的请求
                 if response.status != 200:
                     result["error"] = f"HTTP {response.status}"
                     return result
 
-                body = await response.read()
+                body = await response.read()  # 读取全部响应字节体
                 result["bytes"] = len(body)
+                # 再次校验下载后的文件实际大小
                 if len(body) > max_bytes:
                     result["error"] = (
                         f"下载体过大: {len(body)} bytes > {max_bytes} bytes"
@@ -79,15 +86,17 @@ class RemoteMediaFetcher:
                     result["final_url"]
                 )
                 result["content_type"] = content_type
+                # 如果要求为图片，则使用回调校验 content-type 是否合法
                 if expected_kind == "image" and not self._image_type_checker(
                     content_type
                 ):
                     result["error"] = f"响应类型不是图片: {content_type or 'unknown'}"
                     return result
 
-                result["data"] = body
+                result["data"] = body  # 写入读取到的二进制数据
                 return result
         except Exception as e:
+            # 捕获连接超时、DNS 错误等全部异常，并将异常名和描述记录返回
             result["error"] = str(e)
             result["exception_type"] = type(e).__name__
             return result

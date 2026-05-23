@@ -24,20 +24,23 @@ class WeatherAlarmParser(BaseParser):
     def __init__(self, message_logger=None):
         """初始化气象预警解析器与短期重复记录缓存。"""
         super().__init__("china_weather_fanstudio", message_logger)
+        # 用双端队列在内存中缓存最近 10 条已处理过气象预警标识，用于快速防重过滤
         self._processed_weather_ids = deque(maxlen=10)
 
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
         """解析中国气象局气象预警数据。"""
         try:
+            # 提取数据负载中的实际业务字段
             msg_data = self._extract_data(data)
             if not msg_data:
                 logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
+            # 过滤心跳包
             if self._is_heartbeat_message(msg_data):
                 return None
 
-            # 解析器内部对最近少量预警标识做去重，避免同一条消息短时间重复入链。
+            # 内存中判定当前事件ID是否已被处理过，避免同一预警短时多次派发
             weather_id = msg_data.get("id")
             if weather_id and weather_id in self._processed_weather_ids:
                 logger.info(
@@ -45,7 +48,7 @@ class WeatherAlarmParser(BaseParser):
                 )
                 return None
 
-            # 关键字段缺失时仍尽量继续解析，但会记录调试日志方便排查来源异常。
+            # 对数据源字段完整性做检查，缺失关键字段时记录 debug 方便诊断
             required_fields = ["id", "effective", "description"]
             missing_fields = [
                 field
@@ -84,7 +87,7 @@ class WeatherAlarmParser(BaseParser):
             title = msg_data.get("title", "") or headline
             description = msg_data.get("description", "")
 
-            # 标题、名称和描述全空时，消息通常不具备展示意义，直接跳过。
+            # 评估是否有实质展示意义：若标题、名称与具体描述全部缺失，判定为垃圾或测试消息，直接略过
             if not title and not headline and not description:
                 if not self._is_heartbeat_message(msg_data):
                     warning_msg = f"[灾害预警] {self.source_id} 气象预警缺少标题、名称和描述信息，跳过处理"
@@ -93,7 +96,8 @@ class WeatherAlarmParser(BaseParser):
                 return None
 
             source_entry = get_source_entry(self.source_id)
-            # 气象类型编码在不同来源字段中的命名不完全一致，这里统一做兼容提取。
+
+            # 多重回退以解析气象编码
             weather_code = str(
                 msg_data.get("weather_type")
                 or msg_data.get("weatherType")
@@ -103,6 +107,8 @@ class WeatherAlarmParser(BaseParser):
                 or msg_data.get("type")
                 or ""
             ).strip()
+
+            # 整合元数据
             metadata = {
                 "issue_time": issue_time,
                 "weather_type": weather_code,
@@ -121,6 +127,8 @@ class WeatherAlarmParser(BaseParser):
                 if source_entry
                 else "weather",
             }
+
+            # 实例化气象领域模型
             event_id = str(msg_data.get("id", "") or "")
             domain_event = WeatherEvent(
                 title=title,
@@ -128,6 +136,8 @@ class WeatherAlarmParser(BaseParser):
                 effective_at=effective_time,
                 metadata=dict(metadata),
             )
+
+            # 构造身份标识
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -144,6 +154,8 @@ class WeatherAlarmParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 装配统一事件包裹
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,
@@ -159,7 +171,7 @@ class WeatherAlarmParser(BaseParser):
                 metadata=metadata,
             )
 
-            # 成功入链的事件标识写入短缓存，用于压制短时间内的重复消息。
+            # 加入防重去噪队列中
             if envelope.id:
                 self._processed_weather_ids.append(envelope.id)
 

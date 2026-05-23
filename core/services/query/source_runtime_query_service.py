@@ -12,6 +12,7 @@ from ...sources.source_catalog import SOURCE_CATALOG
 from ...sources.source_entry import ProviderFamily, SourceEntry
 from ..config.config_service import ConfigAccessor
 
+# 物理连接到连接分组的键映射，统一在此集中配置，消除魔法硬编码字符串
 _CONNECTION_GROUP_ALIAS: dict[str, str] = {
     ProviderFamily.FAN_STUDIO.value: "fan_studio_all",
     ProviderFamily.P2P.value: "p2p_main",
@@ -19,6 +20,7 @@ _CONNECTION_GROUP_ALIAS: dict[str, str] = {
     ProviderFamily.GLOBAL_QUAKE.value: "global_quake",
 }
 
+# 物理连接的友好展示名称，供管理后台和 API 使用
 _CONNECTION_DISPLAY_NAME: dict[str, str] = {
     "fan_studio_all": "FAN Studio",
     "p2p_main": "P2P地震情報",
@@ -31,6 +33,7 @@ class SourceRuntimeQueryService:
     """基于统一数据源目录的运行态查询服务。"""
 
     def __init__(self, config: dict[str, Any] | None = None):
+        # 封装底层配置访问器
         self.config_accessor = ConfigAccessor(config or {})
 
     def _data_sources_config(self) -> dict[str, Any]:
@@ -46,11 +49,14 @@ class SourceRuntimeQueryService:
     def is_source_enabled(self, source_id: str) -> bool:
         """判断指定数据源是否在当前配置中启用。"""
         entry = SOURCE_CATALOG.get((source_id or "").strip())
+        # 若此 source_id 未在统一 catalog 目录中注册，一律判定为未启用
         if entry is None:
             return False
         group_cfg = self._group_config(entry.config_group)
+        # 如果所属配置大类的顶级 enabled 总开关为 False，则旗下子源全部失效
         if not group_cfg.get("enabled", False):
             return False
+        # 读取子数据源对应键名下的具体布尔值配置
         return bool(group_cfg.get(entry.config_key, False))
 
     def is_family_enabled(self, provider_family: str) -> bool:
@@ -58,6 +64,7 @@ class SourceRuntimeQueryService:
         family_value = (provider_family or "").strip()
         if not family_value:
             return False
+        # 家族中只要有任意一个数据源开关被用户打开，则整个服务商家族判定为 enabled
         return any(
             self.is_source_enabled(source_id)
             for source_id, entry in SOURCE_CATALOG.items()
@@ -65,6 +72,7 @@ class SourceRuntimeQueryService:
         )
 
     def get_enabled_source_ids(self) -> list[str]:
+        """获取当前配置下所有已被启用的具体数据源 ID 列表。"""
         return [
             source_id
             for source_id in SOURCE_CATALOG
@@ -72,6 +80,7 @@ class SourceRuntimeQueryService:
         ]
 
     def get_enabled_source_labels(self) -> list[str]:
+        """获取已启用数据源的配置标签定位（如 'wolfx.cenc_eew'）。"""
         labels: list[str] = []
         for source_id in self.get_enabled_source_ids():
             entry = SOURCE_CATALOG[source_id]
@@ -81,6 +90,7 @@ class SourceRuntimeQueryService:
     def build_sub_source_status(self) -> dict[str, dict[str, bool]]:
         """按配置分组构建子数据源启用状态表。"""
         grouped: dict[str, dict[str, bool]] = defaultdict(dict)
+        # 对全局所有注册的数据源按配置组进行状态归纳归类
         for source_id, entry in SOURCE_CATALOG.items():
             grouped[entry.config_group][entry.config_key] = self.is_source_enabled(
                 source_id
@@ -90,8 +100,10 @@ class SourceRuntimeQueryService:
     def get_connection_group_key(self, entry: SourceEntry) -> str:
         """解析数据源所属连接分组键。"""
         explicit_group = (entry.connection_group or "").strip()
+        # 优先读取源目录中显示指定的分组名称
         if explicit_group:
             return explicit_group
+        # 降级使用静态定义的全局家族别名列表
         return _CONNECTION_GROUP_ALIAS.get(
             entry.provider_family.value, entry.provider_family.value
         )
@@ -156,7 +168,9 @@ class SourceRuntimeQueryService:
                     },
                 )
             )
+            # 计算该物理连接链路下是否有任何一个子数据源开关被开启
             conn_info["enabled"] = any(group_status_map.get(group_key, {}).values())
+            # 写入当前链路的探测网络延时
             conn_info["latency"] = latency_cache.get(group_key)
             conn_info["sub_sources"] = dict(group_status_map.get(group_key, {}))
             conn_info["source_ids"] = list(group_source_map.get(group_key, []))

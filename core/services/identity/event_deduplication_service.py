@@ -32,6 +32,7 @@ class EventDeduplicationService:
         self.time_window = timedelta(minutes=time_window_minutes)
         self.location_tolerance = location_tolerance_km
         self.magnitude_tolerance = magnitude_tolerance
+        # 内存中维护的最近事件指纹去重字典
         self.recent_events: dict[str, dict[str, dict[str, Any]]] = {}
 
     @staticmethod
@@ -89,6 +90,7 @@ class EventDeduplicationService:
         """
         envelope = event
         domain_eq = self._get_domain_earthquake(event)
+        # 非地震事件（海啸/气象预警等）直接放行，无需在此进行滑动时间窗口位置碰撞去重
         if domain_eq is None:
             return True
 
@@ -112,6 +114,7 @@ class EventDeduplicationService:
                 time_diff = abs(
                     (current_time - existing_timestamp).total_seconds() / 60
                 )
+                # 仍在允许的去重时间滑动窗口之内
                 if time_diff <= self.time_window.total_seconds() / 60:
                     if self._should_allow_update(
                         event,
@@ -122,6 +125,7 @@ class EventDeduplicationService:
                     ):
                         logger.debug(f"[灾害预警] 允许同一数据源更新: {source_id}")
                         current_report = self._resolve_report_num(event, metadata)
+                        # 将当前的报数加入历史已处理的报数集合中，规避重复推送
                         existing_event["processed_reports"].add(current_report)
                         existing_event["timestamp"] = current_time
                         existing_event["is_final"] = existing_event["is_final"] or bool(
@@ -183,6 +187,7 @@ class EventDeduplicationService:
         identity = getattr(event, "identity", None)
         stable_event_id = str(getattr(identity, "event_id", "") or "").strip()
         source_entry = get_source_entry(source_id)
+        # 优先读取数据源配置指定的硬指纹前缀进行组装，避免地理位置碰撞模糊指纹误伤
         if source_entry is not None and stable_event_id:
             fingerprint_prefix = source_entry.identity_fingerprint_prefix
             if fingerprint_prefix:
@@ -190,6 +195,7 @@ class EventDeduplicationService:
         if domain_eq.latitude is None or domain_eq.longitude is None:
             return "unknown_location"
 
+        # 降级方案：计算基于网格空间容差及时间微调的模糊聚类物理指纹
         lat_grid = round(domain_eq.latitude * (111.0 / self.location_tolerance)) / (
             111.0 / self.location_tolerance
         )
@@ -224,12 +230,14 @@ class EventDeduplicationService:
             old_updates = existing_event.get("updates", 1)
             processed_reports = {old_updates}
 
+        # 新报数到达允许放行更新，例如第 1 报 -> 第 2 报
         if current_report not in processed_reports:
             logger.info(
                 f"[灾害预警] 新报数: 第{current_report}报 (已处理: {sorted(processed_reports)})"
             )
             return True
 
+        # 若是最终报，且历史已推送记录中未判定为最终报，则放行更新
         current_is_final = bool(active_metadata.get("is_final", False))
         if current_is_final and not existing_event.get("is_final", False):
             logger.info("[灾害预警] 最终报更新: 非最终报 -> 最终报")
@@ -255,6 +263,7 @@ class EventDeduplicationService:
             try:
                 curr_idx = jma_types.index(current_issue_type)
                 prev_idx = jma_types.index(existing_issue_type)
+                # 情报优先级提升时（例如震度速报 -> 地震报告），允许放行更新
                 if curr_idx > prev_idx:
                     logger.debug(
                         f"[灾害预警] 允许JMA情报升级: {existing_issue_type} -> {current_issue_type}"
@@ -264,6 +273,7 @@ class EventDeduplicationService:
                 pass
 
         existing_info_type = (existing_event.get("info_type", "") or "").lower()
+        # 允许由“自动测定”状态跃升为“正式测定”状态的更新推送
         if "自动" in existing_info_type and "正式" in current_info_type:
             logger.debug(
                 f"[灾害预警] 允许状态升级: {existing_info_type} -> {current_info_type}"
@@ -290,6 +300,7 @@ class EventDeduplicationService:
             if all_expired:
                 old_fingerprints.append(fingerprint)
 
+        # 从内存缓存中剔除超时的去重条目
         for fingerprint in old_fingerprints:
             del self.recent_events[fingerprint]
 

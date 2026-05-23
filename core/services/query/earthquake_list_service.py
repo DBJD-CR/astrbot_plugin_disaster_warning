@@ -18,6 +18,7 @@ class EarthquakeListService:
 
     def __init__(self, earthquake_lists: dict[str, dict[str, Any]] | None = None):
         """初始化地震列表缓存容器。"""
+        # 初始化双区域缓存，分别为 CENC（中国地震台网）与 JMA（日本气象厅）地震列表
         self.earthquake_lists = earthquake_lists or {"cenc": {}, "jma": {}}
 
     def update_earthquake_list(self, list_type: str, data: dict[str, Any]):
@@ -27,6 +28,7 @@ class EarthquakeListService:
         """
         if list_type in self.earthquake_lists:
             target = self.earthquake_lists.get(list_type)
+            # 通过原地 clear 与 update，防止破坏原有的字典对象引用
             if isinstance(target, dict) and isinstance(data, dict):
                 target.clear()
                 target.update(data)
@@ -88,6 +90,7 @@ class EarthquakeListService:
 
             if source_type == "jma":
                 depth_label = "深さ"
+                # 处理特殊深度为“极浅”
                 if depth_val == 0.0:
                     depth_value_str = "ごく浅い"
                     depth_unit = ""
@@ -106,6 +109,7 @@ class EarthquakeListService:
                         depth = f"{clean_d} km"
             else:
                 depth_label = "深度"
+                # 处理特殊深度为“极浅”
                 if depth_val == 0.0:
                     depth_value_str = "极浅"
                     depth_unit = ""
@@ -129,6 +133,7 @@ class EarthquakeListService:
 
             if source_type == "cenc":
                 intensity = item.get("intensity")
+                # 缺失烈度参数时，则根据震级粗略映射估算烈度级别
                 if intensity is None or intensity == "":
                     try:
                         mag_val = float(magnitude)
@@ -151,6 +156,7 @@ class EarthquakeListService:
 
                 try:
                     int_val = float(intensity)
+                    # 划分烈度样式等级，用于卡片前端 HTML 的 CSS 上色渲染
                     if int_val < 3:
                         intensity_class = "int-1"
                     elif int_val < 5:
@@ -176,6 +182,7 @@ class EarthquakeListService:
                 raw_shindo = item.get("shindo")
                 shindo = str(raw_shindo or "").strip()
                 normalized_shindo = shindo.lower()
+                # 排除各种空值和带有未定义意义的非规整震度字符
                 unknown_shindo_values = {
                     "",
                     "-",
@@ -201,6 +208,7 @@ class EarthquakeListService:
                 if normalized_shindo not in unknown_shindo_values:
                     intensity_display = shindo
 
+                    # 映射日本气象厅最大震度分类到样式类名
                     if shindo == "1":
                         intensity_class = "int-1"
                     elif shindo == "2":
@@ -241,5 +249,5 @@ class EarthquakeListService:
             }
 
         except Exception as e:
-            logger.error(f"[灾害预警] 格式化列表项失败: {e}")
+            logger.error(f"[灾害预警] 格式化地震列表项失败: {e}")
             return None

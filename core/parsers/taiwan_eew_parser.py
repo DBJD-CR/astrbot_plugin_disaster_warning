@@ -27,7 +27,7 @@ class CwaEewParser(BaseParser):
 
     def _build_envelope(self, msg_data: dict[str, Any]) -> EventEnvelope:
         """把台湾地震预警原始字典封装为统一事件包裹体。"""
-        # 最大烈度可能出现在不同键名中，这里统一兼容提取。
+        # 最大烈度可能在不同键名中，这里进行兼容性提取（maxIntensity 与 epiIntensity）
         intensity = msg_data.get("maxIntensity")
         if intensity is None:
             intensity = msg_data.get("epiIntensity")
@@ -38,18 +38,19 @@ class CwaEewParser(BaseParser):
         longitude = safe_float_convert(msg_data.get("longitude"))
         place_name = str(msg_data.get("placeName", "") or "")
 
-        # 缺少正式事件标识时，退化为由时间、坐标和地点拼成的稳定标识。
+        # 部分低版本或测试报文可能缺失 eventId 键，在此提供稳定的备用回退生成规则
         event_id = str(msg_data.get("eventId") or msg_data.get("eventID") or "").strip()
         if not event_id:
             shock_key = str(raw_shock_time or "").strip()
             place_key = str(place_name or "").strip()
+            # 拼合规则：发震时间_经度（三位精度）_纬度（三位精度）_地点
             event_id = f"cwa_fan_{shock_key}_{(latitude or 0.0):.3f}_{(longitude or 0.0):.3f}_{place_key}"
             logger.debug(
                 f"[灾害预警] {self.source_id} 缺少 eventId，已使用稳定回退ID: {event_id}"
             )
 
         impact_area = ""
-        # 影响区域在部分来源中以列表提供，这里先规整成单一文本。
+        # 警戒影响的区域可能作为列表给出，需归一化为逗号分割字符串
         location_desc_list = msg_data.get("locationDesc", [])
         if location_desc_list:
             impact_area = ",".join(
@@ -70,6 +71,8 @@ class CwaEewParser(BaseParser):
             "impact_area": impact_area,
             "province": impact_area or None,
         }
+
+        # 实例化台湾地震领域事件，填入震度、深度与经纬度
         domain_event = EarthquakeEvent(
             occurred_at=occurred_at,
             latitude=latitude,
@@ -80,7 +83,10 @@ class CwaEewParser(BaseParser):
             scale=safe_float_convert(intensity),
             metadata=dict(metadata),
         )
+
         created_at = self._parse_datetime(msg_data.get("createTime", ""))
+
+        # 构建唯一的事件身份模型，报次 updates 转为正整型
         identity = EventIdentity(
             event_id=event_id,
             source_id=self.source_id,
@@ -126,7 +132,7 @@ class CwaEewParser(BaseParser):
                 logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
-            # 报次或事件标识至少应命中其一，否则通常不是正式台湾地震预警消息。
+            # 报次或事件标识至少应命中其一，否则通常不是正式台湾地震预警消息
             if "updates" not in msg_data and "eventId" not in msg_data:
                 logger.debug(
                     f"[灾害预警] {self.source_id} 非CWA地震预警数据(缺少updates/eventId)，跳过"
@@ -172,6 +178,7 @@ class CwaEewWolfxParser(BaseParser):
             if isinstance(warn_area, dict):
                 impact_area = str(warn_area.get("Chiiki") or "").strip()
 
+            # 若 WarnArea 不存在，则循环解析其他几种常见的键名
             if not impact_area:
                 for key in [
                     "locationDesc",
@@ -184,6 +191,7 @@ class CwaEewWolfxParser(BaseParser):
                 ]:
                     value = data.get(key)
                     if isinstance(value, list):
+                        # 如果提取的值是区域列表，采用“、”拼接为长字符串
                         value = "、".join(
                             str(x).strip() for x in value if str(x).strip()
                         )
@@ -194,6 +202,7 @@ class CwaEewWolfxParser(BaseParser):
                         impact_area = value
                         break
 
+            # 处理缺失 EventID 的边界情况，防止无法进入去重列表
             event_id = str(data.get("EventID") or data.get("eventId") or "").strip()
             if not event_id:
                 shock_key = str(raw_origin_time or "").strip()
@@ -205,6 +214,7 @@ class CwaEewWolfxParser(BaseParser):
                     f"[灾害预警] {self.source_id} 缺少 EventID，已使用稳定回退ID: {event_id}"
                 )
 
+            # 在 raw payload 中植入格式化完成的 wolfx_impact_area，便于后续展现直接使用
             raw_payload = (
                 {**data, "wolfx_impact_area": impact_area}
                 if impact_area
@@ -232,6 +242,8 @@ class CwaEewWolfxParser(BaseParser):
                 "province": impact_area or None,
                 "is_final": bool(data.get("isFinal", False)),
             }
+
+            # 实例化地震领域模型，利用最大震度转换器转换 MaxIntensity
             domain_event = EarthquakeEvent(
                 occurred_at=shock_time,
                 latitude=latitude,
@@ -244,6 +256,8 @@ class CwaEewWolfxParser(BaseParser):
                 place_name=place_name,
                 metadata=dict(metadata),
             )
+
+            # 构造身份模型
             identity = EventIdentity(
                 event_id=event_id,
                 source_id=self.source_id,
@@ -265,6 +279,8 @@ class CwaEewWolfxParser(BaseParser):
                     "config_key": source_entry.config_key if source_entry else "",
                 },
             )
+
+            # 封装并返回统一包裹层
             envelope = EventEnvelope(
                 identity=identity,
                 event=domain_event,

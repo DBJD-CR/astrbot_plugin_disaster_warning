@@ -18,14 +18,16 @@ def is_running_in_docker() -> bool:
         return True
 
     try:
-        # 兼容 Linux 容器 / Kubernetes 场景，通过 cgroup 进一步识别容器化运行环境。
+        # 兼容 Linux 容器 / Kubernetes 场景，通过 cgroup 进一步识别容器化运行环境
         with open("/proc/self/cgroup") as f:
             content = f.read()
             if "/docker/" in content or "/kubepods/" in content:
                 return True
     except (FileNotFoundError, PermissionError):
+        # 忽略平台不支持、权限不足或文件不存在导致的异常
         pass
 
+    # 读取环境变量中的 Docker 显式标识
     if os.environ.get("DOCKER_CONTAINER") == "true":
         return True
 

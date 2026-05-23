@@ -68,22 +68,26 @@ class MessagePushManager:
         """装配运行时基础设施。"""
         self._runtime_component_factory = MessageRuntimeComponentFactory()
         self._bootstrap_service = MessageManagerBootstrapService(self)
-        self._bootstrap_service.setup_filters(config)
-        self._bootstrap_service.setup_browser(config, telemetry=telemetry)
-        self._fusion_state_store = FusionStateStore(ttl_seconds=120)
-        self._render_cache = RenderImageCache(ttl_seconds=180)
-        self._resource_cleanup_service = MessageResourceCleanupService(self)
-        self._remote_media_service = MessageRemoteMediaService(self)
-        self.cleanup_old_records()
+        self._bootstrap_service.setup_filters(config)  # 载入推送规则过滤器列表
+        self._bootstrap_service.setup_browser(
+            config, telemetry=telemetry
+        )  # 初始化网页截图用浏览器底座
+        self._fusion_state_store = FusionStateStore(ttl_seconds=120)  # 事件合并暂存区
+        self._render_cache = RenderImageCache(ttl_seconds=180)  # 卡片图片渲染缓存
+        self._resource_cleanup_service = MessageResourceCleanupService(
+            self
+        )  # 优雅清理服务
+        self._remote_media_service = MessageRemoteMediaService(self)  # 外部媒体抓取助手
+        self.cleanup_old_records()  # 执行一次启动清理
 
     def _setup_message_infrastructure(self) -> None:
         """装配消息构建基础设施。"""
-        self._bootstrap_service.setup_message_components()
+        self._bootstrap_service.setup_message_components()  # 装载文字和卡片构建组件
         self._message_build_service = MessageBuildService(self)
         self._system_notification_service = MessageSystemNotificationService(self)
 
     def _setup_push_pipeline(self) -> None:
-        """装配推送执行链与融合策略。"""
+        """装配推送执行链与合并融合策略。"""
         self._push_execution_service = PushExecutionService(self)
         self._push_flow_handler = PushFlowHandler(self)
         self._cenc_fusion_service = CENCFusionService(
@@ -125,7 +129,7 @@ class MessagePushManager:
         timeout_seconds: int = 30,
         max_bytes: int = 15 * 1024 * 1024,
     ) -> dict[str, Any] | None:
-        """抓取远程媒体并返回结构化结果。"""
+        """抓取远程媒体文件并返回规范格式。"""
         return await self.remote_media_fetcher.fetch(
             url,
             expected_kind=expected_kind,
@@ -188,7 +192,7 @@ class MessagePushManager:
         runtime_config: dict[str, Any],
         session_id: str | None = None,
     ) -> dict[str, Any]:
-        """基于运行时配置构建推送规则状态。"""
+        """基于运行时配置构建推送规则决策所需状态上下文。"""
         # 规则状态对象按会话维度按需构建，
         # 这样既能复用公共规则组件，又能保留会话级差异化配置。
         return self._runtime_component_factory.build(
@@ -201,7 +205,7 @@ class MessagePushManager:
         cache_key: str,
         renderer: Callable[[], Awaitable[str | None]],
     ) -> str | None:
-        """带去重与缓存的渲染包装器。"""
+        """带去重与缓存的图片/卡片渲染包装器。"""
         return await self._render_cache.render(cache_key, renderer)
 
     def evaluate_push_decision(
@@ -262,5 +266,5 @@ class MessagePushManager:
         await self._resource_cleanup_service.cleanup_browser()
 
     def cleanup_old_records(self):
-        """清理旧记录。"""
+        """清理历史临时截图与无用记录文件。"""
         self._resource_cleanup_service.cleanup_old_records()
