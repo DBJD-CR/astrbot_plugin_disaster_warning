@@ -166,12 +166,15 @@ class WeatherFormatter(BaseMessageFormatter):
         if headline and headline != title:
             footer_items.append({"label": "副标题", "value": headline})
 
+        color_key_map = {"红色": "red", "橙色": "orange", "黄色": "yellow", "蓝色": "blue", "白色": "white"}
+
         return {
             "source_name": "中国气象局",
             "emoji": emoji,
             "title": title or headline or "气象预警",
             "color_emoji": color_emoji,
             "color_level": color_level,
+            "color_key": color_key_map.get(color_level, "white"),
             "description": description,
             "time_str": time_str,
             "glow_class": glow_class,

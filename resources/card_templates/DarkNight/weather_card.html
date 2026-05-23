@@ -177,13 +177,14 @@
 </head>
 
 <body>
+    <div id="card-wrapper">
     <div class="quake-card">
         <div class="card-header">
             <span class="weather-emoji">{{ emoji }}</span>
             <div class="header-info">
                 <div class="title-row">
                     <span class="title-text">{{ title }}</span>
-                    {% if color_emoji %}<span class="color-badge badge-{{ color_level }}">{{ color_emoji }} {{ color_level }}预警</span>{% endif %}
+                    {% if color_emoji %}<span class="color-badge badge-{{ color_key }}">{{ color_emoji }} {{ color_level }}预警</span>{% endif %}
                 </div>
                 <div class="time-text">{{ time_str }}</div>
             </div>
@@ -210,6 +211,7 @@
             <span>ID: {{ event_id }}</span>
             <span>Source: {{ source_name }}</span>
         </div>
+    </div>
     </div>
 </body>
 

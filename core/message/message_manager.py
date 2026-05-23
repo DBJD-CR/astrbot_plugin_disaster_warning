@@ -382,7 +382,7 @@ class MessagePushManager:
         return json.dumps(key_obj, sort_keys=True, ensure_ascii=False)
 
     @staticmethod
-    def _build_global_quake_card_cache_key(
+    def _build_earthquake_card_cache_key(
         earthquake: EarthquakeData,
         message_format_config: dict[str, Any],
         display_timezone: str,
@@ -1465,14 +1465,14 @@ class MessagePushManager:
                         template = Template(template_content)
                         html_content = template.render(**context)
 
-                        card_cache_key = self._build_global_quake_card_cache_key(
+                        card_cache_key = self._build_earthquake_card_cache_key(
                             event.data,
                             message_format_config,
                             display_timezone,
                         )
 
                         async def render_card() -> str | None:
-                            image_filename = f"eq_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                            image_filename = f"eq_card_{event.data.id}_{getattr(event.data, 'updates', 1) or 1}.png"
                             image_path = os.path.join(self.temp_dir, image_filename)
                             return await self.browser_manager.render_card(
                                 html_content, image_path, selector="#card-wrapper"
@@ -1538,7 +1538,7 @@ class MessagePushManager:
                     )
 
                     async def render_weather_card() -> str | None:
-                        image_filename = f"weather_card_{event.data.id}_{int(datetime.now().timestamp())}.png"
+                        image_filename = f"weather_card_{event.data.id}_{getattr(event.data, 'updates', 1) or 1}.png"
                         image_path = os.path.join(self.temp_dir, image_filename)
                         return await self.browser_manager.render_card(
                             html_content, image_path, selector="#card-wrapper"

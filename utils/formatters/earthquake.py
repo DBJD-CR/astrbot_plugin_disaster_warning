@@ -63,6 +63,16 @@ def _build_base_render_context(earthquake: EarthquakeData, options: dict = None)
         else "Unknown Time"
     )
 
+    local_est = _extract_local_estimation(earthquake)
+    footer_items = []
+    if local_est:
+        footer_items.append(
+            {
+                "label": f"{local_est['place_name']}预估",
+                "value": f"距离震中 {local_est['distance']:.1f} km，预估最大烈度 {local_est['intensity']:.1f} ({local_est['description']})",
+            }
+        )
+
     return {
         "magnitude": f"{mag:.1f}",
         "mag_class": mag_class,
@@ -84,7 +94,25 @@ def _build_base_render_context(earthquake: EarthquakeData, options: dict = None)
         "intensity": "",
         "intensity_label": "烈度",
         "source_name": "",
-        "footer_items": [],
+        "footer_items": footer_items,
+        "local_estimation": local_est,
+    }
+
+
+def _extract_local_estimation(earthquake: EarthquakeData) -> dict | None:
+    """从 raw_data 中提取本地烈度预估信息。"""
+    if not (hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict)):
+        return None
+    local_est = earthquake.raw_data.get("local_estimation")
+    if not local_est:
+        return None
+    return {
+        "distance": local_est.get("distance", 0.0),
+        "intensity": local_est.get("intensity", 0.0),
+        "place_name": local_est.get("place_name", "本地"),
+        "description": IntensityCalculator.get_intensity_description(
+            local_est.get("intensity", 0.0)
+        ),
     }
 
 
@@ -245,7 +273,7 @@ class CEAEEWFormatter(BaseMessageFormatter):
             ctx["intensity"] = str(earthquake.intensity)
             ctx["intensity_label"] = "烈度"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
         report_num = getattr(earthquake, "updates", 1)
         is_final = getattr(earthquake, "is_final", False)
         report_info = f"第 {report_num} 报"
@@ -258,18 +286,6 @@ class CEAEEWFormatter(BaseMessageFormatter):
 
         if earthquake.max_pga is not None:
             footer_items.append({"label": "最大加速度 (PGA)", "value": f"{earthquake.max_pga:.1f} gal"})
-
-        # 本地烈度预估
-        if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
-            local_est = earthquake.raw_data.get("local_estimation")
-            if local_est:
-                dist = local_est.get("distance", 0.0)
-                inte = local_est.get("intensity", 0.0)
-                place = local_est.get("place_name", "本地")
-                desc = IntensityCalculator.get_intensity_description(inte)
-                footer_items.append(
-                    {"label": f"{place}预估", "value": f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})"}
-                )
 
         ctx["footer_items"] = footer_items
         return ctx
@@ -357,7 +373,7 @@ class CWAEEWFormatter(BaseMessageFormatter):
             ctx["intensity"] = str(earthquake.scale)
             ctx["intensity_label"] = "震度"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
         report_num = getattr(earthquake, "updates", 1)
         is_final = getattr(earthquake, "is_final", False)
         report_info = f"第 {report_num} 报"
@@ -372,18 +388,6 @@ class CWAEEWFormatter(BaseMessageFormatter):
             impact_area = earthquake.province
         if impact_area:
             footer_items.append({"label": "影响区域", "value": str(impact_area)})
-
-        # 本地烈度预估
-        if hasattr(earthquake, "raw_data") and isinstance(earthquake.raw_data, dict):
-            local_est = earthquake.raw_data.get("local_estimation")
-            if local_est:
-                dist = local_est.get("distance", 0.0)
-                inte = local_est.get("intensity", 0.0)
-                place = local_est.get("place_name", "本地")
-                desc = IntensityCalculator.get_intensity_description(inte)
-                footer_items.append(
-                    {"label": f"{place}预估", "value": f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})"}
-                )
 
         ctx["footer_items"] = footer_items
         return ctx
