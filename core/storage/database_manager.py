@@ -82,6 +82,10 @@ class DatabaseManager:
                 await cursor.execute(
                     "ALTER TABLE events ADD COLUMN weather_detail TEXT"
                 )
+            if "info_type" not in columns:
+                await cursor.execute("ALTER TABLE events ADD COLUMN info_type TEXT")
+            if "place_name" not in columns:
+                await cursor.execute("ALTER TABLE events ADD COLUMN place_name TEXT")
 
         # event_updates 表保存每次推送或报次更新的快照，用于重建历史记录。
         await cursor.execute(
@@ -110,6 +114,8 @@ class DatabaseManager:
                 description     TEXT,
                 subtitle        TEXT,
                 weather_detail  TEXT,
+                info_type       TEXT,
+                place_name      TEXT,
                 latitude        REAL,
                 longitude       REAL,
                 magnitude       REAL,
@@ -170,11 +176,11 @@ class DatabaseManager:
                 """
                 INSERT INTO events (
                     real_event_id, unique_id, type, source, source_id,
-                    description, subtitle, weather_detail, latitude, longitude,
+                    description, subtitle, weather_detail, info_type, place_name, latitude, longitude,
                     magnitude, depth, report_num,
                     weather_type_code, level, time,
                     is_major, update_count
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     event_data.get("real_event_id"),
@@ -185,6 +191,8 @@ class DatabaseManager:
                     event_data.get("description"),
                     event_data.get("subtitle"),
                     event_data.get("weather_detail"),
+                    event_data.get("info_type"),
+                    event_data.get("place_name"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
                     event_data.get("magnitude"),
@@ -219,6 +227,15 @@ class DatabaseManager:
             )
 
             await self.connection.commit()
+
+            # 引入缓存清除机制
+            try:
+                from ..network.admin.api.events_routes import invalidate_sources_cache
+
+                invalidate_sources_cache()
+            except Exception:
+                pass
+
             return new_id
         except Exception as e:
             logger.error(f"[灾害预警] 插入事件失败: {e}")
@@ -265,6 +282,8 @@ class DatabaseManager:
                     description       = ?,
                     subtitle          = ?,
                     weather_detail    = ?,
+                    info_type         = ?,
+                    place_name        = ?,
                     latitude          = ?,
                     longitude         = ?,
                     magnitude         = ?,
@@ -283,6 +302,8 @@ class DatabaseManager:
                     event_data.get("description"),
                     event_data.get("subtitle"),
                     event_data.get("weather_detail"),
+                    event_data.get("info_type"),
+                    event_data.get("place_name"),
                     event_data.get("latitude"),
                     event_data.get("longitude"),
                     event_data.get("magnitude"),
@@ -317,6 +338,15 @@ class DatabaseManager:
             )
 
             await self.connection.commit()
+
+            # 引入缓存清除机制
+            try:
+                from ..network.admin.api.events_routes import invalidate_sources_cache
+
+                invalidate_sources_cache()
+            except Exception:
+                pass
+
             return True
         except Exception as e:
             logger.error(f"[灾害预警] 更新事件失败: {e}")
@@ -329,8 +359,18 @@ class DatabaseManager:
         """为事件列表批量附加更新历史记录。"""
         if not events:
             return events
+
+        # 仅对 update_count > 1 的事件查询历史更新记录，update_count <= 1 的事件 history 必然为空
+        events_need_history = [e for e in events if e.get("update_count", 1) > 1]
+
+        for event in events:
+            event["history"] = []
+
+        if not events_need_history:
+            return events
+
         # 用 json_each(?) 传递编号列表，避免动态拼接 IN 子句带来的复杂性。
-        ids = json.dumps([e["id"] for e in events])
+        ids = json.dumps([e["id"] for e in events_need_history])
         cursor = await self.connection.cursor()
         await cursor.execute(
             """
@@ -347,15 +387,10 @@ class DatabaseManager:
             r = dict(row)
             updates_by_event.setdefault(r["event_id"], []).append(r)
 
-        for event in events:
+        for event in events_need_history:
             updates = updates_by_event.get(event["id"], [])
-            # 只有 update_count > 1（即后端明确记录了多报次）时才返回历史条目
-            # 这样可以避免 weather/tsunami 事件因重推写入多条 event_updates 但 update_count=1
-            # 而在前端被错误地计入更新数量
-            if event.get("update_count", 1) > 1 and len(updates) > 1:
+            if len(updates) > 1:
                 event["history"] = list(reversed(updates[:-1]))
-            else:
-                event["history"] = []
 
         return events
 
@@ -517,10 +552,10 @@ class DatabaseManager:
                                       COALESCE(TRIM(level), '') = ''
                                       AND description LIKE ?
                                   )
+                                  )
                               )
                           )
                       )
-                )
                 SELECT *
                 FROM ranked
                 WHERE rn = 1
@@ -540,13 +575,90 @@ class DatabaseManager:
             logger.error(f"[灾害预警] 查询重大事件失败: {e}")
             return []
 
+    def _append_level_filter_clause(
+        self,
+        level_filter: str | None,
+        clauses: list[str],
+        params: list[Any],
+    ) -> None:
+        """追加气象颜色或海啸级别筛选条件。"""
+        normalized = str(level_filter or "").strip().lower()
+        weather_color_map = {
+            "weather_white": "白色",
+            "weather_blue": "蓝色",
+            "weather_yellow": "黄色",
+            "weather_orange": "橙色",
+            "weather_red": "红色",
+        }
+        if normalized in weather_color_map:
+            color = weather_color_map[normalized]
+            like = f"%{color}%"
+            clauses.append(
+                "(type='weather_alarm' AND ("
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(description, '') LIKE ? OR "
+                "COALESCE(subtitle, '') LIKE ?"
+                "))"
+            )
+            params.extend([like, like, like])
+            return
+
+        if normalized == "tsunami_info":
+            clauses.append(
+                "(type='tsunami' AND ("
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(description, '') LIKE ? OR "
+                "COALESCE(subtitle, '') LIKE ? OR "
+                "COALESCE(info_type, '') LIKE ?"
+                "))"
+            )
+            params.extend(
+                ["%信息%", "%Unknown%", "%津波予報%", "%津波予報%", "%津波予报%"]
+            )
+            return
+
+        if normalized == "tsunami_warning":
+            clauses.append(
+                "(type='tsunami' AND ("
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(description, '') LIKE ? OR "
+                "COALESCE(description, '') LIKE ? OR "
+                "COALESCE(description, '') LIKE ? OR "
+                "COALESCE(subtitle, '') LIKE ? OR "
+                "COALESCE(subtitle, '') LIKE ? OR "
+                "COALESCE(subtitle, '') LIKE ?"
+                "))"
+            )
+            params.extend(
+                [
+                    "%Warning%",
+                    "%Watch%",
+                    "%警报%",
+                    "%警報%",
+                    "%预警%",
+                    "%海啸预警%",
+                    "%津波警報%",
+                    "%大津波警報%",
+                    "%海啸预警%",
+                    "%津波警報%",
+                    "%大津波警報%",
+                ]
+            )
+
     async def get_events_count(
         self,
         event_type: str | None = None,
         sources: list[str] | None = None,
         min_magnitude: float | None = None,
+        keyword: str | None = None,
+        level_filter: str | None = None,
     ) -> int:
-        """获取事件总数（支持按类型、数据源、最小震级过滤）"""
+        """获取事件总数（支持按类型、数据源、最小震级与关键词过滤）"""
         try:
             cursor = await self.connection.cursor()
             clauses = []
@@ -563,6 +675,24 @@ class DatabaseManager:
                     "(type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)"
                 )
                 params.append(min_magnitude)
+
+            self._append_level_filter_clause(level_filter, clauses, params)
+
+            normalized_keyword = str(keyword or "").strip()
+            if normalized_keyword:
+                keyword_like = f"%{normalized_keyword}%"
+                clauses.append(
+                    "("
+                    "COALESCE(description, '') LIKE ? OR "
+                    "COALESCE(subtitle, '') LIKE ? OR "
+                    "COALESCE(place_name, '') LIKE ? OR "
+                    "COALESCE(level, '') LIKE ? OR "
+                    "COALESCE(info_type, '') LIKE ? OR "
+                    "COALESCE(source, '') LIKE ? OR "
+                    "COALESCE(source_id, '') LIKE ?"
+                    ")"
+                )
+                params.extend([keyword_like] * 7)
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
             await cursor.execute(
@@ -583,8 +713,10 @@ class DatabaseManager:
         sources: list[str] | None = None,
         min_magnitude: float | None = None,
         magnitude_order: str | None = None,
+        keyword: str | None = None,
+        level_filter: str | None = None,
     ) -> list[dict[str, Any]]:
-        """分页获取事件（含 history，支持按类型、数据源、最小震级过滤与震级排序）"""
+        """分页获取事件（含 history，支持按类型、数据源、最小震级、关键词过滤与震级排序）"""
         try:
             offset = (page - 1) * limit
             cursor = await self.connection.cursor()
@@ -603,6 +735,24 @@ class DatabaseManager:
                     "(type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)"
                 )
                 params.append(min_magnitude)
+
+            self._append_level_filter_clause(level_filter, clauses, params)
+
+            normalized_keyword = str(keyword or "").strip()
+            if normalized_keyword:
+                keyword_like = f"%{normalized_keyword}%"
+                clauses.append(
+                    "("
+                    "COALESCE(description, '') LIKE ? OR "
+                    "COALESCE(subtitle, '') LIKE ? OR "
+                    "COALESCE(place_name, '') LIKE ? OR "
+                    "COALESCE(level, '') LIKE ? OR "
+                    "COALESCE(info_type, '') LIKE ? OR "
+                    "COALESCE(source, '') LIKE ? OR "
+                    "COALESCE(source_id, '') LIKE ?"
+                    ")"
+                )
+                params.extend([keyword_like] * 7)
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
 
@@ -641,6 +791,7 @@ class DatabaseManager:
                         COALESCE(NULLIF(source, ''), '') AS source_label
                     FROM events
                     WHERE type=?
+                    GROUP BY source_id_value, source_label
                     """,
                     (event_type,),
                 )
@@ -651,6 +802,7 @@ class DatabaseManager:
                         COALESCE(NULLIF(source_id, ''), '') AS source_id_value,
                         COALESCE(NULLIF(source, ''), '') AS source_label
                     FROM events
+                    GROUP BY source_id_value, source_label
                     """
                 )
             rows = await cursor.fetchall()
@@ -729,9 +881,19 @@ class DatabaseManager:
             by_type = {r[0]: r[1] for r in await cursor.fetchall()}
 
             await cursor.execute(
-                f"SELECT COALESCE(NULLIF(source_id, ''), source) AS source_key, COUNT(DISTINCT {dedup_group_expr}) FROM events GROUP BY source_key"
+                f"""
+                SELECT COALESCE(NULLIF(source_id, ''), source) AS source_key,
+                       COUNT(DISTINCT {dedup_group_expr}) AS source_count
+                FROM events
+                GROUP BY source_key
+                """
             )
-            by_source = {r[0]: r[1] for r in await cursor.fetchall()}
+            by_source: dict[str, int] = {}
+            for row in await cursor.fetchall():
+                normalized_source = normalize_source_name(str(row[0] or ""))
+                by_source[normalized_source] = by_source.get(
+                    normalized_source, 0
+                ) + int(row[1] or 0)
 
             db_size_mb = self.db_path.stat().st_size / (1024 * 1024)
             return {
@@ -743,6 +905,119 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"[灾害预警] 获取统计信息失败: {e}")
             return {}
+
+    async def get_statistics_rebuild_events(self) -> list[dict[str, Any]]:
+        """获取去重后的全量事件，用于从数据库重建内存派生统计。"""
+        try:
+            cursor = await self.connection.cursor()
+            dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
+            source_group_expr = "COALESCE(NULLIF(source_id, ''), source)"
+            await cursor.execute(
+                f"""
+                WITH ranked AS (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY type, {source_group_expr}, {dedup_group_expr}
+                            ORDER BY
+                                CASE WHEN NULLIF(updated_at, '') IS NULL THEN 1 ELSE 0 END ASC,
+                                updated_at DESC,
+                                time DESC,
+                                id DESC
+                        ) AS rn
+                    FROM events
+                )
+                SELECT
+                    id,
+                    type,
+                    source,
+                    source_id,
+                    description,
+                    subtitle,
+                    weather_detail,
+                    info_type,
+                    place_name,
+                    magnitude,
+                    depth,
+                    level,
+                    weather_type_code,
+                    time,
+                    unique_id,
+                    real_event_id,
+                    update_count
+                FROM ranked
+                WHERE rn = 1
+                """
+            )
+            return [dict(row) for row in await cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"[灾害预警] 获取统计重建事件失败: {e}")
+            return []
+
+    async def get_time_series_counts(self) -> dict[str, dict[str, int]]:
+        """按数据库全量事件重建趋势图/热力图所需的小时桶与天桶。"""
+        try:
+            cursor = await self.connection.cursor()
+
+            dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
+            normalized_time_expr = "COALESCE(NULLIF(time, ''), NULLIF(updated_at, ''), NULLIF(created_at, ''))"
+
+            await cursor.execute(
+                f"""
+                WITH ranked AS (
+                    SELECT
+                        {dedup_group_expr} AS dedup_key,
+                        {normalized_time_expr} AS event_time,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY {dedup_group_expr}
+                            ORDER BY
+                                CASE WHEN NULLIF(updated_at, '') IS NULL THEN 1 ELSE 0 END ASC,
+                                updated_at DESC,
+                                time DESC,
+                                id DESC
+                        ) AS rn
+                    FROM events
+                    WHERE {normalized_time_expr} IS NOT NULL
+                )
+                SELECT event_time
+                FROM ranked
+                WHERE rn = 1
+                """
+            )
+            rows = await cursor.fetchall()
+
+            hourly_counts: dict[str, int] = {}
+            daily_counts: dict[str, int] = {}
+            for row in rows:
+                raw_time = row[0]
+                if not raw_time:
+                    continue
+                try:
+                    from datetime import datetime, timezone
+
+                    normalized_time = str(raw_time).replace("Z", "+00:00")
+                    event_time = datetime.fromisoformat(normalized_time)
+                    if event_time.tzinfo is None:
+                        event_time = event_time.replace(tzinfo=timezone.utc)
+                    event_time_utc = event_time.astimezone(timezone.utc)
+                except Exception:
+                    continue
+
+                hour_key = event_time_utc.strftime("%Y-%m-%d %H:00")
+                day_key = event_time_utc.strftime("%Y-%m-%d")
+                hourly_counts[hour_key] = hourly_counts.get(hour_key, 0) + 1
+                daily_counts[day_key] = daily_counts.get(day_key, 0) + 1
+
+            return {
+                "hourly_counts": hourly_counts,
+                "daily_counts": daily_counts,
+            }
+        except Exception as e:
+            logger.error(f"[灾害预警] 获取时间序列统计失败: {e}")
+            return {
+                "hourly_counts": {},
+                "daily_counts": {},
+            }
 
     async def clear_all_events(self) -> bool:
         """清除所有事件记录"""

@@ -1,54 +1,47 @@
-const { Box, Typography, IconButton, Chip } = MaterialUI;
+const { Box, Typography, IconButton } = MaterialUI;
 const { useState, useEffect } = React;
 
 /**
- * 实时时钟组件
+ * 实时时钟子组件 (RealTimeClock)
+ * 用于在页头显示当前系统或配置的预警时区实时时间，支持每秒自动更新。
+ * 
+ * @param {Object} props 组件属性
+ * @param {string} props.timeZone 目标时区标识符，例如 'UTC+8'
  */
 function RealTimeClock({ timeZone }) {
+    // 存储格式化后的时间字符串，格式为 "YYYY-MM-DD HH:mm:ss"
     const [timeStr, setTimeStr] = useState('');
 
     useEffect(() => {
+        /**
+         * 更新当前显示的时间
+         */
         const updateTime = () => {
             const now = new Date();
-            // 使用自定义时区格式化
+            // 调用全局工具函数 formatTimeWithZone 进行时区转换与格式化
             const formatted = formatTimeWithZone(now.toISOString(), timeZone || 'UTC+8', true);
-            // 补全秒数 (formatTimeWithZone 默认只到分)
+            // 补全秒数 (由于 formatTimeWithZone 默认只精确到分钟，此处手动追加秒数)
             const seconds = String(now.getSeconds()).padStart(2, '0');
             setTimeStr(`${formatted}:${seconds}`);
         };
 
+        // 初始化执行一次，防止首帧空白
         updateTime();
+        
+        // 设立每秒触发的定时器
         const timer = setInterval(updateTime, 1000);
+        
+        // 组件卸载时清除定时器，避免内存泄漏
         return () => clearInterval(timer);
     }, [timeZone]);
 
-    // 如果还没有计算出时间，返回 null 或占位符，避免初始渲染闪烁
+    // 若时间字符串尚未完成首次计算，则返回 null 以避免渲染时的布局抖动
     if (!timeStr) return null;
 
     return (
-        <div style={{
-            // 移除原本强制指定的等宽字体，直接继承 body 的字体设置，与全站保持一致
-            // 仅保留数字部分的等宽特性以避免跳动
-            fontSize: '14px',
-            fontWeight: 700,
-            color: 'var(--md-sys-color-primary)',
-            background: 'var(--md-sys-color-surface-variant)',
-            padding: '4px 12px',
-            borderRadius: '8px',
-            border: '1px solid var(--md-sys-color-outline-variant)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginRight: '12px'
-        }}>
-            <span style={{ fontSize: '14px', opacity: 0.8, fontWeight: 600 }}>当前时间 🕒</span>
-            <span style={{
-                fontFamily: 'Monaco, Consolas, "Courier New", monospace', // 仅时间数字部分保留等宽字体，防止秒数跳动导致抖动
-                fontSize: '15px',
-                fontWeight: 800,
-                letterSpacing: '0.5px'
-            }}>
+        <div className="real-time-clock">
+            <span className="real-time-clock__label">当前时间 🕒</span>
+            <span className="real-time-clock__value">
                 {timeStr}
             </span>
         </div>
@@ -56,117 +49,73 @@ function RealTimeClock({ timeZone }) {
 }
 
 /**
- * 页头组件
- * 显示当前视图标题、WebSocket 连接状态指示器和暗黑模式切换按钮
+ * 页头组件 (Header)
+ * 作为应用的管理控制台顶部栏，提供以下核心功能：
+ * 1. 异步数据加载状态下的顶部进度条渲染。
+ * 2. 当前激活视图的动态标题展示。
+ * 3. 对应时区的实时时钟显示。
+ * 4. WebSocket (WS) 实时长连接状态可视化芯片。
+ * 5. 应用暗黑/亮色主题切换控制器。
  *
- * @param {Object} props
- * @param {string} props.currentView - 当前激活的视图名称 ('status' | 'events' | 'stats' | 'config')
+ * @param {Object} props 组件属性
+ * @param {string} props.currentView 当前激活的视图 ID ('status' | 'events' | 'stats' | 'config' 等)
  */
 function Header({ currentView }) {
+    // 从全局应用上下文中获取状态 state 与调度器 dispatch
     const { state, dispatch } = useAppContext();
     const { config, dataLoaded } = state;
+    
+    // 获取配置中的显示时区，若未配置则默认采用 UTC+8
     const displayTimezone = config.displayTimezone || 'UTC+8';
 
-    // 切换亮色/暗色主题
+    /**
+     * 触发全局主题切换逻辑
+     */
     const toggleTheme = () => {
         dispatch({ type: 'TOGGLE_THEME' });
     };
 
-    // 视图标题映射
-    const viewTitles = {
-        'status': '运行状态',
-        'notifications': '通知中心',
-        'docs': '文档浏览',
-        'events': '事件列表',
-        'stats': '数据统计',
-        'config': '配置管理'
-    };
+    // 从视图注册表中获取当前视图的元数据定义 (包括 title, icon 等)
+    const currentViewDefinition = window.ViewRegistry.getViewDefinition(currentView);
 
     return (
         <>
-            {/* 顶部加载进度条 */}
+            {/* 全局异步数据未加载完毕时，渲染顶部线性加载指示器 */}
             {!dataLoaded && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: '3px',
-                    background: 'var(--md-sys-color-surface-variant)',
-                    zIndex: 9999,
-                    overflow: 'hidden'
-                }}>
-                    <div style={{
-                        height: '100%',
-                        background: 'var(--md-sys-color-primary)',
-                        animation: 'loading-bar 1.5s ease-in-out infinite',
-                        transformOrigin: 'left'
-                    }}></div>
-                    <style>{`
-                        @keyframes loading-bar {
-                            0% { transform: scaleX(0); transform-origin: left; }
-                            50% { transform: scaleX(0.7); transform-origin: left; }
-                            51% { transform: scaleX(0.7); transform-origin: right; }
-                            100% { transform: scaleX(0); transform-origin: right; }
-                        }
-                    `}</style>
+                <div className="app-loading-progress">
+                    <div className="app-loading-progress__bar"></div>
                 </div>
             )}
             <div className="top-bar">
-            <Typography variant="h5" sx={{
-                fontWeight: 800,
-                color: 'text.primary',
-                letterSpacing: '-0.5px'
-            }}>
-                {viewTitles[currentView] || viewTitles['status']}
-            </Typography>
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                {/* 实时时钟 */}
-                <RealTimeClock timeZone={displayTimezone} />
-
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '6px 16px',
-                    background: state.wsConnected ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)',
-                    borderRadius: '12px',
-                    border: `1px solid ${state.wsConnected ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`
-                }}>
-                    <div style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        background: state.wsConnected ? '#4CAF50' : '#F44336',
-                        boxShadow: `0 0 8px ${state.wsConnected ? '#4CAF50' : '#F44336'}`
-                    }}></div>
-                    <Typography variant="body2" sx={{
-                        fontWeight: 600,
-                        color: state.wsConnected ? '#4CAF50' : '#F44336',
-                        fontSize: '13px'
-                    }}>
-                        {state.wsConnected ? '已连接' : '未连接'}
-                    </Typography>
-                </div>
+                {/* 动态视图标题 */}
+                <Typography variant="h5" className="header-title">
+                    {currentViewDefinition.title}
+                </Typography>
                 
-                <IconButton 
-                    onClick={toggleTheme}
-                    sx={{
-                        width: 44,
-                        height: 44,
-                        background: 'var(--md-sys-color-surface)',
-                        border: '1px solid var(--glass-border)',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                        '&:hover': { background: 'var(--md-sys-color-surface-variant)' }
-                    }}
-                >
-                    <span style={{ fontSize: '18px' }}>
-                        {state.theme === 'dark' ? '🌞' : '🌙'}
-                    </span>
-                </IconButton>
-            </Box>
-        </div>
+                {/* 右侧动作控制区 */}
+                <Box className="header-actions">
+                    {/* 实时时钟组件 */}
+                    <RealTimeClock timeZone={displayTimezone} />
+
+                    {/* WebSocket 连接状态指示芯片 */}
+                    <div className={`ws-status-chip ${state.wsConnected ? 'is-connected' : 'is-disconnected'}`}>
+                        <div className="ws-status-chip__dot"></div>
+                        <Typography variant="body2" className="ws-status-chip__label">
+                            {state.wsConnected ? '已连接' : '未连接'}
+                        </Typography>
+                    </div>
+                    
+                    {/* 主题切换图标按钮 */}
+                    <IconButton
+                        onClick={toggleTheme}
+                        className="theme-toggle-button"
+                    >
+                        <span className="theme-toggle-button__icon">
+                            {state.theme === 'dark' ? '🌞' : '🌙'}
+                        </span>
+                    </IconButton>
+                </Box>
+            </div>
         </>
     );
 }

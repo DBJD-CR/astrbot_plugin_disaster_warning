@@ -62,10 +62,11 @@ class StatsRuleService:
 
             is_reliable = False
             is_cenc_official = False
+            event_metadata = getattr(data, "metadata", None)
+            if not isinstance(event_metadata, dict):
+                event_metadata = {}
             info_type = str(
-                getattr(data, "jma_issue_type", "")
-                or getattr(data, "info_type", "")
-                or ""
+                getattr(data, "info_type", "") or event_metadata.get("info_type") or ""
             )
             if info_type:
                 # 只有较可靠的正式报、审定报或完整参数报，才参与最大地震等派生统计。
@@ -122,13 +123,48 @@ class StatsRuleService:
                             pass
 
             if is_cenc_official:
-                # 国内地区分布只统计中国地震台网正式结果，减少来源口径差异带来的偏差。
-                region = self.manager.event_support_service.extract_region(
-                    data.place_name,
-                    strict=True,
-                )
-                if region:
-                    self.manager.stats["earthquake_stats"]["by_region"][region] += 1
+                self.record_cenc_official_region_stats(event)
+
+    def is_cenc_official_earthquake(self, event: EventEnvelope) -> bool:
+        """判断事件是否属于 CENC 正式测定地区统计口径。"""
+        data = event.event
+        if not isinstance(data, EarthquakeEvent):
+            return False
+        source_id = event.source_id or ""
+        if source_id not in {"cenc_fanstudio", "cenc_wolfx"}:
+            return False
+        event_metadata = getattr(data, "metadata", None)
+        if not isinstance(event_metadata, dict):
+            event_metadata = {}
+        info_type = str(
+            getattr(data, "info_type", "") or event_metadata.get("info_type") or ""
+        )
+        return "正式" in info_type
+
+    def record_cenc_official_region_stats(self, event: EventEnvelope) -> bool:
+        """按独立去重键记录 CENC 正式测定国内地区统计。"""
+        if not self.is_cenc_official_earthquake(event):
+            return False
+        data = event.event
+        if not isinstance(data, EarthquakeEvent):
+            return False
+        event_key = str(event.identity.event_id or event.id or "").strip()
+        if not event_key:
+            event_key = self.manager.get_unique_event_id(event)
+        region_key = f"cenc_official_region:{event_key}"
+        if region_key in self.manager._recorded_cenc_official_region_ids:
+            return False
+
+        region = self.manager.event_support_service.extract_region(
+            data.place_name,
+            strict=True,
+        )
+        if not region:
+            return False
+
+        self.manager._recorded_cenc_official_region_ids.add(region_key)
+        self.manager.stats["earthquake_stats"]["by_region"][region] += 1
+        return True
 
     async def record_weather_stats(self, data) -> bool:
         """记录气象预警详细统计。"""

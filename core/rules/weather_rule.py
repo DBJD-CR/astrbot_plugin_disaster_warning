@@ -56,13 +56,17 @@ class WeatherRule(BaseRule):
             for keyword in weather_filter.get("keywords", [])
             if str(keyword).strip()
         ]
-        # 若未显式配置关键词，则退化为使用省份列表作为区域白名单。
+        legacy_provinces = [
+            str(keyword).strip()
+            for keyword in weather_filter.get("provinces", [])
+            if str(keyword).strip()
+        ]
+        # 若未显式配置关键词，则退化为使用省份列表作为区域白名单；
+        # 若两者同时存在，也保留旧字段作为补充命中源，确保老用户过滤继续生效。
         if not keywords:
-            keywords = [
-                str(keyword).strip()
-                for keyword in weather_filter.get("provinces", [])
-                if str(keyword).strip()
-            ]
+            keywords = legacy_provinces
+        elif legacy_provinces:
+            keywords = list(dict.fromkeys([*keywords, *legacy_provinces]))
         color_levels = {"白色": 0, "蓝色": 1, "黄色": 2, "橙色": 3, "红色": 4}
 
         # 颜色按由高到低的优先级识别，命中后即可停止继续扫描。

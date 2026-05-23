@@ -87,19 +87,40 @@ class EEWQueryStateService:
         minute_bucket = shock_time.strftime("%Y%m%d%H%M")
         return f"{event_key}|{place}|{minute_bucket}"
 
+    @staticmethod
+    def _safe_int(value: Any, default: int = 0) -> int:
+        """把任意值稳妥转换为整数。"""
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
     def should_replace(
         self, current: dict[str, Any], candidate: dict[str, Any]
     ) -> bool:
         """判断候选状态是否应覆盖当前状态。
 
-        优先比较报次，报次一致时再比较发布时间的新旧。
+        同一事件链优先比较报次；当报次一致或无法确认同一链时，
+        再回退到发布时间比较，确保后续更正报能稳定覆盖首报。
         """
-        current_fp = current.get("fingerprint", "")
-        candidate_fp = candidate.get("fingerprint", "")
+        current_event_id = str(current.get("event_id") or "").strip()
+        candidate_event_id = str(candidate.get("event_id") or "").strip()
+        current_fp = str(current.get("fingerprint") or "").strip()
+        candidate_fp = str(candidate.get("fingerprint") or "").strip()
+        same_chain = False
 
-        if current_fp and candidate_fp and current_fp == candidate_fp:
-            current_updates = int(current.get("updates", 1) or 1)
-            candidate_updates = int(candidate.get("updates", 1) or 1)
+        if (
+            current_event_id
+            and candidate_event_id
+            and current_event_id == candidate_event_id
+        ):
+            same_chain = True
+        elif current_fp and candidate_fp and current_fp == candidate_fp:
+            same_chain = True
+
+        current_updates = self._safe_int(current.get("updates", 1), default=1)
+        candidate_updates = self._safe_int(candidate.get("updates", 1), default=1)
+        if same_chain:
             if candidate_updates > current_updates:
                 return True
             if candidate_updates < current_updates:
@@ -117,7 +138,11 @@ class EEWQueryStateService:
             return True
         if candidate_issued is None:
             return False
-        return candidate_issued >= current_issued
+        if candidate_issued > current_issued:
+            return True
+        if candidate_issued < current_issued:
+            return False
+        return candidate_updates >= current_updates
 
     def update_state(
         self,

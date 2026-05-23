@@ -17,6 +17,9 @@ class SourceEnabledRule(BaseRule):
 
     def evaluate(self, context: RuleContext) -> RuleDecision:
         """检查当前事件对应的数据源是否在会话中开启。"""
+        if context.runtime_config.get("__simulation_bypass_regular_filters", False):
+            return RuleDecision.accept(reason="模拟模式跳过数据源开关过滤")
+
         source_id = context.source_id
         data_sources_cfg = context.runtime_config.get("data_sources", {})
         source_entry = get_source_entry(source_id)

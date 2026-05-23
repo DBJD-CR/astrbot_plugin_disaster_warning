@@ -147,6 +147,7 @@ def build_earthquake_simulation(
     magnitude: float,
     depth: float,
     source: str,
+    runtime_config: dict[str, Any] | None = None,
 ) -> SimulationBuildResult:
     """构建地震模拟数据并执行规则测试。
 
@@ -172,6 +173,7 @@ def build_earthquake_simulation(
         "source_enum": source_entry.source_enum,
         "source_type": source_entry.source_type.value,
         "test": True,
+        "simulation_bypass_regular_filters": True,
     }
     if source == "usgs_fanstudio":
         metadata["update_time"] = payload_attributes["update_time"]
@@ -194,8 +196,11 @@ def build_earthquake_simulation(
         event_id=f"sim_{sim_id_suffix}",
         source_id=source,
         event_type="earthquake",
-        occurred_at=now,
+        provider_family=source_entry.provider_family.value,
+        source_enum=source_entry.source_enum,
         report_num=1,
+        published_at=now,
+        attributes={"test": True},
     )
     disaster_event = EventEnvelope(
         identity=identity,
@@ -215,7 +220,9 @@ def build_earthquake_simulation(
         f"Input: M{magnitude} @ ({lat}, {lon}), Depth {depth}km\n",
     ]
 
-    runtime_config = getattr(manager, "config", {}) or {}
+    runtime_config = dict(runtime_config or getattr(manager, "config", {}) or {})
+    # 模拟链路用于验证展示、渲染、发送与本地预估，不应被震级/烈度/报次等规律过滤器拦截。
+    runtime_config["__simulation_bypass_regular_filters"] = True
     build_policy_state = getattr(manager, "_build_policy_state", None)
     if callable(build_policy_state):
         policy_state = build_policy_state(runtime_config)

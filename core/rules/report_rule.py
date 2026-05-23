@@ -23,6 +23,9 @@ class ReportRule(BaseRule):
         if not isinstance(domain_event, EarthquakeEvent):
             return RuleDecision.accept(reason="非地震事件，跳过报数规则")
 
+        if context.runtime_config.get("__simulation_bypass_regular_filters", False):
+            return RuleDecision.accept(reason="模拟模式跳过报数控制")
+
         # 不同来源的报次推进逻辑不同，因此先从目录中读取对应的报次策略。
         source_entry = get_source_entry(context.source_id)
         report_policy = (

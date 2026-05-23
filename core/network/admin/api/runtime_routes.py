@@ -113,6 +113,10 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
             source = custom_params.get("source", test_type)
 
             manager = disaster_service.message_manager
+            session_config_manager = disaster_service.session_config_manager
+            runtime_config = session_config_manager.get_effective_config(
+                final_target_session
+            )
             try:
                 # 先构造模拟事件并执行规则判定，再决定是否真正发送消息。
                 simulation_result = build_earthquake_simulation(
@@ -122,6 +126,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                     magnitude=magnitude,
                     depth=depth,
                     source=source,
+                    runtime_config=runtime_config,
                 )
             except ValueError as ve:
                 await _track_runtime_feature(
@@ -135,23 +140,32 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                 return ApiResponse.error(str(ve), status_code=400)
 
             if simulation_result.global_pass and simulation_result.local_pass:
-                # 只有全局与本地判定都通过，才继续走正式的消息构建与发送流程。
-                logger.info("[灾害预警] 开始构建模拟预警消息...")
-                msg_chain = await manager.message_build_service.build_message_async(
-                    simulation_result.disaster_event
+                # 只有全局与本地判定都通过，才继续走完整模拟推送链路。
+                logger.info("[灾害预警] 开始执行模拟预警推送链路...")
+                push_success = await manager.push_event(
+                    simulation_result.disaster_event,
+                    target_sessions=[final_target_session],
+                    session_config_getter=session_config_manager.get_effective_config,
+                    commit_state=False,
+                    skip_dedup=True,
+                    bypass_fusion=True,
                 )
-                await manager.session_sender.send(final_target_session, msg_chain)
-                logger.info(
-                    f"[灾害预警] ✅ 模拟事件已成功推送到 {final_target_session}"
-                )
-                simulation_result.report_lines.append(
-                    f"\n✅ 消息已发送到: {final_target_session}"
-                )
+                if push_success:
+                    logger.info(
+                        f"[灾害预警] ✅ 模拟事件已成功推送到 {final_target_session}"
+                    )
+                    simulation_result.report_lines.append(
+                        f"\n✅ 消息已发送到: {final_target_session}"
+                    )
+                else:
+                    simulation_result.report_lines.append(
+                        "\n⛔ 结论: 该事件未通过目标会话的正式推送链路筛选。"
+                    )
                 await _track_runtime_feature(
                     "web_simulation_result",
                     {
                         "success": True,
-                        "triggered": True,
+                        "triggered": bool(push_success),
                         "source": str(source or "unknown"),
                         "magnitude_bucket": round(magnitude),
                         "depth_bucket": int(depth // 10 * 10),
@@ -159,7 +173,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                 )
                 return ApiResponse.success(
                     {
-                        "success": True,
+                        "success": bool(push_success),
                         "message": "\n".join(simulation_result.report_lines),
                     }
                 )

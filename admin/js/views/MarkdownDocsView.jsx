@@ -1,353 +1,61 @@
 (() => {
 /**
- * 文件职责：Markdown 文档浏览视图，负责文档目录展示、内容加载与原生 Markdown 阅读体验。
+ * 模块名称：Markdown 文档阅读视图组件
+ * 文件路径：admin/js/views/MarkdownDocsView.jsx
+ * 功能描述：在管理端界面中提供一个内置的 Markdown 文件浏览器。
+ *           支持读取插件根目录及子目录下的说明文档、更新日志等，
+ *           配合 Mermaid 渲染器实现架构图与时序图的可视化展示。
  */
 
 const { Box, Typography, Button, Chip } = MaterialUI;
 
+/**
+ * 文档浏览视图主组件
+ * 构建包含侧边栏文件树与右侧主渲染区的双栏自适应阅读器
+ */
 function MarkdownDocsView() {
-    const { state, dispatch } = useAppContext();
-    const api = useApi();
+    // 渲染文章 DOM 的引用，用于给 Mermaid 渲染 Hook 提供挂载的容器
     const articleRef = React.useRef(null);
-    const markdownFiles = Array.isArray(state.markdownFiles) ? state.markdownFiles : [];
-    const markdownDocument = state.markdownDocument || null;
-    const selectedMarkdownPath = String(state.selectedMarkdownPath || '');
-    const [loadingList, setLoadingList] = React.useState(false);
-    const [loadingDocument, setLoadingDocument] = React.useState(false);
+    
+    // 获取 Markdown 相关的底层状态和异步操作函数
+    const docs = useMarkdownDocs();
+    const {
+        theme,                  // 当前系统的主题模式（明/暗）
+        markdownFiles,         // 可供读取的 Markdown 文件列表数组
+        markdownDocument,      // 当前选中的文档数据包对象
+        loadingList,           // 文件目录列表加载状态标识
+        loadingDocument,       // 当前选中的文档内容加载状态标识
+        currentDocumentTitle,  // 当前渲染文档的显示标题
+        currentDocumentPath,   // 当前渲染文档的相对路径
+        markdownUtil,          // 全局 Markdown 编译工具类实例
+        renderedHtml,          // 编译后的安全 HTML 内容字符串
+        loadMarkdownFiles,     // 重新从服务端拉取文件列表的方法
+        loadMarkdownDocument,  // 异步加载指定路径文档内容的方法
+        refreshCurrentDocument, // 手动重新载入当前选中文件的方法
+    } = docs;
 
-    const loadMarkdownFiles = React.useCallback(async () => {
-        setLoadingList(true);
-        try {
-            const payload = await api.listMarkdownFiles();
-            const items = Array.isArray(payload?.items) ? payload.items : [];
-            dispatch({ type: 'SET_MARKDOWN_FILES', payload: items });
-
-            if (!selectedMarkdownPath && items.length > 0) {
-                dispatch({ type: 'SET_SELECTED_MARKDOWN_PATH', payload: items[0].path || '' });
-            }
-        } catch (e) {
-            console.error('加载 Markdown 文档列表失败:', e);
-        } finally {
-            setLoadingList(false);
-        }
-    }, [api, dispatch, selectedMarkdownPath]);
-
-    const loadMarkdownDocument = React.useCallback(async (path) => {
-        const normalizedPath = String(path || '').trim();
-        if (!normalizedPath) {
-            dispatch({ type: 'SET_MARKDOWN_DOCUMENT', payload: null });
-            return;
-        }
-
-        setLoadingDocument(true);
-        try {
-            const payload = await api.getMarkdownFile(normalizedPath);
-            dispatch({ type: 'SET_MARKDOWN_DOCUMENT', payload: payload || null });
-            dispatch({ type: 'SET_SELECTED_MARKDOWN_PATH', payload: normalizedPath });
-        } catch (e) {
-            console.error('加载 Markdown 文档失败:', e);
-        } finally {
-            setLoadingDocument(false);
-        }
-    }, [api, dispatch]);
-
-    React.useEffect(() => {
-        if (markdownFiles.length === 0) {
-            loadMarkdownFiles();
-        }
-    }, [loadMarkdownFiles, markdownFiles.length]);
-
-    React.useEffect(() => {
-        if (!selectedMarkdownPath && markdownFiles.length > 0) {
-            loadMarkdownDocument(markdownFiles[0].path || '');
-            return;
-        }
-
-        if (
-            selectedMarkdownPath
-            && (!markdownDocument || String(markdownDocument.path || '') !== selectedMarkdownPath)
-        ) {
-            loadMarkdownDocument(selectedMarkdownPath);
-        }
-    }, [loadMarkdownDocument, markdownDocument, markdownFiles, selectedMarkdownPath]);
-
-    const handleRefreshCurrent = async () => {
-        await loadMarkdownFiles();
-        if (selectedMarkdownPath) {
-            await loadMarkdownDocument(selectedMarkdownPath);
-        }
-    };
-
-    const currentDocumentTitle = markdownDocument?.title
-        || markdownFiles.find((item) => item.path === selectedMarkdownPath)?.title
-        || 'Markdown 文档';
-    const currentDocumentPath = markdownDocument?.path || selectedMarkdownPath;
-    const markdownUtil = window.MarkdownRenderUtil;
-    const renderedHtml = markdownDocument?.content && markdownUtil
-        ? markdownUtil.renderMarkdownToHtml(markdownDocument.content)
-        : '';
-
-    React.useEffect(() => {
-        const articleEl = articleRef.current;
-        const mermaid = window.mermaid;
-        if (!articleEl) return;
-
-        const mermaidBlocks = articleEl.querySelectorAll('.notification-md-mermaid[data-mermaid-source]');
-        if (!mermaidBlocks.length) return;
-
-        if (!mermaid || typeof mermaid.render !== 'function') {
-            mermaidBlocks.forEach((block) => {
-                block.classList.add('is-error');
-            });
-            return;
-        }
-
-        if (!window.__DISASTER_MERMAID_INITIALIZED && typeof mermaid.initialize === 'function') {
-            mermaid.initialize({
-                startOnLoad: false,
-                securityLevel: 'strict',
-                theme: state.theme === 'dark' ? 'dark' : 'default',
-            });
-            window.__DISASTER_MERMAID_INITIALIZED = true;
-        }
-
-        let disposed = false;
-        const cleanupFns = [];
-
-        const attachMermaidViewportControls = (block) => {
-            const svg = block.querySelector('svg');
-            if (!svg) return;
-
-            const currentSvg = svg;
-            const svgViewBox = currentSvg.viewBox?.baseVal;
-            const fallbackWidth = Number(currentSvg.getAttribute('width')) || currentSvg.clientWidth || 1200;
-            const fallbackHeight = Number(currentSvg.getAttribute('height')) || currentSvg.clientHeight || 800;
-            const intrinsicWidth = svgViewBox && svgViewBox.width ? svgViewBox.width : fallbackWidth;
-            const intrinsicHeight = svgViewBox && svgViewBox.height ? svgViewBox.height : fallbackHeight;
-
-            currentSvg.removeAttribute('width');
-            currentSvg.removeAttribute('height');
-            currentSvg.style.width = `${intrinsicWidth}px`;
-            currentSvg.style.height = `${intrinsicHeight}px`;
-            currentSvg.style.maxWidth = 'none';
-            currentSvg.style.maxHeight = 'none';
-
-            const existingViewport = block.querySelector('.notification-md-mermaid-viewport');
-            if (existingViewport) {
-                existingViewport.remove();
-            }
-            const existingToolbar = block.parentElement?.querySelector('.notification-md-mermaid-toolbar');
-            if (existingToolbar) {
-                existingToolbar.remove();
-            }
-
-            const viewport = document.createElement('div');
-            viewport.className = 'notification-md-mermaid-viewport';
-
-            const canvas = document.createElement('div');
-            canvas.className = 'notification-md-mermaid-canvas';
-            canvas.style.width = `${intrinsicWidth}px`;
-            canvas.style.height = `${intrinsicHeight}px`;
-            canvas.appendChild(currentSvg);
-            viewport.appendChild(canvas);
-            block.appendChild(viewport);
-
-            const toolbar = document.createElement('div');
-            toolbar.className = 'notification-md-mermaid-toolbar';
-            toolbar.innerHTML = [
-                '<button type="button" class="notification-md-mermaid-tool-btn" data-action="zoom-in">＋</button>',
-                '<button type="button" class="notification-md-mermaid-tool-btn" data-action="zoom-out">－</button>',
-                '<button type="button" class="notification-md-mermaid-tool-btn" data-action="reset">重置</button>',
-            ].join('');
-            block.parentElement.insertBefore(toolbar, block);
-
-            const stateRef = {
-                scale: 1,
-                dragging: false,
-                pointerId: null,
-                startX: 0,
-                startY: 0,
-                startScrollLeft: 0,
-                startScrollTop: 0,
-            };
-
-            const clampScale = (value) => Math.min(12, Math.max(0.35, value));
-            const getFitScale = () => {
-                const viewportWidth = viewport.clientWidth || intrinsicWidth;
-                const viewportHeight = viewport.clientHeight || intrinsicHeight;
-                if (!viewportWidth || !viewportHeight || !intrinsicWidth || !intrinsicHeight) {
-                    return 1;
-                }
-                const fitScale = Math.min(viewportWidth / intrinsicWidth, viewportHeight / intrinsicHeight, 1);
-                return clampScale(Number(fitScale.toFixed(3)));
-            };
-            const applyScale = () => {
-                canvas.style.width = `${intrinsicWidth * stateRef.scale}px`;
-                canvas.style.height = `${intrinsicHeight * stateRef.scale}px`;
-                currentSvg.style.width = '100%';
-                currentSvg.style.height = '100%';
-
-                requestAnimationFrame(() => {
-                    const canPanX = viewport.scrollWidth - viewport.clientWidth > 2;
-                    const canPanY = viewport.scrollHeight - viewport.clientHeight > 2;
-                    viewport.classList.toggle('is-pannable', canPanX || canPanY);
-                });
-            };
-            const centerViewport = () => {
-                viewport.scrollLeft = Math.max((viewport.scrollWidth - viewport.clientWidth) / 2, 0);
-                viewport.scrollTop = Math.max((viewport.scrollHeight - viewport.clientHeight) / 2, 0);
-            };
-            const resetTransform = () => {
-                stateRef.scale = getFitScale();
-                applyScale();
-                requestAnimationFrame(centerViewport);
-            };
-            const zoomBy = (delta, originX = null, originY = null) => {
-                const prevScale = stateRef.scale;
-                const nextScale = clampScale(Number((prevScale + delta).toFixed(3)));
-                if (nextScale === prevScale) return;
-
-                const viewportRect = viewport.getBoundingClientRect();
-                const anchorClientX = originX === null ? viewportRect.left + viewportRect.width / 2 : originX;
-                const anchorClientY = originY === null ? viewportRect.top + viewportRect.height / 2 : originY;
-                const localX = anchorClientX - viewportRect.left;
-                const localY = anchorClientY - viewportRect.top;
-                const contentX = (viewport.scrollLeft + localX) / prevScale;
-                const contentY = (viewport.scrollTop + localY) / prevScale;
-
-                stateRef.scale = nextScale;
-                applyScale();
-
-                viewport.scrollLeft = Math.max(0, contentX * nextScale - localX);
-                viewport.scrollTop = Math.max(0, contentY * nextScale - localY);
-
-                if (stateRef.scale <= 1.001) {
-                    centerViewport();
-                }
-            };
-
-            const onToolbarClick = (event) => {
-                const action = event.target?.getAttribute('data-action');
-                if (!action) return;
-                if (action === 'zoom-in') zoomBy(0.35);
-                if (action === 'zoom-out') zoomBy(-0.35);
-                if (action === 'reset') resetTransform();
-            };
-
-            const onWheel = (event) => {
-                if (!(event.ctrlKey || event.metaKey)) return;
-                event.preventDefault();
-                zoomBy(event.deltaY < 0 ? 0.28 : -0.28, event.clientX, event.clientY);
-            };
-
-            const onPointerDown = (event) => {
-                const canPanX = viewport.scrollWidth - viewport.clientWidth > 2;
-                const canPanY = viewport.scrollHeight - viewport.clientHeight > 2;
-                if (!canPanX && !canPanY) return;
-                stateRef.dragging = true;
-                stateRef.pointerId = event.pointerId;
-                stateRef.startX = event.clientX;
-                stateRef.startY = event.clientY;
-                stateRef.startScrollLeft = viewport.scrollLeft;
-                stateRef.startScrollTop = viewport.scrollTop;
-                viewport.classList.add('is-dragging');
-                if (typeof viewport.setPointerCapture === 'function') {
-                    viewport.setPointerCapture(event.pointerId);
-                }
-            };
-
-            const onPointerMove = (event) => {
-                if (!stateRef.dragging || stateRef.pointerId !== event.pointerId) return;
-                viewport.scrollLeft = stateRef.startScrollLeft - (event.clientX - stateRef.startX);
-                viewport.scrollTop = stateRef.startScrollTop - (event.clientY - stateRef.startY);
-            };
-
-            const endDrag = (event) => {
-                if (event && stateRef.pointerId !== event.pointerId) return;
-                stateRef.dragging = false;
-                viewport.classList.remove('is-dragging');
-                if (event && typeof viewport.releasePointerCapture === 'function') {
-                    try {
-                        viewport.releasePointerCapture(event.pointerId);
-                    } catch (e) {
-                        // 某些浏览器在 pointer capture 状态不一致时会抛错，这里静默忽略。
-                    }
-                }
-                stateRef.pointerId = null;
-            };
-
-            toolbar.addEventListener('click', onToolbarClick);
-            viewport.addEventListener('wheel', onWheel, { passive: false });
-            viewport.addEventListener('pointerdown', onPointerDown);
-            viewport.addEventListener('pointermove', onPointerMove);
-            viewport.addEventListener('pointerup', endDrag);
-            viewport.addEventListener('pointercancel', endDrag);
-
-            cleanupFns.push(() => {
-                toolbar.removeEventListener('click', onToolbarClick);
-                viewport.removeEventListener('wheel', onWheel);
-                viewport.removeEventListener('pointerdown', onPointerDown);
-                viewport.removeEventListener('pointermove', onPointerMove);
-                viewport.removeEventListener('pointerup', endDrag);
-                viewport.removeEventListener('pointercancel', endDrag);
-            });
-
-            stateRef.scale = getFitScale();
-            applyScale();
-            requestAnimationFrame(centerViewport);
-        };
-
-        const renderAllMermaidBlocks = async () => {
-            for (let index = 0; index < mermaidBlocks.length; index += 1) {
-                if (disposed) return;
-                const block = mermaidBlocks[index];
-                const source = String(block.getAttribute('data-mermaid-source') || '').trim();
-                if (!source) continue;
-
-                const renderId = `disaster-mermaid-${currentDocumentPath || 'doc'}-${index}-${Date.now()}`
-                    .replace(/[^a-zA-Z0-9_-]/g, '-');
-
-                try {
-                    block.classList.remove('is-error');
-                    if (typeof mermaid.parse === 'function') {
-                        await mermaid.parse(source, { suppressErrors: true });
-                    }
-                    const renderResult = await mermaid.render(renderId, source);
-                    if (disposed) return;
-                    block.innerHTML = renderResult?.svg || '';
-                    attachMermaidViewportControls(block);
-                } catch (error) {
-                    if (disposed) return;
-                    block.classList.add('is-error');
-                    block.textContent = source;
-                }
-            }
-        };
-
-        renderAllMermaidBlocks();
-
-        return () => {
-            disposed = true;
-            cleanupFns.forEach((cleanup) => {
-                try {
-                    cleanup();
-                } catch (e) {
-                    // 组件卸载阶段的清理错误不影响主流程。
-                }
-            });
-        };
-    }, [currentDocumentPath, renderedHtml, state.theme]);
+    // 绑定 Mermaid 流程图渲染钩子，在 HTML 渲染完成后解析图表代码块并绘制 SVG 矢量图
+    useMermaidRenderer(articleRef, {
+        documentPath: currentDocumentPath,
+        renderedHtml,
+        theme,
+    });
 
     return (
+        // 外部容器，复用了通知中心的部分样式并加入文档特定主题类
         <Box className="notifications-view markdown-docs-view">
+            {/* 顶栏控制卡片，展示文档总数、当前阅读路径及功能操作按钮 */}
             <div className="card notifications-hero-card markdown-docs-hero-card">
                 <Box className="tasks-header-row notifications-header-row">
+                    {/* 左侧文字介绍与状态徽章 */}
                     <div className="notifications-header-main">
                         <Box className="notifications-title-row">
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
-                                <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                            <Box className="notifications-title-stack">
+                                {/* 主标题，动态插值文档列表长度 */}
+                                <Typography variant="h6" className="notifications-title-text">
                                     {`文档浏览 (当前共 ${markdownFiles.length} 份文档)`}
                                 </Typography>
+                                {/* 状态徽标，提示当前正在查看的文档名称或选中状态 */}
                                 <Chip
                                     label={currentDocumentPath ? `当前：${currentDocumentTitle}` : '请选择文档'}
                                     size="small"
@@ -356,25 +64,26 @@ function MarkdownDocsView() {
                                 />
                             </Box>
                         </Box>
-                        <Typography variant="body2" className="tasks-header-subtitle">
+                        <Typography variant="body2" className="tasks-header-subtitle notifications-hero-subtitle">
                             在插件前端中直接阅读原生 Markdown 文件，例如 README、CHANGELOG 与 docs 目录文档。
                         </Typography>
                     </div>
+                    {/* 右侧动作控制区，可刷新目录或重载当前文本内容 */}
                     <Box className="notifications-actions-row">
                         <Button
                             variant="outlined"
                             onClick={loadMarkdownFiles}
                             disabled={loadingList}
-                            sx={{ borderRadius: 3 }}
+                            className="notifications-action-btn"
                         >
                             刷新目录
                         </Button>
                         <Button
                             variant="contained"
-                            onClick={handleRefreshCurrent}
+                            onClick={refreshCurrentDocument}
                             disabled={loadingList || loadingDocument || !currentDocumentPath}
                             startIcon={<span>📘</span>}
-                            sx={{ borderRadius: 3, boxShadow: 'none', px: 2.25 }}
+                            className="notifications-action-btn notifications-action-btn--primary"
                         >
                             刷新文档
                         </Button>
@@ -382,23 +91,26 @@ function MarkdownDocsView() {
                 </Box>
             </div>
 
+            {/* 双栏主工作区 */}
             <div className="markdown-docs-shell">
+                {/* 左侧侧边栏：文档目录树 */}
                 <aside className="markdown-docs-aside-column">
                     <div className="markdown-docs-aside-sticky">
                         <div className="card markdown-docs-sidebar-card">
                             <div className="markdown-docs-sidebar-head">
-                                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                <Typography variant="subtitle1" className="markdown-docs-sidebar-title">
                                     文档目录
                                 </Typography>
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography variant="body2" color="text.secondary" className="markdown-docs-sidebar-subtitle">
                                     仅展示插件目录内允许浏览的 Markdown 文件。
                                 </Typography>
                             </div>
 
+                            {/* 条件渲染列表内容 */}
                             {markdownFiles.length === 0 ? (
                                 <div className="tasks-empty-card markdown-docs-empty-side-card">
                                     <div className="tasks-empty-icon">📚</div>
-                                    <Typography variant="body1" sx={{ fontWeight: 700, mb: 1 }}>
+                                    <Typography variant="body1" className="markdown-docs-empty-title">
                                         {loadingList ? '正在加载文档列表…' : '暂无可浏览文档'}
                                     </Typography>
                                 </div>
@@ -411,6 +123,7 @@ function MarkdownDocsView() {
                                                 key={item.path}
                                                 className={`markdown-docs-file-item ${isActive ? 'is-active' : ''}`}
                                                 onClick={() => {
+                                                    // 如果是当前已选中的文档，则避免重复发起多余的异步请求
                                                     if (isActive) {
                                                         return;
                                                     }
@@ -421,6 +134,7 @@ function MarkdownDocsView() {
                                                     <span className="markdown-docs-file-icon">📝</span>
                                                     <span className="markdown-docs-file-title">{item.title || item.filename || item.path}</span>
                                                 </div>
+                                                {/* 显示文件在服务器磁盘上的等宽相对路径 */}
                                                 <div className="markdown-docs-file-path mono">{item.path}</div>
                                             </button>
                                         );
@@ -431,61 +145,69 @@ function MarkdownDocsView() {
                     </div>
                 </aside>
 
+                {/* 右侧内容主展板 */}
                 <div className="markdown-docs-content-column">
                     <div className="card markdown-docs-content-card">
+                        {/* 分状态渲染不同的提示信息与文本视图 */}
                         {!currentDocumentPath ? (
+                            // 状态 1：未选择任何文件时的缺省空白页提示
                             <div className="tasks-empty-card markdown-docs-empty-card">
                                 <div className="tasks-empty-icon">📄</div>
-                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                                <Typography variant="h6" className="markdown-docs-empty-title">
                                     请选择左侧文档
                                 </Typography>
-                                <Typography variant="body1" color="text.secondary">
+                                <Typography variant="body1" color="text.secondary" className="markdown-docs-empty-subtitle">
                                     选择后即可在当前管理端中直接阅读 Markdown 文档内容。
                                 </Typography>
                             </div>
                         ) : loadingDocument && !markdownDocument ? (
+                            // 状态 2：正在发起网络请求时的骨架加载屏
                             <div className="tasks-empty-card markdown-docs-empty-card">
                                 <div className="tasks-empty-icon">⏳</div>
-                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                                <Typography variant="h6" className="markdown-docs-empty-title">
                                     正在加载文档内容…
                                 </Typography>
                             </div>
                         ) : markdownDocument ? (
+                            // 状态 3：获取数据成功，开始进行语法高亮或纯文本渲染
                             <>
                                 <div className="markdown-docs-article-head">
                                     <div>
-                                        <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
+                                        {/* 文档的主标题级字号展示 */}
+                                        <Typography variant="h5" className="markdown-docs-article-title">
                                             {currentDocumentTitle}
                                         </Typography>
-                                        <Typography variant="body2" className="task-card-session-sub mono">
+                                        {/* 打印文档所在的内部物理相对位置 */}
+                                        <Typography variant="body2" className="task-card-session-sub mono markdown-docs-article-path">
                                             {currentDocumentPath}
                                         </Typography>
                                     </div>
                                 </div>
+                                {/* 如果解析渲染编译器可用，则作为安全 HTML 嵌入显示，否则优雅降级为纯文本输出 */}
                                 {markdownUtil ? (
                                     <Box
                                         ref={articleRef}
-                                        className="task-countdown-text notification-feed-content-text notification-md markdown-docs-article markdown-docs-article-html"
+                                        className="notification-md markdown-docs-article markdown-docs-article-html"
                                         dangerouslySetInnerHTML={{ __html: renderedHtml }}
                                     />
                                 ) : (
                                     <Typography
                                         ref={articleRef}
                                         variant="body2"
-                                        className="task-countdown-text notification-feed-content-text markdown-docs-article"
-                                        sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.85 }}
+                                        className="notification-md markdown-docs-article markdown-docs-article--plain"
                                     >
                                         {String(markdownDocument.content || '')}
                                     </Typography>
                                 )}
                             </>
                         ) : (
+                            // 状态 4：接口响应失败或者解析出现异常时的容错面板
                             <div className="tasks-empty-card markdown-docs-empty-card">
                                 <div className="tasks-empty-icon">⚠️</div>
-                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                                <Typography variant="h6" className="markdown-docs-empty-title">
                                     文档暂时不可用
                                 </Typography>
-                                <Typography variant="body1" color="text.secondary">
+                                <Typography variant="body1" color="text.secondary" className="markdown-docs-empty-subtitle">
                                     当前文档未能成功加载，请稍后重试。
                                 </Typography>
                             </div>
@@ -497,5 +219,6 @@ function MarkdownDocsView() {
     );
 }
 
+// 绑定全局窗口属性，方便其他层通过原生或动态加载方式调用此视图
 window.MarkdownDocsView = MarkdownDocsView;
 })();

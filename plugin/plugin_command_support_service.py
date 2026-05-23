@@ -59,17 +59,30 @@ class PluginCommandSupportService:
         schema_item: dict[str, Any] | None,
     ) -> Any:
         """递归将配置键名转换为中文描述。"""
+        if isinstance(config_item, list):
+            return [
+                self.translate_config_recursive(item, schema_item)
+                if isinstance(item, dict)
+                else item
+                for item in config_item
+            ]
+
         if not isinstance(config_item, dict):
             return config_item
 
         translated: dict[str, Any] = {}
         schema_item = schema_item or {}
+        legacy_alias_map = {
+            "provinces": "省份白名单(旧版兼容)",
+            "province": "省份(旧版兼容)",
+            "push_enable": "单会话推送开关(旧版字段)",
+        }
         for key, value in config_item.items():
-            # 每个配置项都优先使用结构定义中的中文说明，缺失时再回退原键名。
+            # 每个配置项都优先使用结构定义中的中文说明；schema 外旧字段走兼容别名，避免展示错位。
             item_schema = (
                 schema_item.get(key, {}) if isinstance(schema_item, dict) else {}
             )
-            description = item_schema.get("description", key)
+            description = item_schema.get("description", legacy_alias_map.get(key, key))
 
             if isinstance(value, dict):
                 # 嵌套配置继续按子结构递归翻译，保持整棵配置树的展示风格一致。
@@ -77,6 +90,13 @@ class PluginCommandSupportService:
                 translated[description] = self.translate_config_recursive(
                     value, sub_schema
                 )
+            elif isinstance(value, list):
+                translated[description] = [
+                    self.translate_config_recursive(item, item_schema.get("items", {}))
+                    if isinstance(item, dict)
+                    else item
+                    for item in value
+                ]
             else:
                 translated[description] = value
 

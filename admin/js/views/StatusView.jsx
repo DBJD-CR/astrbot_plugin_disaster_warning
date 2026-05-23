@@ -1,26 +1,47 @@
+/**
+ * 模块名称：系统健康与服务状态仪表盘视图
+ * 文件路径：admin/js/views/StatusView.jsx
+ * 功能描述：作为插件管理端进入的首页面板，提供全局数据监听器的运行状态汇报。
+ *           包含：跑马灯滚动通知、系统健康卡片、简明数据量卡片、全局网络连接拓扑图、
+ *           地震速报模块，以及快捷维护面板（模拟仿真预警、重连数据源、刷新及重置统计等）。
+ */
+
 const { Box, Button, Typography } = MaterialUI;
 
+/**
+ * 系统健康与运行状态视图主组件
+ * @param {object} props 接收父级状态，包括开启模拟预警模态框的控制函数
+ */
 function StatusView({ onOpenSimulation }) {
+    // 从应用的状态总线订阅全局运行状态
     const { state, refreshData, fetchConnections, fetchConfig } = useAppContext();
-    const { status, wsConnected } = state; // 获取 wsConnected 状态
+    const { status, wsConnected } = state; 
+    
+    // 本地操作中按钮的交互加载状态
     const [reconnecting, setReconnecting] = React.useState(false);
     const [refreshing, setRefreshing] = React.useState(false);
     const [resettingStats, setResettingStats] = React.useState(false);
-    const { sendMessage } = useWebSocket(); // 获取 WebSocket 发送消息函数
-    const { showToast } = useToast(); // 使用 Toast 提示
-    const api = useApi();
+    
+    // 获取全局 WebSocket 连接发送消息的方法
+    const { sendMessage } = useWebSocket(); 
+    // 使用全局 Toast 提示系统反馈
+    const { showToast } = useToast(); 
+    const statusApi = window.DisasterStatusApi;
 
+    /**
+     * 执行控制台的全量刷新拉取
+     */
     const refreshAll = async () => {
         setRefreshing(true);
         try {
-            // 1. 通过 HTTP API 刷新状态
+            // 1. 同时拉取三个核心接口，缩短网络阻滞时间
             await Promise.all([
                 refreshData(),
                 fetchConnections(),
                 fetchConfig()
             ]);
             
-            // 2. 通过 WebSocket 请求完整更新（如果连接正常）
+            // 2. 通过 Web Socket 连接通道发出实时通知同步刷新，若网络不可达则忽略
             if (wsConnected) {
                 const sent = sendMessage({ type: 'refresh' });
                 if (!sent) {
@@ -30,18 +51,21 @@ function StatusView({ onOpenSimulation }) {
                 console.warn('[StatusView] WebSocket 未连接，仅通过 HTTP API 刷新');
             }
             
-            // 3. 延迟一点点关闭刷新状态，让动画更明显
+            // 3. 略微延时，防止高频点击产生的闪烁并让旋转动画自然平稳过渡
             await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {
             console.error('刷新数据失败:', e);
         } finally {
-            // 清理刷新状态，使 UI 与实际刷新生命周期保持一致
+            // 解锁刷新加载动作
             setRefreshing(false);
         }
     };
 
+    /**
+     * 手动触发全部活跃数据接口重新连接
+     */
     const handleReconnect = async () => {
-        // 如果所有连接都正常，提示用户确认
+        // 安全拦截：若当前所有接入源均显示正常，弹出警告以防误操作中断线上真实订阅
         if (status.activeConnections === status.totalConnections && status.totalConnections > 0) {
             if (!confirm('当前所有连接均正常，确定要强制执行重连操作吗？\n这可能会导致短暂的连接中断。')) {
                 return;
@@ -50,22 +74,14 @@ function StatusView({ onOpenSimulation }) {
 
         setReconnecting(true);
         try {
-            const response = await fetch(`${state.config.apiUrl || ''}/api/reconnect`, {
-                method: 'POST'
-            });
-            const result = await response.json();
-            
-            if (result.success) {
-                // 成功后延迟一点刷新数据，给重连一些时间
-                setTimeout(() => {
-                    refreshData();
-                    setReconnecting(false);
-                    showToast(result.message || '重连操作已触发', 'success');
-                }, 1000);
-            } else {
-                showToast('重连失败: ' + (result.error || '未知错误'), 'error');
+            const result = await statusApi.reconnect(state.config.apiUrl || '');
+
+            // 重连需要物理网络建立过程，延迟 1 秒后刷新数据并通知用户
+            setTimeout(() => {
+                refreshData();
                 setReconnecting(false);
-            }
+                showToast(result?.message || '重连操作已触发', 'success');
+            }, 1000);
         } catch (e) {
             console.error('Reconnect failed:', e);
             showToast('请求失败，请检查网络连接', 'error');
@@ -73,10 +89,15 @@ function StatusView({ onOpenSimulation }) {
         }
     };
 
+    /**
+     * 手动清除数据库的统计历史信息（高危操作，配有密码保护机制）
+     */
     const handleResetStatistics = async () => {
+        // 第一道关卡：二次弹窗确认
         const ok = confirm('⚠️ 确定要清除插件统计数据吗？\n\n该操作会重置统计信息、图表数据、事件列表等（不可恢复）。');
         if (!ok) return;
 
+        // 第二道关卡：输入控制台管理密码，增强安全阻断
         const password = prompt('请输入管理端密码以确认本次清除操作：', '');
         if (password === null) return;
         if (!password.trim()) {
@@ -86,14 +107,10 @@ function StatusView({ onOpenSimulation }) {
 
         setResettingStats(true);
         try {
-            const result = await api.resetStatistics(password);
-            if (result && result.success) {
-                // 清除后主动刷新控制台数据
-                await refreshAll();
-                showToast(result.message || '统计数据已清除', 'success');
-            } else {
-                showToast('清除失败: ' + ((result && result.error) || '未知错误'), 'error');
-            }
+            const result = await statusApi.resetStatistics(password);
+            // 成功后，将本地数据全部刷空，防止缓存脏数据
+            await refreshAll();
+            showToast(result?.message || '统计数据已清除', 'success');
         } catch (e) {
             console.error('Reset statistics failed:', e);
             showToast(e.message || '清除失败，请检查网络连接', 'error');
@@ -104,120 +121,95 @@ function StatusView({ onOpenSimulation }) {
 
     return (
         <Box>
+            {/* 网格主容器 */}
             <div className="dashboard-grid">
-                {/* 顶部跑马灯 */}
+                {/* 顶部跑马灯：滚动呈现最近发生的紧急地震或天气速报信息 */}
                 <div className="span-12">
                     <NewsTicker />
                 </div>
 
+                {/* 运行健康指标卡片 */}
                 <div className="span-4">
                     <StatusCard />
                 </div>
+                
+                {/* 核心频次计数指标卡片 */}
                 <div className="span-4">
                     <StatsCard />
                 </div>
+                
+                {/* 右侧：快捷配置与指令维护面板 */}
                 <div className="span-4">
-                    <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                            <div style={{ 
-                                width: '40px', 
-                                height: '40px', 
-                                borderRadius: '10px', 
-                                background: 'rgba(236, 72, 153, 0.1)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '20px'
-                            }}>🚀</div>
-                            <Typography variant="h6" sx={{ fontWeight: 700 }}>快捷操作</Typography>
+                    <div className="card status-quick-actions-card">
+                        <Box className="status-card-header">
+                            <div className="status-card-icon status-card-icon--actions">🚀</div>
+                            <Typography variant="h6" className="status-card-title">快捷操作</Typography>
                         </Box>
                         
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, justifyContent: 'center' }}>
+                        <Box className="status-quick-actions-list">
+                            {/* 1. 点击启动仿真测试，生成虚拟的强震或气象警报来调试前端或推送机器人 */}
                             <button
-                                className="btn btn-action"
+                                className="btn btn-action status-action-button"
                                 onClick={onOpenSimulation}
                             >
-                                <span style={{ fontSize: '18px' }}>🧪</span>
+                                <span className="status-action-icon">🧪</span>
                                 模拟预警仿真
                             </button>
                             
+                            {/* 2. 强制重启并重新拉取各个数据接收端口 */}
                             <button
-                                className="btn btn-action"
+                                className={`btn btn-action status-action-button ${!status.running ? 'is-disabled' : ''}`}
                                 onClick={handleReconnect}
                                 disabled={reconnecting || !status.running}
-                                style={{
-                                    opacity: status.running ? 1 : 0.5,
-                                    cursor: status.running ? 'pointer' : 'not-allowed'
-                                }}
                                 title="强制重连所有已启用但离线的数据源"
                             >
                                 {reconnecting ? (
                                     <>
-                                        <span className="spinner" style={{
-                                            width: '14px',
-                                            height: '14px',
-                                            border: '2px solid rgba(0,0,0,0.2)',
-                                            borderTopColor: 'var(--md-sys-color-primary)',
-                                            borderRadius: '50%'
-                                        }}></span>
+                                        <span className="spinner status-action-spinner"></span>
                                         处理中...
                                     </>
                                 ) : (
                                     <>
-                                        <span style={{ fontSize: '18px' }}>🔌</span>
+                                        <span className="status-action-icon">🔌</span>
                                         手动重连数据源
                                     </>
                                 )}
                             </button>
 
+                            {/* 3. 主动同步服务端的所有当前缓存与时区设置 */}
                             <button
-                                className="btn btn-action"
+                                className="btn btn-action status-action-button"
                                 onClick={refreshAll}
                                 disabled={refreshing}
                             >
                                 {refreshing ? (
                                     <>
-                                        <span className="spinner" style={{
-                                            width: '14px',
-                                            height: '14px',
-                                            border: '2px solid rgba(0,0,0,0.2)',
-                                            borderTopColor: 'var(--md-sys-color-primary)',
-                                            borderRadius: '50%'
-                                        }}></span>
+                                        <span className="spinner status-action-spinner"></span>
                                         刷新中...
                                     </>
                                 ) : (
                                     <>
-                                        <span style={{ fontSize: '18px' }}>🔄</span>
+                                        <span className="status-action-icon">🔄</span>
                                         刷新控制台数据
                                     </>
                                 )}
                             </button>
 
+                            {/* 4. 清除底层历史统计，重归初始白卷 */}
                             <button
-                                className="btn btn-action"
+                                className={`btn btn-action status-action-button ${!status.running ? 'is-disabled' : ''}`}
                                 onClick={handleResetStatistics}
                                 disabled={resettingStats || !status.running}
-                                style={{
-                                    opacity: status.running ? 1 : 0.5,
-                                    cursor: status.running ? 'pointer' : 'not-allowed'
-                                }}
                                 title="清除插件统计数据（等价于 /灾害预警统计清除）"
                             >
                                 {resettingStats ? (
                                     <>
-                                        <span className="spinner" style={{
-                                            width: '14px',
-                                            height: '14px',
-                                            border: '2px solid rgba(0,0,0,0.2)',
-                                            borderTopColor: 'var(--md-sys-color-primary)',
-                                            borderRadius: '50%'
-                                        }}></span>
+                                        <span className="spinner status-action-spinner"></span>
                                         清除中...
                                     </>
                                 ) : (
                                     <>
-                                        <span style={{ fontSize: '18px' }}>🧹</span>
+                                        <span className="status-action-icon">🧹</span>
                                         一键清除统计
                                     </>
                                 )}
@@ -226,10 +218,12 @@ function StatusView({ onOpenSimulation }) {
                     </div>
                 </div>
 
+                {/* 数据源长连接状态网络监控图表 */}
                 <div className="span-12">
                     <ConnectionsGrid />
                 </div>
 
+                {/* 地震预警（EEW）状态卡片 */}
                 <div className="span-12">
                     <EewStatusCard />
                 </div>

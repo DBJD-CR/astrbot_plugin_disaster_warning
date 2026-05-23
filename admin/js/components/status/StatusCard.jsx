@@ -1,82 +1,73 @@
 const { Box, Typography } = MaterialUI;
 
 /**
- * 系统状态卡片组件
- * 展示核心服务的运行状态、运行时长以及活跃连接数
+ * 服务状态摘要指标展示卡片组件 (StatusCard)
+ * 用于展示预警系统核心进程的运行状态（运行中、已停止）、
+ * 宿主程序运行以来的累计运行时长 (Uptime)、活跃长连接与总连接比例、
+ * 以及当前全局配置已启用的子数据源总比例。
  */
 function StatusCard() {
     const { state } = useAppContext();
     const { status, dataLoaded } = state;
 
-    // 骨架屏
+    // 1. 状态：当连接数据尚未加载完毕前，渲染骨架条
     if (!dataLoaded) {
         return (
-            <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                    <div style={{
-                        width: '40px',
-                        height: '40px',
-                        borderRadius: '10px',
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '20px'
-                    }}>⚡</div>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>服务状态</Typography>
+            <div className="card status-card-fill">
+                <Box className="status-card-header">
+                    <div className="status-card-icon status-card-icon--service">⚡</div>
+                    <Typography variant="h6" className="status-card-title">服务状态</Typography>
                 </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, justifyContent: 'center' }}>
-                    <div className="skeleton" style={{ height: '24px', borderRadius: '6px' }}></div>
-                    <div className="skeleton" style={{ height: '24px', borderRadius: '6px' }}></div>
-                    <div className="skeleton" style={{ height: '24px', borderRadius: '6px' }}></div>
+                <Box className="status-card-skeleton-stack">
+                    <div className="skeleton status-skeleton-line"></div>
+                    <div className="skeleton status-skeleton-line"></div>
+                    <div className="skeleton status-skeleton-line"></div>
                 </Box>
             </div>
         );
     }
 
     return (
-        <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                <div style={{
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '10px',
-                    background: 'rgba(59, 130, 246, 0.1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '20px'
-                }}>⚡</div>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>服务状态</Typography>
+        <div className="card status-card-fill">
+            {/* 卡片头部标题与图标 */}
+            <Box className="status-card-header">
+                <div className="status-card-icon status-card-icon--service">⚡</div>
+                <Typography variant="h6" className="status-card-title">服务状态</Typography>
             </Box>
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, justifyContent: 'center' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ opacity: 0.7, fontWeight: 500 }}>运行状态</Typography>
+            {/* 卡片主状态数值内容区 */}
+            <Box className="status-card-body">
+                {/* A. 核心程序运行状态指示标签 */}
+                <div className="status-card-row status-card-row--center">
+                    <Typography variant="body2" className="status-card-label">运行状态</Typography>
                     <span className={`badge ${status.running ? 'badge-success' : 'badge-error'}`}>
                         {status.running ? '运行中' : '已停止'}
                     </span>
                 </div>
                 
-                <div style={{ height: '1px', background: 'var(--md-sys-color-outline-variant)' }}></div>
+                <div className="status-card-separator"></div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" sx={{ opacity: 0.7, fontWeight: 500 }}>运行时长</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{status.uptime || '00:00:00'}</Typography>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" sx={{ opacity: 0.7, fontWeight: 500 }}>活跃连接</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {status.activeConnections} <span style={{ opacity: 0.4 }}>/</span> {status.totalConnections}
+                {/* B. 系统累计持续运行时长 (Uptime)，由前端时钟同步累加 */}
+                <div className="status-card-row">
+                    <Typography variant="body2" className="status-card-label">运行时长</Typography>
+                    <Typography variant="body2" className="status-card-value">
+                        {status.uptime || '00:00:00'}
                     </Typography>
                 </div>
 
-                {/* 启用的子数据源统计 */}
+                {/* C. WebSocket 实时活跃连接/总连接数 */}
+                <div className="status-card-row">
+                    <Typography variant="body2" className="status-card-label">活跃连接</Typography>
+                    <Typography variant="body2" className="status-card-value">
+                        {status.activeConnections} <span className="status-card-ratio-separator">/</span> {status.totalConnections}
+                    </Typography>
+                </div>
+
+                {/* D. 全局子数据源已启用详情比例统计 */}
                 {status.subSourceStatus && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2" sx={{ opacity: 0.7, fontWeight: 500 }}>启用的子数据源</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    <div className="status-card-row">
+                        <Typography variant="body2" className="status-card-label">启用的子数据源</Typography>
+                        <Typography variant="body2" className="status-card-value">
                             {(() => {
                                 let enabledCount = 0;
                                 let totalCount = 0;

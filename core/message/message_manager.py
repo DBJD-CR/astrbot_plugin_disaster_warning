@@ -232,12 +232,21 @@ class MessagePushManager:
         event: EventEnvelope,
         target_sessions: list[str] | None = None,
         session_config_getter=None,
-    ) -> bool:
+        *,
+        commit_state: bool = True,
+        skip_dedup: bool = False,
+        bypass_fusion: bool = False,
+        return_details: bool = False,
+    ) -> bool | dict[str, Any]:
         """推送事件入口，由推送编排器统一调度。"""
         return await self._push_orchestrator.push_event(
             event,
             target_sessions=target_sessions,
             session_config_getter=session_config_getter,
+            commit_state=commit_state,
+            skip_dedup=skip_dedup,
+            bypass_fusion=bypass_fusion,
+            return_details=return_details,
         )
 
     async def render_earthquake_list_card(

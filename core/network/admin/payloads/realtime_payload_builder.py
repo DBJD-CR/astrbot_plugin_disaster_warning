@@ -46,6 +46,7 @@ class RealtimePayloadBuilder:
         result: dict[str, Any] = {"timestamp": datetime.now().isoformat()}
 
         # 实时面板按“状态、统计、连接、近期地震、通知”五个区块组织数据，便于前端按模块渲染。
+        # 只读取内存快照；数据库全量重建由启动加载与统计 API 显式刷新负责，避免阻塞 WebSocket 首包。
         result["status"] = self.build_status_payload()
         result["statistics"] = self.build_statistics_payload()
         result["connections"] = self.build_connections_payload(expected_sources)
@@ -143,7 +144,13 @@ class RealtimePayloadBuilder:
     def build_statistics_api_payload(self) -> dict[str, Any]:
         """构建 /api/statistics 载荷。"""
         payload = self.build_statistics_payload().copy()
+        # 裁剪 recent_pushes。管理端统计页面仅需要基础统计及少量近期推送（通常由 event_summary_views 展现）
+        # 避免把近千条原始 recent_pushes 完整数据传给前端，减少序列化及网络传输开销（原本的 recent_pushes 长度可达 500）
         payload["recent_pushes"] = list(payload.get("event_summary_views", []))[:50]
+        # 同时为了避免在 statsNormalizer.js 中因为 stats.recent_pushes 未传而降级丢失，
+        # 在这里显式清理大块 recent_pushes，并用经过裁剪的列表作为 recent_pushes
+        if "recent_pushes" in payload:
+            payload["recent_pushes"] = list(payload["recent_pushes"])[:50]
         payload["timestamp"] = datetime.now().isoformat()
         return payload
 

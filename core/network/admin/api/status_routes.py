@@ -48,6 +48,7 @@ def register_status_routes(
             )
             if guard_result is not None:
                 return guard_result
+            # 统计汇总数据通常由入库和启动加载机制保证内存态实时，无需在每次管理端页面访问时都执行耗时 500ms+ 的全量数据库扫描与重建
             return ApiResponse.success(
                 realtime_payload_builder.build_statistics_api_payload()
             )

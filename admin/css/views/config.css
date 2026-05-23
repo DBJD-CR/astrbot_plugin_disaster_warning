@@ -1,0 +1,486 @@
+/* 配置面板视图样式 (Config View Styles) */
+
+/* 配置容器外壳 */
+.config-view-shell {
+    height: 100%;
+}
+
+/* 视图主标题 */
+.config-view-title {
+    font-weight: 800 !important;
+    letter-spacing: -0.5px !important;
+}
+
+/* 配置卡片主体 */
+.config-card {
+    height: calc(100vh - var(--top-bar-height) - 24px); /* 高度自适应视口并避开顶部栏 */
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+/* 配置项头部悬浮块 */
+.config-header {
+    padding: 20px 24px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+}
+
+body.dark-theme .config-header {
+    background: rgba(20, 18, 24, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 标题行排布 */
+.config-view-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* 标题左侧主题点缀色块 */
+.config-view-title-accent {
+    width: 4px;
+    height: 24px;
+    background: var(--md-sys-color-primary);
+    border-radius: 2px;
+}
+
+/* 配置渲染器容器外壳 */
+.config-renderer-shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* 配置项表单滚动视窗 */
+.config-renderer-scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 24px 22px;
+    overscroll-behavior: contain; /* 阻止滚动穿透 */
+    scroll-behavior: auto;
+}
+
+/* 表单滚动条统一样式定制 */
+.config-renderer-scroll-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.config-renderer-scroll-area::-webkit-scrollbar-track {
+    background-color: var(--md-sys-color-background);
+    border-radius: 12px;
+}
+
+.config-renderer-scroll-area::-webkit-scrollbar-thumb {
+    background-color: var(--md-sys-color-primary);
+    border-radius: 12px;
+}
+
+.config-renderer-scroll-area::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 82%, black);
+}
+
+/* 渲染表单垂直排布组 */
+.config-renderer-field-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* 单个配置输入项包裹层 */
+.config-renderer-field-item {
+    width: 100%;
+    margin: 0;
+}
+
+/* 空白或正在加载的中间状态提示 */
+.config-renderer-state {
+    text-align: center;
+    padding: 48px 0;
+}
+
+.config-renderer-state__icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+}
+
+/* 配置报错外壳及展示卡片 */
+.config-renderer-error-shell {
+    padding: 16px 24px;
+}
+
+.config-renderer-error-card {
+    padding: 32px !important;
+    border-radius: 24px !important;
+    border: 1px solid !important;
+    border-color: var(--md-sys-color-error, #B3261E) !important;
+    background-color: rgba(244, 67, 54, 0.04) !important;
+    text-align: center;
+}
+
+.config-renderer-error-card__icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+}
+
+.config-renderer-error-card__title {
+    font-weight: 800 !important;
+    margin-bottom: 8px !important;
+}
+
+.config-renderer-error-card__message {
+    margin-bottom: 16px !important;
+}
+
+/* 报错卡片交互动作行 */
+.config-renderer-error-card__actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.config-renderer-error-card__btn {
+    border-radius: 8px !important;
+}
+
+/* 配置保存/动作底栏 */
+.config-action-bar {
+    flex-shrink: 0;
+    background-color: var(--md-sys-color-surface);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    padding: 18px 24px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+    z-index: 10;
+    gap: 16px;
+}
+
+/* 保存底栏元数据（如"有更改待保存"） */
+.config-action-bar__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.config-action-bar__count {
+    font-weight: 500 !important;
+}
+
+/* 动作条展开收起按钮 */
+.config-action-bar__toggle-btn {
+    min-width: auto !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
+
+/* 动作条常规按钮 */
+.config-action-bar__btn {
+    min-width: 100px !important;
+    border-radius: 16px !important;
+    border-width: 1.5px !important;
+    font-size: 0.875rem !important;
+}
+
+.config-action-bar__btn:hover {
+    border-width: 1.5px !important;
+}
+
+/* 动作条宽型按钮 */
+.config-action-bar__btn--wide {
+    min-width: 130px !important;
+}
+
+/* 动作按钮组容器 */
+.config-action-bar__actions {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* 核心保存更改高亮按钮 */
+.config-action-bar__save-btn {
+    min-width: 120px !important;
+    min-height: 52px !important;
+    padding: 0 24px !important;
+    border-radius: 16px !important;
+    font-size: 0.875rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 8px rgba(0, 90, 193, 0.3) !important;
+}
+
+.config-action-bar__save-btn:hover {
+    box-shadow: 0 4px 12px rgba(0, 90, 193, 0.4) !important;
+}
+
+/* 配置子对象分组容器（使用折叠卡片Accordion） */
+.config-object-group,
+.config-object-group.MuiPaper-root {
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 32%, transparent) !important;
+    border-radius: 20px !important;
+    background: transparent !important;
+    box-shadow: 0 4px 14px rgba(103, 80, 164, 0.06) !important;
+}
+
+.config-renderer-field-item + .config-renderer-field-item .config-object-group,
+.config-renderer-field-item + .config-renderer-field-item .config-object-group.MuiPaper-root {
+    margin-top: 2px;
+}
+
+/* 配置根级子分组（加宽边框与背景渐变渲染） */
+.config-object-group--root,
+.config-object-group--root.MuiPaper-root {
+    margin: 0;
+    border-width: 1.5px !important;
+    border-color: var(--md-sys-color-primary) !important;
+    background: linear-gradient(135deg, rgba(103, 80, 164, 0.06) 0%, rgba(103, 80, 164, 0.015) 100%) !important;
+    box-shadow: 0 8px 22px rgba(103, 80, 164, 0.08) !important;
+}
+
+.config-object-accordion,
+.config-object-accordion.MuiAccordion-root {
+    background: transparent !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+
+.config-object-accordion::before {
+    display: none !important;
+}
+
+/* 分组标题摘要栏 */
+.config-object-summary,
+.config-object-summary.MuiAccordionSummary-root {
+    padding: 12px 20px !important;
+    min-height: 60px !important;
+    transition: background-color 0.2s ease;
+}
+
+.config-object-summary.MuiAccordionSummary-root .MuiAccordionSummary-content {
+    margin: 0 !important;
+}
+
+.config-object-summary.MuiAccordionSummary-root.Mui-expanded {
+    min-height: 60px !important;
+}
+
+.config-object-summary.MuiAccordionSummary-root.Mui-expanded .MuiAccordionSummary-content {
+    margin: 0 !important;
+}
+
+/* 不同嵌套深度的表单标题背景微调 */
+.config-object-summary--depth-0 {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent) !important;
+}
+
+.config-object-summary--depth-1 {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 3%, transparent) !important;
+}
+
+.config-object-summary:hover {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent) !important;
+}
+
+.config-object-summary .MuiAccordionSummary-expandIconWrapper,
+.config-object-summary .MuiAccordionSummary-expandIconWrapper.Mui-expanded {
+    transform: none !important;
+}
+
+.config-object-expand-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* 标题摘要主要文本及图标内容包裹 */
+.config-object-summary-content {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+    min-width: 0;
+}
+
+.config-object-icon {
+    font-size: 16px;
+}
+
+.config-object-icon--root {
+    font-size: 20px;
+}
+
+.config-object-title-block {
+    flex: 1;
+}
+
+.config-object-title {
+    font-weight: 700 !important;
+    color: var(--md-sys-color-primary);
+    font-size: 0.875rem !important;
+}
+
+.config-object-title--root {
+    font-size: 1rem !important;
+}
+
+/* 提示性及字段描述文本 */
+.config-object-hint,
+.config-field-hint {
+    display: block !important;
+    margin-top: 4px !important;
+    line-height: 1.3 !important;
+}
+
+/* 组内项目计数徽标 */
+.config-object-count-chip,
+.config-object-count-chip.MuiChip-root {
+    height: 22px !important;
+    font-size: 0.7rem !important;
+    flex-shrink: 0;
+}
+
+/* 状态切换按钮标签文本 */
+.config-object-toggle-caption {
+    color: var(--md-sys-color-primary);
+    font-weight: 600 !important;
+    margin-right: 4px !important;
+}
+
+/* 分组折叠内部主体面板 */
+.config-object-details,
+.config-object-details.MuiAccordionDetails-root {
+    padding: 0 28px !important;
+    background: var(--md-sys-color-background);
+}
+
+/* 子字段排布 */
+.config-object-children {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 0 12px;
+}
+
+/* 对象的辅助元数据容器 */
+.config-object-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+/* 单个配置输入项的排布行 */
+.config-field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    gap: 20px;
+}
+
+.config-field-row--root,
+.config-field-row:last-child {
+    border-bottom: none;
+}
+
+/* 配置描述说明文案区 */
+.config-field-description {
+    padding-right: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex: var(--config-field-description-flex, 8);
+    min-width: 0;
+}
+
+/* 配置模式操作工具条 */
+.config-mode-toolbar {
+    padding: 18px 24px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.config-mode-toolbar__row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+/* 模拟/切换测试会话的输入控件 */
+.config-mode-toolbar__session-field {
+    min-width: 420px;
+    max-width: 100%;
+}
+
+.config-mode-toolbar__loading,
+.config-mode-toolbar__meta {
+    display: block !important;
+}
+
+/* 配置项名字 */
+.config-field-label {
+    font-weight: 700 !important;
+    color: var(--md-sys-color-on-surface) !important;
+    font-size: 0.9rem !important;
+    line-height: 1.3 !important;
+}
+
+/* 配置项的输入控制器包裹区 */
+.config-field-control {
+    flex: 2;
+    display: flex;
+    justify-content: flex-end;
+    min-width: 240px;
+}
+
+/* 针对布尔开关组件的居中对齐 */
+.config-field-control--boolean {
+    align-items: center;
+}
+
+/* 滑动数值调节条(Slider)的容器 */
+.config-field-slider-wrap {
+    flex: 3;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+}
+
+.config-field-slider {
+    color: var(--md-sys-color-primary) !important;
+}
+
+/* 配置块级排布（多行混合结构表单） */
+.config-field-block {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.config-field-block--root,
+.config-field-block:last-child {
+    border-bottom: none;
+}
+
+.config-field-block-head {
+    margin-bottom: 10px;
+}
+
+/* 配置下拉菜单项对齐 */
+.config-field-menu-item {
+    justify-content: center !important;
+}

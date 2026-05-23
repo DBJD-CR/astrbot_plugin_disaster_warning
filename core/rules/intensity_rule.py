@@ -32,6 +32,9 @@ class EarthquakeThresholdRule(BaseRule):
             .lower()
         )
 
+        if context.runtime_config.get("__simulation_bypass_regular_filters", False):
+            return RuleDecision.accept(reason="模拟模式跳过强度过滤")
+
         # Global Quake 既可能依赖震级，也可能依赖体感烈度，因此单独使用专门配置。
         if source_id == "global_quake":
             runtime_filter = policy_state.get("global_quake_filter") or {}

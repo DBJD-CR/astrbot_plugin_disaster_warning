@@ -111,15 +111,21 @@ class EventRecordFactory:
 
         occurred_at = data.occurred_at.isoformat() if data.occurred_at else None
         # 地震记录除通用字段外，还需要补齐位置、震级、深度和报次相关信息。
+        event_metadata = getattr(data, "metadata", None)
+        if not isinstance(event_metadata, dict):
+            event_metadata = {}
+        info_type = str(event_metadata.get("info_type") or "").strip()
         record.update(
             {
                 "latitude": data.latitude,
                 "longitude": data.longitude,
+                "place_name": data.place_name,
                 "magnitude": data.magnitude,
                 "depth": data.depth,
                 "time": occurred_at,
                 "real_event_id": envelope.id,
                 "level": earthquake_level,
+                "info_type": info_type,
             }
         )
 

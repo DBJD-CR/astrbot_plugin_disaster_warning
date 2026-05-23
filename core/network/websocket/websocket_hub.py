@@ -36,13 +36,16 @@ class WebSocketHub:
         self,
         websocket,
         data_factory: Callable[[], Awaitable[dict[str, Any]]],
-    ) -> None:
+    ) -> bool:
         """向单个客户端发送完整更新。"""
         try:
             data = await data_factory()
             await websocket.send_json({"type": "full_update", "data": data})
+            return True
         except Exception as e:
             logger.debug(f"[灾害预警] 发送数据失败: {e}")
+            self.remove(websocket)
+            return False
 
     async def broadcast_update(
         self,

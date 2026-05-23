@@ -1,0 +1,1292 @@
+/* 基础样式文件：包含全局主题变量(Theme Tokens)、样式重置(Reset)、动效、自定义滚动条以及首屏加载器 */
+
+:root {
+    /* ==========================================================================
+       1. 浅色模式主题变量 (Light Theme Tokens)
+       ========================================================================== */
+    
+    /* --- Material Design 3 核心系统配色 --- */
+    /* 主色 (Primary)：用于主要组件、高亮按钮及核心状态 */
+    --md-sys-color-primary: #6750A4;
+    --md-sys-color-on-primary: #FFFFFF;
+    --md-sys-color-primary-container: #EADDFF;
+    --md-sys-color-on-primary-container: #21005D;
+
+    /* 辅助色 (Secondary)：用于较次要的交互元素、辅助文本和背景装饰 */
+    --md-sys-color-secondary: #625B71;
+    --md-sys-color-on-secondary: #FFFFFF;
+    --md-sys-color-secondary-container: #E8DEF8;
+    --md-sys-color-on-secondary-container: #1D192B;
+
+    /* 表面色 (Surface)：卡片、容器和组件的前景色 */
+    --md-sys-color-surface: rgba(255, 255, 255, 0.8);
+    --md-sys-color-on-surface: #1C1B1F;
+    --md-sys-color-on-surface-variant: #49454F;
+    --md-sys-color-surface-variant: #E7E0EC;
+
+    /* 背景色 (Background)：应用的主背景色 */
+    --md-sys-color-background: #FEF7FF;
+    --md-sys-color-outline-variant: rgba(103, 80, 164, 0.1);
+
+    /* --- 现代化毛玻璃设计语言 (Glassmorphism) --- */
+    --glass-bg: rgba(255, 255, 255, 0.65);
+    --glass-border: rgba(103, 80, 164, 0.15);
+    --glass-shadow: 0 4px 20px 0 rgba(103, 80, 164, 0.08);
+
+    /* --- 圆角规范 (Border Radius) --- */
+    --radius-sm: 8px;     /* 小圆角：适用于小工具、输入框及小徽标 */
+    --radius-md: 12px;    /* 中圆角：适用于普通按钮、下拉菜单及小卡片 */
+    --radius-lg: 20px;    /* 大圆角：适用于主要信息卡片和模块化区块 */
+    --radius-xl: 28px;    /* 超大圆角：适用于弹窗、侧边栏等大容器 */
+
+    /* --- 布局高度规范 --- */
+    --top-bar-height: 80px; /* 顶部导航栏的标准高度 */
+
+    /* --- 灾害/天气预警等级配色 (Weather Warning Levels) --- */
+    --weather-level-color-red: #F94543;     /* 红色预警：特大灾害，极其严重 */
+    --weather-level-color-orange: #FF7639;  /* 橙色预警：重大灾害，严重危害 */
+    --weather-level-color-yellow: #FCD952;  /* 黄色预警：较大灾害，较重危害 */
+    --weather-level-color-blue: #1982C1;    /* 蓝色预警：一般灾害，有一定影响 */
+    --weather-level-color-white: #e5e7eb;   /* 白色预警：轻微或提示性质 */
+    --weather-level-color-default: #9ca3af; /* 默认未分类等级 */
+
+    /* --- 运行状态配色 (Service / WS Runtime Status) --- */
+    /* 在线/正常状态 (Online) */
+    --status-tone-online: #4CAF50;
+    --status-tone-online-soft: rgba(76, 175, 80, 0.04);
+    --status-tone-online-border: rgba(76, 175, 80, 0.3);
+    --status-tone-online-subtle: rgba(76, 175, 80, 0.15);
+
+    /* 离线/异常状态 (Offline) */
+    --status-tone-offline: #F44336;
+    --status-tone-offline-soft: rgba(244, 67, 54, 0.04);
+    --status-tone-offline-border: rgba(244, 67, 54, 0.3);
+
+    /* 禁用/未配置状态 (Disabled) */
+    --status-tone-disabled: #9E9E9E;
+    --status-tone-disabled-soft: rgba(158, 158, 158, 0.05);
+    --status-tone-disabled-border: rgba(0, 0, 0, 0.08);
+    --status-tone-disabled-dot: #BDBDBD;
+
+    /* 警告与延迟状态 (Warning / Latency) */
+    --status-tone-warning: #ED6C02;
+    --status-tone-latency-medium: #FF9800;
+
+    /* --- 地震及时间线状态配色 (Timeline Tones) --- */
+    --timeline-tone-purple: #6A1B9A;     /* 极强震度或重大海啸 */
+    --timeline-tone-red: #D32F2F;        /* 强震或大海啸 */
+    --timeline-tone-orange: #FB8C00;     /* 中强震或海啸警报 */
+    --timeline-tone-yellow: #FDD835;     /* 有感地震或海啸预警 */
+    --timeline-tone-yellow-text: #B99A00;/* 黄色震度高对比度文本色 */
+    --timeline-tone-blue: #2196F3;       /* 微震或无破坏性海啸 */
+}
+
+body.dark-theme {
+    /* ==========================================================================
+       2. 深色模式主题变量 (Dark Theme Tokens)
+       ========================================================================== */
+    
+    /* --- Material Design 3 深色核心系统配色 --- */
+    --md-sys-color-primary: #D0BCFF;
+    --md-sys-color-on-primary: #381E72;
+    --md-sys-color-primary-container: #4F378B;
+    --md-sys-color-on-primary-container: #EADDFF;
+
+    --md-sys-color-surface: rgba(28, 27, 31, 0.8);
+    --md-sys-color-on-surface: #E6E1E5;
+    --md-sys-color-on-surface-variant: #CAC4D0;
+    --md-sys-color-surface-variant: #49454F;
+
+    --md-sys-color-background: #141218;
+    --md-sys-color-outline-variant: rgba(208, 188, 255, 0.1);
+
+    /* --- 深色模式毛玻璃样式 --- */
+    --glass-bg: rgba(28, 27, 31, 0.7);
+    --glass-border: rgba(208, 188, 255, 0.1);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+
+    --status-tone-disabled-border: rgba(255, 255, 255, 0.08);
+}
+
+html.theme-dark body {
+    /* 保证深色主题在html的theme-dark类下同样生效 */
+    --md-sys-color-primary: #D0BCFF;
+    --md-sys-color-on-primary: #381E72;
+    --md-sys-color-primary-container: #4F378B;
+    --md-sys-color-on-primary-container: #EADDFF;
+
+    --md-sys-color-surface: rgba(28, 27, 31, 0.8);
+    --md-sys-color-on-surface: #E6E1E5;
+    --md-sys-color-on-surface-variant: #CAC4D0;
+    --md-sys-color-surface-variant: #49454F;
+
+    --md-sys-color-background: #141218;
+    --md-sys-color-outline-variant: rgba(208, 188, 255, 0.1);
+
+    --glass-bg: rgba(28, 27, 31, 0.7);
+    --glass-border: rgba(208, 188, 255, 0.1);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================================================
+   3. 全局重置与过渡动效 (Global Reset & Smooth Transitions)
+   ========================================================================== */
+* {
+    box-sizing: border-box; /* 强制所有元素的边框计算在宽高内，避免布局撑破 */
+    margin: 0;
+    padding: 0;
+}
+
+/* 为核心交互元素配置全局过渡效果，确保主题切换或悬停状态变化时的丝滑体验 */
+body, .app, .sidebar, .main-content, .card, .btn, .nav-item, .config-card, .config-header,
+.top-bar, .modal-container, input, select, textarea, button, .MuiPaper-root, .MuiAccordion-root,
+.MuiAccordionSummary-root, .MuiAccordionDetails-root {
+    transition: background-color 0.28s ease-out,
+                color 0.28s ease-out,
+                border-color 0.28s ease-out,
+                opacity 0.22s ease-out;
+}
+
+/* 主题切换时的全屏渐变遮罩动画：用于遮盖瞬间色彩突变，平滑过渡 */
+html.theme-switching::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647; /* 保证遮罩位于所有元素的最顶层 */
+    pointer-events: none; /* 遮罩层不拦截任何鼠标交互事件 */
+    background:
+        radial-gradient(circle at 78% 12%, rgba(208, 188, 255, 0.18), transparent 28%),
+        rgba(254, 247, 255, 0.28);
+    opacity: 0;
+    animation: theme-switch-fade 0.34s ease-out both;
+    will-change: opacity;
+}
+
+html.theme-dark.theme-switching::before {
+    background:
+        radial-gradient(circle at 78% 12%, rgba(208, 188, 255, 0.20), transparent 30%),
+        rgba(20, 18, 24, 0.30);
+}
+
+/* 主题切换淡出动画 */
+@keyframes theme-switch-fade {
+    0% { opacity: 0.7; }
+    100% { opacity: 0; }
+}
+
+html {
+    -webkit-tap-highlight-color: transparent; /* 移除移动端点击时的高亮背景蓝色阴影 */
+    -webkit-touch-callout: none;              /* 禁用iOS系统的长按菜单/复制提示 */
+    touch-action: manipulation;               /* 优化移动端的点击延迟(移除双击缩放) */
+}
+
+body {
+    background-color: var(--md-sys-color-background);
+    /* 配合渐变光晕背景，烘托现代视觉感受 */
+    background-image:
+        radial-gradient(at 0% 0%, rgba(103, 80, 164, 0.08) 0, transparent 40%),
+        radial-gradient(at 50% 0%, rgba(236, 72, 153, 0.05) 0, transparent 40%),
+        radial-gradient(at 100% 0%, rgba(103, 80, 164, 0.08) 0, transparent 40%);
+    background-attachment: fixed; /* 固定背景图片不随页面滚动 */
+    color: var(--md-sys-color-on-surface);
+    font-family: 'Outfit', "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Heiti SC", "WenQuanYi Micro Hei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden; /* 防止水平溢出滚动条 */
+}
+
+/* 视觉隐藏辅助类：主要用于无障碍朗读器(Screen Reader)，在视觉上完全隐藏但保留在DOM树中 */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ==========================================================================
+   4. 首屏加载及登录器 (Boot Loader & Login Panel)
+   ========================================================================== */
+.boot-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999; /* 遮盖整个应用层 */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #1C1B1F;
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:
+        radial-gradient(ellipse at 20% 15%, rgba(103, 80, 164, 0.14), transparent 52%),
+        radial-gradient(ellipse at 80% 85%, rgba(103, 80, 164, 0.09), transparent 52%),
+        #FEF7FF;
+    opacity: 1;
+    transform: translateZ(0);
+    will-change: opacity, transform;
+}
+
+html.theme-dark .boot-loader,
+body.dark-theme .boot-loader {
+    color: #E6E1E5;
+    background:
+        radial-gradient(ellipse at 20% 15%, rgba(208, 188, 255, 0.13), transparent 52%),
+        radial-gradient(ellipse at 80% 85%, rgba(103, 80, 164, 0.18), transparent 52%),
+        #141218;
+}
+
+/* 骨架屏或加载器退出动画 */
+#loading-skeleton.is-exiting {
+    opacity: 0;
+    transform: scale(0.985);
+    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+
+/* 加载器中的品牌Logo容器 */
+.boot-loader__logo {
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(103, 80, 164, 0.08);
+    border: 1px solid rgba(103, 80, 164, 0.18);
+    box-shadow: 0 4px 24px rgba(103, 80, 164, 0.12);
+    overflow: hidden;
+    animation: boot-loader-float 2.4s ease-in-out infinite; /* 浮动跳跃动效 */
+    will-change: transform;
+}
+
+.boot-loader__logo img {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+html.theme-dark .boot-loader__logo,
+body.dark-theme .boot-loader__logo {
+    background: rgba(208, 188, 255, 0.08);
+    border-color: rgba(208, 188, 255, 0.15);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* 加载页面主标题 */
+.boot-loader__title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: 0.01em;
+    color: #1C1B1F;
+}
+
+html.theme-dark .boot-loader__title,
+body.dark-theme .boot-loader__title {
+    color: #E6E1E5;
+}
+
+/* 加载页面副标题 */
+.boot-loader__subtitle {
+    font-size: 13px;
+    color: #49454F;
+    margin-bottom: 28px;
+}
+
+html.theme-dark .boot-loader__subtitle,
+body.dark-theme .boot-loader__subtitle {
+    color: #CAC4D0;
+}
+
+/* 进度条轨道容器 */
+.boot-loader__progress {
+    width: min(260px, 68vw);
+    height: 3px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(103, 80, 164, 0.12);
+    contain: paint; /* 性能优化，限制子元素重绘区域 */
+}
+
+html.theme-dark .boot-loader__progress,
+body.dark-theme .boot-loader__progress {
+    background: rgba(208, 188, 255, 0.12);
+}
+
+/* 滚动进度条指示器 */
+.boot-loader__progress-bar {
+    height: 100%;
+    width: 42%;
+    border-radius: 999px;
+    background: linear-gradient(90deg,
+        rgba(103, 80, 164, 0.25) 0%,
+        rgba(103, 80, 164, 0.85) 50%,
+        rgba(103, 80, 164, 0.25) 100%);
+    animation: boot-loader-progress 1.45s ease-in-out infinite;
+    will-change: transform;
+    transform: translate3d(-110%, 0, 0) scaleX(0.35);
+}
+
+html.theme-dark .boot-loader__progress-bar,
+body.dark-theme .boot-loader__progress-bar {
+    background: linear-gradient(90deg,
+        rgba(208, 188, 255, 0.2) 0%,
+        rgba(208, 188, 255, 0.9) 50%,
+        rgba(208, 188, 255, 0.2) 100%);
+}
+
+/* 核心加载状态包裹框 */
+#bl-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* 首屏管理员登录界面包裹框 */
+#bl-login {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 320px;
+    padding: 0 20px;
+    box-sizing: border-box;
+}
+
+/* 登录时无需Logo的上下晃动动画 */
+.boot-loader__logo--static {
+    animation: none;
+}
+
+/* 登录副标题样式 */
+.boot-loader__subtitle--login {
+    margin-bottom: 20px;
+}
+
+/* 登录输入框定位器 */
+.bl-input-wrap {
+    position: relative;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+/* 统一输入框样式 */
+.bl-input {
+    width: 100%;
+    padding: 11px 44px 11px 14px;
+    box-sizing: border-box;
+    border: 1.5px solid rgba(103, 80, 164, 0.25);
+    border-radius: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.75);
+    color: #1C1B1F;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.bl-input:focus {
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 0 0 3px rgba(103, 80, 164, 0.1);
+}
+
+html.theme-dark .bl-input,
+body.dark-theme .bl-input {
+    background: rgba(28, 27, 31, 0.85);
+    border-color: rgba(208, 188, 255, 0.2);
+    color: #E6E1E5;
+}
+
+html.theme-dark .bl-input:focus,
+body.dark-theme .bl-input:focus {
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 0 0 3px rgba(208, 188, 255, 0.1);
+}
+
+/* 密码显隐切换按钮 */
+.bl-toggle-pw {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px;
+    line-height: 1;
+}
+
+/* 登录提交按钮 */
+.bl-submit-btn {
+    width: 100%;
+    padding: 11px 0;
+    border: none;
+    border-radius: 100px;
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0.025em;
+    transition: background 0.2s, opacity 0.2s;
+    margin-top: 4px;
+}
+
+.bl-submit-btn:hover:not(:disabled) {
+    background: #7F67BE;
+}
+
+.bl-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+html.theme-dark .bl-submit-btn,
+body.dark-theme .bl-submit-btn {
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+}
+
+html.theme-dark .bl-submit-btn:hover:not(:disabled),
+body.dark-theme .bl-submit-btn:hover:not(:disabled) {
+    background: #E8DDFF;
+}
+
+/* 登录错误提示信息 */
+.bl-error {
+    font-size: 12px;
+    color: #B3261E;
+    min-height: 18px;
+    text-align: center;
+    width: 100%;
+    margin-bottom: 4px;
+}
+
+html.theme-dark .bl-error,
+body.dark-theme .bl-error {
+    color: #F2B8B5;
+}
+
+/* Logo浮动上下微调动画 */
+@keyframes boot-loader-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-7px); }
+}
+
+/* 进度条平移动画 */
+@keyframes boot-loader-progress {
+    0% { transform: translate3d(-110%, 0, 0) scaleX(0.35); }
+    50% { transform: translate3d(40%, 0, 0) scaleX(0.85); }
+    100% { transform: translate3d(220%, 0, 0) scaleX(0.35); }
+}
+
+/* ==========================================================================
+   5. 通用布局与组件修饰 (Common Layout & Component Styles)
+   ========================================================================== */
+
+/* 毛玻璃容器基类 */
+.glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+}
+
+/* 侧边栏及主导航栏导航单项 */
+.nav-item {
+    padding: 14px 20px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition:
+        background-color 0.18s ease-out,
+        color 0.18s ease-out,
+        opacity 0.18s ease-out,
+        transform 0.18s ease-out;
+    color: var(--md-sys-color-on-surface);
+    opacity: 0.8;
+    margin-bottom: 4px;
+}
+
+.nav-item:hover {
+    background: rgba(103, 80, 164, 0.08);
+    opacity: 1;
+}
+
+/* 当前选中的导航单项 */
+.nav-item.active {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    opacity: 1;
+    font-weight: 600;
+}
+
+/* 导航徽标数字/气泡提示（如未读消息数、告警数） */
+.nav-badge {
+    margin-left: auto;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #FF6B6B, #E53935);
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    box-shadow: 0 8px 18px rgba(229, 57, 53, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    flex-shrink: 0;
+}
+
+.nav-item.active .nav-badge {
+    background: linear-gradient(135deg, #FF5A5F, #D32F2F);
+    box-shadow: 0 8px 18px rgba(211, 47, 47, 0.24);
+}
+
+/* 仪表盘标准栅格系统 */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 24px;
+}
+
+/* 通用基础卡片 */
+.card {
+    background: var(--md-sys-color-surface);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    transition:
+        background-color 0.16s ease-out,
+        border-color 0.16s ease-out,
+        color 0.16s ease-out,
+        box-shadow 0.18s ease-out,
+        transform 0.18s ease-out;
+}
+
+/* 所有卡片和视图子面板的淡入上浮统一动效配置 */
+.card-animated,
+.card,
+.event-card,
+.event-group-expanded,
+.event-filters-toolbar,
+.event-filter-field-card,
+.event-filter-pill,
+.connection-item,
+.connection-sub-source-item,
+.weather-query-panel,
+.weather-query-result-card,
+.weather-query-list-item,
+.news-ticker-card,
+.notifications-hero-card,
+.notifications-empty-card,
+.notification-feed-card,
+.markdown-docs-sidebar-card,
+.markdown-docs-content-card,
+.markdown-docs-empty-card,
+.markdown-docs-empty-side-card,
+.markdown-docs-file-item,
+.config-card,
+.config-header,
+.config-renderer-shell,
+.config-renderer-main,
+.config-renderer-aside,
+.config-renderer-form-card,
+.config-renderer-preview-card,
+.config-renderer-session-card,
+.tasks-empty-card,
+.notifications-inline-meta-item {
+    animation: card-fade-up 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+/* 动画阶梯式延迟(Staggered animation delays)以增强层级感 - 第1档 */
+.dashboard-grid > .span-12:nth-child(1) .card,
+.dashboard-grid > .span-4:nth-child(2) .card,
+.events-list > .event-card:nth-child(1),
+.event-filters-toolbar,
+.connections-grid > .connection-item:nth-child(1),
+.connection-item .connection-sub-source-item:nth-child(1),
+.weather-query-result-card,
+.notifications-hero-card,
+.markdown-docs-sidebar-card,
+.config-header,
+.config-renderer-aside {
+    animation-delay: 0.02s;
+}
+
+/* 动画阶梯式延迟 - 第2档 */
+.dashboard-grid > .span-4:nth-child(3) .card,
+.events-list > .event-card:nth-child(2),
+.event-filter-field-card:nth-child(1),
+.connections-grid > .connection-item:nth-child(2),
+.connection-item .connection-sub-source-item:nth-child(2),
+.weather-query-list-item:nth-child(1),
+.notification-feed-card:nth-child(1),
+.markdown-docs-content-card,
+.config-card,
+.config-renderer-main,
+.config-renderer-form-card,
+.config-renderer-session-card {
+    animation-delay: 0.06s;
+}
+
+/* 动画阶梯式延迟 - 第3档 */
+.dashboard-grid > .span-4:nth-child(4) .card,
+.events-list > .event-card:nth-child(3),
+.event-filter-field-card:nth-child(2),
+.connections-grid > .connection-item:nth-child(3),
+.connection-item .connection-sub-source-item:nth-child(3),
+.weather-query-list-item:nth-child(2),
+.notification-feed-card:nth-child(2),
+.markdown-docs-file-item:nth-child(1),
+.config-renderer-shell,
+.config-renderer-preview-card,
+.notifications-empty-card,
+.markdown-docs-empty-card,
+.markdown-docs-empty-side-card {
+    animation-delay: 0.10s;
+}
+
+/* 动画阶梯式延迟 - 余下兜底档 */
+.dashboard-grid > .span-12:nth-child(n+5) .card,
+.events-list > .event-card:nth-child(n+4),
+.event-filter-field-card:nth-child(n+3),
+.event-filter-pill:nth-child(n+1),
+.connections-grid > .connection-item:nth-child(n+4),
+.connection-item .connection-sub-source-item:nth-child(n+4),
+.weather-query-list-item:nth-child(n+3),
+.notification-feed-card:nth-child(n+3),
+.markdown-docs-file-item:nth-child(n+2),
+.config-card .MuiAccordion-root:nth-child(n+1),
+.config-card .MuiPaper-root:nth-child(n+1),
+.notifications-inline-meta-item:nth-child(n+1) {
+    animation-delay: 0.14s;
+}
+
+/* 悬停卡片时的浮起与发光效果 */
+.card:hover:not(.news-ticker-card) {
+    transform: translateY(-4px);
+    border-color: rgba(103, 80, 164, 0.26);
+    box-shadow: 0 12px 30px 0 rgba(103, 80, 164, 0.12);
+}
+
+html.theme-dark .card:hover:not(.news-ticker-card),
+body.dark-theme .card:hover:not(.news-ticker-card) {
+    border-color: rgba(208, 188, 255, 0.24);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(208, 188, 255, 0.08);
+}
+
+/* 栅格占位助手类 */
+.span-4 { grid-column: span 4; }
+.span-8 { grid-column: span 8; }
+.span-12 { grid-column: span 12; }
+
+/* 状态微型胶囊徽标 */
+.badge {
+    padding: 4px 12px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-success { background: #dcfce7; color: #166534; }
+.badge-error { background: #fee2e2; color: #991b1b; }
+
+/* 震级高亮小方块/徽标 */
+.mag-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: white;
+}
+
+/* 基础交互按钮 */
+.btn {
+    padding: 10px 20px;
+    border-radius: 12px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background-color 0.16s ease-out,
+        color 0.16s ease-out,
+        border-color 0.16s ease-out,
+        transform 0.16s ease-out,
+        opacity 0.12s ease-out;
+}
+
+/* 实色按钮（主要交互） */
+.btn-primary {
+    background: var(--md-sys-color-primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+/* 通用列表行或设置项中的宽型交互操作按钮 */
+.btn-action {
+    width: 100%;
+    background: var(--md-sys-color-surface-variant);
+    color: var(--md-sys-color-on-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    transition:
+        background-color 0.16s ease-out,
+        color 0.16s ease-out,
+        border-color 0.16s ease-out,
+        transform 0.16s ease-out,
+        opacity 0.12s ease-out;
+    padding: 12px 16px;
+    line-height: 1.5;
+    cursor: pointer;
+}
+
+.btn-action span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-action:hover {
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+    border-color: var(--md-sys-color-outline-variant);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.btn-action:active {
+    transform: translateY(0);
+    box-shadow: none;
+    opacity: 0.8;
+}
+
+body.dark-theme .btn-action {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--md-sys-color-on-surface);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+body.dark-theme .btn-action:hover {
+    background: rgba(208, 188, 255, 0.15);
+    color: var(--md-sys-color-primary);
+    border-color: rgba(208, 188, 255, 0.3);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* 浮层模态框遮罩层 */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(8px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s;
+}
+
+/* 浮层模态框主面板 */
+.modal-container {
+    background: var(--md-sys-color-surface);
+    width: 90%;
+    max-width: 600px;
+    border-radius: var(--radius-xl);
+    padding: 32px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ==========================================================================
+   6. 滚动条定制 (Custom Webkit Scrollbars)
+   ========================================================================== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--md-sys-color-secondary-container);
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--md-sys-color-secondary); }
+
+/* 支持平滑滚动的容器 */
+.sidebar > div:nth-child(2),
+.main-content {
+    -webkit-overflow-scrolling: touch; /* 开启iOS弹性滚动效果 */
+    scroll-behavior: smooth;
+}
+
+/* 消除移动设备触摸动作的反馈冲突并禁止文本被用户选定 */
+.nav-item,
+.btn,
+.btn-filter,
+.event-card,
+.connection-item,
+.horizontal-timeline-nav-btn {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+.nav-item:active,
+.btn:active,
+.btn-filter:active {
+    opacity: 0.7;
+    transition: opacity 0.1s;
+}
+
+/* 灾害数据源连接网格容器 */
+.connections-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    width: 100%;
+}
+
+/* 过滤按钮组容器 */
+.filter-group {
+    display: flex;
+    gap: 12px;
+    background: transparent;
+    padding: 0;
+}
+
+/* 事件等级或分类过滤器单选/多选框胶囊 */
+.btn-filter {
+    background: transparent;
+    color: var(--md-sys-color-on-surface-variant);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    padding: 8px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 99px;
+    cursor: pointer;
+    transition:
+        background-color 0.16s ease-out,
+        color 0.16s ease-out,
+        border-color 0.16s ease-out,
+        transform 0.16s ease-out;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-filter:hover {
+    background: rgba(103, 80, 164, 0.05);
+    border-color: var(--md-sys-color-primary);
+}
+
+.btn-filter.active {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border-color: transparent;
+    box-shadow: 0 2px 6px rgba(103, 80, 164, 0.1);
+}
+
+/* 震级统计分布图表外容器 */
+.mag-stats-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 8px 0;
+}
+
+/* 统计条单行 */
+.mag-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+}
+
+/* 统计条名称标签 */
+.mag-label {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface-variant);
+    text-align: right;
+    width: 90px;
+    flex-shrink: 0;
+}
+
+/* 统计直方条的滑轨背景 */
+.mag-bar-container {
+    height: 32px;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+/* 统计直方条的填充色条 */
+.mag-bar {
+    height: 100%;
+    background: var(--md-sys-color-primary);
+    border-radius: 0 16px 16px 0;
+    transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+    min-width: 6px;
+}
+
+/* 统计直方条末端的数值标签 */
+.mag-value {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--md-sys-color-primary);
+}
+
+/* 图表卡片头部标题区域 */
+.chart-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+
+.chart-card-header h6 {
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+/* ==========================================================================
+   7. 响应式布局媒体查询 (Responsive Media Queries)
+   ========================================================================== */
+
+/* 中屏幕设备 (PC窄屏、平板电脑，最大宽 1024px) */
+@media (max-width: 1024px) {
+    .dashboard-grid {
+        gap: 16px;
+        grid-template-columns: repeat(6, 1fr);
+    }
+
+    .span-4 { grid-column: span 3; }
+    .span-8 { grid-column: span 6; }
+    .span-12 { grid-column: span 6; }
+
+    .connections-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .card {
+        padding: 20px;
+    }
+}
+
+/* 小屏幕设备 (普通手机及小平板，最大宽 768px) */
+@media (max-width: 768px) {
+    .nav-item {
+        white-space: nowrap;
+        padding: 10px 16px;
+        margin-bottom: 0;
+        flex-shrink: 0;
+        font-size: 14px;
+    }
+
+    /* 此时侧边栏由左侧变为顶部横向滚动，网格全部收缩为单列 */
+    .dashboard-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px;
+    }
+
+    .span-4, .span-8, .span-12 {
+        grid-column: span 1 !important;
+    }
+
+    .connections-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .card {
+        padding: 16px;
+        border-radius: var(--radius-md);
+    }
+
+    .card:hover {
+        transform: none; /* 禁用触屏手机的悬浮位移防抖动 */
+    }
+
+    .mag-row {
+        grid-template-columns: 70px 1fr 50px;
+        gap: 10px;
+    }
+
+    .mag-label {
+        font-size: 13px;
+    }
+
+    .mag-bar-container {
+        height: 24px;
+    }
+
+    .mag-value {
+        font-size: 13px;
+    }
+
+    .filter-group {
+        flex-wrap: wrap; /* 允许过滤器在一行排不下时自动折行 */
+        gap: 8px;
+    }
+
+    .btn-filter {
+        padding: 6px 14px;
+        font-size: 13px;
+    }
+
+    .modal-container {
+        width: calc(100% - 32px);
+        max-width: none;
+        padding: 20px;
+        margin: 16px;
+    }
+
+    .connection-item {
+        padding: 16px;
+    }
+
+    .connection-item:hover {
+        transform: none;
+    }
+}
+
+/* 超小屏设备 (大部分小型及中型直板智能手机，最大宽 480px) */
+@media (max-width: 480px) {
+    .nav-item {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .nav-item span {
+        font-size: 16px !important;
+    }
+
+    .card {
+        padding: 14px;
+    }
+
+    .connection-item {
+        padding: 12px;
+    }
+
+    .conn-name {
+        font-size: 14px;
+    }
+
+    .conn-status {
+        font-size: 11px;
+    }
+
+    .mag-row {
+        grid-template-columns: 65px 1fr 45px;
+        gap: 8px;
+    }
+
+    .mag-label {
+        font-size: 12px;
+    }
+
+    .mag-bar-container {
+        height: 20px;
+    }
+
+    .mag-value {
+        font-size: 12px;
+    }
+
+    .btn {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .btn-filter {
+        padding: 5px 12px;
+        font-size: 12px;
+    }
+
+    .modal-container {
+        padding: 16px;
+        margin: 12px;
+        width: calc(100% - 24px);
+    }
+
+    .chart-card-header {
+        margin-bottom: 20px;
+    }
+
+    .chart-card-header h6 {
+        font-size: 1rem;
+    }
+}
+
+/* 特殊窄屏手机 (最大宽 360px) */
+@media (max-width: 360px) {
+    .nav-item {
+        padding: 7px 12px;
+        font-size: 12px;
+    }
+
+    .card {
+        padding: 12px;
+    }
+}
+
+/* 横屏超短屏手机 (如iPhone SE横向握持，最大高 600px 且横屏) */
+@media (max-height: 600px) and (orientation: landscape) {
+    .nav-item {
+        margin-bottom: 4px;
+    }
+
+    .card {
+        padding: 14px;
+    }
+}
+
+/* 打印机/纸质打印样式重置 */
+@media print {
+    .card {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+        break-inside: avoid; /* 避免卡片在打印分页时断开 */
+    }
+}
+
+/* ==========================================================================
+   8. 动画关键帧与防闪烁骨架屏 (Animations & Skeleton States)
+   ========================================================================== */
+
+/* 卡片淡入并轻微上浮过渡 */
+@keyframes card-fade-up {
+    0% {
+        opacity: 0;
+        transform: translateY(10px) scale(0.985);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* 骨架屏淡入闪烁加载基类 */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--md-sys-color-surface-variant) 0%,
+        rgba(73, 69, 79, 0.15) 50%,
+        var(--md-sys-color-surface-variant) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+    will-change: background-position;
+}
+
+/* 骨架屏扫描线动画 */
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+body.dark-theme .skeleton,
+html.theme-dark .skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--md-sys-color-surface-variant) 0%,
+        rgba(202, 196, 208, 0.15) 50%,
+        var(--md-sys-color-surface-variant) 100%
+    );
+    background-size: 200% 100%;
+}
+
+/* ==========================================================================
+   9. 系统级别无障碍支持：减弱动效模式 (Reduced Motion Support)
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    .boot-loader__logo,
+    .boot-loader__progress-bar,
+    .skeleton,
+    .card-animated,
+    .card,
+    .event-card,
+    .event-group-expanded,
+    .connection-item,
+    .connection-sub-source-item,
+    .weather-query-panel,
+    .weather-query-result-card,
+    .weather-query-list-item,
+    .news-ticker-card,
+    .notifications-hero-card,
+    .notifications-empty-card,
+    .notification-feed-card,
+    .markdown-docs-sidebar-card,
+    .markdown-docs-content-card,
+    .markdown-docs-empty-card,
+    .markdown-docs-empty-side-card,
+    .markdown-docs-file-item,
+    .config-card,
+    .config-header,
+    .config-renderer-shell,
+    .config-renderer-main,
+    .config-renderer-aside,
+    .config-renderer-form-card,
+    .config-renderer-preview-card,
+    .config-renderer-session-card,
+    .tasks-empty-card,
+    .notifications-inline-meta-item {
+        animation: none !important; /* 强制移除所有旋转/淡入/平移动画 */
+    }
+
+    #loading-skeleton.is-exiting {
+        transition: opacity 0.15s linear !important;
+        transform: none !important;
+    }
+
+    .event-card,
+    .event-card:hover,
+    .event-group-expanded,
+    .event-group-expanded:hover,
+    .event-group .MuiCollapse-root {
+        transition: none !important;
+        transform: none !important;
+        animation: none !important;
+    }
+
+    .boot-loader__progress-bar {
+        transform: translate3d(0, 0, 0) scaleX(1);
+    }
+
+    html.theme-switching::before {
+        animation: none !important;
+        opacity: 0 !important;
+    }
+}

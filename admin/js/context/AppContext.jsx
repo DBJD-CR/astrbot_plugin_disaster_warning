@@ -1,340 +1,145 @@
 const { createContext, useContext, useReducer, useEffect } = React;
 
 /**
- * 应用全局状态上下文
- * 管理应用的核心数据，包括运行状态、统计信息、连接状态和事件列表
+ * @file AppContext.jsx
+ * @description 灾害预警插件管理面板的 React 全局上下文状态管理器。
+ * 
+ * 架构设计模式与技术要点分析：
+ * 1. 核心状态总线：使用 React Context API 构建轻量级全局状态总线 (Event/State Bus)，
+ *    避免多层级组件树中繁琐的 Props 逐级传递 (Prop Drilling)。
+ * 2. 状态与逻辑解耦：本组件作为全局控制中枢，仅负责状态的分发与副作用逻辑编排；
+ *    具体的状态变更操作委派给 appReducer.js 的纯函数 reducer 处理，
+ *    而初始状态结构则归属 appState.js 统一声明，体现了关注点分离 (Separation of Concerns) 理念。
+ * 3. 异步操作原子化：通过封装 useCallback 钩子提供幂等的异步数据拉取接口，
+ *    包括状态更新、网络连接检查、配置获取以及数据统计同步。
+ *    这些接口被注入至 Context 载荷中以供下级视图组件按需调用。
  */
-
-// 初始状态定义
-const initialState = {
-    // 系统核心状态
-    config: {
-        apiUrl: '',
-        displayTimezone: 'UTC+8' // 默认时区
-    },
-    status: {
-        running: false,
-        uptime: '--',
-        startTime: null,
-        activeConnections: 0,
-        totalConnections: 0,
-        version: '未知版本',
-        eewQueryStatus: null
-    },
-    stats: {
-        totalEvents: 0,
-        earthquakeCount: 0,
-        warningCount: 0,
-        tsunamiCount: 0,
-        weatherCount: 0,
-        maxMagnitude: null,
-        earthquakeRegions: [],
-        weatherRegions: [],
-        weatherLevels: [],
-        weatherTypes: [],
-        dataSources: [],
-        logStats: null
-    },
-    connections: {},
-    events: [],
-    lastEvent: null,
-    magnitudeDistribution: {},
-    wsConnected: false,
-    notifications: [],
-    notificationsMeta: {
-        unread_count: 0,
-        last_sync_at: '',
-        total_count: 0
-    },
-    markdownFiles: [],
-    markdownDocument: null,
-    selectedMarkdownPath: '',
-    theme: localStorage.getItem('theme') || 'light',
-    // 新增：数据加载状态
-    dataLoaded: false
-};
-
-// Reducer
-function appReducer(state, action) {
-    switch (action.type) {
-        case 'UPDATE_STATUS':
-            return { ...state, status: { ...state.status, ...action.payload }, dataLoaded: true };
-        case 'UPDATE_CONFIG':
-            return { ...state, config: { ...state.config, ...action.payload } };
-        case 'UPDATE_STATS':
-            const stats = action.payload;
-            
-            // 处理地震地区数据
-            const eqRegions = [];
-            if (stats.earthquake_stats && stats.earthquake_stats.by_region) {
-                Object.entries(stats.earthquake_stats.by_region).forEach(([region, count]) => {
-                    eqRegions.push({ region, count });
-                });
-                eqRegions.sort((a, b) => b.count - a.count);
-            }
-
-            // 处理气象数据
-            const wRegions = [];
-            const wTypes = [];
-            const wLevels = [];
-            
-            if (stats.weather_stats) {
-                if (stats.weather_stats.by_region) {
-                    Object.entries(stats.weather_stats.by_region).forEach(([region, count]) => {
-                        wRegions.push({ region, count });
-                    });
-                    wRegions.sort((a, b) => b.count - a.count);
-                }
-                if (stats.weather_stats.by_type) {
-                    Object.entries(stats.weather_stats.by_type).forEach(([type, count]) => {
-                        wTypes.push({ type, count });
-                    });
-                    wTypes.sort((a, b) => b.count - a.count);
-                }
-                if (stats.weather_stats.by_level) {
-                    Object.entries(stats.weather_stats.by_level).forEach(([level, count]) => {
-                        wLevels.push({ level, count });
-                    });
-                    // 按数量排序
-                    wLevels.sort((a, b) => b.count - a.count);
-                }
-            }
-
-            // 处理数据源统计
-            const dSources = [];
-            if (stats.by_source) {
-                Object.entries(stats.by_source).forEach(([source, count]) => {
-                    dSources.push({ source, count });
-                });
-                dSources.sort((a, b) => b.count - a.count);
-            }
-
-            return {
-                ...state,
-                stats: {
-                    totalEvents: stats.total_events || 0,
-                    earthquakeCount: (stats.by_type && stats.by_type.earthquake) || 0,
-                    warningCount: (stats.by_type && typeof stats.by_type.earthquake_warning !== 'undefined') ? Number(stats.by_type.earthquake_warning) : 0,
-                    tsunamiCount: (stats.by_type && stats.by_type.tsunami) || 0,
-                    weatherCount: (stats.by_type && stats.by_type.weather_alarm) || 0,
-                    maxMagnitude: (stats.earthquake_stats && stats.earthquake_stats.max_magnitude) || null,
-                    earthquakeRegions: eqRegions,
-                    weatherRegions: wRegions,
-                    weatherTypes: wTypes,
-                    weatherLevels: wLevels,
-                    dataSources: dSources,
-                    logStats: stats.log_stats || null
-                },
-                events: stats.recent_pushes || [],
-                magnitudeDistribution: (stats.earthquake_stats && stats.earthquake_stats.by_magnitude) || {}
-            };
-        case 'UPDATE_CONNECTIONS':
-            return { ...state, connections: action.payload };
-        case 'ADD_EVENT': {
-            const MAX_EVENTS = 100;
-            const newEvent = action.payload;
-            // 去重：以 id 为准，没有 id 则以 event_time+type 组合判断
-            const isDuplicate = state.events.some(e =>
-                newEvent.id ? e.id === newEvent.id
-                            : e.event_time === newEvent.event_time && e.type === newEvent.type
-            );
-            if (isDuplicate) return state;
-            const events = [newEvent, ...state.events].slice(0, MAX_EVENTS);
-            return { ...state, events, lastEvent: newEvent };
-        }
-        case 'SET_WS_CONNECTED':
-            return { ...state, wsConnected: action.payload };
-        case 'SET_NOTIFICATIONS':
-            return { ...state, notifications: action.payload || [] };
-        case 'SET_NOTIFICATIONS_META':
-            return {
-                ...state,
-                notificationsMeta: action.payload || {
-                    unread_count: 0,
-                    last_sync_at: '',
-                    total_count: 0
-                }
-            };
-        case 'SET_MARKDOWN_FILES':
-            return { ...state, markdownFiles: action.payload || [] };
-        case 'SET_MARKDOWN_DOCUMENT':
-            return { ...state, markdownDocument: action.payload || null };
-        case 'SET_SELECTED_MARKDOWN_PATH':
-            return { ...state, selectedMarkdownPath: action.payload || '' };
-        case 'TOGGLE_THEME':
-            return { ...state, theme: state.theme === 'light' ? 'dark' : 'light' };
-        default:
-            return state;
-    }
-}
-
-// Context
 const AppContext = createContext();
 
-// Provider组件
+/**
+ * 状态归一化转换函数
+ * @description 将后端返回的下划线命名法 (snake_case) 数据规整为符合前端命名规范的驼峰命名法 (camelCase)，
+ * 并在此处进行基础的数据清洗与异常容错（如版本缺省降级处理、时间戳解析等）。
+ * 
+ * @param {Object} data - 从后端 API `/api/status` 接口接收到的原始状态数据字典。
+ * @param {string} previousVersion - 缓存的上一轮系统版本号，用于异常缺失时的回退策略。
+ * @returns {Object} 包含标准化属性的系统状态对象。
+ */
+function toStatusUpdate(data = {}, previousVersion = '未知版本') {
+    const statusUpdate = {
+        running: data.running,                                     // 服务运行状态标识 (布尔型)
+        activeConnections: data.active_connections,               // 当前活跃网络连接数 (整型)
+        totalConnections: data.total_connections,                 // 注册的总连接服务数 (整型)
+        uptime: data.uptime,                                       // 服务运行时长（由后端格式化好的字符串）
+        subSourceStatus: data.sub_source_status,                   // 各子数据源心跳与健康检查树状结构
+        eewQueryStatus: data.eew_query_status || null,             // 紧急地震速报 (EEW) 的轮询与连接状态
+        version: data.version || previousVersion,                  // 系统当前运行的固件/插件版本
+    };
+
+    // 若后端提供了服务启动时间，则转换为前端标准的 Date 实例，以便本地进行精确的跳秒运行时长计算
+    if (data.start_time) {
+        statusUpdate.startTime = new Date(data.start_time);
+    }
+
+    return statusUpdate;
+}
+
+/**
+ * 顶层全局状态供给器 (AppProvider)
+ * @description 包裹在 React DOM 根部，承载全局状态机 (reducer state) 并提供底层依赖同步服务。
+ * 
+ * @param {Object} props - React 属性载荷。
+ * @param {React.ReactNode} props.children - 嵌套的子级组件或视图路由。
+ */
 function AppProvider({ children }) {
-    const [state, dispatch] = useReducer(appReducer, initialState);
+    // 实例化 useReducer 状态机，绑定挂载于 window 对象下的全局 reducer 纯函数与初始状态
+    const [state, dispatch] = useReducer(window.appReducer, window.initialAppState);
+    const statusApi = window.DisasterStatusApi; // 从全局注入的后台 API 通信模块
 
-    // 主题效果
-    useEffect(() => {
-        const isDark = state.theme === 'dark';
-        const rootEl = document.documentElement;
-        const bodyEl = document.body;
+    // 副作用钩子：同步当前主题模式（Light/Dark）至 HTML/Body 的 className 属性，激活对应的 CSS Theme 变量体系
+    useThemeSync(state.theme);
 
-        rootEl.classList.add('theme-switching');
-        bodyEl.classList.toggle('dark-theme', isDark);
-        rootEl.classList.toggle('theme-dark', isDark);
-
-        localStorage.setItem('theme', state.theme);
-
-        const clearThemeSwitching = () => {
-            rootEl.classList.remove('theme-switching');
-        };
-        const timer = window.setTimeout(clearThemeSwitching, 360);
-
-        return () => {
-            window.clearTimeout(timer);
-            clearThemeSwitching();
-        };
-    }, [state.theme]);
-
-    // 封装刷新数据的函数
-    const unwrapApiResponse = React.useCallback((payload) => {
-        if (payload && typeof payload === 'object' && payload.success === true && payload.data !== undefined) {
-            return payload.data;
+    /**
+     * 异步拉取最新运行状态
+     * 采用 useCallback 包装，防止子组件重复渲染时引起 API 请求链路重复生成的冗余性能损耗。
+     */
+    const refreshData = React.useCallback(async () => {
+        try {
+            const data = await statusApi.getStatus();
+            dispatch({
+                type: window.AppActionTypes.UPDATE_STATUS,
+                payload: toStatusUpdate(data, state.status.version),
+            });
+            return data;
+        } catch (err) {
+            console.error('Failed to fetch status:', err);
+            throw err;
         }
-        return payload;
-    }, []);
+    }, [statusApi, state.status.version]);
 
-    const refreshData = React.useCallback(() => {
-        return fetch('/api/status')
-            .then(res => res.json())
-            .then(payload => {
-                const data = unwrapApiResponse(payload);
-                const statusUpdate = {
-                    running: data.running,
-                    activeConnections: data.active_connections,
-                    totalConnections: data.total_connections,
-                    uptime: data.uptime,
-                    subSourceStatus: data.sub_source_status, // 新增：子数据源状态
-                    eewQueryStatus: data.eew_query_status || null
-                };
-
-                // version 可能不存在于旧版接口返回中，但在新版应该有
-                // 如果没有，就保持初始值
-                if (data.version) {
-                    statusUpdate.version = data.version;
-                }
-                
-                // 处理 start_time
-                if (data.start_time) {
-                    statusUpdate.startTime = new Date(data.start_time);
-                }
-
-                dispatch({ type: 'UPDATE_STATUS', payload: statusUpdate });
-                return data;
-            })
-            .catch(err => {
-                console.error('Failed to fetch status:', err);
-                throw err;
-            });
-    }, [unwrapApiResponse]);
-
-    // 获取连接状态（包括延迟）
-    const fetchConnections = React.useCallback(() => {
-        return fetch('/api/connections')
-            .then(res => res.json())
-            .then(payload => {
-                const data = unwrapApiResponse(payload);
-                if (data.connections) {
-                    dispatch({ type: 'UPDATE_CONNECTIONS', payload: data.connections });
-                }
-                return data;
-            })
-            .catch(err => {
-                console.error('Failed to fetch connections:', err);
-                throw err;
-            });
-    }, [unwrapApiResponse]);
-
-    // 获取配置信息（包括时区）
-    const fetchConfig = React.useCallback(() => {
-        return fetch('/api/config')
-            .then(res => res.json())
-            .then(payload => {
-                const data = unwrapApiResponse(payload);
-                if (data.display_timezone) {
-                    dispatch({
-                        type: 'UPDATE_CONFIG',
-                        payload: { displayTimezone: data.display_timezone }
-                    });
-                }
-                return data;
-            })
-            .catch(err => {
-                console.error('Failed to fetch config:', err);
-                throw err;
-            });
-    }, [unwrapApiResponse]);
-
-    // 获取统计信息（图表、跑马灯、最近事件等）
-    const fetchStatistics = React.useCallback(() => {
-        return fetch('/api/statistics')
-            .then(res => res.json())
-            .then(payload => {
-                const data = unwrapApiResponse(payload);
-                dispatch({ type: 'UPDATE_STATS', payload: data || {} });
-                return data;
-            })
-            .catch(err => {
-                console.error('Failed to fetch statistics:', err);
-                throw err;
-            });
-    }, [unwrapApiResponse]);
-
-    // 初始化时延迟加载数据，优先渲染UI框架
-    useEffect(() => {
-        // 使用 setTimeout 确保首屏 UI 先渲染
-        const timer = setTimeout(() => {
-            refreshData();
-            fetchConfig();
-            fetchConnections(); // 加载连接状态（包括延迟信息）
-            fetchStatistics();
-        }, 0);
-        
-        return () => clearTimeout(timer);
-    }, [refreshData, fetchConfig, fetchConnections, fetchStatistics]);
-
-    // 运行时长计时器
-    // 每秒更新一次 uptime 显示，格式化为 天/小时/分/秒
-    useEffect(() => {
-        if (!state.status.startTime || !state.status.running) return;
-
-        const timer = setInterval(() => {
-            const now = new Date();
-            const diff = Math.floor((now - state.status.startTime) / 1000);
-
-            if (diff < 0) {
-                dispatch({ type: 'UPDATE_STATUS', payload: { uptime: '刚刚' } });
-                return;
+    /**
+     * 异步拉取当前各数据源连接明细与网络延迟数据
+     */
+    const fetchConnections = React.useCallback(async () => {
+        try {
+            const data = await statusApi.getConnections();
+            if (data.connections) {
+                dispatch({ type: window.AppActionTypes.UPDATE_CONNECTIONS, payload: data.connections });
             }
+            return data;
+        } catch (err) {
+            console.error('Failed to fetch connections:', err);
+            throw err;
+        }
+    }, [statusApi]);
 
-            const days = Math.floor(diff / 86400);
-            const hours = Math.floor((diff % 86400) / 3600);
-            const minutes = Math.floor((diff % 3600) / 60);
-            const seconds = diff % 60;
+    /**
+     * 异步拉取全局系统配置参数，如显示时区设置
+     */
+    const fetchConfig = React.useCallback(async () => {
+        try {
+            const data = await statusApi.getConfig();
+            if (data.display_timezone) {
+                dispatch({
+                    type: window.AppActionTypes.UPDATE_CONFIG,
+                    payload: { displayTimezone: data.display_timezone },
+                });
+            }
+            return data;
+        } catch (err) {
+            console.error('Failed to fetch config:', err);
+            throw err;
+        }
+    }, [statusApi]);
 
-            let str = '';
-            if (days > 0) str += `${days}天`;
-            if (hours > 0) str += `${hours}小时`;
-            if (minutes > 0) str += `${minutes}分`;
-            str += `${seconds}秒`;
+    /**
+     * 异步拉取多维灾害历史统计指标（包括事件计数、地震区间分布等）
+     */
+    const fetchStatistics = React.useCallback(async () => {
+        try {
+            const data = await statusApi.getStatistics();
+            dispatch({ type: window.AppActionTypes.UPDATE_STATS, payload: data || {} });
+            return data;
+        } catch (err) {
+            console.error('Failed to fetch statistics:', err);
+            throw err;
+        }
+    }, [statusApi]);
 
-            dispatch({ type: 'UPDATE_STATUS', payload: { uptime: str } });
-        }, 1000);
+    // 初始化编排钩子 (Bootstrap Hook)：在首次挂载时，按时序并发初始化所有核心数据接口
+    useAppBootstrap({
+        refreshData,
+        fetchConfig,
+        fetchConnections,
+        fetchStatistics,
+    });
 
-        return () => clearInterval(timer);
-    }, [state.status.startTime, state.status.running]);
+    // 运行时长本底跳秒钩子 (Uptime Counter Hook)：本地维护计时器，驱动面板展示的秒级 Uptime，降低轮询开销
+    useStatusUptimeEffect({
+        running: state.status.running,
+        startTime: state.status.startTime,
+        dispatch,
+    });
 
     return (
         <AppContext.Provider value={{ state, dispatch, refreshData, fetchConnections, fetchConfig, fetchStatistics }}>
@@ -343,7 +148,19 @@ function AppProvider({ children }) {
     );
 }
 
-// Hook
+/**
+ * 快捷读取 Context 的 React Hook 封装
+ * @description 强制在子组件内提取上下文，若子组件未处于 Provider 包裹中，则抛出断言异常。
+ * 
+ * @returns {{
+ *   state: Object,
+ *   dispatch: Function,
+ *   refreshData: Function,
+ *   fetchConnections: Function,
+ *   fetchConfig: Function,
+ *   fetchStatistics: Function
+ * }} 全局状态与 API 操作接口集合。
+ */
 function useAppContext() {
     const context = useContext(AppContext);
     if (!context) {
@@ -352,6 +169,7 @@ function useAppContext() {
     return context;
 }
 
-// 暴露给全局
+// 绑定各公开成员至 window 顶层对象，解决在无模块化系统（如旧版单页面嵌入式 JS 渲染）下的全局命名空间交叉访问
 window.AppProvider = AppProvider;
 window.useAppContext = useAppContext;
+window.toStatusUpdate = toStatusUpdate;

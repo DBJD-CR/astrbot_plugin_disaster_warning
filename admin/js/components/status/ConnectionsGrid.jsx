@@ -2,19 +2,26 @@ const { Box, Typography } = MaterialUI;
 const { useMemo } = React;
 
 /**
- * 连接状态网格组件
- * 显示各个数据源（如 FAN Studio, P2P, Wolfx, Global Quake）的连接状态、重试次数和子数据源启用情况
+ * 连接状态网格组件 (ConnectionsGrid)
+ * 显示各个主流数据源（如 FAN Studio, P2P 地震情報, Wolfx, Global Quake）的实时连接情况、
+ * 握手延迟/网络 Ping 值、TCP 重连重试次数以及启用的子数据源明细。
+ * 
+ * 核心逻辑：
+ * 1. 声明四个监控的重点 API 服务平台及 key 正则匹配器。
+ * 2. 扫描 connections 数据，融合同一平台下的多个长连接，拉取最大重试数与判定在线状态。
+ * 3. 规范并展示接口延迟，根据 getLatencyTone 将延迟划分评级：
+ *    - < 150ms 评为 fast (绿色)
+ *    - < 460ms 评为 medium (黄色)
+ *    - 其它 评为 slow (红色)
+ * 4. 循环输出各平台已启用/禁用的子数据源中文对照清单（支持将后台 key 转换为友好地名名称）。
  */
 function ConnectionsGrid() {
     const { state } = useAppContext();
     const { connections, dataLoaded } = state;
-    const isDark = state.theme === 'dark';
 
+    // 解析过滤 connections 数据
     const displayConnections = useMemo(() => {
         // 定义需要监控的目标数据源及其匹配规则
-        // id: 内部标识符
-        // displayName: 前端显示的名称
-        // matcher: 用于在 connections 状态中查找对应键值的函数
         const targets = [
             {
                 id: 'fan',
@@ -53,7 +60,7 @@ function ConnectionsGrid() {
                 }
             }
             
-            // 聚合重试次数 (取最大值)
+            // 聚合重试次数 (取匹配项中的最大值)
             const retryCount = matchedEntries.reduce((max, [, info]) => Math.max(max, info.retry_count || 0), 0);
 
             // 聚合所有已启用的子数据源
@@ -64,7 +71,7 @@ function ConnectionsGrid() {
                 }
             });
 
-            // 获取延迟信息，兼容 latency / latency_ms / ping 等旧新字段，并规范为 number|null|undefined
+            // 获取延迟信息，兼容 latency / latency_ms / ping 等不同接口字段，并规范为 number | null | undefined
             const rawLatency = matchedEntries.length > 0
                 ? (matchedEntries[0][1].latency ?? matchedEntries[0][1].latency_ms ?? matchedEntries[0][1].ping)
                 : undefined;
@@ -81,60 +88,39 @@ function ConnectionsGrid() {
                 status: status, // 'online' | 'offline' | 'disabled'
                 retry_count: retryCount,
                 sub_sources: allSubSources,
-                latency: latency  // 添加延迟字段
+                latency: latency  // 延迟值 (ms)
             };
         });
     }, [connections]);
 
-    // 状态样式配置
-    const statusConfig = {
-        online: {
-            color: '#4CAF50',
-            bgColor: 'rgba(76, 175, 80, 0.04)',
-            borderColor: 'rgba(76, 175, 80, 0.3)',
-            label: '在线',
-            indicatorShadow: '0 0 8px rgba(76, 175, 80, 0.6)'
-        },
-        offline: {
-            color: '#F44336',
-            bgColor: 'rgba(244, 67, 54, 0.04)',
-            borderColor: 'rgba(244, 67, 54, 0.3)',
-            label: '离线',
-            indicatorShadow: '0 0 8px rgba(244, 67, 54, 0.6)'
-        },
-        disabled: {
-            color: '#9E9E9E',
-            bgColor: 'rgba(158, 158, 158, 0.05)',
-            borderColor: 'rgba(0, 0, 0, 0.08)',
-            label: '未启用',
-            indicatorShadow: 'none'
-        }
+    // 状态中文对照映射
+    const statusLabels = {
+        online: '在线',
+        offline: '离线',
+        disabled: '未启用'
     };
 
-    // 骨架屏
+    /**
+     * 网络延迟区间着色器类映射
+     */
+    const getLatencyTone = (latency) => {
+        if (latency < 150) return 'fast';
+        if (latency < 460) return 'medium';
+        return 'slow';
+    };
+
+    // 1. 状态：异步连接详情尚未拉取完毕前，渲染骨架卡片矩阵
     if (!dataLoaded) {
         return (
-            <div className="connections-grid" style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: '16px'
-            }}>
+            <div className="connections-grid status-connections-grid">
                 {[1, 2, 3, 4].map(i => (
-                    <div key={i} style={{
-                        borderRadius: '16px',
-                        border: '1px solid var(--glass-border)',
-                        padding: '20px',
-                        minHeight: '140px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div className="skeleton" style={{ width: '120px', height: '22px', borderRadius: '6px' }}></div>
-                            <div className="skeleton" style={{ width: '60px', height: '24px', borderRadius: '12px' }}></div>
+                    <div key={i} className="status-connection-skeleton-card">
+                        <div className="status-skeleton-row">
+                            <div className="skeleton status-skeleton-title"></div>
+                            <div className="skeleton status-skeleton-badge"></div>
                         </div>
-                        <div className="skeleton" style={{ width: '80%', height: '16px', borderRadius: '4px' }}></div>
-                        <div className="skeleton" style={{ width: '60%', height: '16px', borderRadius: '4px' }}></div>
+                        <div className="skeleton status-skeleton-subtitle"></div>
+                        <div className="skeleton status-skeleton-subtitle status-skeleton-subtitle--short"></div>
                     </div>
                 ))}
             </div>
@@ -142,83 +128,42 @@ function ConnectionsGrid() {
     }
 
     return (
-        <div className="connections-grid" style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '16px'
-        }}>
+        <div className="connections-grid status-connections-grid">
             {displayConnections.map((conn) => {
-                const config = statusConfig[conn.status];
-                
                 return (
-                    <Box key={conn.name} className={`connection-item connection-item-${conn.status}`} sx={{
-                        position: 'relative',
-                        borderRadius: '16px',
-                        border: '1px solid',
-                        borderColor: config.borderColor,
-                        bgcolor: config.bgColor,
-                        p: 2.5,
-                        transition: 'all 0.3s ease',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        minHeight: '140px',
-                        '&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow: '0 6px 16px rgba(0,0,0,0.05)'
-                        }
-                    }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                            <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: 'text.primary' }}>
+                    <Box key={conn.name} className={`connection-item connection-item-${conn.status}`}>
+                        {/* 顶栏：服务名与重连次数、状态指示灯 */}
+                        <Box className="connection-card-header">
+                            <Typography className="connection-title">
                                 {conn.name}
                             </Typography>
                             
-                            {/* 状态指示灯 */}
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box className="connection-status-cluster">
                                 {conn.retry_count > 0 && conn.status !== 'disabled' && (
-                                    <Typography variant="caption" sx={{ color: 'warning.main', fontWeight: 600 }}>
+                                    <Typography variant="caption" className="connection-retry-count">
                                         重试: {conn.retry_count}
                                     </Typography>
                                 )}
-                                <div style={{
-                                    width: '10px',
-                                    height: '10px',
-                                    borderRadius: '50%',
-                                    backgroundColor: config.color,
-                                    boxShadow: config.indicatorShadow,
-                                    transition: 'background-color 0.3s'
-                                }}></div>
+                                {/* 状态指示呼吸灯点 */}
+                                <div className="connection-indicator"></div>
                             </Box>
                         </Box>
 
-                        <Box sx={{ mb: 2 }}>
-                            <Typography sx={{
-                                color: config.color,
-                                fontWeight: 600,
-                                fontSize: '0.95rem',
-                                display: 'flex',
-                                alignItems: 'center'
-                            }}>
-                                {config.label}
+                        {/* 中部：状态文本与网络延迟 */}
+                        <Box className="connection-summary">
+                            <Typography className="connection-status-label">
+                                {statusLabels[conn.status]}
                             </Typography>
                             
-                            {/* 延迟显示 */}
+                            {/* 仅在已启用的服务上展示网络响应延时 */}
                             {conn.status !== 'disabled' && (
-                                <Typography sx={{
-                                    color: conn.latency === undefined ? 'text.disabled' : 'text.secondary',
-                                    fontSize: '0.85rem',
-                                    mt: 0.5,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 0.5,
-                                    fontStyle: conn.latency === undefined || conn.latency === null ? 'italic' : 'normal'
-                                }}>
-                                    <span style={{ fontSize: '0.75rem' }}>⏱</span>
+                                <Typography className={`connection-latency-line ${conn.latency === undefined || conn.latency === null ? 'is-pending' : ''}`}>
+                                    <span className="connection-latency-icon">⏱</span>
                                     延迟:
                                     {conn.latency !== undefined && conn.latency !== null ? (
-                                        <span style={{
-                                            fontWeight: 600,
-                                            color: conn.latency < 150 ? '#4CAF50' : conn.latency < 460 ? '#FF9800' : '#F44336'
-                                        }}>{conn.latency.toFixed(0)}ms</span>
+                                        <span className={`connection-latency-value connection-latency-value--${getLatencyTone(conn.latency)}`}>
+                                            {conn.latency.toFixed(0)}ms
+                                        </span>
                                     ) : conn.latency === null ? (
                                         <span>无法测量</span>
                                     ) : (
@@ -228,128 +173,94 @@ function ConnectionsGrid() {
                             )}
                         </Box>
 
-                        {/* 子数据源状态展示 */}
+                        {/* 尾部：该连接服务旗下已订阅的子数据源（CEA地震、USGS、气象预警等）汉化对照清单 */}
                         {conn.sub_sources && Object.keys(conn.sub_sources).length > 0 ? (
-                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'rgba(0,0,0,0.15)' }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                                    <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '12px', fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                            <Box className="connection-sub-source-section">
+                                <Box className="connection-sub-source-header">
+                                    <Typography variant="caption" className="connection-sub-source-title">
                                         启用的子数据源详情
                                     </Typography>
-                                    <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '11px', fontWeight: 600 }}>
+                                    <Typography variant="caption" className="connection-sub-source-count">
                                         {Object.values(conn.sub_sources).filter(Boolean).length} / {Object.keys(conn.sub_sources).length}
                                     </Typography>
                                 </Box>
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                <Box className="connection-sub-source-list">
                                     {Object.entries(conn.sub_sources)
-                                        .sort(([, a], [, b]) => (a === b ? 0 : a ? -1 : 1))
+                                        .sort(([, a], [, b]) => (a === b ? 0 : a ? -1 : 1)) // 启用的优先排列在顶部
                                         .map(([key, enabled]) => {
-                                        const getScopedSourceName = (sourceKey, connectionName) => {
-                                            const rawKey = String(sourceKey || '').trim();
-                                            if (!rawKey) return rawKey;
+                                            /**
+                                             * 内部子数据源 ID => 中文可读机构对照字典
+                                             */
+                                            const getScopedSourceName = (sourceKey, connectionName) => {
+                                                const rawKey = String(sourceKey || '').trim();
+                                                if (!rawKey) return rawKey;
 
-                                            const scopedSourceMap = {
-                                                'FAN Studio': {
-                                                    china_earthquake_warning: '中国地震预警网 (CEA)',
-                                                    china_earthquake_warning_provincial: '中国地震预警网 (省级)',
-                                                    taiwan_cwa_earthquake: '台湾中央气象署: 强震即时警报',
-                                                    taiwan_cwa_report: '台湾中央气象署: 地震报告',
-                                                    china_cenc_earthquake: '中国地震台网 (CENC)',
-                                                    usgs_earthquake: '美国地质调查局 (USGS)',
-                                                    china_weather_alarm: '中国气象局: 气象预警',
-                                                    china_tsunami: '自然资源部海啸预警中心',
-                                                    japan_jma_eew: '日本气象厅: 紧急地震速报'
-                                                },
-                                                'P2P地震情報': {
-                                                    japan_jma_eew: '日本气象厅: 紧急地震速报',
-                                                    japan_jma_earthquake: '日本气象厅: 地震情报',
-                                                    japan_jma_tsunami: '日本气象厅: 海啸予报'
-                                                },
-                                                'Wolfx': {
-                                                    japan_jma_eew: '日本气象厅: 紧急地震速报',
-                                                    china_cenc_eew: '中国地震预警网 (CEA)',
-                                                    taiwan_cwa_eew: '台湾中央气象署: 强震即时警报',
-                                                    japan_jma_earthquake: '日本气象厅地震情报',
-                                                    china_cenc_earthquake: '中国地震台网地震测定'
-                                                },
-                                                'Global Quake': {
-                                                    enabled: '实时数据流'
-                                                }
+                                                const scopedSourceMap = {
+                                                    'FAN Studio': {
+                                                        china_earthquake_warning: '中国地震预警网 (CEA)',
+                                                        china_earthquake_warning_provincial: '中国地震预警网 (省级)',
+                                                        taiwan_cwa_earthquake: '台湾中央气象署: 强震即时警报',
+                                                        taiwan_cwa_report: '台湾中央气象署: 地震报告',
+                                                        china_cenc_earthquake: '中国地震台网 (CENC)',
+                                                        usgs_earthquake: '美国地质调查局 (USGS)',
+                                                        china_weather_alarm: '中国气象局: 气象预警',
+                                                        china_tsunami: '自然资源部海啸预警中心',
+                                                        japan_jma_eew: '日本气象厅: 紧急地震速报'
+                                                    },
+                                                    'P2P地震情報': {
+                                                        japan_jma_eew: '日本气象厅: 紧急地震速报',
+                                                        japan_jma_earthquake: '日本气象厅: 地震情报',
+                                                        japan_jma_tsunami: '日本气象厅: 海啸予报'
+                                                    },
+                                                    'Wolfx': {
+                                                        japan_jma_eew: '日本气象厅: 紧急地震速报',
+                                                        china_cenc_eew: '中国地震预警网 (CEA)',
+                                                        taiwan_cwa_eew: '台湾中央气象署: 强震即时警报',
+                                                        japan_jma_earthquake: '日本气象厅地震情报',
+                                                        china_cenc_earthquake: '中国地震台网地震测定'
+                                                    },
+                                                    'Global Quake': {
+                                                        enabled: '实时数据流'
+                                                    }
+                                                };
+
+                                                const scopedName = scopedSourceMap[connectionName]?.[rawKey];
+                                                if (scopedName) return scopedName;
+
+                                                const formattedName = window.formatSourceName
+                                                    ? window.formatSourceName(rawKey)
+                                                    : rawKey;
+
+                                                // 过滤多余的后缀平台名
+                                                return String(formattedName)
+                                                    .replace(/\s+-\s+(Fan|P2P|Wolfx)$/i, '')
+                                                    .trim();
                                             };
 
-                                            const scopedName = scopedSourceMap[connectionName]?.[rawKey];
-                                            if (scopedName) {
-                                                return scopedName;
-                                            }
+                                            const friendlyName = getScopedSourceName(key, conn.name);
 
-                                            const formattedName = window.formatSourceName
-                                                ? window.formatSourceName(rawKey)
-                                                : rawKey;
-
-                                            // 适配后端重构后直接下发 source_id 的情况：
-                                            // 子数据源卡片内不需要展示平台后缀（- Fan / - P2P / - Wolfx）。
-                                            return String(formattedName)
-                                                .replace(/\s+-\s+(Fan|P2P|Wolfx)$/i, '')
-                                                .trim();
-                                        };
-
-                                        const friendlyName = getScopedSourceName(key, conn.name);
-
-                                        return (
-                                            <Box key={key} className="connection-sub-source-item" sx={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                p: 1,
-                                                borderRadius: '8px',
-                                                bgcolor: enabled
-                                                    ? 'var(--md-sys-color-surface)'
-                                                    : (isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0,0,0,0.03)'),
-                                                border: '1px solid',
-                                                borderColor: enabled
-                                                    ? 'rgba(76, 175, 80, 0.15)'
-                                                    : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'transparent'),
-                                                transition: 'all 0.2s'
-                                            }}>
-                                                <Box sx={{
-                                                    width: 6,
-                                                    height: 6,
-                                                    borderRadius: '50%',
-                                                    bgcolor: enabled ? '#4CAF50' : '#BDBDBD',
-                                                    mr: 1.5,
-                                                    flexShrink: 0,
-                                                }} />
-                                                <Typography sx={{
-                                                    fontSize: '12px',
-                                                    fontWeight: enabled ? 600 : 400,
-                                                    color: enabled ? 'text.primary' : 'text.secondary',
-                                                    flex: 1,
-                                                    lineHeight: 1.2
-                                                }}>
-                                                    {friendlyName}
-                                                </Typography>
-                                                {!enabled && (
-                                                    <Typography sx={{
-                                                        fontSize: '10px',
-                                                        color: isDark ? '#E6E1E5' : 'text.disabled',
-                                                        fontWeight: 700,
-                                                        bgcolor: isDark ? 'rgba(208, 188, 255, 0.18)' : 'rgba(0,0,0,0.05)',
-                                                        border: isDark ? '1px solid rgba(208, 188, 255, 0.35)' : '1px solid transparent',
-                                                        boxShadow: isDark ? '0 2px 6px rgba(0, 0, 0, 0.25)' : 'none',
-                                                        px: 0.8,
-                                                        py: 0.2,
-                                                        borderRadius: '6px',
-                                                        letterSpacing: '0.3px'
-                                                    }}>
-                                                        OFF
+                                            return (
+                                                <Box 
+                                                    key={key} 
+                                                    className={`connection-sub-source-item ${enabled ? '' : 'is-disabled'}`}
+                                                >
+                                                    <Box className="connection-sub-source-dot" />
+                                                    <Typography className="connection-sub-source-name">
+                                                        {friendlyName}
                                                     </Typography>
-                                                )}
-                                            </Box>
-                                        );
-                                    })}
+                                                    {!enabled && (
+                                                        <Typography className="connection-sub-source-off-badge">
+                                                            OFF
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+                                            );
+                                        })}
                                 </Box>
                             </Box>
                         ) : (
                             conn.status !== 'disabled' && (
-                                <Typography variant="caption" sx={{ color: 'text.secondary', fontStyle: 'italic', opacity: 0.7 }}>
+                                <Typography variant="caption" className="connection-empty-detail">
                                     无详细子数据源信息
                                 </Typography>
                             )

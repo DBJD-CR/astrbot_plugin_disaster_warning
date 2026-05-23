@@ -400,6 +400,13 @@ class PluginQueryCommandService(CommandTelemetryMixin):
 
         try:
             manager = self.plugin.disaster_service.message_manager
+            target_session = event.unified_msg_origin
+            if not target_session:
+                yield _quoted_plain_result("❌ 无法识别当前会话，无法执行模拟推送")
+                return
+
+            session_config_manager = self.plugin.disaster_service.session_config_manager
+            runtime_config = session_config_manager.get_effective_config(target_session)
             simulation_result = build_earthquake_simulation(
                 manager,
                 lat=lat,
@@ -407,25 +414,68 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                 magnitude=magnitude,
                 depth=depth,
                 source=source,
+                runtime_config=runtime_config,
             )
 
             if simulation_result.global_pass and simulation_result.local_pass:
-                msg_chain = await manager.build_message_async(
-                    simulation_result.disaster_event
+                push_result = await manager.push_event(
+                    simulation_result.disaster_event,
+                    target_sessions=[target_session],
+                    session_config_getter=session_config_manager.get_effective_config,
+                    commit_state=False,
+                    skip_dedup=True,
+                    bypass_fusion=True,
+                    return_details=True,
+                )
+                push_success = (
+                    bool(push_result.get("success"))
+                    if isinstance(push_result, dict)
+                    else bool(push_result)
                 )
                 await self._track_command_feature(
                     "command_simulation_result",
                     {
                         "success": True,
-                        "triggered": True,
+                        "triggered": bool(push_success),
                         "source": str(source or "unknown"),
                         "magnitude_bucket": round(magnitude),
                         "depth_bucket": int(depth // 10 * 10),
                     },
                 )
-                yield event.chain_result(
-                    self.plugin._with_quote_reply(event, list(msg_chain.chain))
+                if push_success:
+                    simulation_result.report_lines.append(
+                        f"\n✅ 正式模拟报文已发送到当前会话: {target_session}"
+                    )
+                    yield _quoted_plain_result(
+                        "\n".join(simulation_result.report_lines)
+                    )
+                    return
+
+                failure_reason = ""
+                if isinstance(push_result, dict):
+                    failure_reason = str(
+                        push_result.get("final_failure_reason") or ""
+                    ).strip()
+                if not failure_reason:
+                    effective_runtime_config = dict(runtime_config)
+                    effective_runtime_config["__simulation_bypass_regular_filters"] = (
+                        True
+                    )
+                    final_decision = manager.evaluate_push_decision(
+                        simulation_result.disaster_event,
+                        runtime_config=effective_runtime_config,
+                        session_id=target_session,
+                        emit_filter_log=False,
+                        commit_state=False,
+                    )
+                    detail_suffix = (
+                        f"（{final_decision.detail}）" if final_decision.detail else ""
+                    )
+                    failure_reason = f"{final_decision.reason}{detail_suffix}"
+                simulation_result.report_lines.append(
+                    f"\n⛔ 结论: 当前会话发送阶段仍被拦截：{failure_reason}"
                 )
+                yield _quoted_plain_result("\n".join(simulation_result.report_lines))
                 return
 
             await self._track_command_feature(

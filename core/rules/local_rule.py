@@ -32,6 +32,16 @@ class LocalIntensityRule(BaseRule):
 
         # 把估算结果写入附加上下文，供后续展示或日志链路复用。
         context.extras["local_estimation"] = dict(result)
+        if context.runtime_config.get("__simulation_bypass_regular_filters", False):
+            return RuleDecision.accept(
+                reason="模拟模式跳过本地严格拦截",
+                detail=(
+                    f"本地预估烈度 {result.get('intensity', 0):.1f}，"
+                    f"距离 {result.get('distance', 0):.1f} km"
+                ),
+                context=dict(result),
+            )
+
         if not result.get("is_allowed", True):
             return RuleDecision.reject(
                 reason="本地烈度规则过滤",

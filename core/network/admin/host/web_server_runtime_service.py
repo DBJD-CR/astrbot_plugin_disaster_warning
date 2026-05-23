@@ -135,7 +135,8 @@ class WebServerRuntimeService:
 
         try:
             # 新客户端接入后先推送完整快照，再进入增量交互循环。
-            await self.send_full_update(websocket)
+            if not await self.send_full_update(websocket):
+                return
             while True:
                 try:
                     import json
@@ -146,7 +147,8 @@ class WebServerRuntimeService:
                         await websocket.send_json({"type": "pong"})
                     elif msg.get("type") == "refresh":
                         # 管理端可主动请求一次完整刷新，便于页面恢复同步。
-                        await self.send_full_update(websocket)
+                        if not await self.send_full_update(websocket):
+                            return
                 except json.JSONDecodeError:
                     pass
         except Exception as e:
@@ -159,9 +161,9 @@ class WebServerRuntimeService:
                 f"[灾害预警] 有 WebSocket 客户端已断开，当前连接数: {self.server._ws_hub.count()}"
             )
 
-    async def send_full_update(self, websocket) -> None:
+    async def send_full_update(self, websocket) -> bool:
         """向指定客户端发送一份完整实时快照。"""
-        await self.server._ws_hub.send_full_update(
+        return await self.server._ws_hub.send_full_update(
             websocket, self.server.get_realtime_data
         )
 

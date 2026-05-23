@@ -67,11 +67,16 @@ class PushOrchestrator:
         event: EventEnvelope,
         target_sessions: list[str] | None = None,
         session_config_getter=None,
-    ) -> bool:
+        *,
+        commit_state: bool = True,
+        skip_dedup: bool = False,
+        bypass_fusion: bool = False,
+        return_details: bool = False,
+    ) -> bool | dict:
         """根据策略配置编排事件推送流程。"""
         source_id = event.source_id
         entry = SOURCE_CATALOG.get(source_id)
-        fusion_plan = self._resolve_fusion_plan(source_id)
+        fusion_plan = None if bypass_fusion else self._resolve_fusion_plan(source_id)
         if fusion_plan is not None and entry is not None:
             fusion_service, strategy_config, fusion_group = fusion_plan
             # 不同融合策略对等待另一侧消息的默认超时时间不同。
@@ -100,4 +105,7 @@ class PushOrchestrator:
             event,
             target_sessions=target_sessions,
             session_config_getter=session_config_getter,
+            commit_state=commit_state,
+            skip_dedup=skip_dedup,
+            return_details=return_details,
         )

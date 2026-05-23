@@ -48,6 +48,10 @@ class EventStatsAggregator:
                 ]
 
         is_new_event = event_unique_id not in self.manager._recorded_event_ids
+        if not is_new_event and isinstance(envelope.event, EarthquakeEvent):
+            # 国内地区分布只统计 CENC 正式测定，但不应被其他来源先到造成的全局去重挡掉。
+            self.manager.rule_service.record_cenc_official_region_stats(event)
+
         if is_new_event:
             # 全局首次出现时才更新总事件数、类型统计和详细聚合指标。
             stats["total_events"] += 1
