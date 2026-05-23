@@ -481,7 +481,7 @@ class CWAReportFormatter(BaseMessageFormatter):
         ctx = _build_base_render_context(earthquake, options)
         ctx["source_name"] = "台湾中央气象署 (报告)"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
         if earthquake.image_uri:
             footer_items.append({"label": "报告图片", "value": earthquake.image_uri})
         if earthquake.shakemap_uri:
@@ -555,7 +555,7 @@ class JMAEEWFormatter(BaseMessageFormatter):
             ctx["intensity"] = str(earthquake.scale)
         ctx["intensity_label"] = "震度"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
         report_num = getattr(earthquake, "updates", 1)
         is_final = getattr(earthquake, "is_final", False)
         report_info = f"第 {report_num} 报"
@@ -763,7 +763,7 @@ class CENCEarthquakeFormatter(BaseMessageFormatter):
             ctx["intensity"] = str(earthquake.intensity)
             ctx["intensity_label"] = "烈度"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
         if earthquake.info_type:
             footer_items.append({"label": "测定类型", "value": earthquake.info_type})
         ctx["footer_items"] = footer_items
@@ -849,7 +849,7 @@ class JMAEarthquakeFormatter(BaseMessageFormatter):
             ctx["intensity"] = str(earthquake.scale)
             ctx["intensity_label"] = "震度"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
         correct_tag = ""
         if hasattr(earthquake, "revision") and earthquake.revision and isinstance(earthquake.revision, str):
             correct_tag = f" [{earthquake.revision}]"
@@ -1095,7 +1095,7 @@ class USGSEarthquakeFormatter(BaseMessageFormatter):
         measurement_type = USGSEarthquakeFormatter.determine_measurement_type(earthquake)
         ctx["source_name"] = f"USGS [{measurement_type}]"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
         if earthquake.info_type:
             footer_items.append({"label": "测定类型", "value": earthquake.info_type})
         ctx["footer_items"] = footer_items
@@ -1175,7 +1175,7 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
             ctx["intensity"] = str(earthquake.intensity)
             ctx["intensity_label"] = "烈度"
 
-        footer_items = []
+        footer_items = ctx["footer_items"]
 
         if earthquake.max_pga is not None:
             footer_items.append(
