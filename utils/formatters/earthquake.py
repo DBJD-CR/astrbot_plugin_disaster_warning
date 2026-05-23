@@ -77,7 +77,7 @@ def _build_base_render_context(earthquake: EarthquakeData, options: dict = None)
         )
 
     return {
-        "magnitude": f"{mag:.1f}",
+        "magnitude": f"M{mag:.1f}",
         "mag_class": mag_class,
         "region": earthquake.place_name or "未知地点",
         "time_str": time_str,
@@ -1176,6 +1176,9 @@ class GlobalQuakeFormatter(BaseMessageFormatter):
             ctx["intensity_label"] = "烈度"
 
         footer_items = ctx["footer_items"]
+
+        report_num = getattr(earthquake, "updates", 1)
+        footer_items.append({"label": "报数", "value": f"第 {report_num} 报"})
 
         if earthquake.max_pga is not None:
             footer_items.append(
