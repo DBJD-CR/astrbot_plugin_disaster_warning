@@ -118,7 +118,10 @@ function CalendarHeatmap({ style, className = '' }) {
             // 当循环日期已越过年末 且 当前存储的周数组已被排空清算，退出循环
             if (currentDate > yearEnd && currentWeek.length === 0) break;
 
-            const dateStr = currentDate.toISOString().split('T')[0];
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+            const day = String(currentDate.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
             
             // 剔除定位周日时引入的前一年末无效格子
             const isWithinYear = currentDate.getFullYear() === selectedYear;
