@@ -16,20 +16,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AstrBot-v4.23.6%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.23.6">
+  <img src="https://img.shields.io/badge/AstrBot-v4.24.4%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.24.4">
   <img src="https://img.shields.io/github/v/release/DBJD-CR/astrbot_plugin_disaster_warning?label=Release&color=brightgreen" alt="Latest Release">
   <img src="https://img.shields.io/badge/QQ群-1033089808-12B7F3.svg" alt="QQ Group">
 </p>
 
 <p align="center">
   <a href="https://deepwiki.com/DBJD-CR/astrbot_plugin_disaster_warning" target="_blank"><img src="https://deepwiki.com/badge.svg" alt="deepwiki"></a>
-  <a href="https://www.star-history.com/DBJD-CR/astrbot_plugin_disaster_warning">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=DBJD-CR/astrbot_plugin_disaster_warning&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=DBJD-CR/astrbot_plugin_disaster_warning" />
-      <img alt="Star History Rank" src="https://api.star-history.com/badge?repo=DBJD-CR/astrbot_plugin_disaster_warning" />
-    </picture>
-  </a>
   <a href="https://zread.ai/DBJD-CR/astrbot_plugin_disaster_warning" target="_blank"><img src="https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff" alt="zread"/></a>
 
 [![Moe Counter](https://count.getloli.com/get/@DBJD-CR2?theme=moebooru)](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning)
@@ -99,15 +92,15 @@
 > [!TIP]
 > 本项目的相关开发数据 (持续更新中)：
 >
-> 开发时长：累计 60 天（主插件部分）
+> 开发时长：累计 90 天（主插件部分）
 >
-> 累计工时：约 286 小时（主插件部分）
+> 累计工时：约 438 小时（主插件部分）
 >
-> 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro、GPT Codex 5.3(With RooCode in VSCode)
+> 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 3.5 flash & Pro、GPT Codex 5.3 5.4 5.5(With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：953,749,947
+> Tokens Used：1,990,103,612
 
 ## ✨ 功能特性
 
@@ -1032,6 +1025,7 @@
 > 插件对于灾害事件的统计与日志统计是分开管理的，如果需要清除对应的数据请使用相应的指令。
 >
 > `/灾害预警统计`命令中，地震震级分布与最大地震的统计可能会不一致，这是由于对数据源的筛选逻辑不一样导致的，前者比较宽松，后者比较严格。
+> `/气象预警查询`命令中，查询到的数据仅基于插件本地的数据库（在插件运行期间生成），结果仅供参考。
 
 </details>
 
@@ -2245,6 +2239,7 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 我的其他插件：
 
 - [主动消息 (Proactive_chat)](https://github.com/DBJD-CR/astrbot_plugin_proactive_chat) - 它能让你的 Bot 在特定的会话长时间没有新消息后，用一个随机的时间间隔，主动发起一次拥有上下文感知、符合人设且包含动态情绪的对话。
+- [视奸面板 (Live_Dashboard)](https://github.com/DBJD-CR/astrbot_plugin_live_dashboard) - 它能让你的 Bot 和群友可以随时随地视奸你手机和电脑的活动状态。
 
 其他优秀的开源 EEW 项目：
 
@@ -2263,16 +2258,6 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&theme=dark&legend=top-left" />
     <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
     <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
-  </picture>
-</a>
-
-<br>
-
-<a href="https://www.star-history.com/DBJD-CR/astrbot_plugin_disaster_warning">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&style=landscape1&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&style=landscape1" />
-    <img alt="Star History Overview Card" src="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&style=landscape1" />
   </picture>
 </a>
 
