@@ -57,7 +57,7 @@ function ConfigNumberField({ fieldKey, schema, value, onChange, depth }) {
     const parseInputValue = (rawValue) => {
         if (rawValue === '' || rawValue === '-') return rawValue;
         const parsed = schema.type === 'integer' || schema.type === 'int'
-            ? parseInt(rawValue)
+            ? parseInt(rawValue, 10)
             : parseFloat(rawValue);
         return isNaN(parsed) ? 0 : parsed;
     };
