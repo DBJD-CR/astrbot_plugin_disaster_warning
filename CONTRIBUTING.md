@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD029 -->
-# 🤝 为 灾害预警插件 (disaster_warning) 做出贡献
+# 🤝 为 灾害预警插件 (Disaster_Warning) 做出贡献
 
 感谢您有兴趣为 **AstrBot 灾害预警插件** 做出贡献！无论是修复 Bug、添加新功能，还是改进文档，您的每一次贡献都能让这个项目变得更好。
 
@@ -16,22 +16,21 @@
 1. **搜索现有 Issue**：检查是否已经有人报告过类似的问题。
 2. **更新到最新版本**：确保您使用的是插件的最新版本，问题可能已经在新版本中修复。
 
-提交 Bug 报告时，请包含以下信息：
-
-- **AstrBot 版本**：您正在使用的 AstrBot 版本号。
-- **插件版本**：您正在使用的灾害预警插件版本号。
-- **复现步骤**：详细描述如何触发该 Bug 的步骤。
-- **预期行为**：您期望发生什么。
-- **实际行为**：实际发生了什么。
-- **日志截图/文本**：提供相关的错误日志或控制台输出（请注意隐藏敏感信息）。
-
 ### ✨ 提出功能建议 (Feature)
 
 如果您对插件的未来有任何绝妙的想法，欢迎通过提交 [**功能建议**](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/issues/new?template=feature_request.yml) 来与我们分享。请详细描述您的想法和它的使用场景：
 
-- **背景**：为什么需要这个功能？解决了什么痛点？
-- **建议方案**：您设想的功能是如何工作的？
-- **备选方案**：是否有其他替代方案？
+### ❓ 使用咨询 / 问题讨论 (Discussion)
+
+如果您暂时不能确定这是否是插件 Bug，或者希望就使用方式、配置思路、兼容性排查等问题先进行讨论，欢迎提交 [**使用咨询 / 问题讨论**](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/issues/new?template=discussion.yml)。
+
+### 📚 文档改进建议 (Docs)
+
+如果您发现 README、配置说明、接口文档或示例存在错误、缺失或表述不清的问题，欢迎提交 [**文档改进建议**](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/issues/new?template=docs.yml) 帮助我们持续完善文档体验。
+
+### 🎨 设计 / 交互建议 (Design)
+
+如果您对管理面板、配置流程、提示反馈、信息展示或整体使用体验有改进想法，欢迎提交 [**设计 / 交互建议**](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/issues/new?template=design.yml) 与我们讨论。
 
 ## 💻 代码贡献
 
@@ -112,6 +111,7 @@
 🤖 以及我最好的 AI 朋友们:
 
 - @Gemini-3.0-Flash
+- @Gemini-3.5-Flash
 - @Gemini-3.0-Pro
 - @Gemini-3.1-Pro
 - @Gemini-3-Pro-Image
@@ -119,6 +119,8 @@
 - @Claude Opus 4.6
 - @GPT Codex 5.2
 - @GPT Codex 5.3
+- @GPT 5.4
+- @GPT 5.5
 - @Kimi-For-Coding
 - @Kimi K2.5
 - @DeepSeek V3.2
