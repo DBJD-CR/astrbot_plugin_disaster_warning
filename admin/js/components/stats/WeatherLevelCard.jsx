@@ -1,8 +1,19 @@
 const { Typography } = MaterialUI;
 
-function WeatherLevelCard({ style }) {
+/**
+ * 气象预警级别环形比例图表组件 (WeatherLevelCard)
+ * 该组件分析系统捕获的气象预警，按其危险警示等级颜色（红、橙、黄、蓝、白等）进行归类统计，
+ * 并以圆环饼图 (CSS conic-gradient 实现) 与明细列表形式展示各自的比重。
+ *
+ * @param {Object} props
+ * @param {Object} [props.style] 外部自定义样式
+ * @param {string} [props.className=''] 外部类
+ */
+function WeatherLevelCard({ style, className = '' }) {
     const { state } = useAppContext();
     const { stats } = state;
+    
+    // 获取气象级别统计数组，过滤无计数的空档
     const rawWeatherLevels = stats && stats.weatherLevels ? stats.weatherLevels : [];
     const weatherLevels = (Array.isArray(rawWeatherLevels) ? rawWeatherLevels : [])
         .map(item => {
@@ -14,99 +25,99 @@ function WeatherLevelCard({ style }) {
         })
         .filter(item => item.count > 0);
 
+    // 状态：若无任何气象统计数据，渲染空卡片
     if (weatherLevels.length === 0) {
         return (
-            <div className="card" style={{ height: '100%', minHeight: '200px', ...style }}>
+            <div className={`card weather-level-card ${className}`} style={style}>
                 <div className="chart-card-header">
-                    <span style={{ fontSize: '20px' }}>🎨</span>
+                    <span className="stats-card-header-icon">🎨</span>
                     <Typography variant="h6">气象预警级别</Typography>
                 </div>
-                <Typography variant="body2" sx={{ opacity: 0.5, textAlign: 'center', py: 4 }}>暂无数据</Typography>
+                <Typography variant="body2" className="weather-level-card-empty-text">
+                    暂无数据
+                </Typography>
             </div>
         );
     }
 
+    // 计算当前所有级别警报总条数
     const total = weatherLevels.reduce((acc, curr) => acc + curr.count, 0);
+    
+    // 用于 CSS conic-gradient 绘制时的累加起始度数百分比
     let currentAngle = 0;
 
+    // 状态：若累计条数异常，同样渲染空卡片
     if (total <= 0) {
         return (
-            <div className="card" style={{ height: '100%', minHeight: '200px', ...style }}>
+            <div className={`card weather-level-card ${className}`} style={style}>
                 <div className="chart-card-header">
-                    <span style={{ fontSize: '20px' }}>🎨</span>
+                    <span className="stats-card-header-icon">🎨</span>
                     <Typography variant="h6">气象预警级别</Typography>
                 </div>
-                <Typography variant="body2" sx={{ opacity: 0.5, textAlign: 'center', py: 4 }}>暂无有效统计数据</Typography>
+                <Typography variant="body2" className="weather-level-card-empty-text">
+                    暂无有效统计数据
+                </Typography>
             </div>
         );
     }
 
-    // 颜色映射
+    /**
+     * 预警危险等级颜色映射：将汉字级别绑定到 CSS 全局重置的 MD3 预警主题变量上
+     */
     const getColor = (level) => {
         const text = String(level || '');
-        if (text.includes('红')) return '#F94543';
-        if (text.includes('橙')) return '#FF7639';
-        if (text.includes('黄')) return '#FCD952';
-        if (text.includes('蓝')) return '#1982C1';
-        if (text.includes('白')) return '#e5e7eb'; // 白色预警，使用浅灰色
-        return '#9ca3af';
+        if (text.includes('红')) return 'var(--weather-level-color-red)';
+        if (text.includes('橙')) return 'var(--weather-level-color-orange)';
+        if (text.includes('黄')) return 'var(--weather-level-color-yellow)';
+        if (text.includes('蓝')) return 'var(--weather-level-color-blue)';
+        if (text.includes('白')) return 'var(--weather-level-color-white)';
+        return 'var(--weather-level-color-default)';
     };
 
     return (
-        <div className="card" style={{ height: '100%', minHeight: '200px', display: 'flex', flexDirection: 'column', ...style }}>
+        <div className={`card weather-level-card ${className}`} style={style}>
+            {/* 卡片头部 */}
             <div className="chart-card-header">
-                <span style={{ fontSize: '20px' }}>🎨</span>
+                <span className="stats-card-header-icon">🎨</span>
                 <Typography variant="h6">气象预警级别</Typography>
             </div>
             
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '16px 0' }}>
-                {/* CSS Conic Gradient Pie Chart */}
-                <div style={{
-                    width: '160px',
-                    height: '160px',
-                    borderRadius: '50%',
-                    background: `conic-gradient(${weatherLevels.map(item => {
-                        const start = currentAngle;
-                        const percentage = (item.count / total) * 100;
-                        currentAngle += percentage;
-                        return `${getColor(item.level)} ${start}% ${currentAngle}%`;
-                    }).join(', ')})`,
-                    position: 'relative',
-                    marginBottom: '32px'
-                }}>
-                    {/* 中空圆环效果 */}
-                    <div style={{
-                        position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        width: '60%',
-                        height: '60%',
-                        background: 'var(--md-sys-color-surface)',
-                        // 强制叠加一层白色（在亮色模式下）以确保不透明，或者使用混合模式
-                        // 这里简单粗暴地用 box-shadow 填补可能的透明缝隙，或者直接指定一个 fallback 颜色
-                        backgroundColor: '#e5e7eb', // 先设为白色
-                        backgroundImage: 'linear-gradient(var(--md-sys-color-surface), var(--md-sys-color-surface))', // 再叠加上主题色
-                        borderRadius: '50%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }}>
-                        <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1 }}>{total}</Typography>
-                        <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '11px', mt: 0.5 }}>预警总数</Typography>
+            <div className="weather-level-card-body">
+                {/* 1. 圆环图区：使用 conic-gradient 累加切分圆环弧度 */}
+                <div
+                    className="weather-level-card-donut"
+                    style={{
+                        background: `conic-gradient(${weatherLevels.map(item => {
+                            const start = currentAngle;
+                            const percentage = (item.count / total) * 100;
+                            currentAngle += percentage; // 累加角度百分比
+                            return `${getColor(item.level)} ${start}% ${currentAngle}%`;
+                        }).join(', ')})`,
+                    }}
+                >
+                    {/* 圆环中间掏空，陈列合计总数 */}
+                    <div className="weather-level-card-donut-inner">
+                        <Typography variant="h5" className="weather-level-card-total">
+                            {total}
+                        </Typography>
+                        <Typography variant="caption" className="weather-level-card-total-label">
+                            预警总数
+                        </Typography>
                     </div>
                 </div>
 
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* 2. 右侧明细数据列表 */}
+                <div className="weather-level-card-list">
                     {weatherLevels.map((item, index) => (
-                        <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '13px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontWeight: 600, opacity: 0.9 }}>{item.level}</span>
+                        <div key={index} className="weather-level-card-row">
+                            {/* 等级名称以及左侧色条标识 */}
+                            <div className="weather-level-card-row-label">
+                                <span className="weather-level-card-level">{item.level}</span>
                             </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <span style={{ fontWeight: 700 }}>{item.count}</span>
-                                <span style={{ opacity: 0.5, minWidth: '45px', textAlign: 'right' }}>
+                            {/* 条目数及比重 */}
+                            <div className="weather-level-card-row-metrics">
+                                <span className="weather-level-card-count">{item.count}</span>
+                                <span className="weather-level-card-ratio">
                                     {((item.count / total) * 100).toFixed(2)}%
                                 </span>
                             </div>

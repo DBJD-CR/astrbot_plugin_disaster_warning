@@ -5,6 +5,89 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+# 2026/05/24 v1.5.0
+
+经过了一个多月的开发，1.5.0 版本也是终于和大家见面了！为了后续更好的可拓展性与可维护性，我下了很大力气，几乎直接重构了整个插件。
+现在，这个插件应该足以应付未来的挑战了。除了重构，还带来了一些小的功能提升与改进，以下是详细的内容：
+
+## 🚀 What's Changed
+
+### ✨ New Features (新功能)
+
+- 为管理端上的高危操作添加二次密码验证 by @DBJD-CR in #111
+- 新增数据源离线通知功能，当离线时间过长时自动发送离线通知 by @DBJD-CR in #111
+- 新增 `docs/` 目录，用于存放插件开发所需要用到的内部及外部文档 by @DBJD-CR in #112
+- 在前端中新增 **通知中心** 与 **文档浏览** 页面 by @DBJD-CR in #112
+- 为前端的卡片组件添加了简单的动画 by @DBJD-CR in #114
+- 增强了遥测中对 AstrBot 版本的获取方式 by @DBJD-CR in #116
+- 增强了遥测错误与用户行为上报 by @DBJD-CR in #116
+- 增强并拓展了数据库管理器的功能 by @DBJD-CR in #119
+- 事件列表查询新增按关键词检索的功能 by @DBJD-CR in #119
+- 事件列表查询新增按预警颜色 (气象预警) 和 预警级别 (海啸预警) 过滤的功能 by @DBJD-CR in #119
+- 新增了一批 GitHub Issue 模板 by @DBJD-CR in #121
+
+### ♻️ Refactor (重构)
+
+- 后端模块一期重构 by @DBJD-CR in #106
+  - 拆分了数个大文件中的核心巨类
+  - 新增了几十个拆分文件职责的小文件
+- 后端模块二期重构 by @DBJD-CR in #110
+  - 移除 `filters/` 目录，由 `rules/` 取代
+  - 移除 `handlers/` 目录，由 `parsers/` 取代
+  - 移除 `support/` 目录，由 `services/` 取代
+  - 移除 `models/` 目录，由 `domain/` 取代
+  - 移除 `formatters/` 目录，由 `presenters/` 取代
+  - 新增 `sources/` 文件夹，承接部分原 `handlers/` 和 `models/` 文件夹所属的职责
+- 前端模块一期重构 by @DBJD-CR in #119
+  - 拆分 `style.css` 为多个文件职责较为清晰的样式文件
+  - 拆分例如事件列表组件、配置渲染器等逻辑严重耦合的文件
+  - 治理了多个组件中的内联样式，统一集中管理
+  - 新增了一批 Hooks 和组件，以及数十个拆分出的 JS 文件
+
+### ⚡ Performance (优化)
+
+- 优化了前端页面进行明暗主题切换时的动画性能 by @DBJD-CR in #114
+- 优化了在前端中进行会话差异配置时的体验，不再显示全局配置 by @DBJD-CR in #116
+- 优化数据查询与网络传输/请求，提升前端中的数据加载速度 by @DBJD-CR in #119
+
+### 🐛 Bug Fixes (修复)
+
+- 修复了 `/地震列表查询` 指令在“无震度/烈度信息”场景下的异常渲染问题 by @DBJD-CR in #104
+- 再次全面重构和增强了融合策略的稳定性 by @DBJD-CR in #104 #111
+- 修复日志轮转完成的瞬间立刻读取新日志文件导致的空文件报错问题 by @DBJD-CR in #112
+- 修复会话发送失败被误判为成功的问题，现在可以识别 AstrBot 未实际投递消息的场景 by @DBJD-CR in #114
+- 修复并增强了国内地震高发地相关的统计逻辑 by @DBJD-CR in #119
+
+### 📚 Documentation (文档)
+
+- 更新适用于 v1.5.0 的 README 文档、贡献指南和更新日志 by @DBJD-CR in #106 #110 #112 #121
+
+### 🔧 Chore (杂项)
+
+- 优化了某个逆天 AI 的指令别名写法 by @DBJD-CR in #104
+- 气象预警 emoji 映射表更新 by @DBJD-CR in #104
+- 过滤高频率低价值的遥测错误上报 by @DBJD-CR in #104
+- 优化了项目内的 logger 使用行为 by @DBJD-CR in #104 #115
+- 为全项目的文件补充了更详细的注释 by @DBJD-CR in #110 #119 #121
+- 移除了海啸信息中的发布时间显示 by @DBJD-CR in #111
+- 修改 ruff 检查工作流固定使用的 ruff 版本为 0.14.2 by @DBJD-CR in #112
+- 调整了重大事件回溯卡片中的判定标准 by @DBJD-CR in #114
+  - 现在震级 ≥ M 6.0，气象预警为红色预警，才计入为重大事件 (有关海啸的不变)
+- 为部分指令新增了一些别名，详见 README 文档
+- 调整了部分指令的回复内容
+
+---
+
+## ❤️ New Contributors
+
+- @codex made their first contribution in #104
+- @roomote made their first contribution in #104
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.4.5...v1.5.0
+
+<details>
+<summary>点击查看历史更新内容</summary>
+
 # 2026/03/23 v1.4.5
 
 本版本主要新增了两个新指令，新增了数据源离线通知，增强了融合策略的处理逻辑并修复了前端中事件列表的部分展示问题。
@@ -50,15 +133,12 @@
 
 ## ❤️ New Contributors
 
-@dependabot[bot] made their first contribution in #96
-@gemini-code-assist[bot] made their first contribution in #98
+- @dependabot[bot] made their first contribution in #96
+- @gemini-code-assist[bot] made their first contribution in #98
 
 **Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.4.0...v1.4.5
 
 ---
-
-<details>
-<summary>点击查看历史更新内容</summary>
 
 # 2026/03/01 v1.4.0
 
@@ -161,7 +241,7 @@
 
 ## ❤️ New Contributors
 
-@openai-codex[bot] made their first contribution in #81
+- @openai-codex[bot] made their first contribution in #81
 
 **Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.3.9...v1.4.0
 
@@ -480,7 +560,7 @@ Hot Fix For v1.3.5
 
 ## ❤️ New Contributors
 
-@sourcery-ai[bot] made their first contribution (Grammar fix) in #26
+- @sourcery-ai[bot] made their first contribution (Grammar fix) in #26
 
 **Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.2.3...v1.3.1
 

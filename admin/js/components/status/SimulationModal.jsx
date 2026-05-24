@@ -2,20 +2,31 @@ const { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typograp
 const { useState, useEffect } = React;
 
 /**
- * 模拟预警测试模态框
- * 允许管理员发送模拟的灾害预警消息，用于测试推送配置和格式
- * 支持自定义灾害类型、测试格式以及具体的经纬度、震级等参数
+ * 模拟灾害预警测试配置模态框组件 (SimulationModal)
+ * 允许具有管理员特权的运维开发人员在控制台中直接伪造并发送各种灾害类型预警数据。
+ * 可用于实时校准群组卡片消息推送、防灾模版排版测试。
+ * 
+ * 核心流程与功能：
+ * 1. 模拟参数拉取：启动后从服务端 `/api/simulation/params` 获取支持的模拟格式、预选数据源模版与默认经纬度值。
+ * 2. 目标会话限制：允许定向群组测试或全网默认群组分流测试。
+ * 3. 智能关联联动：切换测试格式（数据源模版）时，自动同步重设下方“数据源” key，并拉取该格式下的地理极值 defaults。
+ * 4. 原生 IP 定位：提供 GPS 定位辅助功能，调取宿主 geoIP 服务，一键解析定位并填充经纬度与位置文本，无需手动输入。
+ * 5. 各类型测试表单多态渲染：地震模式输入经纬震级深度，海啸模式输入灾害地点，气象预警模式输入通报全文。
  *
  * @param {Object} props
- * @param {boolean} props.open - 是否显示模态框
- * @param {Function} props.onClose - 关闭回调
+ * @param {boolean} props.open 模态框是否处于显露状态
+ * @param {Function} props.onClose 模态框关闭指令回调
  */
 function SimulationModal({ open, onClose }) {
-    const api = useApi();
-    const { showToast } = useToast(); // 使用 Toast 提示
+    const statusApi = window.DisasterStatusApi;
+    const { showToast } = useToast();
+    
+    // 表单状态控制
     const [disasterType, setDisasterType] = useState('earthquake');
     const [testType, setTestType] = useState('cea_fanstudio');
     const [targetGroup, setTargetGroup] = useState('');
+    
+    // 各项参数负载默认容器
     const [customParams, setCustomParams] = useState({
         latitude: 39.9,
         longitude: 116.4,
@@ -24,16 +35,18 @@ function SimulationModal({ open, onClose }) {
         location: '北京市',
         source: 'cea_fanstudio'
     });
+    
     const [sending, setSending] = useState(false);
-    const [params, setParams] = useState(null);
+    const [params, setParams] = useState(null); // 后端支持的所有模拟参数详情
 
+    // 每次 modal 打开时重载参数配置
     useEffect(() => {
         if (open) {
             loadParams();
         }
     }, [open]);
 
-    // 当测试格式改变时，自动更新数据源字段
+    // 联动副作用：测试模板格式改变时同步改写 customParams.source
     useEffect(() => {
         if (testType) {
             setCustomParams(prev => ({
@@ -43,6 +56,9 @@ function SimulationModal({ open, onClose }) {
         }
     }, [testType]);
 
+    /**
+     * 规范化服务端下发的可选格式定义
+     */
     const normalizeFormatOptions = (formats = []) => {
         if (!Array.isArray(formats)) return [];
 
@@ -65,8 +81,10 @@ function SimulationModal({ open, onClose }) {
             .filter(Boolean);
     };
 
-    const normalizeSimulationParams = (raw) => {
-        const payload = raw?.data && typeof raw.data === 'object' ? raw.data : raw;
+    /**
+     * 规范化模拟配置响应结构
+     */
+    const normalizeSimulationParams = (payload = {}) => {
         const disasterTypes = payload?.disaster_types || {};
 
         const normalizedDisasterTypes = Object.keys(disasterTypes).reduce((acc, typeKey) => {
@@ -84,10 +102,12 @@ function SimulationModal({ open, onClose }) {
         };
     };
 
-    // 加载后端支持的模拟参数配置（灾害类型、测试格式等）
+    /**
+     * 加载后端模拟预警元数据选项，并自动回填初始默认值
+     */
     const loadParams = async () => {
         try {
-            const result = await api.getSimulationParams();
+            const result = await statusApi.getSimulationParams();
             const normalizedResult = normalizeSimulationParams(result);
             setParams(normalizedResult);
 
@@ -115,54 +135,53 @@ function SimulationModal({ open, onClose }) {
         }
     };
 
-    // 获取当前浏览器位置（用于快速填充经纬度）
+    /**
+     * 调用定位服务，解析本地 IP GPS 经纬度，一键回填参数行，简化调试输入
+     */
     const handleGeolocate = async () => {
         try {
-            const result = await api.getGeoLocation();
-            if (result.success && result.data) {
-                const { latitude, longitude, province, city } = result.data;
-                if (latitude && longitude) {
-                    setCustomParams(prev => ({
-                        ...prev,
-                        latitude: latitude,
-                        longitude: longitude,
-                        location: `${province || ''} ${city || ''}`.trim() || prev.location
-                    }));
-                }
-            } else {
-                showToast('获取位置失败: ' + (result.error || '未知错误'), 'error');
+            const geoData = await statusApi.getGeoLocation();
+            const { latitude, longitude, province, city } = geoData || {};
+            if (latitude && longitude) {
+                setCustomParams(prev => ({
+                    ...prev,
+                    latitude: latitude,
+                    longitude: longitude,
+                    location: `${province || ''} ${city || ''}`.trim() || prev.location
+                }));
+                return;
             }
+            showToast('获取位置失败: 未返回有效坐标', 'error');
         } catch (e) {
-            showToast('获取位置失败', 'error');
+            showToast(e.message || '获取位置失败', 'error');
             console.error(e);
         }
     };
 
-    // 发送模拟请求
+    /**
+     * 发送模拟测试指令请求
+     */
     const handleSend = async () => {
         setSending(true);
         try {
-            const result = await api.sendSimulation({
+            const result = await statusApi.sendSimulation({
                 target_session: targetGroup,
                 disaster_type: disasterType,
                 test_type: testType,
                 custom_params: customParams
             });
 
-            if (result.success) {
-                showToast(result.message || '预警消息已发送', 'success');
-                onClose();
-            } else {
-                showToast(`测试失败: ${result.message || result.error}`, 'error');
-            }
+            showToast(result?.message || '预警消息已发送', 'success');
+            onClose();
         } catch (e) {
-            showToast('请求失败,请检查控制台', 'error');
+            showToast(e.message || '请求失败,请检查控制台', 'error');
             console.error(e);
         } finally {
             setSending(false);
         }
     };
 
+    // 表单选项生成器辅助
     const getDisasterTypeOptions = () => {
         if (!params) return [];
         return Object.keys(params.disaster_types || {});
@@ -183,8 +202,8 @@ function SimulationModal({ open, onClose }) {
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle>🧪 模拟预警测试</DialogTitle>
             <DialogContent>
-                <Box sx={{ py: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {/* 目标会话 */}
+                <Box className="simulation-modal-body">
+                    {/* 1. 目标会话单选框 */}
                     <FormControl fullWidth size="small">
                         <InputLabel shrink>目标会话</InputLabel>
                         <Select
@@ -207,7 +226,7 @@ function SimulationModal({ open, onClose }) {
 
                     <Divider />
 
-                    {/* 灾害类型 */}
+                    {/* 2. 灾害大类单选 */}
                     <FormControl fullWidth size="small">
                         <InputLabel>灾害类型</InputLabel>
                         <Select
@@ -231,7 +250,7 @@ function SimulationModal({ open, onClose }) {
                                     source: defaults.source || nextTestType || prev.source
                                 }));
                             }}
-                            disabled
+                            disabled // 目前后端仅完备地震模拟逻辑，因此强锁地震选项防止误操作
                         >
                             {getDisasterTypeOptions().map(type => (
                                 <MenuItem key={type} value={type}>
@@ -239,12 +258,12 @@ function SimulationModal({ open, onClose }) {
                                 </MenuItem>
                             ))}
                         </Select>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 1.5 }}>
+                        <Typography variant="caption" color="text.secondary" className="simulation-modal-hint">
                             目前仅支持地震模拟，其他灾害类型正在开发中
                         </Typography>
                     </FormControl>
 
-                    {/* 测试格式 */}
+                    {/* 3. 数据源模板格式选择 */}
                     {disasterType && (
                         <FormControl fullWidth size="small">
                             <InputLabel>测试格式 (数据源模板)</InputLabel>
@@ -264,22 +283,23 @@ function SimulationModal({ open, onClose }) {
 
                     <Divider />
 
-                    {/* 自定义参数 */}
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                    {/* 4. 精细自定义参数区（多态呈现） */}
+                    <Typography variant="subtitle2" className="simulation-modal-section-title">
                         自定义参数
                     </Typography>
 
+                    {/* A. 地震模式专属表单 */}
                     {disasterType === 'earthquake' && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {/* 经纬度、震级、深度合并行 */}
-                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                        <Box className="simulation-modal-form-stack">
+                            {/* 经纬度、震级、深度合并定位行 */}
+                            <Box className="simulation-modal-quake-row">
                                 <TextField
                                     label="纬度"
                                     type="number"
                                     size="small"
                                     value={customParams.latitude}
                                     onChange={(e) => setCustomParams({ ...customParams, latitude: parseFloat(e.target.value) })}
-                                    sx={{ flex: 1.2 }}
+                                    className="simulation-modal-field simulation-modal-field--geo"
                                 />
                                 <TextField
                                     label="经度"
@@ -287,11 +307,12 @@ function SimulationModal({ open, onClose }) {
                                     size="small"
                                     value={customParams.longitude}
                                     onChange={(e) => setCustomParams({ ...customParams, longitude: parseFloat(e.target.value) })}
-                                    sx={{ flex: 1.2 }}
+                                    className="simulation-modal-field simulation-modal-field--geo"
                                 />
+                                {/* 一键 IP GPS 定位按钮 */}
                                 <Tooltip title="使用当前 IP 自动定位填充经纬度">
-                                    <IconButton onClick={handleGeolocate} color="primary" sx={{ border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: '8px', padding: '8px' }}>
-                                        <span style={{ fontSize: '1.1rem' }}>📍</span>
+                                    <IconButton onClick={handleGeolocate} color="primary" className="simulation-modal-geo-button">
+                                        <span className="simulation-modal-geo-icon">📍</span>
                                     </IconButton>
                                 </Tooltip>
                                 <TextField
@@ -301,7 +322,7 @@ function SimulationModal({ open, onClose }) {
                                     value={customParams.magnitude}
                                     onChange={(e) => setCustomParams({ ...customParams, magnitude: parseFloat(e.target.value) })}
                                     inputProps={{ min: 0, max: 10, step: 0.1 }}
-                                    sx={{ flex: 0.8 }}
+                                    className="simulation-modal-field simulation-modal-field--metric"
                                 />
                                 <TextField
                                     label="深度 (km)"
@@ -310,11 +331,11 @@ function SimulationModal({ open, onClose }) {
                                     value={customParams.depth}
                                     onChange={(e) => setCustomParams({ ...customParams, depth: parseFloat(e.target.value) })}
                                     inputProps={{ min: 0, step: 1 }}
-                                    sx={{ flex: 0.8 }}
+                                    className="simulation-modal-field simulation-modal-field--metric"
                                 />
                             </Box>
 
-                            {/* 位置描述 */}
+                            {/* 震中地名输入 */}
                             <TextField
                                 fullWidth
                                 label="位置描述"
@@ -323,7 +344,7 @@ function SimulationModal({ open, onClose }) {
                                 onChange={(e) => setCustomParams({ ...customParams, location: e.target.value })}
                             />
 
-                            {/* 数据源选择 */}
+                            {/* 数据源名称绑定 */}
                             <FormControl fullWidth size="small">
                                 <InputLabel>数据源</InputLabel>
                                 <Select
@@ -341,8 +362,9 @@ function SimulationModal({ open, onClose }) {
                         </Box>
                     )}
 
+                    {/* B. 海啸模式备用表单 */}
                     {disasterType === 'tsunami' && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <Box className="simulation-modal-form-stack">
                             <TextField
                                 fullWidth
                                 label="位置描述"
@@ -353,8 +375,9 @@ function SimulationModal({ open, onClose }) {
                         </Box>
                     )}
 
+                    {/* C. 气象警报备用表单 */}
                     {disasterType === 'weather' && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <Box className="simulation-modal-form-stack">
                             <TextField
                                 fullWidth
                                 label="预警描述"
@@ -368,6 +391,7 @@ function SimulationModal({ open, onClose }) {
                     )}
                 </Box>
             </DialogContent>
+            {/* 动作区 */}
             <DialogActions>
                 <Button onClick={onClose}>取消</Button>
                 <Button variant="contained" onClick={handleSend} disabled={sending || !testType}>

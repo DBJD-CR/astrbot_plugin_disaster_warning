@@ -1,0 +1,326 @@
+/* 布局样式文件：控制应用的基础侧边栏、主视图区域、顶部条等全局架构排版 */
+
+/* ==========================================================================
+   1. 应用主容器骨架 (App Layout Core Skeleton)
+   ========================================================================== */
+
+/* 全局主容器 */
+.app {
+    display: flex;
+    height: 100vh;
+    overflow: hidden; /* 保证应用整体不产生全局滚动，滚动仅由主体视窗承载 */
+}
+
+/* 侧边导航栏面板 */
+.sidebar {
+    width: 280px;
+    height: 100%;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px); /* 磨砂玻璃过滤 */
+    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    padding: 32px 16px;
+    z-index: 50; /* 确保侧栏在移动端切换时高于主视图层 */
+}
+
+/* 侧边栏Logo及名称头部区域 */
+.sidebar-header {
+    padding: 0 16px 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* 侧边栏插件图标 */
+.sidebar-logo-img {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(103, 80, 164, 0.2);
+    object-fit: contain;
+}
+
+/* 主视图承载包裹器 */
+.main-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ==========================================================================
+   2. 顶部状态和视图标题栏 (Top Bar & Mask Banner)
+   ========================================================================== */
+
+/* 顶部操作面板容器 */
+.top-bar {
+    height: var(--top-bar-height);
+    padding: 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: absolute; /* 绝对定位悬浮在内容之上以配置毛玻璃渐变过渡遮罩 */
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: transparent;
+    overflow: hidden;
+    isolation: isolate; /* 开启渲染隔离层，防层叠穿透影响遮罩 */
+}
+
+/* 顶部栏遮罩：使用渐变蒙版，使下方的内容在向上滑入顶部栏时逐渐淡出并模糊，极具现代空灵感 */
+.top-bar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: rgba(255, 255, 255, 0.68);
+    /* 渐变遮罩：在下部淡化，保证顶部条和主视图的无缝接缝 */
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+body.dark-theme .top-bar::before {
+    background: rgba(20, 18, 24, 0.88);
+}
+
+.top-bar > * {
+    position: relative;
+    z-index: 1; /* 保证顶部条内容（如标题、按钮）浮在渐变毛玻璃遮罩之上 */
+}
+
+/* ==========================================================================
+   3. 主内容显示区域 (Main Scrollable Content Window)
+   ========================================================================== */
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    /* 顶部预留出 top-bar 高度的内边距，防止第一行卡片被悬浮的顶部栏遮挡 */
+    padding: var(--top-bar-height) 24px 24px;
+}
+
+/* ==========================================================================
+   4. 响应式布局排版媒体查询适配 (Responsive Layout Adaption)
+   ========================================================================== */
+
+/* 中尺寸宽屏幕（如iPad、PC窄视窗，最大宽 1024px） */
+@media (max-width: 1024px) {
+    .top-bar {
+        padding: 0 24px;
+    }
+
+    .main-content {
+        padding: 0 24px 24px;
+    }
+}
+
+/* 小屏幕及移动设备（如手机，最大宽 768px） */
+@media (max-width: 768px) {
+    /* 整体框架由横向Flex两栏架构转为纵向块状滚动流 */
+    .app {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+    }
+
+    /* 侧栏拉伸成横条 */
+    .sidebar {
+        width: 100%;
+        height: auto;
+        padding: 12px 16px;
+        border-right: none;
+        border-bottom: 1px solid var(--glass-border);
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .sidebar-header {
+        padding: 0;
+        flex-direction: row;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .sidebar-logo-img {
+        width: 40px;
+        height: 40px;
+    }
+
+    /* 侧栏导航菜单单行横向排开 */
+    .sidebar > div:nth-child(2) {
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        margin: 0 !important;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    .sidebar > div:nth-child(3) {
+        display: none; /* 侧边栏最下方求星GitHub条直接隐藏 */
+    }
+
+    /* 此时顶部条不再绝对定位悬浮，而是自然占位堆叠，不需要遮罩 */
+    .top-bar {
+        position: relative;
+        top: auto;
+        left: auto;
+        right: auto;
+        height: auto;
+        min-height: calc(var(--top-bar-height) * 0.75);
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .top-bar::before {
+        display: none;
+    }
+
+    .top-bar > h5 {
+        font-size: 1.25rem;
+    }
+
+    .top-bar > div {
+        gap: 12px;
+    }
+
+    .main-wrapper {
+        flex: 1;
+        overflow: visible;
+    }
+
+    .main-content {
+        padding: 16px;
+        overflow-y: visible;
+        height: auto;
+    }
+}
+
+/* 超小屏移动设备 (如中小型手机，最大宽 480px) */
+@media (max-width: 480px) {
+    .sidebar {
+        padding: 10px 12px;
+    }
+
+    .sidebar-header {
+        gap: 8px;
+    }
+
+    .sidebar-logo-img {
+        width: 36px;
+        height: 36px;
+    }
+
+    .sidebar-header h6 {
+        font-size: 1.1rem;
+    }
+
+    .sidebar-header .MuiTypography-caption {
+        font-size: 0.7rem;
+    }
+
+    .top-bar {
+        padding: 10px 12px;
+        min-height: 56px;
+    }
+
+    .top-bar > h5 {
+        font-size: 1.1rem;
+    }
+
+    .top-bar > div > div {
+        padding: 5px 12px;
+    }
+
+    .top-bar button {
+        width: 40px !important;
+        height: 40px !important;
+    }
+
+    .main-content {
+        padding: 12px;
+    }
+}
+
+/* 极其紧凑的极窄设备适配 (最大宽 360px) */
+@media (max-width: 360px) {
+    .sidebar {
+        padding: 8px 10px;
+    }
+
+    .sidebar-logo-img {
+        width: 32px;
+        height: 32px;
+    }
+
+    .top-bar {
+        padding: 8px 10px;
+    }
+
+    .main-content {
+        padding: 10px;
+    }
+}
+
+/* 短高横屏设备适配（如手机打横横向显示，最大高度600px且横屏） */
+@media (max-height: 600px) and (orientation: landscape) {
+    .app {
+        flex-direction: row; /* 横向布局 */
+    }
+
+    .sidebar {
+        width: 220px;
+        height: 100vh;
+        border-right: 1px solid var(--glass-border);
+        border-bottom: none;
+        padding: 16px 12px;
+    }
+
+    .sidebar-header {
+        flex-direction: column;
+        padding-bottom: 16px;
+    }
+
+    .sidebar > div:nth-child(2) {
+        flex-direction: column;
+        overflow-x: visible;
+        overflow-y: auto;
+    }
+
+    .sidebar > div:nth-child(3) {
+        display: block; /* 恢复显示底部GitHub条 */
+    }
+
+    .top-bar {
+        height: 56px;
+        padding: 0 16px;
+    }
+}
+
+/* 网页纸质打印排版重置 */
+@media print {
+    .sidebar {
+        display: none !important;
+    }
+
+    .top-bar {
+        display: none !important;
+    }
+
+    .main-content {
+        padding: 0 !important;
+    }
+}

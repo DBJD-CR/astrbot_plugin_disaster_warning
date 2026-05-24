@@ -192,65 +192,120 @@ function getWeatherColorClass(description) {
 }
 
 /**
+ * 统一规范化后端重构后的数据源标识
+ * - 新命名(source/source_id) 作为主体系
+ * - 旧命名仅作为输入别名折叠到同一规范名
+ * @param {string} source
+ * @returns {string}
+ */
+function normalizeSourceName(source) {
+    if (!source) return 'unknown';
+
+    const rawSource = String(source).trim();
+    if (!rawSource) return 'unknown';
+
+    const lowerSource = rawSource.toLowerCase();
+    const aliasMap = {
+        // 旧前端 key -> 新规范 key
+        'fan_studio_cenc': 'cenc_fanstudio',
+        'fan_studio_cea': 'cea_fanstudio',
+        'fan_studio_cea_pr': 'cea_pr_fanstudio',
+        'fan_studio_cwa': 'cwa_fanstudio',
+        'fan_studio_cwa_report': 'cwa_fanstudio_report',
+        'fan_studio_usgs': 'usgs_fanstudio',
+        'fan_studio_jma': 'jma_fanstudio',
+        'fan_studio_weather': 'china_weather_fanstudio',
+        'fan_studio_tsunami': 'china_tsunami_fanstudio',
+        'p2p_eew': 'jma_p2p',
+        'p2p_earthquake': 'jma_p2p_info',
+        'p2p_tsunami': 'jma_tsunami_p2p',
+        'wolfx_jma_eew': 'jma_wolfx',
+        'wolfx_cenc_eew': 'cea_wolfx',
+        'wolfx_cwa_eew': 'cwa_wolfx',
+        'wolfx_cenc_eq': 'cenc_wolfx',
+        'wolfx_jma_eq': 'jma_wolfx_info',
+
+        // 配置项 / 子数据源 key -> 新规范展示 key
+        'china_earthquake_warning': 'cea_fanstudio',
+        'china_earthquake_warning_provincial': 'cea_pr_fanstudio',
+        'taiwan_cwa_earthquake': 'cwa_fanstudio',
+        'taiwan_cwa_report': 'cwa_fanstudio_report',
+        'china_cenc_earthquake': 'cenc_fanstudio',
+        'usgs_earthquake': 'usgs_fanstudio',
+        'china_weather_alarm': 'china_weather_fanstudio',
+        'china_tsunami': 'china_tsunami_fanstudio',
+        'japan_jma_eew': 'jma_p2p',
+        'japan_jma_earthquake': 'jma_p2p_info',
+        'japan_jma_tsunami': 'jma_tsunami_p2p',
+        'china_cenc_eew': 'cea_wolfx',
+        'taiwan_cwa_eew': 'cwa_wolfx',
+
+        // 中文标签 -> 新规范 key
+        '中国气象局：气象预警': 'china_weather_fanstudio',
+        '中国气象局: 气象预警': 'china_weather_fanstudio',
+        '台湾中央气象署：强震即时警报': 'cwa_fanstudio',
+        '台湾中央气象署: 强震即时警报': 'cwa_fanstudio',
+        '台湾中央气象署：地震报告': 'cwa_fanstudio_report',
+        '台湾中央气象署: 地震报告': 'cwa_fanstudio_report',
+        '中国地震台网（cenc）': 'cenc_fanstudio',
+        '中国地震台网(cenc)': 'cenc_fanstudio',
+        '中国地震台网（cenc）：地震测定': 'cenc_fanstudio',
+        '中国地震台网(cenc)：地震测定': 'cenc_fanstudio',
+        '中国地震预警网（cea）': 'cea_fanstudio',
+        '中国地震预警网(cea)': 'cea_fanstudio',
+        '中国地震预警网（省级）': 'cea_pr_fanstudio',
+        '中国地震预警网(省级)': 'cea_pr_fanstudio',
+        '日本气象厅：紧急地震速报': 'jma_fanstudio',
+        '日本气象厅: 紧急地震速报': 'jma_fanstudio',
+        '日本气象厅：地震情报': 'jma_p2p_info',
+        '日本气象厅: 地震情报': 'jma_p2p_info',
+        '日本气象厅：海啸预报': 'jma_tsunami_p2p',
+        '日本气象厅: 海啸预报': 'jma_tsunami_p2p'
+    };
+
+    return aliasMap[rawSource] || aliasMap[lowerSource] || lowerSource;
+}
+
+/**
  * 将数据源代码转换为用户友好的显示名称
- * @param {string} source - 数据源代码 (e.g., 'fan_studio_cenc')
+ * @param {string} source - 数据源代码
  * @returns {string} 友好的中文名称
  */
 function formatSourceName(source) {
-    if (!source) return '未知来源';
+    const normalizedSource = normalizeSourceName(source);
     const sourceMap = {
-        // Fan Studio
-        'fan_studio_cenc': '中国地震台网 (CENC) - Fan',
-        'fan_studio_cea': '中国地震预警网 (CEA) - Fan',
-        'fan_studio_cea_pr': '中国地震预警网 (省级)',
-        'fan_studio_cwa': '台湾中央气象署: 强震即时警报 - Fan',
-        'fan_studio_cwa_report': '台湾中央气象署地震报告',
-        'fan_studio_usgs': '美国地质调查局 (USGS)',
-        'fan_studio_jma': '日本气象厅: 紧急地震速报 - Fan',
-        'fan_studio_weather': '中国气象局: 气象预警',
-        'fan_studio_tsunami': '自然资源部海啸预警中心',
-        
-        // P2P
-        'p2p_eew': '日本气象厅: 紧急地震速报 - P2P',
-        'p2p_earthquake': '日本气象厅: 地震情报 - P2P',
-        'p2p_tsunami': '日本气象厅: 海啸预报 - P2P',
-        
-        // Wolfx
-        'wolfx_jma_eew': '日本气象厅: 紧急地震速报 - Wolfx',
-        'wolfx_cenc_eew': '中国地震预警网 (CEA) - Wolfx',
-        'wolfx_cwa_eew': '台湾中央气象署: 强震即时警报 - Wolfx',
-        'wolfx_cenc_eq': '中国地震台网地震测定 - Wolfx',
-        'wolfx_jma_eq': '日本气象厅地震情报 - Wolfx',
-        
-        // Global Quake
-        'global_quake': 'Global Quake',
+        // Fan Studio (新规范)
+        'cenc_fanstudio': '中国地震台网 (CENC) - Fan',
+        'cea_fanstudio': '中国地震预警网 (CEA)',
+        'cea_pr_fanstudio': '中国地震预警网 (省级)',
+        'cwa_fanstudio': '台湾中央气象署: 强震即时警报 - Fan',
+        'cwa_fanstudio_report': '台湾中央气象署: 地震报告',
+        'usgs_fanstudio': '美国地质调查局 (USGS)',
+        'jma_fanstudio': '日本气象厅: 紧急地震速报 - Fan',
+        'china_weather_fanstudio': '中国气象局: 气象预警',
+        'china_tsunami_fanstudio': '自然资源部海啸预警中心',
 
-        // 其他/旧版兼容
+        // P2P (新规范)
+        'jma_p2p': '日本气象厅: 紧急地震速报 - P2P',
+        'jma_p2p_info': '日本气象厅: 地震情报 - P2P',
+        'jma_tsunami_p2p': '日本气象厅: 海啸予报',
+
+        // Wolfx (新规范)
+        'jma_wolfx': '日本气象厅: 紧急地震速报 - Wolfx',
+        'cea_wolfx': '中国地震预警网 (CEA) - Wolfx',
+        'cwa_wolfx': '台湾中央气象署: 强震即时警报 - Wolfx',
+        'cenc_wolfx': '中国地震台网地震测定 - Wolfx',
+        'jma_wolfx_info': '日本气象厅地震情报 - Wolfx',
+
+        // 其他
+        'global_quake': 'Global Quake',
         'sc_eew': '四川地震局',
         'fj_eew': '福建地震局',
         'kma_earthquake': '韩国气象厅 (KMA)',
         'emsc_earthquake': '欧洲地中海地震中心 (EMSC)',
         'gfz_earthquake': '德国地学研究中心 (GFZ)',
-        'unknown': '未知来源',
-
-        // 配置项 Key 映射 (用于连接状态显示)
-        'china_earthquake_warning': '中国地震预警网 (CEA)',
-        'china_earthquake_warning_provincial': '中国地震预警网 (省级)',
-        'taiwan_cwa_earthquake': '台湾中央气象署: 强震即时警报',
-        'taiwan_cwa_report': '台湾中央气象署: 地震报告',
-        'china_cenc_earthquake': '中国地震台网 (CENC)',
-        'usgs_earthquake': '美国地质调查局 (USGS)',
-        'china_weather_alarm': '中国气象局: 气象预警',
-        'china_tsunami': '自然资源部海啸预警中心',
-        
-        'japan_jma_eew': '日本气象厅: 紧急地震速报',
-        'japan_jma_earthquake': '日本气象厅: 地震情报',
-        'japan_jma_tsunami': '日本气象厅: 海啸预报',
-        
-        'china_cenc_eew': '中国地震预警网 (CEA)',
-        'taiwan_cwa_eew': '台湾中央气象署: 强震即时警报',
-
-        'enabled': '实时数据流'
+        'enabled': '实时数据流',
+        'unknown': '未知来源'
     };
-    return sourceMap[source] || source;
+    return sourceMap[normalizedSource] || String(source || '').trim() || '未知来源';
 }

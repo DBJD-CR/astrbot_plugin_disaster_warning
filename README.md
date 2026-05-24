@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD028 -->
 <!-- markdownlint-disable MD033 -->
 <!-- markdownlint-disable MD041 -->
 ![astrbot_plugin_disaster_warning](https://socialify.git.ci/DBJD-CR/astrbot_plugin_disaster_warning/image?custom_description=%F0%9F%9A%A8+%E4%B8%80%E4%B8%AA%E5%9F%BA%E4%BA%8E+AstrBot+%E7%9A%84%E5%A4%9A%E6%95%B0%E6%8D%AE%E6%BA%90%E7%81%BE%E5%AE%B3%E9%A2%84%E8%AD%A6%E6%8F%92%E4%BB%B6&description=1&font=Inter&forks=1&issues=1&language=1&name=1&owner=1&pattern=Charlie+Brown&pulls=1&stargazers=1&theme=Auto)
@@ -15,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AstrBot-v4.18.2%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.18.2">
+  <img src="https://img.shields.io/badge/AstrBot-v4.24.4%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.24.4">
   <img src="https://img.shields.io/github/v/release/DBJD-CR/astrbot_plugin_disaster_warning?label=Release&color=brightgreen" alt="Latest Release">
   <img src="https://img.shields.io/badge/QQ群-1033089808-12B7F3.svg" alt="QQ Group">
 </p>
@@ -91,15 +92,15 @@
 > [!TIP]
 > 本项目的相关开发数据 (持续更新中)：
 >
-> 开发时长：累计 60 天（主插件部分）
+> 开发时长：累计 90 天（主插件部分）
 >
-> 累计工时：约 286 小时（主插件部分）
+> 累计工时：约 438 小时（主插件部分）
 >
-> 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 flash & Pro、GPT Codex 5.3(With RooCode in VSCode)
+> 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 3.5 flash & Pro、GPT Codex 5.3 5.4 5.5(With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
-> Tokens Used：953,749,947
+> Tokens Used：1,990,103,612
 
 ## ✨ 功能特性
 
@@ -446,6 +447,9 @@
 >
 > 在插件自带的 WebUI 中，您可以进行会话的差异覆写以实现精细化配置。
 
+<details>
+<summary>点击查看配置项详解</summary>
+
 ### ⚙️ 1. 基础全局配置 (General)
 
 控制插件的核心运行逻辑和基础通信参数。
@@ -580,13 +584,13 @@
 #### 🧬 CWA 地震预警融合策略 (`cwa_eew_fusion`)
 
 - **启用融合策略 (`enabled`)**: Fan (主) + Wolfx (副) 融合模式。优先使用 Fan 的预警数据。
-- **等待超时时间 (`timeout`)**: 单位：秒。等待 Wolfx 补充字段的最大时间。
+- **等待超时时间 (`timeout`)**: 单位：秒。等待 Wolfx 补充最大震度的最大时间。
   - 默认值：`6`
   - 最小值：`1`
   - 最大值：`60`
 - **融合补充字段**:
-  - 若 Fan 原始消息缺少影响区域，融合结果会使用 Wolfx 影响区域作为回填。
-  - 当 Wolfx 提供影响区域字段时，插件会将其写入融合结果，并在 CWA 文本消息中尝试追加到“预估最大震度”后方显示。
+  - 若 Fan 原始消息缺少最大震度/震度字段，融合结果会优先使用 Wolfx 的 `MaxIntensity` 作为回填。
+  - Fan 自带的 `locationDesc`（影响区域）会被优先保留，不再以 Wolfx 影响区域为主语义来源。
 - **时序优化（新）**:
   - 支持 **Wolfx 先到缓存**：避免“Wolfx 先来但无 Fan pending 时被丢弃”。
   - 支持 **event_id + 报次精确匹配**：仅同事件、同报次时融合，显著降低并发时误配概率。
@@ -804,7 +808,32 @@
 
 ---
 
-### 🛠️ 11. 调试配置 (`debug_config`)
+### 🔔 11. 官方通知配置 (`notification_settings`)
+
+用于控制插件官方通知系统。该模块会从远端通知平台拉取插件更新、修复说明、注意事项等公告，并同步到内置 Web 管理端的通知中心。
+
+- **启用通知中心 (`enabled`)**:
+  - 类型：`Boolean`
+  - 默认值：`true`
+  - 说明：启用后，插件将按设定周期从远端通知平台拉取通知，并在 Web 管理端展示。
+  - 关闭后：停止远端通知轮询，但仍保留本地已读缓存，不会清空既有通知阅读状态。
+- **通知轮询间隔 (`poll_interval_seconds`)**:
+  - 类型：`Integer`
+  - 默认值：`300`
+  - 单位：秒
+  - 范围：`30 - 86400`
+  - 说明：插件向远端通知平台检查更新的时间间隔。若配置值低于 30 秒，运行时会按最低 30 秒处理，避免过于频繁地请求远端服务。
+
+```json
+"notification_settings": {
+  "enabled": true,                 // 是否启用官方通知中心远端轮询
+  "poll_interval_seconds": 300     // 通知轮询间隔（秒，最低按 30 秒处理）
+}
+```
+
+---
+
+### 🛠️ 12. 调试配置 (`debug_config`)
 
 - **原始消息日志 (`enable_raw_message_logging`)**: 记录并格式化上游原始 JSON 报文到 `raw_messages.log`。
 - **原始日志路径 (`raw_message_log_path`)**: 相对于插件数据目录。
@@ -833,7 +862,7 @@
 
 ---
 
-### 📡 12. 匿名遥测 (`telemetry_config`)
+### 📡 13. 匿名遥测 (`telemetry_config`)
 
 - **启用匿名遥测 (`enabled`)**:
   - 默认开启。插件会发送匿名的使用统计（如活跃状态、报错信息）以帮助开发者改进插件。
@@ -859,6 +888,7 @@
 #### ⚠️ 典型“建议重载后生效”配置
 
 - `web_admin`（启用状态、host、port）
+- `notification_settings`（通知轮询任务启停与轮询周期）
 - `websocket_config`（连接生命周期相关参数）
 - `message_format` 中与浏览器池初始化强相关的参数（如 `browser_pool_size`、`playwright_mode`）
 - `debug_config` 中依赖初始化读取的日志器参数
@@ -869,37 +899,43 @@
 > 1. 修改“过滤器/会话覆写/消息格式”等业务规则时，可先直接在插件 WebUI 保存并观察推送结果。
 > 2. 修改“服务监听/连接管理/渲染器初始化”相关参数后，建议手动重载插件以确保全部组件按新配置重建。
 
+</details>
+
 ---
 
 ## 📋 使用命令
 
 插件提供以下命令：
 
-| 命令 | 描述 |
-| :--- | :--- |
-| `/灾害预警` | 显示插件帮助信息 |
-| `/灾害预警状态` | 查看服务运行状态 |
-| `/灾害预警重连` | 强制重连所有离线数据源 **(仅管理员)** |
-| `/地震列表查询 [数据源] [数量] [格式]` | 查询最新地震列表 (card/text 格式) |
-| `/地震预警` 或 `/地震预警查询` | 查询各机构 EEW 发布状态与无 EEW 计时 |
-| `/气象预警` 或 `/气象预警查询 <省份/地名/全国> [<预警类型>] [<预警颜色>] 或 <预警ID>` | 查询近期气象预警列表或查询单个气象预警详情 |
-| `/灾害预警统计` | 查看详细的事件统计报告 |
-| `/灾害预警统计清除` | 清除所有统计信息 **(仅管理员)** |
-| `/灾害预警推送开关` | 开启或关闭当前会话的推送 **(仅管理员)** |
-| `/灾害预警配置 查看 全局/当前/<会话UMO>` | 查看会话配置信息 **(仅管理员)** |
-| `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]` | 模拟地震事件测试 |
-| `/灾害预警日志` | 查看原始消息日志统计摘要 **(仅管理员)** |
-| `/灾害预警日志开关` | 开关原始消息日志记录 **(仅管理员)** |
-| `/灾害预警日志清除` | 清除所有原始消息日志 **(仅管理员)** |
+| 命令 | 别名 | 描述 |
+| :--- | :--- | :--- |
+| `/灾害预警` | - | 显示插件帮助信息 |
+| `/灾害预警状态` | - | 查看服务运行状态 |
+| `/灾害预警重连` | - | 强制重连所有离线数据源 **(仅管理员)** |
+| `/地震列表查询 [数据源] [数量] [格式]` | `/地震列表` | 查询最新地震列表 (card/text 格式) |
+| `/地震预警查询` | `/地震预警` | 查询各机构 EEW 发布状态与无 EEW 计时 |
+| `/气象预警查询 <省份/地名/全国> [<预警类型>] [<预警颜色>]` 或 `/气象预警查询 <预警ID>` | `/气象预警` | 查询近期气象预警列表或查询单个气象预警详情 |
+| `/灾害预警统计` | - | 查看详细的事件统计报告 |
+| `/灾害预警统计清除` | - | 清除所有统计信息 **(仅管理员)** |
+| `/灾害预警推送开关` | - | 开启或关闭当前会话的推送 **(仅管理员)** |
+| `/灾害预警配置 查看 全局/当前/<会话UMO>` | - | 查看会话配置信息 **(仅管理员)** |
+| `/灾害预警模拟 <纬度> <经度> <震级> [深度] [数据源]` | - | 模拟地震事件测试 |
+| `/灾害预警日志` | - | 查看原始消息日志统计摘要 **(仅管理员)** |
+| `/灾害预警日志开关` | - | 开关原始消息日志记录 **(仅管理员)** |
+| `/灾害预警日志清除` | - | 清除所有原始消息日志 **(仅管理员)** |
 
 > [!NOTE]
 > 带有 **(仅管理员)** 标记的命令需要用户具有 AstrBot 全局管理员权限或在插件配置中被列为管理员才能使用。
 
 ### 命令示例
 
+<details>
+<summary>点击查看命令示例</summary>
+
 ```bash
 # 查询地震列表
 # 格式：/地震列表查询 [数据源] [数量] [格式]
+# 别名：/地震列表 [数据源] [数量] [格式]
 # 图片格式最大传入参数为 50 ，纯文本格式最大传入参数为 50
 
 # 1. 默认查询 (中国地震台网 - 最近9条 - 卡片格式)
@@ -913,6 +949,9 @@
 
 # 4. 以纯文本格式显示 CENC 最近 5 条地震记录
 /地震列表查询 cenc 5 text
+
+# 5. 使用别名查询 JMA 最近 10 条地震记录（参数与原命令一致）
+/地震列表 jma 10 card
 
 # 查询当前各机构地震预警（EEW）状态
 /地震预警查询
@@ -986,12 +1025,16 @@
 > 插件对于灾害事件的统计与日志统计是分开管理的，如果需要清除对应的数据请使用相应的指令。
 >
 > `/灾害预警统计`命令中，地震震级分布与最大地震的统计可能会不一致，这是由于对数据源的筛选逻辑不一样导致的，前者比较宽松，后者比较严格。
+> `/气象预警查询`命令中，查询到的数据仅基于插件本地的数据库（在插件运行期间生成），结果仅供参考。
+
+</details>
 
 ---
 
 ## 📂 插件目录与结构
 
-目录结构示例：
+<details>
+<summary>点击查看目录结构示例</summary>
 
 ```bash
 AstrBot/
@@ -1006,138 +1049,295 @@ AstrBot/
          ├─ CONTRIBUTING.md                    # 本插件的贡献指南
          ├─ LICENSE                            # 许可证文件
          ├─ logo.png                           # 插件 Logo，适用于 AstrBot v4.5.0+
-         ├─ main.py                            # 插件主入口文件，包含命令处理
+         ├─ main.py                            # 插件主入口文件
          ├─ metadata.yaml                      # 插件元数据信息
          ├─ README.md                          # 插件说明文档
          ├─ requirements.txt                   # 插件依赖列表
-         ├─ run_ruff.bat                       # Ruff 一键格式化与自动修复脚本（开发辅助）
+         │
+         ├─ .github/                           # GitHub 协作与自动化配置
+         │   ├─ ISSUE_TEMPLATE/                # Issue 模板目录
+         │   ├─ workflows/                     # GitHub Actions 工作流
+         │   └─ PULL_REQUEST_TEMPLATE.md       # Pull Request 模板
          │
          ├─ admin/                             # Web 管理端前端资源
          │   ├─ css/                           # 样式文件目录
+         │   │   ├─ base.css                   # 全局基础样式
+         │   │   ├─ components.css             # 通用组件样式
+         │   │   ├─ layout.css                 # 管理端整体布局样式
+         │   │   │
+         │   │   └─ views/                     # 页面级样式目录
+         │   │       ├─ config.css             # 配置页样式
+         │   │       ├─ events.css             # 事件页样式
+         │   │       ├─ markdown.css           # Markdown 文档页样式
+         │   │       ├─ notifications.css      # 通知中心页样式
+         │   │       ├─ stats.css              # 统计页样式
+         │   │       └─ status.css             # 状态页样式
          │   │
-         │   ├─ fonts/                         # 字体文件目录
+         │   ├─ fonts/                         # Outfit 字体资源目录
+         │   │
+         │   ├─ index.html                     # 管理端入口与静态脚本加载清单
          │   │
          │   ├─ js/                            # 前端逻辑脚本目录
          │   │   ├─ .syntax_check_config_renderer.js # 配置渲染器语法检查辅助脚本
+         │   │   ├─ app.jsx                    # React 应用入口与页面切换
          │   │   │
          │   │   ├─ components/                # UI 组件目录
-         │   │   │   ├─ common/                # 通用组件
-         │   │   │   ├─ config/                # 配置页组件
-         │   │   │   ├─ events/                # 事件列表页组件
-         │   │   │   ├─ stats/                 # 统计分析页组件
-         │   │   │   └─ status/                # 状态概览页组件
+         │   │   │   ├─ common/                # 通用布局、导航、分页与 Toast 组件
+         │   │   │   ├─ config/                # 配置页字段渲染与操作组件
+         │   │   │   ├─ events/                # 事件列表、筛选、时间轴与天气查询组件
+         │   │   │   ├─ stats/                 # 统计卡片、图表与热力图组件
+         │   │   │   └─ status/                # 状态概览、连接、新闻与模拟弹窗组件
          │   │   │
          │   │   ├─ context/                   # 全局状态管理
-         │   │   │   └─ AppContext.jsx         # 全局 Store 与 Reducer（状态/统计/连接/主题管理）
+         │   │   │   ├─ AppContext.jsx         # 全局 Store 与上下文 Provider
+         │   │   │   ├─ appReducer.js          # 全局状态 Reducer 与 Action 定义
+         │   │   │   └─ appState.js            # 管理端初始状态定义
          │   │   │
          │   │   ├─ hooks/                     # 自定义 React Hooks
-         │   │   │   ├─ useApi.js              # API 请求封装
-         │   │   │   ├─ usePreservedScroll.js  # 列表滚动位置保留 Hook
-         │   │   │   └─ useWebSocket.js        # 全局单例 WebSocket Hook（状态广播/重连控制）
+         │   │   │   ├─ app/                   # 应用启动、认证、主题、状态副作用与 WebSocket Hook
+         │   │   │   ├─ config/                # 配置编辑器加载、草稿、保存、同步与视图模型 Hook
+         │   │   │   ├─ events/                # 事件查询、重大事件与天气查询 Hook
+         │   │   │   ├─ markdown/              # Markdown 文档加载与 Mermaid 渲染 Hook
+         │   │   │   └─ scroll/                # 滚动位置保留与恢复 Hook
+         │   │   │
+         │   │   ├─ routes/                    # 前端视图注册与导航元数据
+         │   │   │   └─ viewRegistry.jsx       # 管理端页面注册表
+         │   │   │
+         │   │   ├─ services/                  # 前端 API 与客户端服务
+         │   │   │   ├─ apiClient.js           # 统一请求客户端与鉴权处理
+         │   │   │   ├─ configApi.js           # 配置管理 API 封装
+         │   │   │   ├─ eventsApi.js           # 事件查询与天气查询 API 封装
+         │   │   │   ├─ notificationApi.js     # 通知中心与 Markdown 文档 API 封装
+         │   │   │   ├─ statsNormalizer.js     # 统计数据前端标准化工具
+         │   │   │   ├─ statusApi.js           # 状态、连接、统计与模拟 API 封装
+         │   │   │   └─ webSocketClient.js     # WebSocket 单例客户端与订阅管理
+         │   │   │
+         │   │   ├─ theme/                     # 前端主题配置
+         │   │   │   ├─ createAppTheme.js      # Material UI 主题创建逻辑
+         │   │   │   └─ tokens.js              # 明暗主题设计令牌
          │   │   │
          │   │   ├─ utils/                     # 前端工具函数
          │   │   │   ├─ auth.js                # 认证工具
-         │   │   │   └─ formatters.js          # 时间/震级/数据源名称等前端格式化工具
+         │   │   │   ├─ authBootstrap.js       # 首屏登录与鉴权引导逻辑
+         │   │   │   ├─ bootloader.js          # 首屏加载骨架屏控制逻辑
+         │   │   │   ├─ configSchemaUtils.js   # 配置 schema 清洗、默认值与可见性工具
+         │   │   │   ├─ eventFormatters.js     # 事件来源、类型与展示字段格式化工具
+         │   │   │   ├─ eventGrouping.js       # 事件列表分组工具
+         │   │   │   ├─ formatters.js          # 时间/震级/数据源名称等前端格式化工具
+         │   │   │   ├─ markdown.js            # Markdown 渲染、清洗、代码块/表格/Callout 处理工具
+         │   │   │   └─ mermaidViewport.js     # Mermaid 图表视口与交互辅助工具
          │   │   │
-         │   │   ├─ views/                     # 页面视图组件
-         │   │   │   ├─ ConfigView.jsx         # 配置管理页容器
-         │   │   │   ├─ EventsView.jsx         # 事件总览页
-         │   │   │   ├─ StatsView.jsx          # 统计分析页
-         │   │   │   └─ StatusView.jsx         # 运行状态页
-         │   │   │
-         │   │   └─ app.jsx                    # React 应用入口
-         │   ├─ lib/                           # 第三方库 (React, MUI 等)
+         │   │   └─ views/                     # 页面视图组件
+         │   │       ├─ ConfigView.jsx         # 配置管理页容器
+         │   │       ├─ EventsView.jsx         # 事件总览页
+         │   │       ├─ MarkdownDocsView.jsx   # 文档浏览页
+         │   │       ├─ NotificationsView.jsx  # 通知中心页
+         │   │       ├─ StatsView.jsx          # 统计分析页
+         │   │       └─ StatusView.jsx         # 运行状态页
          │   │
-         │   └─ index.html                     # 管理端入口
+         │   └─ lib/                           # 第三方库 (React, MUI, Babel, Emotion 等)
          │
-         ├─ core/                              # 核心模块目录
+         ├─ core/                              # 后端核心模块目录
          │   ├─ __init__.py
          │   ├─ app/                           # 应用编排层
          │   │   ├─ __init__.py
-         │   │   └─ disaster_service.py        # 核心灾害预警服务（生命周期/任务调度/事件分发）
+         │   │   ├─ disaster_service.py        # 核心灾害预警服务门面
+         │   │   │
+         │   │   ├─ pipeline/                  # 事件处理流水线
+         │   │   │   └─ event_pipeline.py      # 统一事件处理管线编排
+         │   │   │
+         │   │   ├─ runtime/                   # 服务运行时拆分组件
+         │   │   │   ├─ disaster_service_cache.py      # 运行时缓存与状态辅助
+         │   │   │   ├─ disaster_service_lifecycle.py  # 生命周期启动与停止管理
+         │   │   │   ├─ disaster_service_notice.py     # 启动通知与提示信息
+         │   │   │   ├─ disaster_service_reconnect.py  # 重连控制逻辑
+         │   │   │   ├─ disaster_service_runtime.py    # 运行时任务编排
+         │   │   │   └─ disaster_service_status.py     # 服务状态聚合
+         │   │   │
+         │   │   └─ services/                  # app 层辅助服务
+         │   │       └─ query_helpers.py       # 查询结果整理与辅助逻辑
          │   │
-         │   ├─ filters/                       # 过滤器目录
-         │   │   ├─ __init__.py
-         │   │   ├─ intensity_filter.py        # 烈度/震级/震度过滤器
-         │   │   ├─ local_intensity.py         # 本地烈度过滤器
-         │   │   ├─ report_controller.py       # 报数控制器
-         │   │   └─ weather_filter.py          # 气象预警过滤器
+         │   ├─ domain/                        # 领域模型与事件语义定义
+         │   │   ├─ display_models.py          # 展示层数据模型
+         │   │   ├─ event_context.py           # 事件上下文模型
+         │   │   ├─ event_identity.py          # 事件标识模型
+         │   │   ├─ event_models.py            # 灾害事件主模型
+         │   │   ├─ event_payload.py           # 事件载荷模型
+         │   │   └─ source_models.py           # 数据源定义模型
          │   │
-         │   ├─ handlers/                      # 数据处理器目录
-         │   │   ├─ __init__.py
-         │   │   ├─ base.py                    # 基础处理器类
-         │   │   ├─ china_earthquake.py        # 中国地震台网处理器
-         │   │   ├─ china_eew.py               # 中国地震预警处理器
-         │   │   ├─ global_sources.py          # 全球数据源处理器
-         │   │   ├─ japan_earthquake.py        # 日本地震情报处理器
-         │   │   ├─ japan_eew.py               # 日本紧急地震速报处理器
-         │   │   ├─ taiwan_earthquake.py       # 台湾地震报告处理器
-         │   │   ├─ taiwan_eew.py              # 台湾地震预警处理器
-         │   │   ├─ tsunami.py                 # 海啸预警处理器
-         │   │   └─ weather.py                 # 气象预警处理器
+         │   ├─ message/                       # 消息构建、渲染与推送链路
+         │   │   ├─ builders/                  # 消息构建器目录
+         │   │   │   ├─ card_message_builder.py        # 卡片消息构建器
+         │   │   │   ├─ global_quake_card_builder.py   # Global Quake 专用卡片构建器
+         │   │   │   ├─ map_attachment_builder.py      # 地图附件构建器
+         │   │   │   └─ text_message_builder.py        # 文本消息构建器
+         │   │   │
+         │   │   ├─ fusion/                    # 多源消息融合服务
+         │   │   │   ├─ cenc_fusion_service.py         # 中国地震台网消息融合逻辑
+         │   │   │   └─ cwa_eew_fusion_service.py      # 台湾 EEW 消息融合逻辑
+         │   │   │
+         │   │   ├─ logging/                   # 原始消息日志链路
+         │   │   │   ├─ filters/               # 日志过滤器目录
+         │   │   │   ├─ formatters/            # 日志格式化器目录
+         │   │   │   ├─ parsers/               # 日志解析器目录
+         │   │   │   ├─ stores/                # 日志存储目录
+         │   │   │   └─ support/               # 日志支撑服务目录
+         │   │   │
+         │   │   ├─ presenters/                # 展示器目录
+         │   │   │   ├─ base_presenter.py              # 展示器基类
+         │   │   │   ├─ earthquake_presenter.py        # 地震消息展示器
+         │   │   │   ├─ global_quake_display_context.py # Global Quake 展示上下文
+         │   │   │   ├─ presenter_registry.py          # 展示器注册表
+         │   │   │   ├─ text_presenter.py              # 通用文本展示器
+         │   │   │   ├─ tsunami_presenter.py           # 海啸消息展示器
+         │   │   │   ├─ weather_constants.py           # 气象展示常量
+         │   │   │   └─ weather_presenter.py           # 气象消息展示器
+         │   │   │
+         │   │   ├─ push/                      # 推送执行与分发目录
+         │   │   │   ├─ message_build_service.py       # 推送前消息组装服务
+         │   │   │   ├─ push_execution_service.py      # 推送执行服务
+         │   │   │   ├─ push_flow_handler.py           # 推送流程控制
+         │   │   │   ├─ push_orchestrator.py           # 推送编排服务
+         │   │   │   ├─ push_policy.py                 # 推送策略定义
+         │   │   │   └─ session_sender.py              # 会话发送适配器
+         │   │   │
+         │   │   ├─ render/                    # 渲染资源处理目录
+         │   │   │   ├─ remote_media_fetcher.py        # 远程媒体抓取服务
+         │   │   │   └─ render_cache.py               # 渲染缓存服务
+         │   │   │
+         │   │   ├─ runtime/                   # 消息运行时基础设施
+         │   │   │   ├─ bootstrap_service.py          # 消息子系统启动服务
+         │   │   │   ├─ browser_manager.py            # Playwright 浏览器实例管理器
+         │   │   │   ├─ fusion_state_store.py         # 融合状态存储
+         │   │   │   ├─ local_monitor.py              # 本地监控辅助
+         │   │   │   ├─ remote_media_service.py       # 远程媒体服务
+         │   │   │   ├─ resource_cleanup_service.py   # 资源清理服务
+         │   │   │   └─ runtime_component_factory.py  # 运行时组件工厂
+         │   │   │
+         │   │   ├─ system/                    # 系统通知目录
+         │   │   │   └─ system_notification_service.py # 系统通知服务
+         │   │   │
+         │   │   ├─ message_logger.py          # 消息日志门面
+         │   │   └─ message_manager.py         # 消息管理门面
          │   │
-         │   ├─ message/                       # 消息与渲染链路
-         │   │   ├─ __init__.py
-         │   │   ├─ browser_manager.py         # Playwright 浏览器实例管理器
-         │   │   ├─ message_logger.py          # 原始消息记录器
-         │   │   └─ message_manager.py         # 消息推送管理器
+         │   ├─ network/                       # 网络接入与管理端接口层
+         │   │   ├─ admin/                     # 管理端接口模块
+         │   │   │   ├─ api/                   # FastAPI 路由目录
+         │   │   │   ├─ host/                  # 管理端宿主与运行时
+         │   │   │   └─ payloads/              # API 响应载荷构建器
+         │   │   │
+         │   │   ├─ monitoring/                # 数据源健康监控
+         │   │   │   └─ source_health_monitor.py # 数据源状态监测器
+         │   │   │
+         │   │   ├─ websocket/                 # WebSocket 基础设施
+         │   │   │   ├─ websocket_dispatch_service.py  # WebSocket 分发服务
+         │   │   │   ├─ websocket_hub.py               # WebSocket 广播 Hub
+         │   │   │   ├─ websocket_manager.py           # WebSocket 连接管理器
+         │   │   │   ├─ websocket_reconnect_service.py # WebSocket 重连服务
+         │   │   │   └─ websocket_runtime_service.py   # WebSocket 运行时服务
+         │   │   │
+         │   │   ├─ event_ingress_dispatch_service.py  # 入站事件分发服务
+         │   │   ├─ source_ingress_side_effect_service.py # 入站副作用处理服务
+         │   │   └─ source_message_router.py    # 上游消息路由器
          │   │
-         │   ├─ network/                       # 网络与接口层
-         │   │   ├─ __init__.py
-         │   │   ├─ handler_registry.py        # 处理器注册表
-         │   │   ├─ web_server.py              # Web 管理服务器 (FastAPI)
-         │   │   └─ websocket_manager.py       # WebSocket 连接管理器
+         │   ├─ parsers/                       # 上游消息解析器目录
+         │   │   ├─ base_parser.py             # 解析器基类
+         │   │   ├─ china_earthquake_parser.py # 中国地震台网解析器
+         │   │   ├─ china_eew_parser.py        # 中国地震预警解析器
+         │   │   ├─ global_sources_parser.py   # 全球综合源解析器
+         │   │   ├─ japan_earthquake_parser.py # 日本地震情报解析器
+         │   │   ├─ japan_eew_parser.py        # 日本紧急地震速报解析器
+         │   │   ├─ parser_registry.py         # 解析器注册表
+         │   │   ├─ taiwan_earthquake_parser.py # 台湾地震报告解析器
+         │   │   ├─ taiwan_eew_parser.py       # 台湾地震预警解析器
+         │   │   ├─ tsunami_parser.py          # 海啸预警解析器
+         │   │   └─ weather_parser.py          # 气象预警解析器
          │   │
-         │   ├─ storage/                       # 存储与配置层
-         │   │   ├─ __init__.py
-         │   │   ├─ database_manager.py        # 数据库管理器 (SQLite)
-         │   │   ├─ session_config_manager.py  # 会话差异配置管理器（多会话架构核心）
-         │   │   └─ statistics_manager.py      # 统计数据持久化管理器
+         │   ├─ rules/                         # 过滤与判定规则目录
+         │   │   ├─ base_rule.py               # 规则基类
+         │   │   ├─ intensity_rule.py          # 烈度/震级阈值规则
+         │   │   ├─ keyword_rule.py            # 关键词规则
+         │   │   ├─ local_rule.py              # 本地感知规则
+         │   │   ├─ report_rule.py             # 报数控制规则
+         │   │   ├─ rule_chain.py              # 规则链编排器
+         │   │   ├─ rule_result.py             # 规则执行结果模型
+         │   │   ├─ source_rule.py             # 数据源规则
+         │   │   ├─ time_rule.py               # 时间窗口规则
+         │   │   └─ weather_rule.py            # 气象预警规则
          │   │
-         │   └─ support/                       # 通用支撑能力
-         │       ├─ __init__.py
-         │       ├─ config_validator.py        # 配置校验器
-         │       ├─ event_deduplicator.py      # 基础事件去重器
-         │       ├─ intensity_calculator.py    # 本地烈度计算器
-         │       ├─ simulation_service.py      # 模拟预警统一服务（参数/构建/过滤测试）
-         │       ├─ telemetry_manager.py       # 匿名遥测管理器
-         │       └─ weather_query_service.py   # 气象预警查询共享服务
+         │   ├─ services/                      # 通用领域服务目录
+         │   │   ├─ config/                    # 配置服务目录
+         │   │   ├─ display/                   # 展示数据构建目录
+         │   │   ├─ geo/                       # 地理计算与区域解析目录
+         │   │   ├─ identity/                  # 事件标识与去重目录
+         │   │   ├─ notification/              # 通知系统目录
+         │   │   │   ├─ notification_cache_repository.py # 通知缓存文件读写仓储
+         │   │   │   ├─ notification_center.py          # 通知同步、缓存、已读状态与轮询广播编排
+         │   │   │   ├─ notification_normalizer.py      # 远端通知标准化与数据清洗
+         │   │   │   └─ notification_remote_client.py   # 官方通知远端拉取客户端
+         │   │   ├─ query/                     # 查询服务目录
+         │   │   ├─ simulation/                # 模拟预警目录
+         │   │   └─ telemetry/                 # 遥测服务目录
+         │   │
+         │   ├─ sources/                       # 数据源注册与路由目录
+         │   │   ├─ source_catalog.py          # 数据源目录定义
+         │   │   ├─ source_entry.py            # 数据源条目模型
+         │   │   ├─ source_institution_catalog.py # 机构级数据源目录
+         │   │   └─ source_router.py           # 数据源路由器
+         │   │
+         │   └─ storage/                       # 存储与持久化目录
+         │       ├─ database_manager.py        # 数据库管理器 (SQLite)
+         │       ├─ session_config_manager.py  # 会话差异配置管理器（多会话架构核心）
+         │       ├─ source_compat.py           # 历史数据兼容辅助
+         │       ├─ statistics_manager.py      # 统计数据持久化管理器
+         │       └─ stats/                     # 统计聚合子模块
          │
-         ├─ models/                            # 数据模型目录
-         │   ├─ __init__.py
-         │   ├─ data_source_config.py          # 数据源配置管理器
-         │   ├─ models.py                      # 数据模型定义（地震、海啸、气象等）
+         ├─ docs/                              # 上游接口文档与本地 API 规范
+         │
+         ├─ models/                            # Protobuf 消息模型目录
          │   ├─ websocket_message.proto        # Protobuf 消息定义文件
          │   └─ websocket_message_pb2.py       # Protobuf 生成的 Python 代码
          │
-         ├─ utils/                             # 工具模块目录
+         ├─ plugin/                            # 插件装配与命令服务目录
          │   ├─ __init__.py
-         │   ├─ converters.py                  # 数据类型转换工具
-         │   ├─ fe_regions.py                  # FE地震区划中文翻译
-         │   ├─ geolocation.py                 # IP 地理定位工具
-         │   ├─ map_tile_sources.py            # 地图瓦片源定义
-         │   ├─ time_converter.py              # 时间格式转换工具
-         │   ├─ version.py                     # 获取插件版本号的工具
-         │   └─ formatters/                    # 消息格式化器目录
-         │       ├─ __init__.py
-         │       ├─ base.py                    # 基础格式化器
-         │       ├─ earthquake.py              # 地震消息格式化器
-         │       ├─ tsunami.py                 # 海啸消息格式化器
-         │       └─ weather.py                 # 气象消息格式化器
+         │   ├─ plugin_command_support_service.py # 插件命令辅助服务
+         │   ├─ plugin_lifecycle_service.py    # 插件生命周期服务
+         │   │
+         │   └─ commands/                      # 插件命令实现目录
+         │       ├─ plugin_admin_command_service.py # 管理命令服务
+         │       └─ plugin_query_command_service.py # 查询命令服务
          │
-         └─ resources/                         # 资源文件目录
-             ├─ epsp-area.csv                  # P2P 地震区域代码映射表
-             ├─ fe_regions_data.json           # FE 全球地震区划映射表
-             └─ card_templates/                # 消息卡片 HTML 模板
-                 ├─ Aurora/                    # 极光主题模板
-                 ├─ Base/                      # 基础通用模板 (地图瓦片、地震列表等)
-                 ├─ DarkNight/                 # 暗夜主题模板
-                 └─ map_render_helper.js       # 地图瓦片渲染共享 helper
+         ├─ resources/                         # 资源文件目录
+         │   ├─ __init__.py
+         │   ├─ epsp-area.csv                  # P2P 地震区域代码映射表
+         │   ├─ fe_regions_data.json           # FE 全球地震区划映射表
+         │   │
+         │   └─ card_templates/                # 消息卡片 HTML 模板
+         │       ├─ Aurora/                    # 极光主题模板
+         │       ├─ Base/                      # 基础通用模板（地图瓦片、地震列表等）
+         │       ├─ DarkNight/                 # 暗夜主题模板
+         │       ├─ leaflet.css                # Leaflet 样式资源
+         │       ├─ leaflet.js                 # Leaflet 脚本资源
+         │       └─ map_render_helper.js       # 地图瓦片渲染共享 helper
+         │
+         └─ utils/                             # 通用工具模块目录
+             ├─ __init__.py
+             ├─ converters.py                  # 数据类型转换工具
+             ├─ geolocation.py                 # IP 地理定位工具
+             ├─ map_tile_sources.py            # 地图瓦片源定义
+             ├─ time_converter.py              # 时间格式转换工具
+             └─ version.py                     # 获取插件版本号的工具
 ```
+
+> [!NOTE]
+> docs/ 目录中有关 Fan Studio 和 Wolfx 的 API 文档为个人收集整理，非完整内容，并且可能与官方文档表述存在出入或过时的问题，仅供参考，必要时请以官方文档为准。
+>
+> - [FAN Studio API Docs](https://api.fanstudio.tech/)
+> - [Wolfx 防灾(防災) 实用类 免费API接口](https://wolfx.jp/)
 
 ### 💾 数据持久化与存储
 
-插件运行时会在 `AstrBot/data/plugin_data/astrbot_plugin_disaster_warning/` 目录下自动创建并维护以下文件，确保数据的持久化与可追踪性：
+插件运行时会在 `AstrBot/data/plugin_data/astrbot_plugin_disaster_warning/` 目录下自动创建并维护以下文件，确保查询状态、通知缓存、统计结果与渲染临时资源都能被安全持久化：
 
 ```bash
 AstrBot/
@@ -1145,11 +1345,12 @@ AstrBot/
    └─ plugin_data/
       └─ astrbot_plugin_disaster_warning/
          ├─ temp/                              # 临时文件夹，用于存放渲染生成的图片文件
-         ├─ .telemetry_id                      # 匿名遥测实例ID（不包含任何用户信息）
+         ├─ .telemetry_id                      # 匿名遥测实例 ID（不包含任何用户信息）
          ├─ earthquake_lists_cache.json        # Wolfx 地震列表数据缓存
          ├─ eew_query_cache.json               # EEW 查询状态缓存
          ├─ events.db                          # SQLite 数据库，存储所有历史灾害事件记录
          ├─ logger_stats.json                  # 日志过滤器统计摘要
+         ├─ notifications_cache.json           # 官方通知缓存（通知内容、已读状态、最近同步时间）
          ├─ raw_messages.log                   # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
          ├─ raw_messages.log.1                 # 轮转日志文件（自动管理）
          ├─ raw_messages.log.2                 # 更多轮转文件...
@@ -1160,11 +1361,14 @@ AstrBot/
 - **统计数据 (`statistics.json`)**: 记录自插件启动以来的统计摘要信息（如震级分布、历史极值等）。即使插件重启，去重指纹和历史统计信息也会被保留。
 - **列表缓存 (`earthquake_lists_cache.json`)**: 持久化缓存获取到的地震列表数据，用于重载插件后也能第一时间使用 `/地震列表查询` 命令。
 - **EEW 查询缓存 (`eew_query_cache.json`)**: 持久化保存机构级地震预警查询状态（如最近一次预警发布时间、有效期等），用于插件重载后继续计算“无 EEW”时长。
+- **通知缓存 (`notifications_cache.json`)**：用于保存官方通知列表、已读映射和最近同步时间。这样通知中心在插件重启后仍能立即展示上次同步到的内容，不必等首次轮询完成。
 - **日志统计 (`logger_stats.json`)**: 记录日志过滤器的拦截统计信息，如心跳包过滤数、重复事件拦截数等。
 - **匿名ID (`.telemetry_id`)**: 用于遥测统计的匿名随机实例标识符。
 - **原始日志 (`raw_messages.log`)**: 仅在 WebUI 配置中启用 `enable_raw_message_logging` 时生成。它以极高的可读性记录了上游数据源的原始 JSON 结构，是开发者和高级用户排查问题的利器。
 - **日志轮转机制**: 插件内置了日志自动管理逻辑。默认单个日志上限为 50MB，和可配置的历史备份文件上限，防止占满磁盘空间。
 - **图片缓存 (`temp/`)**: 用于存放 Playwright 渲染生成的预警卡片图片。该目录有自动清理机制，无需手动维护。
+
+</details>
 
 ---
 
@@ -1173,244 +1377,232 @@ AstrBot/
 ### 📊 前端架构图
 
 ```mermaid
-graph TB
+flowchart TB
     %% ========== 样式定义 ==========
-    classDef entry fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
-    classDef core fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
+    classDef shell fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
+    classDef runtime fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
+    classDef state fill:#EDE7F6,stroke:#5E35B1,stroke-width:2px,color:#311B92;
     classDef view fill:#FFF3E0,stroke:#FB8C00,stroke-width:2px,color:#E65100;
     classDef component fill:#F3E5F5,stroke:#8E24AA,stroke-width:1.5px,color:#4A148C;
     classDef hook fill:#E0F7FA,stroke:#00ACC1,stroke-width:1.5px,color:#006064;
-    classDef data fill:#FFFDE7,stroke:#F9A825,stroke-width:1.5px,color:#5D4037;
-    classDef api fill:#FBE9E7,stroke:#F4511E,stroke-width:2px,color:#BF360C;
-    classDef util fill:#ECEFF1,stroke:#546E7A,stroke-width:1.5px,color:#263238;
-    classDef styling fill:#F1F8E9,stroke:#7CB342,stroke-width:1.5px,color:#33691E;
-    classDef infra fill:#EDE7F6,stroke:#5E35B1,stroke-width:1.5px,color:#311B92;
+    classDef service fill:#FBE9E7,stroke:#F4511E,stroke-width:2px,color:#BF360C;
+    classDef utility fill:#ECEFF1,stroke:#546E7A,stroke-width:1.5px,color:#263238;
+    classDef api fill:#FFFDE7,stroke:#F9A825,stroke-width:1.8px,color:#5D4037;
+    classDef persist fill:#F1F8E9,stroke:#7CB342,stroke-width:1.6px,color:#33691E;
 
-    %% ========== 应用装载层 ==========
-    subgraph L1["① 应用装载层（Browser Runtime）"]
+    %% ========== 静态宿主与启动 ==========
+    subgraph A["① 静态宿主与启动装载"]
         direction TB
-        A1["index.html<br/>脚本顺序加载与首屏骨架"]
-        A2["BootLoader<br/>主题预初始化 + 平滑退场"]
-        A3["app.jsx<br/>应用根组件"]
-        A4["ThemeProvider<br/>MD3 动态主题"]
-        A5["CssBaseline<br/>全局样式重置"]
-        A6["Layout Shell<br/>Sidebar + Header + MainContent"]
+        A1["入口页面<br/>脚本清单 / 字体 / 样式 / 首屏骨架"]
+        A2["认证引导<br/>访问令牌 / 登录表单 / 会话过期重载"]
+        A3["运行时依赖<br/>React / MUI / Emotion / Babel"]
+        A4["文档增强依赖<br/>marked / DOMPurify / Mermaid"]
+        A5["工具与服务预注册<br/>全局 window 命名空间"]
     end
 
-    %% ========== 上下文与状态层 ==========
-    subgraph L2["② 全局状态与上下文层（State Core）"]
+    %% ========== 根应用运行时 ==========
+    subgraph B["② 根应用运行时"]
         direction TB
-        B1["AppContext<br/>全局状态容器"]
-        B2["Reducer<br/>状态变更收敛"]
-        B3["initialState<br/>status/stats/events/connections"]
-        B4["dispatch(Action)<br/>统一更新入口"]
-        B5["refreshData()<br/>刷新运行状态"]
-        B6["fetchConnections()<br/>刷新连接信息"]
-        B7["fetchConfig()<br/>拉取显示时区等配置"]
-        B8["TOGGLE_THEME<br/>亮暗主题切换"]
-        B9["SET_WS_CONNECTED<br/>实时连接态"]
-        B10["UPDATE_STATS<br/>统计聚合与排序"]
+        B1["认证包装器<br/>等待认证就绪后挂载"]
+        B2["应用上下文提供器<br/>归并器状态容器"]
+        B3["提示消息提供器<br/>全局操作反馈"]
+        B4["根组件 App<br/>主题 / 布局 / 视图切换"]
+        B5["MD3 主题工厂<br/>亮暗主题令牌"]
+        B6["布局外壳<br/>侧边导航 + 顶栏 + 主内容"]
+        B7["模拟预警弹窗<br/>全局弹层入口"]
     end
 
-    %% ========== 视图层 ==========
-    subgraph L3["③ 视图路由层（Views）"]
+    %% ========== 全局状态 ==========
+    subgraph C["③ 全局状态与实时同步"]
+        direction TB
+        C1["初始状态<br/>状态 / 统计 / 连接 / 通知 / 文档 / 主题"]
+        C2["状态归并器<br/>动作驱动更新"]
+        C3["启动初始化<br/>状态 / 配置 / 连接 / 统计"]
+        C4["运行时长派生<br/>秒级运行时长更新"]
+        C5["主题同步<br/>根节点类名 + 本地存储"]
+        C6["WebSocket 钩子<br/>订阅全局单例连接"]
+        C7["实时消息归并<br/>状态 / 统计 / 连接 / 通知 / 新事件"]
+    end
+
+    %% ========== 视图路由 ==========
+    subgraph D["④ 视图注册与页面容器"]
         direction LR
-        C1["StatusView<br/>运行态与运维操作"]
-        C2["EventsView<br/>事件时间线 + 列表"]
-        C3["StatsView<br/>图表与榜单总览"]
-        C4["ConfigView<br/>配置管理容器"]
+        D1["运行状态<br/>健康度与运维操作"]
+        D2["事件列表<br/>时间线 / 查询 / 分页"]
+        D3["数据统计<br/>图表 / 热力 / 榜单"]
+        D4["通知中心<br/>公告流 / 已读状态"]
+        D5["文档浏览<br/>Markdown + Mermaid"]
+        D6["配置管理<br/>配置模式动态表单"]
     end
 
-    %% ========== 状态页组件 ==========
-    subgraph L4S["④-1 状态页组件组（Status Components）"]
+    %% ========== 页面组件 ==========
+    subgraph E["⑤ 页面组件矩阵"]
         direction TB
-        S1["NewsTicker<br/>实时动态跑马灯"]
-        S2["StatusCard<br/>服务状态卡片"]
-        S3["StatsCard<br/>核心统计卡片"]
-        S4["ConnectionsGrid<br/>连接矩阵 + 延迟"]
-        S5["SimulationModal<br/>模拟预警表单"]
-        S6["Quick Actions<br/>重连/刷新/清除"]
+        E1["通用组件<br/>页头 / 侧边栏 / 提示消息 / 分页器"]
+        E2["状态组件<br/>跑马灯 / 状态卡 / 连接矩阵 / 地震预警状态 / 快捷操作"]
+        E3["事件组件<br/>重大事件横向时间线 / 天气查询 / 筛选器 / 折叠事件组"]
+        E4["统计组件<br/>震级分布 / 趋势图 / 日历热力图 / 榜单 / 日志统计"]
+        E5["通知与文档组件<br/>通知流 / 文档目录 / Markdown 文章区 / Mermaid 视口控制"]
+        E6["配置组件<br/>模式工具栏 / 字段布局 / 对象组 / 基础字段 / 操作栏"]
     end
 
-    %% ========== 事件页组件 ==========
-    subgraph L4E["④-2 事件页组件组（Events Components）"]
+    %% ========== 钩子能力 ==========
+    subgraph F["⑥ 钩子能力层"]
         direction TB
-        E1["HorizontalTimeline<br/>重大事件横向回溯"]
-        E2["EventsList<br/>分页 + 筛选 + 折叠"]
-        E3["Event Grouping<br/>按 event_id 聚合"]
-        E4["History Collapse<br/>多报展开/收起"]
-        E5["Badge Engine<br/>震级/震度/烈度语义徽章"]
-        E6["Pagination<br/>跳页与每页条数"]
+        F1["应用生命周期钩子<br/>启动拉取 / 主题同步 / 认证就绪 / 骨架退场"]
+        F2["滚动记忆钩子<br/>主内容滚动 / 列表刷新位置保留"]
+        F3["事件查询钩子<br/>筛选 / 数据源 / 震级 / 关键词 / 分页 / 请求中断控制"]
+        F4["重大事件与天气查询钩子<br/>时间线刷新 / 气象预警检索"]
+        F5["配置编辑钩子<br/>加载 / 草稿 / 保存 / 会话差异 / 展开状态 / 滚动恢复"]
+        F6["文档钩子<br/>Markdown 文件列表 / 文档内容 / Mermaid 渲染"]
     end
 
-    %% ========== 统计页组件 ==========
-    subgraph L4T["④-3 统计页组件组（Stats Components）"]
+    %% ========== 前端服务 ==========
+    subgraph G["⑦ 前端服务与协议封装"]
         direction TB
-        T1["MagnitudeChart<br/>震级分布"]
-        T2["TrendChart<br/>趋势图"]
-        T3["CalendarHeatmap<br/>热力图"]
-        T4["TopListCard<br/>地区/来源排行"]
-        T5["MaxMagCard<br/>最大地震"]
-        T6["WeatherLevelCard + LogStatsCard<br/>气象级别与日志统计"]
+        G1["统一请求客户端<br/>接口前缀 / 查询参数 / 数据解包 / 错误处理"]
+        G2["状态服务<br/>状态 / 统计 / 连接 / 模拟 / 重连 / 目录打开"]
+        G3["事件服务<br/>事件列表 / 重大事件 / 气象查询"]
+        G4["配置服务<br/>配置模式 / 全量配置 / 会话差异配置"]
+        G5["通知与文档服务<br/>通知列表 / 已读 / 同步 / Markdown 文件"]
+        G6["WebSocket 单例客户端<br/>令牌拼接 / 订阅广播 / 指数退避重连"]
+        G7["统计归一化<br/>后端统计载荷转前端展示模型"]
     end
 
-    %% ========== 配置页组件 ==========
-    subgraph L4C["④-4 配置页组件组（Config Components）"]
+    %% ========== 工具与样式 ==========
+    subgraph H["⑧ 工具、样式与本地体验"]
         direction TB
-        G1["ConfigRenderer<br/>Schema 动态渲染"]
-        G2["ConfigField<br/>字段类型分发器"]
-        G3["Session Mode<br/>全局/会话差异配置"]
-        G4["Draft Cache<br/>草稿本地持久化"]
-        G5["Expanded Cache<br/>折叠状态记忆"]
-        G6["Save Pipeline<br/>清洗后提交"]
+        H1["格式化工具<br/>时间时区 / 数据源 / 事件字段 / 数值展示"]
+        H2["事件分组工具<br/>按事件标识聚合多报更新"]
+        H3["配置模式工具<br/>默认值 / 可见字段 / 清洗 / 覆写提取"]
+        H4["Markdown 工具<br/>清洗 / 表格 / 代码块 / 提示块 / Mermaid 预处理"]
+        H5["Mermaid 视口工具<br/>缩放 / 拖拽 / 重置 / 自适应"]
+        H6["样式系统<br/>基础样式 / 布局样式 / 组件样式 / 视图样式"]
+        H7["本地持久化<br/>主题 / 当前视图 / 滚动位置 / 配置草稿"]
     end
 
-    %% ========== Hooks 层 ==========
-    subgraph L5["⑤ Hooks 能力层（Runtime Hooks）"]
+    %% ========== 后端接口边界 ==========
+    subgraph I["⑨ 管理端接口边界"]
         direction TB
-        H1["useWebSocket<br/>全局单例连接"]
-        H2["ConnectionListeners<br/>订阅广播机制"]
-        H3["Reconnect Scheduler<br/>断线重连"]
-        H4["useApi<br/>REST 请求封装"]
-        H5["usePreservedScroll<br/>滚动保留恢复"]
-        H6["Custom Effects<br/>视图切换滚动记忆"]
+        I1["状态接口<br/>/api/status / statistics / connections"]
+        I2["事件接口<br/>/api/events / events/major / weather/query"]
+        I3["配置接口<br/>/api/config-schema / full-config / session-config"]
+        I4["通知与文档接口<br/>/api/notifications / markdown-files"]
+        I5["运维接口<br/>/api/simulate / reconnect / maintenance"]
+        I6["实时通道<br/>/ws<br/>全量快照 + 增量事件推送"]
     end
 
-    %% ========== 数据与接口层 ==========
-    subgraph L6["⑥ 数据接口层（Data Plane）"]
-        direction TB
-        D1["/api/status<br/>运行状态"]
-        D2["/api/connections<br/>连接详情"]
-        D3["/api/config + /api/full-config<br/>配置读取/保存"]
-        D4["/api/events + /api/events/major<br/>事件列表/重大事件"]
-        D5["/api/statistics + /api/trend + /api/heatmap<br/>统计图表数据"]
-        D6["/api/simulate + /api/simulation-params<br/>模拟预警链路"]
-        D7["/api/session-config/*<br/>会话差异配置"]
-        D8["/ws<br/>实时推送通道"]
-    end
+    %% ========== 启动链路 ==========
+    A1 --> A2 --> B1
+    A1 --> A3
+    A1 --> A4
+    A1 --> A5
+    B1 --> B2 --> B3 --> B4
+    B4 --> B5 --> B6
+    B4 --> B7
+    B4 --> C6
 
-    %% ========== 工具与样式层 ==========
-    subgraph L7["⑦ 工具与样式层（Utilities & Design Tokens）"]
-        direction TB
-        U1["formatters.js<br/>时间/来源/数值格式化"]
-        U2["style.css<br/>响应式 + 主题变量 + 动画"]
-        U3["Material UI UMD<br/>组件基础设施"]
-        U4["Emotion<br/>运行时样式系统"]
-        U5["LocalStorage<br/>主题/视图/滚动/草稿缓存"]
-    end
+    %% ========== 状态链路 ==========
+    B2 --> C1
+    C1 --> C2
+    B2 --> C3
+    B2 --> C4
+    B2 --> C5
+    C6 --> C7 --> C2
+    C2 --> B4
 
-    %% ========== 主干连接 ==========
-    A1 --> A2
-    A2 --> A3
-    A3 --> A4
-    A4 --> A5
-    A5 --> A6
-
-    A3 --> B1
-    B1 --> B2
-    B1 --> B3
-    B2 --> B4
-    B4 --> B8
-    B4 --> B9
-    B4 --> B10
-
-    A6 --> C1
-    A6 --> C2
-    A6 --> C3
-    A6 --> C4
-
-    C1 --> S1
-    C1 --> S2
-    C1 --> S3
-    C1 --> S4
-    C1 --> S5
-    C1 --> S6
-
-    C2 --> E1
-    C2 --> E2
-    E2 --> E3
-    E2 --> E4
-    E2 --> E5
-    E2 --> E6
-
-    C3 --> T1
-    C3 --> T2
-    C3 --> T3
-    C3 --> T4
-    C3 --> T5
-    C3 --> T6
-
-    C4 --> G1
-    G1 --> G2
-    G1 --> G3
-    G1 --> G4
-    G1 --> G5
-    G1 --> G6
-
-    %% ========== Hooks 与上下文耦合 ==========
-    A3 --> H1
-    A3 --> H4
-    E2 --> H5
-    A3 --> H6
-    H1 --> H2
-    H1 --> H3
-
-    H1 --> D8
-    H4 --> D1
-    H4 --> D2
-    H4 --> D3
-    H4 --> D4
-    H4 --> D5
-    H4 --> D6
-    H4 --> D7
-
-    B5 --> D1
+    %% ========== 视图挂载 ==========
+    B6 --> D1
     B6 --> D2
-    B7 --> D3
+    B6 --> D3
+    B6 --> D4
+    B6 --> D5
+    B6 --> D6
 
-    %% ========== 状态回流 ==========
-    D8 --> H1
-    H1 --> B4
-    D1 --> B5
-    D2 --> B6
-    D3 --> B7
-    D4 --> E2
-    D4 --> E1
-    D5 --> C3
-    D6 --> S5
-    D7 --> G3
+    D1 --> E2
+    D2 --> E3
+    D3 --> E4
+    D4 --> E5
+    D5 --> E5
+    D6 --> E6
+    B6 --> E1
+
+    %% ========== 钩子支撑 ==========
+    B4 --> F1
+    B4 --> F2
+    D2 --> F3
+    D2 --> F4
+    D6 --> F5
+    D5 --> F6
+    E3 --> F2
+    E6 --> F5
+    E5 --> F6
+
+    %% ========== 服务调用 ==========
+    C3 --> G2
+    C3 --> G4
+    C3 --> G7
+    F3 --> G3
+    F4 --> G3
+    F5 --> G4
+    F6 --> G5
+    D4 --> G5
+    D1 --> G2
+    C6 --> G6
+    G2 --> G1
+    G3 --> G1
+    G4 --> G1
+    G5 --> G1
+
+    %% ========== 后端边界 ==========
+    G1 --> I1
+    G1 --> I2
+    G1 --> I3
+    G1 --> I4
+    G1 --> I5
+    G6 --> I6
+    I6 --> G6
+    I6 --> C7
 
     %% ========== 工具支撑 ==========
-    U1 --> S1
-    U1 --> E1
-    U1 --> E2
-    U1 --> C3
-    U2 --> A6
-    U2 --> C1
-    U2 --> C2
-    U2 --> C3
-    U2 --> C4
-    U3 --> A3
-    U4 --> U3
-    U5 --> A3
-    U5 --> G4
-    U5 --> G5
-    U5 --> H6
+    H1 --> E1
+    H1 --> E2
+    H1 --> E3
+    H1 --> E4
+    H1 --> E5
+    H2 --> E3
+    H3 --> F5
+    H3 --> E6
+    H4 --> E5
+    H5 --> F6
+    H6 --> B6
+    H6 --> E2
+    H6 --> E3
+    H6 --> E4
+    H6 --> E5
+    H6 --> E6
+    H7 --> F1
+    H7 --> F2
+    H7 --> F5
 
-    %% ========== 视觉分层样式绑定 ==========
-    class A1,A2,A3,A4,A5,A6 entry;
-    class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10 core;
-    class C1,C2,C3,C4 view;
-    class S1,S2,S3,S4,S5,S6,E1,E2,E3,E4,E5,E6,T1,T2,T3,T4,T5,T6,G1,G2,G3,G4,G5,G6 component;
-    class H1,H2,H3,H4,H5,H6 hook;
-    class D1,D2,D3,D4,D5,D6,D7,D8 api;
-    class U1,U2,U3,U4,U5 util;
+    %% ========== 样式绑定 ==========
+    class A1,A2,A3,A4,A5 shell;
+    class B1,B2,B3,B4,B5,B6,B7 runtime;
+    class C1,C2,C3,C4,C5,C6,C7 state;
+    class D1,D2,D3,D4,D5,D6 view;
+    class E1,E2,E3,E4,E5,E6 component;
+    class F1,F2,F3,F4,F5,F6 hook;
+    class G1,G2,G3,G4,G5,G6,G7 service;
+    class H1,H2,H3,H4,H5,H6 utility;
+    class H7 persist;
+    class I1,I2,I3,I4,I5,I6 api;
 ```
 
 ### 📊 后端架构图
 
 ```mermaid
 graph TB
+    %% ========== 样式定义 ==========
     classDef entry fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
     classDef orchestration fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
     classDef network fill:#E1F5FE,stroke:#039BE5,stroke-width:1.6px,color:#01579B;
@@ -1425,322 +1617,304 @@ graph TB
         direction TB
         U1["宿主系统（AstrBot）"]
         U2["用户命令与管理员命令"]
-        U3["FAN Studio数据流"]
-        U4["P2P 地震情报数据流"]
-        U5["Wolfx 数据流"]
-        U6["Global Quake 数据流"]
-        U7["Wolfx 地震列表接口"]
-        U8["Web 控制台浏览器"]
+        U3["多源 WebSocket 数据流<br/>FAN Studio / P2P / Wolfx / Global Quake"]
+        U4["HTTP 接口与列表数据<br/>Wolfx 列表 / 其他接口数据"]
+        U5["Web 控制台浏览器"]
     end
 
-    subgraph B2["② 插件入口层 main.py"]
+    subgraph B2["② 插件入口层"]
         direction TB
-        M1["插件初始化"]
-        M2["配置校验与自动修正"]
-        M3["核心服务单例装配"]
-        M4["核心服务启动"]
-        M5["遥测启动与心跳"]
-        M6["管理端服务启动"]
-        M7["命令分发（状态/重连/统计/模拟）"]
-        M8["插件终止与资源回收"]
+        M1["主入口 main.py"]
+        M2["生命周期服务<br/>配置修正 / 遥测注入 / 异常托管"]
+        M3["管理员命令服务"]
+        M4["查询命令服务"]
+        M5["Web 管理端装配入口"]
     end
 
-    subgraph B3["③ 服务编排层（核心服务）"]
+    subgraph B3["③ 应用编排层（核心服务）"]
         direction TB
-        S1["注册表完整性自检"]
-        S2["消息处理器注册"]
-        S3["连接拓扑构建"]
-        S4["长连接任务建立"]
-        S5["定时拉取地震列表"]
-        S6["定时清理任务"]
-        S7["统一事件处理总线"]
-        S8["服务状态聚合输出"]
-        S9["全源手动重连"]
-        S10["服务停机与任务取消"]
+        S1["DisasterWarningService<br/>核心服务门面"]
+        S2["生命周期 / 运行时服务<br/>启动、停机、任务编排"]
+        S3["连接拓扑构建<br/>数据源目录 + 连接计划构建器"]
+        S4["注册表完整性自检<br/>解析器 / 展示器 注册检查"]
+        S5["统一事件流水线<br/>推送 → 统计 → 管理端广播"]
+        S6["状态 / 离线通知 / 重连服务"]
+        S7["通知中心<br/>官方通知同步、缓存与广播"]
     end
 
-    subgraph B4["④ 网络接入层"]
+    subgraph B4["④ 网络接入与标准化层"]
         direction TB
-        N1["连接管理器启动"]
-        N2["连接建立与消息循环"]
-        N3["连接保活心跳"]
-        N4["自动重连调度"]
-        N5["强制立即重连"]
-        N6["HTTP 数据抓取"]
-        N7["原始消息记录"]
+        N1["WebSocket 管理器 / HTTP 抓取器<br/>长连接与定时拉取"]
+        N2["消息路由器<br/>按数据源家族分发"]
+        N3["多源解析器"]
+        N4["接入旁路副作用服务<br/>列表缓存 / 摘要日志"]
+        N5["事件接入分发服务<br/>同步 / 后台分发策略"]
+        N6["统一事件模型<br/>EventEnvelope"]
     end
 
-    subgraph B5["⑤ 路由与解析层"]
+    subgraph B5["⑤ 推送决策与过滤层"]
         direction TB
-        H1["Fan Studio 消息路由器"]
-        H2["P2P 消息路由器"]
-        H3["Wolfx 消息路由器"]
-        H4["Global Quake 路由器"]
-        H5["处理器实例注册表"]
-        H6["结构化事件输出"]
-        H7["连接上下文注入"]
+        P1["会话配置管理<br/>目标会话与差异配置"]
+        P2["推送编排器<br/>普通推送 / 融合推送分流"]
+        P3["融合服务<br/>CENC / CWA 预警融合等待"]
+        P4["推送流程处理器<br/>去重、后处理、拆图补发"]
+        P5["推送执行服务<br/>预筛、复核、并发发送"]
+        P6["规则组合判定<br/>时间 / 来源 / 关键词 / 烈度 / 报数"]
     end
 
-    subgraph B6["⑥ 推送决策层"]
+    subgraph B6["⑥ 消息构建与渲染层"]
         direction TB
-        P1["推送主入口"]
-        P2["中国地震台网融合分流"]
-        P3["实际推送执行器"]
-        P4["事件去重器"]
-        P5["会话生效配置读取"]
-        P6["推送条件总判定"]
-        P7["多过滤器组合判定"]
-        P8["报数频率控制"]
-        P9["本地烈度估算"]
-        P10["消息异步构建"]
-        P11["多会话并发下发"]
-        P12["地图异步补发"]
+        R1["消息管理器<br/>消息子系统高层装配"]
+        R2["消息构建服务<br/>文本 / 卡片 / 地图构建"]
+        R3["展示器与构建器<br/>上下文整理与消息构造"]
+        R4["浏览器池与渲染缓存<br/>Playwright / 渲染缓存"]
+        R5["远程媒体抓取服务"]
+        R6["会话发送器"]
     end
 
-    subgraph B7["⑦ 消息构建与渲染层"]
+    subgraph B7["⑦ 持久化与运行状态层"]
         direction TB
-        R1["地震/海啸/气象文本格式化"]
-        R2["浏览器页面池管理"]
-        R3["全球地震卡片渲染"]
-        R4["通用地图卡片渲染"]
-        R5["地震列表卡片渲染"]
-        R6["图片转码封装"]
-        R7["消息发送到会话"]
+        D1["StatisticsManager<br/>统计子系统总入口"]
+        D2["统计子服务<br/>聚合、规则、查询、加载、会话统计"]
+        D3["SQLite 事件明细库"]
+        D4["JSON 快照与缓存<br/>统计 / 列表 / 预警状态"]
+        D5["原始消息日志链路"]
+        D6["运行时状态<br/>连接状态、健康度、后台任务"]
     end
 
-    subgraph B8["⑧ 持久化与统计层"]
+    subgraph B8["⑧ 运维与治理层"]
         direction TB
-        D1["统计记录入口"]
-        D2["事件主表"]
-        D3["报次更新表"]
-        D4["统计快照文件"]
-        D5["地震列表缓存文件"]
-        D6["会话差异配置文件"]
-        D7["原始日志文件"]
-        D8["日志统计文件"]
-    end
-
-    subgraph B9["⑨ 支撑能力层"]
-        direction TB
-        C1["配置治理器"]
-        C2["匿名遥测器"]
-        C3["模拟预警服务"]
-        C4["数据源语义映射"]
-        C5["统一数据模型"]
-        C6["消息格式工具集"]
-    end
-
-    subgraph B10["⑩ 管理端后端层"]
-        direction TB
-        W1["状态与连接接口"]
-        W2["统计趋势接口"]
-        W3["事件检索接口"]
-        W4["配置读写接口"]
-        W5["会话配置接口"]
-        W6["运维操作接口"]
-        W7["模拟测试接口"]
-        W8["实时广播通道"]
-        W9["事件驱动即时推送"]
+        C1["配置访问与校验<br/>配置访问器 / 配置校验器"]
+        C2["匿名遥测管理"]
+        C3["FastAPI 管理接口与载荷构建"]
+        C4["WebSocket 实时广播<br/>周期快照 + 事件即时推送"]
+        C5["数据源健康探测"]
+        C6["资源清理与回收"]
+        C7["文档浏览工具路由<br/>Markdown 文件列表与内容读取"]
     end
 
     U1 --> M1
-    U2 --> M7
-    U3 --> N2
-    U4 --> N2
-    U5 --> N2
-    U6 --> N2
-    U7 --> N6
-    U8 --> W8
+    U2 --> M3
+    U2 --> M4
+    U3 --> N1
+    U4 --> N1
+    U5 --> C3
+    U5 --> C4
 
     M1 --> M2
-    M2 --> M3
-    M3 --> M4
-    M4 --> S1
-    M5 --> C2
-    M6 --> B10
-    M7 --> C3
-    M8 --> S10
+    M1 --> S1
+    M1 --> M5
+    M2 --> C1
+    M2 --> C2
+    M2 --> C6
+    M3 --> S6
+    M3 --> D1
+    M4 --> D4
+    M5 --> C3
+    M5 --> C4
+    M5 --> C5
+    M5 --> C7
 
     S1 --> S2
-    S2 --> H5
+    S1 --> S3
+    S1 --> S4
+    S1 --> S5
+    S1 --> S6
+    S1 --> S7
+    S1 --> N1
+    S1 --> R1
+    S1 --> D1
+    S1 --> P1
+
+    S2 --> N1
+    S2 --> C6
     S3 --> N1
-    S4 --> N2
-    S5 --> N6
-    S6 --> P4
-    S7 --> P1
-    S7 --> D1
-    S8 --> W1
-    S9 --> N5
-    S10 --> N1
-    S10 --> R2
-    S10 --> C2
+    S4 --> N3
+    S5 --> R1
+    S5 --> D1
+    S5 --> C4
+    S6 --> D6
+    S6 --> N1
+    S7 --> C4
+    S7 --> D4
+    S7 --> C3
 
     N1 --> N2
     N2 --> N3
-    N2 --> N7
-    N2 --> H1
-    N2 --> H2
-    N2 --> H3
-    N2 --> H4
     N2 --> N4
-    N4 --> N2
-    N5 --> N2
+    N2 --> N5
+    N3 --> N6
+    N4 --> D4
+    N4 --> D5
+    N5 --> S5
+    N6 --> P2
 
-    N6 --> H3
-    N7 --> D7
-
-    H5 --> H1
-    H5 --> H2
-    H5 --> H3
-    H5 --> H4
-    H1 --> H6
-    H2 --> H6
-    H3 --> H6
-    H4 --> H6
-    H6 --> H7
-    H6 --> S7
-
-    P1 --> P2
-    P1 --> P3
+    P1 --> P5
+    P2 --> P3
+    P2 --> P4
     P3 --> P4
-    P3 --> P5
-    P3 --> P6
-    P6 --> P7
-    P6 --> P8
-    P6 --> P9
-    P3 --> P10
-    P3 --> P11
-    P3 --> P12
+    P4 --> P5
+    P5 --> P6
+    P5 --> R2
+    P6 --> P5
 
-    P10 --> R1
-    P10 --> R2
+    R1 --> P2
+    R1 --> R2
+    R1 --> R4
+    R1 --> R5
     R2 --> R3
     R2 --> R4
     R2 --> R5
-    R3 --> R6
-    R4 --> R6
-    R5 --> R6
-    R6 --> R7
-    P11 --> R7
-    P12 --> R7
+    R2 --> R6
+    R3 --> R2
+    R4 --> R2
+    R5 --> R2
+    R6 --> D6
 
     D1 --> D2
     D1 --> D3
     D1 --> D4
-    S5 --> D5
-    P5 --> D6
-    N7 --> D8
+    D2 --> D4
+    C3 --> S7
+    C7 --> D4
+    D5 --> D4
+    D6 --> C4
+    D6 --> C5
 
-    C1 --> M2
-    C3 --> M7
-    C4 --> P6
-    C5 --> H6
-    C6 --> R1
+    C1 --> S3
+    C1 --> P1
+    C2 --> S1
+    C2 --> R1
+    C3 --> S6
+    C3 --> D1
+    C3 --> P1
+    C4 --> U5
+    C5 --> D6
+    C6 --> R4
+    C6 --> R5
+    C6 --> N1
 
-    W1 --> S8
-    W2 --> D1
-    W3 --> D2
-    W4 --> C1
-    W5 --> P5
-    W6 --> S9
-    W7 --> C3
-    W8 --> W9
-    W9 --> U8
-    S7 --> W9
-
-    class U1,U2,U3,U4,U5,U6,U7,U8 external;
-    class M1,M2,M3,M4,M5,M6,M7,M8 entry;
-    class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10 orchestration;
-    class N1,N2,N3,N4,N5,N6,N7 network;
-    class H1,H2,H3,H4,H5,H6,H7 handler;
-    class P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12 filter;
-    class R1,R2,R3,R4,R5,R6,R7 message;
-    class D1,D2,D3,D4,D5,D6,D7,D8 storage;
+    class U1,U2,U3,U4,U5 external;
+    class M1,M2,M3,M4,M5 entry;
+    class S1,S2,S3,S4,S5,S6 orchestration;
+    class N1,N2,N3,N4,N5,N6 network;
+    class P1,P2,P3,P4,P5,P6 filter;
+    class R1,R2,R3,R4,R5,R6 message;
+    class D1,D2,D3,D4,D5,D6 storage;
     class C1,C2,C3,C4,C5,C6 support;
-    class W1,W2,W3,W4,W5,W6,W7,W8,W9 network;
 ```
 
 ### 📋 架构特点与细节
+
+<details>
+<summary>点击查看架构细节</summary>
 
 本插件采用了高度模块化、松耦合的工业级架构设计，专注于在高并发灾害数据流下的实时性、鲁棒性与准确性。
 
 #### 🧩 一、 前端架构设计与运行机制
 
-管理端前端采用“**静态资源 + 浏览器端 React 运行时编译**”的轻部署模式，在不引入额外打包流水线的前提下，实现了复杂控制台能力：
+管理端前端采用“**静态资源 + 浏览器端 React 运行时编译**”的轻部署模式，由 [`admin/index.html`](admin/index.html) 显式声明脚本、样式与第三方运行时加载顺序，不依赖额外打包流水线即可运行完整控制台：
 
-- **分层组织清晰**：按 `context / hooks / views / components / utils` 分层，避免页面逻辑与基础能力耦合。
-- **状态中心化**：通过 `AppContext + Reducer` 统一管理状态、统计、连接、主题与加载态，确保状态流可追踪。
-- **视图容器化**：四大视图（状态/事件/统计/配置）由根容器统一挂载，侧边导航只负责切换，不直接承载业务副作用。
+- **装载链路轻量明确**：入口页面先完成主题预初始化、字体与样式加载，再依次挂载认证工具、请求服务、状态上下文、主题工厂、钩子、组件、视图注册表与根组件，降低部署复杂度。
+- **认证与首屏解耦**：首屏骨架和登录表单位于 React 根节点之外，认证完成后再挂载应用；会话失效时通过浏览器事件触发重载，避免未授权状态污染应用运行时。
+- **分层组织清晰**：前端按上下文、钩子、服务、视图、组件、主题、工具与样式分层，页面只负责组装，连接、请求、滚动、配置草稿、文档渲染等能力下沉到专门模块。
 
-在运行机制上，前端形成了“**REST 初始化 + WebSocket 增量更新**”的双通道数据模型：
+在状态与数据流上，前端已经从单纯页面拉取演进为“**初始化快照 + 实时增量 + 操作后校准**”的控制台模型：
 
-- **首屏阶段**：先拉取 `/api/status`、`/api/config`、`/api/connections`，快速建立可交互骨架。
-- **实时阶段**：通过 `/ws` 接收增量消息，触发 `UPDATE_STATUS`、`UPDATE_STATS`、`UPDATE_CONNECTIONS` 等动作。
-- **一致性策略**：关键操作（如刷新、重连、统计清空）执行后主动补一次 REST 校准，避免纯流式状态漂移。
+- **全局状态中心化**：通过 [`AppContext`](admin/js/context/AppContext.jsx) 与状态归并器统一维护运行状态、统计摘要、连接矩阵、事件缓存、通知元信息、文档状态、主题与加载态。
+- **初始化快照**：应用启动后并行拉取 `/api/status`、`/api/config`、`/api/connections` 与 `/api/statistics`，先建立可交互的运行视图与统计基线。
+- **实时增量回流**：[`WebSocketClient`](admin/js/services/webSocketClient.js) 维护全局单例连接，负责令牌拼接、监听器广播和指数退避重连；[`useWebSocket`](admin/js/hooks/app/useWebSocket.js) 将后端推送的状态、统计、连接、通知与新事件归并回全局状态。
+- **操作后校准**：刷新、重连、清除统计、通知同步等操作会在必要时再次触发接口拉取，避免长时间运行后只依赖实时流造成状态漂移。
 
-为保障高频交互体验，前端在“状态持久化与滚动恢复”上做了专门工程化设计：
+在视图组织上，当前管理端不再只有四个基础页面，而是形成了六个注册化视图：
 
-- **本地持久化**：主题、当前视图、配置草稿、折叠状态、滚动位置等均落地 `localStorage`。
-- **滚动保留机制**：视图切换与事件列表刷新时，优先恢复用户阅读上下文，减少异步渲染导致的跳动。
-- **用户优先原则**：滚动恢复过程中检测到用户主动操作时立即让渡控制，防止“强制回拉”影响浏览。
+- **运行状态视图**：展示跑马灯、运行状态、核心统计、数据源连接矩阵、地震预警状态与模拟/重连/刷新/清除统计等运维操作。
+- **事件列表视图**：组合重大事件横向时间线、气象预警查询、事件筛选、分页列表与多报折叠时间线，支持类型、来源、震级、排序和关键词过滤。
+- **数据统计视图**：集中展示震级分布、趋势图、日历热力图、地区榜单、数据源贡献、气象级别与日志统计。
+- **通知中心与文档浏览视图**：通知中心处理官方通知同步和已读状态；文档浏览视图可直接读取插件内 Markdown 文件，并支持 Mermaid 图表渲染、缩放、拖拽与重置。
+- **配置管理视图**：[`ConfigRenderer`](admin/js/components/config/ConfigRenderer.jsx) 基于后端配置模式动态渲染全局配置与会话差异配置，配置加载、草稿、保存、回滚、默认值恢复、展开状态和滚动恢复均由专用钩子拆分处理。
 
-在组件通信与可维护性方面，前端遵循“能力下沉、页面组装”的策略：
+为保障高频交互体验，前端在本地状态保留与异步刷新细节上做了专门工程化设计：
 
-- **Hook 能力沉淀**：`useWebSocket`、`useApi`、`usePreservedScroll` 分别封装连接、请求与交互细节。
-- **通用组件复用**：Header、Sidebar、Toast、卡片类组件在多视图复用，降低样式与逻辑重复。
-- **配置动态渲染**：`ConfigRenderer` 按后端 Schema 自动生成表单，减少硬编码字段维护成本。
+- **本地持久化**：主题、当前视图、主内容滚动位置、配置草稿、配置折叠状态与配置页滚动位置等均落地浏览器本地存储。
+- **滚动恢复策略**：主内容区按视图记忆滚动位置；事件列表在实时刷新和分页查询时保留阅读位置，减少异步数据更新造成的跳动。
+- **用户优先原则**：滚动恢复期间一旦检测到用户主动滚动、触摸、滚轮或键盘操作，会立即停止自动回拉，避免干扰阅读。
 
-在视觉系统上，管理端以 MD3 设计语言为核心并兼顾性能约束：
+在服务封装与可维护性方面，前端遵循“统一协议入口、页面消费服务、工具辅助展示”的策略：
 
-- **主题令牌化**：颜色、圆角、层级通过变量统一管理，支持亮暗主题平滑切换。
-- **响应式布局**：覆盖桌面/平板/移动端，导航与网格按断点自适应重排。
-- **加载体验优化**：首屏骨架 + 启动动画 + 渐进隐藏策略，降低“白屏感”和主题闪烁。
+- **统一请求客户端**：所有 HTTP 请求经 [`apiClient.js`](admin/js/services/apiClient.js) 构造接口地址、查询参数、请求体、响应解包与错误对象，页面无需重复处理协议细节。
+- **领域服务拆分**：状态、事件、配置、通知、统计归一化与实时连接分别由独立服务封装，便于后端接口演进时局部调整。
+- **展示工具复用**：时间时区、事件字段、来源名称、事件分组、配置模式清洗、Markdown 清洗与 Mermaid 视口控制均拆到工具层，降低组件内条件分支和重复逻辑。
+
+在视觉系统上，管理端以 MD3 设计语言为核心，并兼顾轻部署场景下的运行性能：
+
+- **主题令牌化**：颜色、圆角、层级与明暗主题通过主题工厂和样式变量统一管理，主题切换会同步到根节点类名与本地存储。
+- **样式分层明确**：基础样式、布局样式、通用组件样式与各视图样式拆分管理，配合 MUI 与 Emotion 运行时提供统一的界面语义。
+- **加载体验优化**：首屏骨架、登录态切换、加载进度条和骨架退场策略共同降低白屏感，同时避免暗色主题闪烁。
 
 #### 🧩 二、 后端架构设计与运行机制
 
-后端采用“**入口控制 + 服务编排 + 数据接入 + 推送决策 + 持久化观测**”的分层架构，重点围绕“稳定接入、快速决策、可观测运维”三条主线建设。
+后端已经演进为一套“**入口壳 + 应用编排 + 接入标准化 + 推送决策 + 存储观测 + 运维治理**”的模块化体系。它不是简单按“网络/处理器/数据库”平铺，而是围绕**统一事件模型**与**多会话推送链**来组织职责，因此在多源并发、推送差异化和控制台可观测性之间保持了较好的平衡。
 
-在整体分层上，后端职责边界清晰：
+在整体分层上，当前实现大致可概括为六层：
 
-- **入口层**：由 `main.py` 负责初始化、配置校验、命令入口与终止回收。
-- **编排层**：由 `DisasterWarningService` 承担连接组织、任务托管、事件总线与状态聚合。
-- **能力层**：由网络、解析、过滤、渲染、存储与支撑模块组成可替换能力单元。
+- **入口壳层**：[`main.py`](main.py) 只保留 AstrBot 插件入口职责，把初始化、命令分发、管理端启动和终止回收控制在较薄的一层。
+- **应用编排层**：[`DisasterWarningService`](core/app/disaster_service.py) 作为核心服务门面，统一持有配置、上下文、共享状态与子系统引用。
+- **接入标准化层**：[`WebSocketManager`](core/network/websocket/websocket_manager.py)、[`SourceMessageRouter`](core/network/source_message_router.py)、各类 [`parser.parse_message()`](core/parsers/base_parser.py) 共同把上游异构报文规整为统一事件。
+- **推送决策层**：[`MessagePushManager`](core/message/message_manager.py)、[`PushOrchestrator`](core/message/push/push_orchestrator.py)、[`PushExecutionService`](core/message/push/push_execution_service.py) 负责多会话筛选、融合策略与消息发送。
+- **存储与状态层**：[`StatisticsManager`](core/storage/statistics_manager.py)、会话配置、缓存文件、日志链路和运行时状态共同承载“可恢复”和“可查询”能力。
+- **运维治理层**：[`WebAdminServer`](core/network/admin/host/web_server.py)、[`TelemetryManager`](core/services/telemetry/telemetry_service.py)、配置校验和健康探测能力形成运维闭环。
 
-在运行生命周期上，后端遵循“启动可预热、运行可恢复、停机可回收”的闭环策略：
+在运行生命周期上，后端采用了“**先校验装配，再并行运行，最后有序回收**”的完整闭环：
 
-- **启动阶段**：先进行 `ConfigValidator` 修正，再装配服务单例、注册处理器、构建连接拓扑。
-- **运行阶段**：连接、心跳、定时拉取、清理任务并行运行，统一由服务层托管。
-- **停机阶段**：按“取消任务 → 关闭连接 → 清理浏览器 → 关闭遥测/管理端”顺序释放资源。
+- **启动阶段**：[`PluginLifecycleService`](plugin/plugin_lifecycle_service.py) 先完成管理员同步、配置修正、遥测注入与异常处理器安装；随后 [`DisasterWarningService.initialize()`](core/app/disaster_service.py) 校验 catalog / presenter 注册、加载基础区域数据、注册路由并构建连接计划。
+- **运行阶段**：服务主循环、WebSocket 长连接、HTTP 定时拉取、离线通知、管理端广播、健康探测、资源清理等任务分散在独立服务中并行运行，避免所有过程堆积到单一主类。
+- **停机阶段**：遵循“取消后台任务 → 停止核心服务 → 清理浏览器/会话资源 → 关闭遥测 → 关闭管理端”的顺序，降低悬挂任务和外部进程残留概率。
 
-在数据接入与解析上，后端采用“连接管理器 + 路由注册中心 + 专用处理器”的协议解耦模式：
+在数据接入与标准化方面，当前架构最核心的改进，是把“**接入协议**”与“**事件主链**”做了清晰分离：
 
-- **连接治理**：支持心跳保活、短重试、兜底重试与人工强制重连。
-- **路由解耦**：通过 `WebSocketHandlerRegistry` 将不同来源消息映射到对应 Handler。
-- **统一输出**：各处理器最终产出统一 `DisasterEvent`，业务层不感知上游协议差异。
+- **连接计划外置**：[`ConnectionPlanBuilder.build()`](core/services/config/connection_plan_builder.py) 基于统一 [`SOURCE_CATALOG`](core/sources/source_catalog.py) 生成当前启用数据源的连接拓扑，而不是在主服务中硬编码连接列表。
+- **路由入口统一**：[`SourceMessageRouter`](core/network/source_message_router.py) 根据 provider family 把 FAN Studio、P2P、Wolfx、Global Quake 等消息路由到正确解析路径。
+- **旁路副作用拆分**：[`SourceIngressSideEffectService.process_message()`](core/network/source_ingress_side_effect_service.py) 在主事件处理前就能独立完成列表缓存刷新、摘要日志等旁路工作，避免污染业务主链。
+- **标准事件输出**：所有解析器最终都输出统一的 [`EventEnvelope`](core/domain/event_models.py)，使后续推送、统计、管理端广播不必感知上游协议差异。
 
-在推送决策链上，后端采用“会话配置驱动 + 组合过滤器”的可扩展模型：
+在事件进入应用层之后，后端采用了“**轻门面 + 统一流水线**”的处理方式：
 
-- **会话差异化**：`SessionConfigManager` 使用 default+override 合并，支持多会话独立策略。
-- **过滤组合化**：时间窗、数据源开关、关键词、烈度/震度、报数控制、本地烈度协同判定。
-- **策略增强**：CENC 支持 Fan/Wolfx 融合等待窗口，在时效和完整性之间可配置平衡。
+- [`DisasterWarningService`](core/app/disaster_service.py) 不再直接堆叠大量过程式逻辑，而是把生命周期、重连、状态、通知、缓存、接入调度等职责拆到 [`core/app/runtime/`](core/app/runtime) 与专用子服务中。
+- 真正的事件后处理统一收敛到 [`EventPipeline.handle()`](core/app/pipeline/event_pipeline.py)，主链稳定保持为：**推送 → 统计 → 管理端广播**。
+- 对 FAN Studio EEW 等高频快报源，[`EventIngressDispatchService`](core/network/event_ingress_dispatch_service.py) 还能依据融合策略决定是否切换为后台异步分发，从而减少接入线程阻塞。
 
-在推送与渲染性能上，后端强调“首报时效优先、富媒体异步补齐”：
+在推送决策链上，当前实现已经从“简单过滤器堆叠”演进为“**多会话配置驱动的策略执行系统**”：
 
-- **并发推送**：同一事件对多会话并发发送，减少慢会话拖累。
-- **构建复用**：同事件同渲染参数复用消息构建任务，降低重复开销。
-- **渲染降阻塞**：地图/卡片渲染支持异步补发，文本预警优先送达。
+- **会话级配置展开**：[`SessionConfigManager`](core/storage/session_config_manager.py) 提供目标会话枚举与差异配置合成，让每个会话都能拥有独立规则组合。
+- **编排与执行分离**：[`PushOrchestrator.push_event()`](core/message/push/push_orchestrator.py) 决定事件走普通推送还是融合推送；[`PushFlowHandler.execute_push()`](core/message/push/push_flow_handler.py) 负责主流程编排；[`PushExecutionService.execute()`](core/message/push/push_execution_service.py) 负责会话预筛、发送前复核、并发发送与失败降级。
+- **规则状态可组合**：时间窗口、数据源开关、关键词、烈度/震级、本地监测、报数控制等规则不再散落在主流程中，而是通过组件化状态求值组合完成。
+- **融合策略内建**：[`PushOrchestrator`](core/message/push/push_orchestrator.py) 能针对 CENC 与 CWA EEW 场景切换到融合服务，在时效与完整性之间做显式权衡。
 
-在存储与可观测性上，后端采用“双存储 + 双观测”设计：
+在消息构建与渲染层，设计重点已经非常明确：**文本优先送达，富媒体延后补齐，渲染结果尽量复用**。
 
-- **存储双轨**：SQLite（`events`/`event_updates`）负责历史检索与报次回放，JSON 负责轻量快照与缓存。
-- **日志可读化**：`MessageLogger` 提供结构化中文日志、重复过滤与轮转机制。
-- **遥测脱敏化**：`TelemetryManager` 上报启动/配置/错误/心跳并进行隐私脱敏。
+- **高层装配统一**：[`MessagePushManager`](core/message/message_manager.py) 统一装配浏览器、构建器、推送执行链、融合状态与资源清理能力。
+- **构建链拆分**：文本、地图附件、Global Quake 卡片、远程媒体抓取分别由独立 builder / service 负责，降低展示逻辑耦合。
+- **构建缓存复用**：[`PushExecutionService`](core/message/push/push_execution_service.py) 会按事件与渲染参数缓存消息构建任务，避免多会话并发时重复渲染相同内容。
+- **富媒体降级与拆图**：主消息发送失败时可自动尝试纯文本降级；地图图片可依据报数与会话配置异步拆分补发，优先保证快报文本时效。
 
-在运维控制面上，后端通过 FastAPI 与 WebSocket 形成完整闭环：
+在存储与可观测性上，后端不是单一数据库模型，而是“**数据库 + JSON 快照 + 原始日志 + 运行时状态**”多轨协作：
 
-- **REST 面板**：提供状态、连接、统计、事件、配置、重连、模拟等管理接口。
-- **实时通道**：`/ws` 同时支持周期广播与事件驱动即时推送。
-- **运维闭环**：Web 操作可直接驱动服务行为，并将结果实时回流到控制台。
+- **统计总入口**：[`StatisticsManager`](core/storage/statistics_manager.py) 负责装配统计聚合、规则、查询、会话统计、加载恢复和数据库能力。
+- **明细与快照分工**：SQLite 负责事件明细与长期查询；[`statistics.json`](README.md) 等 JSON 文件负责统计快照、地震列表缓存和 EEW 状态缓存，方便跨重启恢复。
+- **原始消息日志链路**：[`MessageLogger`](core/message/message_logger.py) 及其 [`logging/`](core/message/logging) 子模块把原始报文记录、可读化格式化、过滤与轮转做成完整链路。
+- **运行态可见性**：连接状态、延迟缓存、重大事件摘要、近期事件列表等内存态会被管理端与指令查询复用，形成统一观测面。
+
+在运维控制面上，当前后端已经不只是“附带一个 Web 页面”，而是形成了独立的管理端后端子系统：
+
+- **宿主与路由解耦**：[`WebAdminServer`](core/network/admin/host/web_server.py) 负责 FastAPI / Uvicorn 宿主装配，而具体实时数据拼装、鉴权、广播与路由注册则下沉到运行时服务与 payload builder。
+- **双通道控制台模型**：REST 接口负责状态、连接、事件、统计、配置、模拟、重连等操作；[`/ws`](core/network/admin/host/web_server.py) 则承担周期快照与事件驱动即时推送。
+- **健康探测内建**：[`SourceHealthMonitor`](core/network/monitoring/source_health_monitor.py) 在后台维护延迟缓存，管理端展示的不只是“是否在线”，而是更接近真实运行质量的连接健康度。
+- **服务行为直达**：无论是命令入口还是 Web 运维入口，最终都回到同一批服务对象与状态源上，避免命令面与管理端出现两套不一致逻辑。
+
+总体来说，当前后端架构最突出的特征，不是模块数量变多，而是主链路已经被压缩为一条非常清晰的路径：**上游接入 → 路由解析 → 标准事件 → 会话策略判定 → 消息构建发送 → 统计与管理端回流**。这使得插件在经历大重构后，仍能继续扩展新数据源、新展示形态与新运维能力，而不必反复侵入主服务骨架。
+
+</details>
 
 ## 📈 性能报告
 
@@ -1765,7 +1939,10 @@ graph TB
 
 ## 📒 增强的可读性日志格式
 
-插件提供**自动格式化的高可读性日志**，将原始的 JSON 数据转换为易读的中文格式。以下是部分数据源的示例：
+插件提供**自动格式化的高可读性日志**，将原始的 JSON 数据转换为易读的中文格式。
+
+<details>
+<summary>点击查看日志格式示例</summary>
 
 **P2P地震情報详细震度信息**：
 
@@ -1887,6 +2064,8 @@ graph TB
 🔧 插件版本: v1.4.0
 ===================================
 ```
+
+</details>
 
 **智能格式化特性**：
 
@@ -2060,6 +2239,7 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 我的其他插件：
 
 - [主动消息 (Proactive_chat)](https://github.com/DBJD-CR/astrbot_plugin_proactive_chat) - 它能让你的 Bot 在特定的会话长时间没有新消息后，用一个随机的时间间隔，主动发起一次拥有上下文感知、符合人设且包含动态情绪的对话。
+- [视奸面板 (Live_Dashboard)](https://github.com/DBJD-CR/astrbot_plugin_live_dashboard) - 它能让你的 Bot 和群友可以随时随地视奸你手机和电脑的活动状态。
 
 其他优秀的开源 EEW 项目：
 
@@ -2072,7 +2252,14 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 
 ## ⭐️ 星星
 
-[![Star History Chart](https://api.star-history.com/svg?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date)](https://www.star-history.com/#DBJD-CR/astrbot_plugin_disaster_warning&Date)
+<div align="center">
+<a href="https://www.star-history.com/#DBJD-CR/astrbot_plugin_disaster_warning&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
+  </picture>
+</a>
 
 ---
 

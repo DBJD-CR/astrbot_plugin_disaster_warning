@@ -1,0 +1,570 @@
+"""
+插件后台管理命令服务。
+负责灾害预警插件中面向管理员的状态、日志、统计、推送开关与配置查看命令逻辑，
+减少 main.DisasterWarningPlugin 中的命令实现体积。
+"""
+
+from __future__ import annotations
+
+import json
+from collections import OrderedDict
+
+import astrbot.api.message_components as Comp
+from astrbot.api import logger
+
+from ...core.app.services import quoted_plain_result
+from ...utils.version import get_plugin_version
+from .telemetry_mixin import CommandTelemetryMixin
+
+
+class PluginAdminCommandService(CommandTelemetryMixin):
+    """后台管理命令服务。"""
+
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    async def handle_disaster_reconnect(self, event):
+        """处理强制重连命令，尝试对所有离线或异常的数据源触发重连尝试。"""
+        # 管理类命令统一在入口先做管理员校验，避免内部逻辑重复散落权限判断。
+        if not await self.plugin.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if not self.plugin.disaster_service:
+            yield event.plain_result("❌ 灾害预警服务未启动")
+            return
+
+        yield event.plain_result("🔄 正在尝试重连所有离线数据源...")
+
+        try:
+            results = await self.plugin.disaster_service.reconnect_all_sources()
+            lines = ["🔄 重连操作结果："]
+            success_count = 0
+            fail_count = 0
+            skip_count = 0
+
+            for name, status in results.items():
+                if "已触发" in status:
+                    success_count += 1
+                    icon = "✅"
+                elif "失败" in status:
+                    fail_count += 1
+                    icon = "❌"
+                else:
+                    skip_count += 1
+                    icon = "⏩"
+                lines.append(f"  {icon} {name}: {status}")
+
+            lines.append("")
+            lines.append(
+                f"📊 统计: 触发 {success_count}, 跳过 {skip_count}, 失败 {fail_count}"
+            )
+            # 匿名上报功能执行遥测
+            await self._track_command_feature(
+                "command_force_reconnect",
+                {
+                    "success": True,
+                    "triggered_count": success_count,
+                    "failed_count": fail_count,
+                    "skipped_count": skip_count,
+                },
+            )
+            yield event.plain_result("\n".join(lines))
+        except Exception as e:
+            await self._track_command_feature(
+                "command_force_reconnect",
+                {"success": False},
+            )
+            logger.error(f"[灾害预警] 重连操作失败: {e}")
+            yield event.plain_result(f"❌ 重连操作失败: {str(e)}")
+
+    async def handle_disaster_status(self, event):
+        """处理运行状态查询命令，以合并转发多节点消息形式展示各个连接状态与子数据源情况。"""
+        if not self.plugin.disaster_service:
+            yield event.plain_result("❌ 灾害预警服务未启动")
+            return
+
+        try:
+            status = self.plugin.disaster_service.get_service_status()
+            running_state = "🟢 运行中" if status["running"] else "🔴 已停止"
+            uptime = status.get("uptime", "未知")
+            plugin_version = get_plugin_version()
+
+            bot_id = event.get_self_id() or "0"
+            bot_name = "灾害预警"
+
+            # 对应展示名称映射
+            connection_label_map = OrderedDict(
+                [
+                    ("fan_studio_all", "FAN Studio"),
+                    ("p2p_main", "P2P地震情報"),
+                    ("wolfx_all", "Wolfx"),
+                    ("global_quake", "Global Quake"),
+                ]
+            )
+            source_group_label_map = OrderedDict(
+                [
+                    ("fan_studio", "FAN Studio"),
+                    ("p2p_earthquake", "P2P地震情報"),
+                    ("wolfx", "Wolfx"),
+                    ("global_quake", "Global Quake"),
+                ]
+            )
+            source_label_map = {
+                "china": "中国地震预警网",
+                "china_pr": "中国地震预警网（省级）",
+                "japan": "日本气象厅",
+                "taiwan": "台湾中央气象署",
+                "weather": "中国气象局",
+                "earthquake": "中国地震台网",
+                "usgs": "USGS",
+                "eew": "紧急地震速报",
+                "earthquake_info": "地震情报",
+                "global_quake": "Global Quake",
+            }
+            scoped_sub_source_label_map = {
+                "FAN Studio": {
+                    "china_earthquake_warning": "中国地震预警网 (CEA)",
+                    "china_earthquake_warning_provincial": "中国地震预警网 (省级)",
+                    "taiwan_cwa_earthquake": "台湾中央气象署: 强震即时警报",
+                    "taiwan_cwa_report": "台湾中央气象署: 地震报告",
+                    "china_cenc_earthquake": "中国地震台网 (CENC)",
+                    "usgs_earthquake": "美国地质调查局 (USGS)",
+                    "china_weather_alarm": "中国气象局: 气象预警",
+                    "china_tsunami": "自然资源部海啸预警中心",
+                    "japan_jma_eew": "日本气象厅: 紧急地震速报",
+                },
+                "P2P地震情報": {
+                    "japan_jma_eew": "日本气象厅: 紧急地震速报",
+                    "japan_jma_earthquake": "日本气象厅: 地震情报",
+                    "japan_jma_tsunami": "日本气象厅: 海啸予报",
+                },
+                "Wolfx": {
+                    "japan_jma_eew": "日本气象厅: 紧急地震速报",
+                    "china_cenc_eew": "中国地震预警网 (CEA)",
+                    "taiwan_cwa_eew": "台湾中央气象署: 强震即时警报",
+                    "japan_jma_earthquake": "日本气象厅地震情报",
+                    "china_cenc_earthquake": "中国地震台网地震测定",
+                },
+                "Global Quake": {
+                    "enabled": "实时数据流",
+                },
+            }
+
+            def _build_forward_nodes(blocks: list[str]) -> Comp.Nodes | None:
+                """生成便于客户端折叠阅读的合并转发节点。"""
+                if not blocks:
+                    return None
+                nodes = Comp.Nodes([])
+                for idx, block in enumerate(blocks):
+                    content = [Comp.Plain(block)]
+                    if idx == 0:
+                        content = self.plugin._with_quote_reply(event, content)
+                    nodes.nodes.append(
+                        Comp.Node(uin=bot_id, name=bot_name, content=content)
+                    )
+                return nodes
+
+            def _map_sub_source_name(group_display_name: str, raw_key: str) -> str:
+                """将原始的子源键名映射为好看的展示名称。"""
+                normalized_key = str(raw_key or "").strip()
+                if not normalized_key:
+                    return normalized_key
+                scoped_map = scoped_sub_source_label_map.get(group_display_name, {})
+                return scoped_map.get(
+                    normalized_key,
+                    source_label_map.get(normalized_key, normalized_key),
+                )
+
+            # 1. 总体概览行
+            overview_lines = [
+                "📊 灾害预警服务状态",
+                "",
+                f"🔧 插件版本：{plugin_version}",
+                f"🔄 运行状态：{running_state} (已运行 {uptime})",
+                f"🔗 活跃连接：{status['active_websocket_connections']} / {status['total_connections']}",
+            ]
+
+            # 2. 连接状态详情行
+            connection_lines = ["📡 连接详情"]
+            conn_details = status.get("connection_details", {})
+            for conn_name, display_name in connection_label_map.items():
+                detail = conn_details.get(conn_name, {})
+                connected = bool(detail.get("connected", False))
+                state_text = "🟢 正常" if connected else "🔴 异常"
+                connection_lines.append(f"• {display_name}：{state_text}")
+
+            # 3. 各子数据源的细化开关状况行
+            data_source_lines = ["📚 子数据源启用状况"]
+            active_sources = status.get("data_sources", [])
+            grouped_sources: dict[str, list[str]] = {}
+            for source in active_sources:
+                service_name, _, source_name = source.partition(".")
+                grouped_sources.setdefault(service_name, [])
+                if source_name:
+                    grouped_sources[service_name].append(source_name)
+
+            sub_source_status = status.get("sub_source_status", {})
+            for service_name, display_name in source_group_label_map.items():
+                if (
+                    service_name not in grouped_sources
+                    and service_name not in sub_source_status
+                ):
+                    continue
+
+                raw_sources = grouped_sources.get(service_name, [])
+                if raw_sources:
+                    enabled_count = len(raw_sources)
+                    total_count = 0
+                    group_status = sub_source_status.get(service_name, {})
+                    if isinstance(group_status, dict) and group_status:
+                        total_count = len(group_status)
+                    suffix = (
+                        f"（已启用 {enabled_count}/{total_count}）"
+                        if total_count > 0
+                        else f"（已启用 {enabled_count} 项）"
+                    )
+                    data_source_lines.append(f"• {display_name}{suffix}")
+                else:
+                    data_source_lines.append(f"• {display_name}：已启用")
+
+                group_status = sub_source_status.get(service_name, {})
+                if isinstance(group_status, dict) and group_status:
+                    sorted_items = sorted(
+                        group_status.items(),
+                        key=lambda item: (
+                            not bool(item[1]),
+                            _map_sub_source_name(display_name, item[0]),
+                        ),
+                    )
+                    for raw_key, enabled in sorted_items:
+                        sub_name = _map_sub_source_name(display_name, raw_key)
+                        state_icon = "🟢" if enabled else "⚪"
+                        data_source_lines.append(f"  {state_icon} {sub_name}")
+
+            nodes = _build_forward_nodes(
+                [
+                    "\n".join(overview_lines),
+                    "\n".join(connection_lines),
+                    "\n".join(data_source_lines),
+                ]
+            )
+            if nodes:
+                await self._track_command_feature(
+                    "command_status_query",
+                    {"success": True, "running": bool(status.get("running"))},
+                )
+                yield event.chain_result([nodes])
+                return
+
+            await self._track_command_feature(
+                "command_status_query",
+                {"success": True, "running": bool(status.get("running"))},
+            )
+            yield quoted_plain_result(self.plugin, event, "\n".join(overview_lines))
+        except Exception as e:
+            logger.error(f"[灾害预警] 获取服务状态失败: {e}")
+            yield quoted_plain_result(
+                self.plugin, event, f"❌ 获取服务状态失败: {str(e)}"
+            )
+
+    async def handle_disaster_stats(self, event):
+        """处理统计详情命令，聚合展示本地内存中的去重与过滤指标。"""
+
+        def _quoted_plain_result(text: str):
+            return quoted_plain_result(self.plugin, event, text)
+
+        if not self.plugin.disaster_service:
+            yield _quoted_plain_result("❌ 灾害预警服务未启动")
+            return
+
+        try:
+            status = self.plugin.disaster_service.get_service_status()
+            stats_summary = status.get("statistics_summary", "❌ 暂无统计数据")
+            if (
+                self.plugin.disaster_service
+                and self.plugin.disaster_service.message_logger
+            ):
+                filter_stats = self.plugin.disaster_service.message_logger.filter_stats
+                if filter_stats and filter_stats["total_filtered"] > 0:
+                    stats_summary += "\n\n🛡️ 日志过滤拦截统计:\n"
+                    stats_summary += f"• 重复数据拦截: {filter_stats.get('duplicate_events_filtered', 0)}\n"
+                    stats_summary += (
+                        f"• 心跳包过滤: {filter_stats.get('heartbeat_filtered', 0)}\n"
+                    )
+                    stats_summary += (
+                        f"• P2P节点状态: {filter_stats.get('p2p_areas_filtered', 0)}\n"
+                    )
+                    stats_summary += f"• 连接状态过滤: {filter_stats.get('connection_status_filtered', 0)}\n"
+                    stats_summary += (
+                        f"📊 总计拦截: {filter_stats.get('total_filtered', 0)}"
+                    )
+            await self._track_command_feature(
+                "command_stats_query",
+                {"success": True},
+            )
+            yield _quoted_plain_result(stats_summary)
+        except Exception as e:
+            logger.error(f"[灾害预警] 获取统计信息失败: {e}")
+            yield _quoted_plain_result(f"❌ 获取统计信息失败: {str(e)}")
+
+    async def handle_disaster_logs(self, event):
+        """查看原始日志记录文件的体积、条目数与起止时间（需管理员权限）。"""
+        if not await self.plugin.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if (
+            not self.plugin.disaster_service
+            or not self.plugin.disaster_service.message_logger
+        ):
+            yield event.plain_result("❌ 日志功能不可用")
+            return
+
+        try:
+            log_summary = self.plugin.disaster_service.message_logger.get_log_summary()
+            if not log_summary["enabled"]:
+                yield event.plain_result(
+                    "📋 原始消息日志功能未启用\n\n使用 /灾害预警日志开关 启用日志记录"
+                )
+                return
+
+            if not log_summary["log_exists"]:
+                yield event.plain_result(
+                    "📋 暂无日志记录\n\n当日志功能启用后，所有接收到的原始消息将被记录。"
+                )
+                return
+
+            usage_percent = log_summary.get("usage_percent", 0)
+            max_capacity = log_summary.get("max_total_capacity_mb", 0)
+            file_count = log_summary.get("file_count", 1)
+            bar_length = 15
+            filled_length = int(bar_length * usage_percent / 100)
+            filled_length = max(0, min(filled_length, bar_length))
+            bar = "█" * filled_length + "░" * (bar_length - filled_length)
+
+            status_icon = "🟢"
+            if usage_percent > 90:
+                status_icon = "🔴"
+            elif usage_percent > 70:
+                status_icon = "🟡"
+
+            log_info = f"""📊 原始消息日志统计
+
+📁 文件路径：{log_summary["log_file"]}
+📄 文件数量：{file_count}
+📈 总条目数：{log_summary["total_entries"]}
+📦 占用空间：{log_summary.get("file_size_mb", 0):.2f} MB / {max_capacity:.0f} MB
+💾 存储占用：{bar} {usage_percent:.1f}% {status_icon}
+📅 时间范围：{log_summary["date_range"]["start"]} 至 {log_summary["date_range"]["end"]}
+
+📡 数据源统计："""
+            for source in log_summary["data_sources"]:
+                log_info += f"\n  • {source}"
+            log_info += "\n\n💡 提示：使用 /灾害预警日志开关 可以关闭日志记录"
+            yield event.plain_result(log_info)
+        except Exception as e:
+            logger.error(f"[灾害预警] 获取日志信息失败: {e}")
+            yield event.plain_result(f"❌ 获取日志信息失败: {str(e)}")
+
+    async def handle_toggle_message_logging(self, event):
+        """开启或关闭原始 WebSocket 日志记录器，切换运行配置。"""
+        if not await self.plugin.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if (
+            not self.plugin.disaster_service
+            or not self.plugin.disaster_service.message_logger
+        ):
+            yield event.plain_result("❌ 日志功能不可用")
+            return
+
+        try:
+            current_state = self.plugin.disaster_service.message_logger.enabled
+            new_state = not current_state
+            self.plugin.config["debug_config"]["enable_raw_message_logging"] = new_state
+            self.plugin.disaster_service.message_logger.enabled = new_state
+            self.plugin.config.save_config()
+
+            status = "启用" if new_state else "禁用"
+            action = "开始" if new_state else "停止"
+            await self._track_command_feature(
+                "command_toggle_raw_logging",
+                {"enabled": bool(new_state)},
+            )
+            yield event.plain_result(
+                f"✅ 原始消息日志记录已{status}\n\n插件将{action}记录所有数据源的原始消息格式。"
+            )
+        except Exception as e:
+            logger.error(f"[灾害预警] 切换日志状态失败: {e}")
+            yield event.plain_result(f"❌ 切换日志状态失败: {str(e)}")
+
+    async def handle_clear_message_logs(self, event):
+        """清空本地生成的原始 JSON 消息日志文件。"""
+        if not await self.plugin.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if (
+            not self.plugin.disaster_service
+            or not self.plugin.disaster_service.message_logger
+        ):
+            yield event.plain_result("❌ 日志功能不可用")
+            return
+
+        try:
+            self.plugin.disaster_service.message_logger.clear_logs()
+            yield event.plain_result(
+                "✅ 所有原始消息日志已清除\n\n日志文件已被删除，新的消息记录将重新开始。"
+            )
+        except Exception as e:
+            logger.error(f"[灾害预警] 清除日志失败: {e}")
+            yield event.plain_result(f"❌ 清除日志失败: {str(e)}")
+
+    async def handle_clear_statistics(self, event):
+        """重置本地 SQLite 数据库与统计 JSON 快照（需管理员权限）。"""
+        if not await self.plugin.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if (
+            not self.plugin.disaster_service
+            or not self.plugin.disaster_service.statistics_manager
+        ):
+            yield event.plain_result("❌ 统计功能不可用")
+            return
+
+        try:
+            await self.plugin.disaster_service.statistics_manager.reset_stats()
+            await self._track_command_feature(
+                "command_clear_statistics",
+                {"success": True},
+            )
+            yield event.plain_result(
+                "✅ 统计数据已重置\n\n所有历史统计记录已被清除，新的统计将重新开始。"
+            )
+        except Exception as e:
+            logger.error(f"[灾害预警] 清除统计失败: {e}")
+            yield event.plain_result(f"❌ 清除统计失败: {str(e)}")
+
+    async def handle_toggle_push(self, event):
+        """快速切换当前会话的推送名单启用状态。"""
+        if not await self.plugin.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        try:
+            session_umo = event.unified_msg_origin
+            if not session_umo:
+                yield event.plain_result("❌ 无法获取当前会话的 UMO")
+                return
+
+            target_sessions = self.plugin.config.get("target_sessions", [])
+            if target_sessions is None:
+                target_sessions = []
+
+            if session_umo in target_sessions:
+                target_sessions.remove(session_umo)
+                self.plugin.config["target_sessions"] = target_sessions
+                self.plugin.config.save_config()
+                await self._track_command_feature(
+                    "command_toggle_push",
+                    {"enabled": False, "target_session_count": len(target_sessions)},
+                )
+                yield event.plain_result(
+                    f"✅ 推送已关闭\n\n会话 ({session_umo}) 已从推送列表中移除。"
+                )
+                logger.info(f"[灾害预警] 会话 {session_umo} 已关闭推送")
+            else:
+                target_sessions.append(session_umo)
+                self.plugin.config["target_sessions"] = target_sessions
+                self.plugin.config.save_config()
+                await self._track_command_feature(
+                    "command_toggle_push",
+                    {"enabled": True, "target_session_count": len(target_sessions)},
+                )
+                yield event.plain_result(
+                    f"✅ 推送已开启\n\n会话 ({session_umo}) 已添加到推送列表。"
+                )
+                logger.info(f"[灾害预警] 会话 {session_umo} 已开启推送")
+        except Exception as e:
+            logger.error(f"[灾害预警] 切换推送状态失败: {e}")
+            yield event.plain_result(f"❌ 切换推送状态失败: {str(e)}")
+
+    async def handle_disaster_config(
+        self, event, action: str = None, target: str = None
+    ):
+        """查看指定会话的覆写配置与合并后生效配置（需管理员权限）。"""
+        if not await self.plugin.is_plugin_admin(event):
+            yield event.plain_result("🚫 权限不足：此命令仅限管理员使用。")
+            return
+
+        if action != "查看":
+            yield event.plain_result(
+                "❓ 请使用格式：\n"
+                "• /灾害预警配置 查看\n"
+                "• /灾害预警配置 查看 全局\n"
+                "• /灾害预警配置 查看 当前\n"
+                "• /灾害预警配置 查看 <会话UMO>"
+            )
+            return
+
+        try:
+            schema = self.plugin._command_support_service.get_config_schema()
+            target_mode = (target or "全局").strip()
+            if target_mode.lower() == "global":
+                target_mode = "全局"
+
+            if target_mode == "全局":
+                config_data = dict(self.plugin.config)
+                translated_config = (
+                    self.plugin._command_support_service.translate_config_recursive(
+                        config_data, schema
+                    )
+                )
+                config_str = json.dumps(translated_config, indent=2, ensure_ascii=False)
+                yield event.plain_result(f"🔧 当前全局配置详情：{config_str}")
+                return
+
+            session_umo = (
+                event.unified_msg_origin
+                if target_mode in ["当前", "本会话", "this", "current"]
+                else target_mode
+            )
+            if not session_umo:
+                yield event.plain_result("❌ 无法解析目标会话 UMO")
+                return
+
+            if not self.plugin.disaster_service or not hasattr(
+                self.plugin.disaster_service, "session_config_manager"
+            ):
+                yield event.plain_result("❌ 会话配置管理器不可用")
+                return
+
+            mgr = self.plugin.disaster_service.session_config_manager
+            override = mgr.get_override(session_umo)
+            effective = mgr.get_effective_config(session_umo)
+            translated_override = (
+                self.plugin._command_support_service.translate_config_recursive(
+                    override, schema
+                )
+            )
+            translated_effective = (
+                self.plugin._command_support_service.translate_config_recursive(
+                    effective, schema
+                )
+            )
+
+            override_str = json.dumps(translated_override, indent=2, ensure_ascii=False)
+            effective_str = json.dumps(
+                translated_effective, indent=2, ensure_ascii=False
+            )
+            yield event.plain_result(
+                f"🔧 会话配置详情 ({session_umo})\n"
+                f"\n📌 差异覆写 (override)：\n{override_str}"
+                f"\n\n📘 合并后配置 (effective)：\n{effective_str}"
+            )
+        except Exception as e:
+            logger.error(f"[灾害预警] 获取配置详情失败: {e}")
+            yield event.plain_result(f"❌ 获取配置详情失败: {str(e)}")

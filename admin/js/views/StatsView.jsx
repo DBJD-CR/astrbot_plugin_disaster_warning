@@ -1,9 +1,23 @@
+/**
+ * 模块名称：数据统计仪表盘视图
+ * 文件路径：admin/js/views/StatsView.jsx
+ * 功能描述：作为灾害与预警系统的核心报表中心。使用网格布局汇集了系统内的各种多维度可视化组件：
+ *           包含震级区间分布图、系统总体数据摘要卡片、历史最强震级归档、
+ *           活动频度年度热力图、高发地域/预警类型/数据源贡献排名的 Top 10 榜单以及后端资源统计等。
+ */
+
 const { Box } = MaterialUI;
 
+/**
+ * 数据统计视图主组件
+ * 基于 React Context 拉取全局统计包并分发，构建网格化的统计图表面板
+ */
 function StatsView() {
+    // 从应用的状态总线中提取解耦后的统计信息状态
     const { state } = useAppContext();
     const { stats } = state;
     
+    // 安全提取底层各个维度的排行分析数组，若数据未加载完成则降级为防崩空数组
     const sources = stats && stats.dataSources ? stats.dataSources : [];
     const eqRegions = stats && stats.earthquakeRegions ? stats.earthquakeRegions : [];
     const weatherTypes = stats && stats.weatherTypes ? stats.weatherTypes : [];
@@ -11,59 +25,70 @@ function StatsView() {
 
     return (
         <Box>
+            {/* 网格化大盒子，定义行高比例与自适应折叠布局 */}
             <div className="dashboard-grid">
-                {/* 第一行：左侧震级图，右侧统计卡片和最大地震 */}
-                {/* 使用 grid 嵌套，强制左边大卡片和右边两个小卡片组等高 */}
-                <div style={{ gridColumn: 'span 12', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '24px', alignItems: 'stretch' }}>
-                    <div style={{ gridColumn: 'span 8', display: 'flex' }}>
-                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
-                            <MagnitudeChart style={{ flex: 1 }} />
+                {/* 第一栏大板块：地震震级历史占比与近期核心指标 */}
+                <div className="stats-overview-grid">
+                    {/* 左侧：占比分布曲线/圆饼图（主卡片） */}
+                    <div className="stats-overview-main">
+                        <div className="stats-fill-column">
+                            <MagnitudeChart className="stats-flex-fill" />
                         </div>
                     </div>
-                    <div style={{ gridColumn: 'span 4', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                            <StatsCard style={{ flex: 1, height: '100%' }} />
+                    {/* 右侧：纵向堆叠的指标小卡片和历史极值归档 */}
+                    <div className="stats-overview-side">
+                        <div className="stats-fill-column stats-flex-fill">
+                            <StatsCard className="stats-flex-fill" />
                         </div>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                        <div className="stats-fill-column stats-flex-fill">
                              <MaxMagCard />
                         </div>
                     </div>
                 </div>
 
-                {/* 时间维度统计：趋势图和热力图 */}
+                {/* 时间趋势统计：历史走势折线图 */}
                 <div className="span-12">
-                    <TrendChart style={{ height: '100%', minHeight: '300px' }} />
+                    <TrendChart className="stats-chart-tall" />
                 </div>
+                
+                {/* 时间频度统计：全年度的日历打点活跃热力图 */}
                 <div className="span-12">
-                    <CalendarHeatmap style={{ height: '100%', minHeight: '220px' }} />
+                    <CalendarHeatmap className="stats-chart-heatmap" />
                 </div>
 
-                {/* 第二行：三个 Top 榜单 (地震地区、气象类型、数据源) */}
+                {/* 排行榜单模块（第二行）：三等分网格卡片 */}
+                {/* 1. 地震高发地区统计 */}
                 <div className="span-4">
-                    <TopListCard title="国内地震高发地 (TOP 10)" icon="📍" data={eqRegions} color="#FF9800" />
+                    <TopListCard title="国内地震高发地 (TOP 10)" icon="📍" data={eqRegions} tone="earthquake" />
                 </div>
+                {/* 2. 天气警报类型频率统计 */}
                 <div className="span-4">
-                    <TopListCard title="气象预警类型 (TOP 10)" icon="⛈️" data={weatherTypes} color="#4CAF50" />
+                    <TopListCard title="气象预警类型 (TOP 10)" icon="⛈️" data={weatherTypes} tone="weather" />
                 </div>
+                {/* 3. 各大开放 API 数据源提供的数据份额贡献度统计 */}
                 <div className="span-4">
-                    <TopListCard title="数据源贡献 (TOP 10)" icon="📡" data={sources} color="#2196F3" />
+                    <TopListCard title="数据源贡献 (TOP 10)" icon="📡" data={sources} tone="source" />
                 </div>
 
-                {/* 第三行：新增气象地区、气象级别、日志统计 */}
+                {/* 排行榜单模块（第三行）：包含气象区域、气象警报级别和底层日志文件磁盘状态 */}
+                {/* 1. 气象预警频发地理区域统计 */}
                 <div className="span-4">
-                    <TopListCard title="气象预警地区分布 (TOP 10)" icon="🗺️" data={weatherRegions} color="#00ACC1" />
+                    <TopListCard title="气象预警地区分布 (TOP 10)" icon="🗺️" data={weatherRegions} tone="region" />
                 </div>
+                {/* 2. 气象警报按级别（蓝、黄、橙、红）数量占比柱图 */}
                 <div className="span-4">
                     <WeatherLevelCard />
                 </div>
+                {/* 3. 系统后台运行日志大小、占用空间与存储信息统计 */}
                 <div className="span-4">
                     <LogStatsCard />
                 </div>
 
+                {/* 底部备注与说明横栏 */}
                 <div className="span-12">
-                    <div className="card" style={{ background: 'var(--md-sys-color-primary-container)', color: 'var(--md-sys-color-on-primary-container)', border: 'none' }}>
-                        <h4 style={{ fontWeight: 800, marginBottom: '12px' }}>📊 数据摘要</h4>
-                        <p style={{ fontSize: '14px', opacity: 0.8, lineHeight: 1.6 }}>
+                    <div className="card stats-summary-card">
+                        <h4 className="stats-summary-title">📊 数据摘要</h4>
+                        <p className="stats-summary-text">
                             统计信息会自动实时更新。您可以从这些图表中直观的观察到灾害活动的强度分布和频率。
                         </p>
                     </div>
