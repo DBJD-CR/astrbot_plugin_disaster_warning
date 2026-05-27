@@ -46,7 +46,7 @@ jobs:
           echo "$CHECK_LOG" > check.log
 
       - name: 生成报告与评论
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
