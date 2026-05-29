@@ -209,7 +209,7 @@ jobs:
       # 在 PR 评论里显示详细等级
       - name: PR 评论（氛围版）
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const score = parseFloat('${{ steps.analyze.outputs.score }}');
