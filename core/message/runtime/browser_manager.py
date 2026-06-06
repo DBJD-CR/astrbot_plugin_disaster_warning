@@ -459,6 +459,60 @@ class BrowserManager:
         """使用 browserless HTTP API 渲染卡片"""
         start_time = time.time()
 
+        # 注入大小修正脚本，将 html 和 body 的大小强制与卡片对齐。
+        # 远程模式不传递 selector 给 browserless，从而完美避开 browserless 本身在 float 宽高时的 setViewportSize Bug。
+        # 代之以在 JS 中锁死 html 与 body 为卡片的 Math.ceil() 精准整数长宽，并使用 fullPage 截图以获得完美卡片大小和透明背景。
+        if selector:
+            inject_js = f"""
+<script>
+(function() {{
+    function fixSize() {{
+        try {{
+            var el = document.querySelector('{selector}') || document.querySelector('.quake-card') || document.querySelector('.container');
+            if (el) {{
+                document.documentElement.style.margin = '0';
+                document.documentElement.style.padding = '0';
+                document.body.style.margin = '0';
+                document.body.style.padding = '0';
+
+                var rect = el.getBoundingClientRect();
+                var w = Math.ceil(rect.width);
+                var h = Math.ceil(rect.height);
+                if (w > 0 && h > 0) {{
+                    document.documentElement.style.width = w + 'px';
+                    document.documentElement.style.height = h + 'px';
+                    document.documentElement.style.overflow = 'hidden';
+                    document.body.style.width = w + 'px';
+                    document.body.style.height = h + 'px';
+                    document.body.style.overflow = 'hidden';
+                }}
+            }}
+        }} catch (e) {{
+            console.error('Error fixing size:', e);
+        }}
+    }}
+    if (document.readyState !== 'loading') {{
+        fixSize();
+    }} else {{
+        document.addEventListener('DOMContentLoaded', fixSize);
+    }}
+    window.addEventListener('load', fixSize);
+    // 延迟多次调用，以应对地图或瓦片等异步资源载入撑开或调整卡片高度
+    setTimeout(fixSize, 200);
+    setTimeout(fixSize, 600);
+    setTimeout(fixSize, 1200);
+    setTimeout(fixSize, 2000);
+    setTimeout(fixSize, 3000);
+    // 对一些极其缓慢的渲染兜底再次修剪
+    setTimeout(fixSize, 5000);
+}})();
+</script>
+"""
+            if "</body>" in html_content:
+                html_content = html_content.replace("</body>", f"{inject_js}</body>")
+            else:
+                html_content = html_content + inject_js
+
         # 构建请求 URL
         api_url = self._server_url
         if not api_url.endswith("/"):
@@ -467,15 +521,16 @@ class BrowserManager:
 
         try:
             # 构建请求体 - 使用 browserless screenshot API
+            # 注意：此处全量使用 fullPage: True 截图，绝对不传任何顶级 selector，以彻底规避底层 setViewportSize 错误
             payload = {
                 "html": html_content,
                 "options": {
                     "type": "png",
                     "omitBackground": True,
-                    "fullPage": False,
+                    "fullPage": True,  # 使用 fullPage 配合被修剪成卡片大小的 html 与 body
                 },
                 "gotoOptions": {
-                    "waitUntil": "networkidle2",  # 等待网络几乎空闲（允许2个连接）
+                    "waitUntil": "networkidle",  # 确保地图瓦片等所有网络连接安静
                     "timeout": 60000,
                 },
                 "viewport": {
@@ -483,24 +538,22 @@ class BrowserManager:
                     "height": 800,
                     "deviceScaleFactor": 2,
                 },
-                "waitForTimeout": 3000,  # 额外等待 3 秒，确保地图瓦片加载
+                "waitForTimeout": 3000,  # 额外等待 3 秒，确保地图瓦片完全展现并让 JS 执行完锁定尺寸
             }
 
-            # 如果指定了选择器，使用元素截图
-            if selector and selector != ".card":
-                payload["selector"] = selector
-                # 使用 waitForSelector 确保元素可见
+            # 我们不传 options 里的 "selector"，但在 waitForSelector 选项中，我们可以只“等待”选择器出现而不触发裁剪视口
+            if selector:
                 payload["waitForSelector"] = {
                     "selector": selector,
                     "visible": True,
-                    "timeout": 10000,
+                    "timeout": 15000,
                 }
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     api_url,
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=90),  # 增加到 90 秒
+                    timeout=aiohttp.ClientTimeout(total=90),  # 90 秒超时保护
                 ) as response:
                     if response.status == 200:
                         # 保存截图
@@ -518,6 +571,44 @@ class BrowserManager:
                         logger.error(
                             f"[灾害预警] browserless API 返回错误: {response.status} - {error_text}"
                         )
+                        # 降级策略：如果由于浮点数 viewportSize 报错，自动关闭 fullPage 进行降级截图重试
+                        if (
+                            "expected integer" in error_text
+                            or "viewportSize" in error_text
+                        ):
+                            logger.warning(
+                                "[灾害预警] 检测到 browserless viewport 浮点数限制错误，尝试禁用 fullPage 并以固定视口大小降级重试..."
+                            )
+                            fallback_payload = dict(payload)
+                            fallback_payload["options"] = {
+                                "type": "png",
+                                "omitBackground": True,
+                                "fullPage": False,  # 禁用 fullPage 以避免 browserless 底层自动计算 float scrollHeight 并设置 viewportSize
+                            }
+                            try:
+                                async with session.post(
+                                    api_url,
+                                    json=fallback_payload,
+                                    timeout=aiohttp.ClientTimeout(total=60),
+                                ) as fallback_response:
+                                    if fallback_response.status == 200:
+                                        image_data = await fallback_response.read()
+                                        with open(output_path, "wb") as f:
+                                            f.write(image_data)
+                                        elapsed = time.time() - start_time
+                                        logger.info(
+                                            f"[灾害预警] 卡片渲染通过降级重试成功（HTTP API），耗时 {elapsed:.3f}秒"
+                                        )
+                                        return output_path
+                                    else:
+                                        fallback_error = await fallback_response.text()
+                                        logger.error(
+                                            f"[灾害预警] browserless API 降级重试依然返回错误: {fallback_response.status} - {fallback_error}"
+                                        )
+                            except Exception as fallback_ex:
+                                logger.error(
+                                    f"[灾害预警] browserless API 降级重试请求失败: {fallback_ex}"
+                                )
                         return None
 
         except asyncio.TimeoutError:
