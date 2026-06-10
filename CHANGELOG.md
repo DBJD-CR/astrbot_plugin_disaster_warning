@@ -5,7 +5,7 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
-# 2026/06/07 v1.5.1
+# 2026/06/11 v1.5.1
 
 ## 🚀 What's Changed
 
@@ -16,7 +16,6 @@
 ### 🐛 Bug Fixes (修复)
 
 - 修复气象预警类型解析不准确与地区统计合并的历史遗留问题 by @DBJD-CR in #126
-- 增强插件重载时的资源清理能力，避免端口冲突 by @DBJD-CR in #126
 
 ### 📚 Documentation (文档)
 
@@ -24,7 +23,7 @@
 
 ### 🔧 Chore (杂项)
 
-- 更新 Github Actions 版本 by @@dependabot[bot] in #105
+- 更新 Github Actions 版本 by @dependabot[bot] in #105
 - 更新依赖约束，增强与 AstrBot 的兼容性并清理未使用的包 by @Ayleovelle in #123
 - 优化遥测事件上报，避免频繁触发 429 错误 by @DBJD-CR in #126
 
@@ -121,7 +120,8 @@
 
 **Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.4.5...v1.5.0
 
----
+<details>
+<summary>点击查看历史更新内容</summary>
 
 # 2026/03/23 v1.4.5
 
