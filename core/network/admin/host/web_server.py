@@ -213,13 +213,14 @@ class WebAdminServer:
             except asyncio.CancelledError:
                 # 正常停止时会取消该任务，需放行以保持取消语义。
                 raise
-            except (SystemExit, Exception) as e:
+            except (SystemExit, Exception):
                 # Uvicorn 绑定端口失败会调用 sys.exit() 抛出 SystemExit（属
                 # BaseException 而非 Exception）。该任务由 create_task 起、从不
                 # 被 await，若不在此拦截，异常会作为未检索的任务异常冒泡到事件
                 # 循环根部，拖垮整个 AstrBot 进程。这里显式只拦 SystemExit 与
                 # Exception，不波及 KeyboardInterrupt。
-                logger.exception(f"[灾害预警] Web 管理端运行异常: {e!r}")
+                # logger.exception 已含异常类型与堆栈，无需再拼接异常对象。
+                logger.exception("[灾害预警] Web 管理端运行异常")
 
         # 将服务进程、心跳/延迟检测循环与广播事件的协程单独开启 Task 挂载
         self._server_task = asyncio.create_task(_serve())
@@ -271,8 +272,16 @@ class WebAdminServer:
                     # 避免热重载时新实例绑定同端口失败。
                     try:
                         await self._server_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
+                    except asyncio.CancelledError:
+                        # 区分两种取消：若是 _server_task 自身被上面 cancel（预期
+                        # 内），吞掉即可；若是 stop() 协程本身被外部取消，则需
+                        # 放行以保持取消语义，不可静默吞掉。
+                        if not self._server_task.cancelled():
+                            raise
+                    except Exception as e:
+                        logger.debug(
+                            f"[灾害预警] 等待 Web 管理端任务取消时出现异常: {e!r}"
+                        )
                 except Exception as e:
                     logger.warning(f"[灾害预警] 停止 Web 管理端时出现异常: {e!r}")
             logger.info("[灾害预警] Web 管理端已停止")
