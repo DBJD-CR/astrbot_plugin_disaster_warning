@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import json
 import os
 import tempfile
 import time
@@ -459,6 +460,9 @@ class BrowserManager:
         """使用 browserless HTTP API 渲染卡片"""
         start_time = time.time()
 
+        # 对注入的 selector 进行 JSON 编码，规避转义和 JS 语法截断安全风险。
+        js_encoded_selector = json.dumps(selector)
+
         # 注入大小修正脚本，将 html 和 body 的大小强制与卡片对齐。
         # 远程模式不传递 selector 给 browserless，从而完美避开 browserless 本身在 float 宽高时的 setViewportSize Bug。
         # 代之以在 JS 中锁死 html 与 body 为卡片的 Math.ceil() 精准整数长宽，并使用 fullPage 截图以获得完美卡片大小和透明背景。
@@ -468,7 +472,8 @@ class BrowserManager:
 (function() {{
     function fixSize() {{
         try {{
-            var el = document.querySelector('{selector}') || document.querySelector('.quake-card') || document.querySelector('.container');
+            var selectorStr = {js_encoded_selector};
+            var el = document.querySelector(selectorStr) || document.querySelector('.quake-card') || document.querySelector('.container');
             if (el) {{
                 document.documentElement.style.margin = '0';
                 document.documentElement.style.padding = '0';
@@ -522,6 +527,8 @@ class BrowserManager:
         try:
             # 构建请求体 - 使用 browserless screenshot API
             # 注意：此处全量使用 fullPage: True 截图，绝对不传任何顶级 selector，以彻底规避底层 setViewportSize 错误
+            # gotoOptions 的 waitUntil 使用兼容 Puppeteer/Playwright 的 networkidle2 (或 networkidle0) 选项，
+            # 避免直接传递仅由 Playwright 独占的 networkidle 属性从而引发远程服务报错。
             payload = {
                 "html": html_content,
                 "options": {
@@ -530,7 +537,7 @@ class BrowserManager:
                     "fullPage": True,  # 使用 fullPage 配合被修剪成卡片大小的 html 与 body
                 },
                 "gotoOptions": {
-                    "waitUntil": "networkidle",  # 确保地图瓦片等所有网络连接安静
+                    "waitUntil": "networkidle2",  # 确保地图瓦片等网络连接稳定(Puppeteer 格式)
                     "timeout": 60000,
                 },
                 "viewport": {

@@ -520,8 +520,7 @@ class TelemetryManager:
             self._send_task = None
 
         # 2. 强行上报缓冲中剩余的数据
-        if self._queue:
-            await self.flush()
+        await self.flush()
 
         # 3. 关闭底层会话
         if self._session and not self._session.closed:

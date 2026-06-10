@@ -62,7 +62,7 @@ def _extract_weather_projection_details(
                 "",
             )
         ).strip(),
-        # 提取预警的气象类型
+        # 提取预警的气象类型，使用多级优先级回退逻辑以确保解析出合理的中文气象类型
         "weather_type": weather_type,
     }
 

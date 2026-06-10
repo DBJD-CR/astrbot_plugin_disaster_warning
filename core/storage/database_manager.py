@@ -28,6 +28,14 @@ from .source_compat import (
 )
 
 
+def normalize_event_type(event_type: str | None) -> str | None:
+    """统一规范化事件类型，将历史遗留的 'weather' 类型映射为标准的 'weather_alarm'。"""
+    if not event_type:
+        return event_type
+    stripped = str(event_type).strip()
+    return "weather_alarm" if stripped == "weather" else stripped
+
+
 class DatabaseManager:
     """数据库管理器。
 
@@ -173,9 +181,7 @@ class DatabaseManager:
         """
         try:
             # 插入前确保将历史遗留的 'weather' 类型归一化为标准的 'weather_alarm' 存储
-            evt_type = str(event_data.get("type") or "").strip()
-            if evt_type == "weather":
-                evt_type = "weather_alarm"
+            evt_type = normalize_event_type(event_data.get("type")) or ""
 
             cursor = await self.connection.cursor()
             # 是否重大事件既允许外部直接传入，也允许在入库前重新按规则补判一次
@@ -259,9 +265,7 @@ class DatabaseManager:
         """
         try:
             # 更新前确保将历史遗留的 'weather' 类型归一化为标准的 'weather_alarm' 存储
-            evt_type = str(event_data.get("type") or "").strip()
-            if evt_type == "weather":
-                evt_type = "weather_alarm"
+            evt_type = normalize_event_type(event_data.get("type")) or ""
 
             cursor = await self.connection.cursor()
             real_event_id = event_data.get("real_event_id")
@@ -685,8 +689,8 @@ class DatabaseManager:
 
             if event_type:
                 # 兼容 "weather" => "weather_alarm"
-                norm_type = event_type
-                if norm_type == "weather":
+                norm_type = normalize_event_type(event_type) or ""
+                if norm_type == "weather_alarm":
                     clauses.append("(type='weather' OR type='weather_alarm')")
                 else:
                     clauses.append("type=?")
@@ -750,8 +754,8 @@ class DatabaseManager:
 
             if event_type:
                 # 兼容 "weather" => "weather_alarm"
-                norm_type = event_type
-                if norm_type == "weather":
+                norm_type = normalize_event_type(event_type) or ""
+                if norm_type == "weather_alarm":
                     clauses.append("(type='weather' OR type='weather_alarm')")
                 else:
                     clauses.append("type=?")
@@ -814,8 +818,8 @@ class DatabaseManager:
             cursor = await self.connection.cursor()
             if event_type:
                 # 兼容 "weather" => "weather_alarm"
-                norm_type = event_type
-                if norm_type == "weather":
+                norm_type = normalize_event_type(event_type) or ""
+                if norm_type == "weather_alarm":
                     await cursor.execute(
                         """
                         SELECT
@@ -926,7 +930,7 @@ class DatabaseManager:
             # 将数据库中历史遗留的 'weather' 类型统一归并到 standards 中的 'weather_alarm'
             by_type: dict[str, int] = {}
             for k, v in by_type_raw.items():
-                norm_key = "weather_alarm" if k == "weather" else k
+                norm_key = normalize_event_type(k) or k
                 by_type[norm_key] = by_type.get(norm_key, 0) + int(v or 0)
 
             await cursor.execute(
