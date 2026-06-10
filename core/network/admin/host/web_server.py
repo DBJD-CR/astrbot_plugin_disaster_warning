@@ -207,8 +207,22 @@ class WebAdminServer:
 
         logger.info(f"[灾害预警] Web 管理端已启动: http://{host}:{port}")
 
+        async def _serve():
+            try:
+                await self.server.serve()
+            except asyncio.CancelledError:
+                # 正常停止时会取消该任务，需放行以保持取消语义。
+                raise
+            except (SystemExit, Exception) as e:
+                # Uvicorn 绑定端口失败会调用 sys.exit() 抛出 SystemExit（属
+                # BaseException 而非 Exception）。该任务由 create_task 起、从不
+                # 被 await，若不在此拦截，异常会作为未检索的任务异常冒泡到事件
+                # 循环根部，拖垮整个 AstrBot 进程。这里显式只拦 SystemExit 与
+                # Exception，不波及 KeyboardInterrupt。
+                logger.exception(f"[灾害预警] Web 管理端运行异常: {e!r}")
+
         # 将服务进程、心跳/延迟检测循环与广播事件的协程单独开启 Task 挂载
-        self._server_task = asyncio.create_task(self.server.serve())
+        self._server_task = asyncio.create_task(_serve())
         self._broadcast_task = asyncio.create_task(self._broadcast_loop())
         self._ping_task = asyncio.create_task(self._background_ping_loop())
 
@@ -242,9 +256,23 @@ class WebAdminServer:
         # 5. 退出 Uvicorn Web 服务器实例并等待服务 Task 彻底终止
         if self.server:
             self.server.should_exit = True
+            # 强制退出：避免存在未关闭的长连接（如 WebSocket）时优雅关闭
+            # 永久挂起，确保监听 socket 能被释放，防止热重载时端口冲突。
+            self.server.force_exit = True
             if self._server_task:
                 try:
                     await asyncio.wait_for(self._server_task, timeout=5.0)
                 except asyncio.TimeoutError:
+                    logger.warning(
+                        "[灾害预警] Web 管理端未在 5 秒内停止，正在强制取消以释放端口。"
+                    )
                     self._server_task.cancel()
+                    # 等待取消真正完成，确保 stop 返回前监听 socket 已释放，
+                    # 避免热重载时新实例绑定同端口失败。
+                    try:
+                        await self._server_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                except Exception as e:
+                    logger.warning(f"[灾害预警] 停止 Web 管理端时出现异常: {e!r}")
             logger.info("[灾害预警] Web 管理端已停止")
