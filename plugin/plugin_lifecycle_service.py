@@ -130,20 +130,15 @@ class PluginLifecycleService:
         """在插件卸载/关闭时，依次安全终止后台任务、连接会话与资源引用。"""
         # 插件停机时按“服务任务 -> 主服务 -> 子资源”顺序清理，尽量降低悬挂任务与残留连接风险。
         if self.plugin._service_task:
+            self.plugin._service_task.cancel()
             try:
-                self.plugin._service_task.cancel()
                 await self.plugin._service_task
             except asyncio.CancelledError:
                 pass
-            except Exception as se:
-                logger.debug(f"[灾害预警] 停止主服务任务时出错（已忽略）: {se}")
 
         from ..core.app.disaster_service import stop_disaster_service
 
-        try:
-            await stop_disaster_service()
-        except Exception as dse:
-            logger.debug(f"[灾害预警] 停止灾害预警主服务时出错（已忽略）: {dse}")
+        await stop_disaster_service()
 
         if (
             self.plugin.disaster_service
@@ -185,10 +180,7 @@ class PluginLifecycleService:
 
         if self.plugin.web_server:
             # 最后停止管理端 Web 服务器，避免外部仍尝试进行网络交互
-            try:
-                await self.plugin.web_server.stop()
-            except Exception as wse:
-                logger.error(f"[灾害预警] 停止 Web 服务器时发生未捕获异常: {wse}")
+            await self.plugin.web_server.stop()
 
     def handle_asyncio_exception(self, loop, context) -> None:
         """事件循环未处理异步异常拦截入口，判断来源若为本插件则执行遥测收集上报。"""

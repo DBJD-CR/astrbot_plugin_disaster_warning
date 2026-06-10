@@ -5,7 +5,6 @@
 
 import asyncio
 import secrets
-import socket
 from pathlib import Path
 from typing import Any
 
@@ -150,34 +149,6 @@ class WebAdminServer:
             """管理端 WebSocket 实时推送端点。"""
             await self._runtime_service.handle_websocket(websocket)
 
-    def _is_port_in_use(self, host: str, port: int) -> bool:
-        """检查特定 IP 上的端口是否已被占用。"""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            try:
-                # 尝试绑定端口
-                s.bind((host, port))
-                return False
-            except Exception:
-                return True
-
-    async def _wait_for_port_release(
-        self, host: str, port: int, max_retries: int = 15, delay: float = 0.4
-    ) -> bool:
-        """等待端口释放。若释放成功返回 True，否则返回 False。"""
-        # 针对 0.0.0.0 情况，我们检测本机 loopback 是否可用即可更准确判断。
-        test_host = "127.0.0.1" if host in ("0.0.0.0", "") else host
-        for i in range(max_retries):
-            if not self._is_port_in_use(test_host, port):
-                if i > 0:
-                    logger.info(f"[灾害预警] Web 管理端检测到端口 {port} 已成功释放。")
-                return True
-            logger.warning(
-                f"[灾害预警] Web 管理端检测到端口 {port} 仍被占用，正在等待释放 ({i + 1}/{max_retries})..."
-            )
-            await asyncio.sleep(delay)
-        return False
-
     async def _send_full_update(self, websocket: WebSocket):
         """向单个客户端发送完整数据更新。"""
         await self._runtime_service.send_full_update(websocket)
@@ -228,14 +199,6 @@ class WebAdminServer:
         host = web_config.get("host", "0.0.0.0")
         port = web_config.get("port", 8089)
 
-        # 增加端口可用性检测与避让，防止因热重载导致 Uvicorn 绑定失败触发 sys.exit(1)
-        port_available = await self._wait_for_port_release(host, port)
-        if not port_available:
-            logger.error(
-                f"[灾害预警] Web 管理端端口 {port} 被持续占用且超时未释放，跳过本次 Uvicorn 启动，避免宿主进程崩溃"
-            )
-            return
-
         # 构造 Uvicorn 运行配置
         config = uvicorn.Config(
             self.app, host=host, port=port, log_level="warning", access_log=False
@@ -268,10 +231,7 @@ class WebAdminServer:
                 pass
 
         # 3. 强行断开并清理所有前端 websocket 句柄连接
-        try:
-            await self._runtime_service.close_all_websockets()
-        except Exception as wse:
-            logger.debug(f"[灾害预警] 关闭 WebSocket 异常（已忽略）: {wse}")
+        await self._runtime_service.close_all_websockets()
 
         # 4. 释放全局的 GeoIP 会话
         try:
@@ -281,28 +241,10 @@ class WebAdminServer:
 
         # 5. 退出 Uvicorn Web 服务器实例并等待服务 Task 彻底终止
         if self.server:
-            # 主动关闭正在服务的 Socket 句柄（如果有的话），加速系统端口释放
-            if hasattr(self.server, "servers") and self.server.servers:
-                for srv in self.server.servers:
-                    if hasattr(srv, "sockets"):
-                        for sock in srv.sockets:
-                            try:
-                                sock.close()
-                            except Exception as se:
-                                logger.debug(
-                                    f"[灾害预警] 显式关闭 Uvicorn 底部 Socket 异常（已忽略）: {se}"
-                                )
-
             self.server.should_exit = True
             if self._server_task:
                 try:
-                    await asyncio.wait_for(self._server_task, timeout=3.0)
+                    await asyncio.wait_for(self._server_task, timeout=5.0)
                 except asyncio.TimeoutError:
                     self._server_task.cancel()
-                    try:
-                        await self._server_task
-                    except asyncio.CancelledError:
-                        pass
-                    except Exception:
-                        pass
             logger.info("[灾害预警] Web 管理端已停止")
