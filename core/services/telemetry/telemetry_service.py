@@ -15,6 +15,7 @@ import base64
 import copy
 import platform
 import re
+import time
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -39,6 +40,18 @@ class TelemetryManager:
     # App Key 经过 base64 编码，增加源码探测复杂度
     _ENCODED_KEY = "dGtfVFMxaVEtcGVJbUlKczFVM3VBcGM4anREUlRhbC00VGY="
     _APP_KEY = base64.b64decode(_ENCODED_KEY).decode()
+
+    # 特定高频事件的最小加入队列间隔（秒），用于在内存中提前丢弃同质化冗余遥测
+    _THROTTLE_CONFIG = {
+        "feature:push_result": 30.0,  # 地震等高频新报的推送结果，30秒内仅保留第一笔
+        "feature:web_simulation_result": 10.0,  # 推送模拟
+        "feature:command_status_query": 10.0,  # 指令状态查询
+        "feature:command_stats_query": 10.0,  # 统计查询
+        "heartbeat": 60.0,  # 心跳事件强制限制
+    }
+
+    # 物理网络请求的最小时间间隔，防范任何极端情况下的 429
+    _MIN_REQUEST_INTERVAL = 10.0
 
     def __init__(
         self,
@@ -70,6 +83,19 @@ class TelemetryManager:
         self._session: aiohttp.ClientSession | None = None
 
         self._env = "production"
+
+        # 引入缓冲队列与后台任务，降低发送频率，避免 429 触发频率限制
+        self._queue: list[dict[str, Any]] = []
+        self._queue_lock = asyncio.Lock()
+        self._send_task: asyncio.Task | None = None
+        self._last_429_time: datetime | None = None
+
+        # 事件节流时间记录：键为 event_name 或 feature:feature_name，值为上次上报的时间戳
+        self._last_throttled_times: dict[str, float] = {}
+
+        # 物理请求速率限制与互斥锁
+        self._last_send_time: float = 0.0
+        self._send_semaphore = asyncio.Semaphore(1)
 
         if self._enabled:
             logger.debug(
@@ -123,6 +149,7 @@ class TelemetryManager:
         self,
         event_name: str,
         data: dict[str, Any] | None = None,
+        immediate: bool = False,
     ) -> bool:
         """
         发送遥测事件。
@@ -130,58 +157,143 @@ class TelemetryManager:
         参数说明：
         - event_name: 事件名称
         - data: 附加数据对象
+        - immediate: 是否立即发送，不经过缓冲队列
         """
         if not self._enabled:
             return False
 
+        # 对高频冗余事件进行内存节流过滤
+        throttle_key = event_name
+        if event_name == "feature" and data and "feature" in data:
+            throttle_key = f"feature:{data['feature']}"
+
+        if throttle_key in self._THROTTLE_CONFIG:
+            now_ts = time.time()
+            last_ts = self._last_throttled_times.get(throttle_key, 0.0)
+            if now_ts - last_ts < self._THROTTLE_CONFIG[throttle_key]:
+                # 冷却时间未到，静默丢弃当前高频事件
+                return True
+            self._last_throttled_times[throttle_key] = now_ts
+
+        # 延迟启动后台批处理任务，避免在没有运行 loop 的初始化时报错
+        if self._send_task is None or self._send_task.done():
+            try:
+                loop = asyncio.get_running_loop()
+                self._send_task = loop.create_task(self._batch_sender_loop())
+            except RuntimeError:
+                pass
+
+        event_item = {
+            "event": event_name,
+            "data": data or {},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if immediate:
+            return await self._send_batch_raw([event_item])
+
+        async with self._queue_lock:
+            self._queue.append(event_item)
+            should_flush = (
+                len(self._queue) >= 100
+            )  # 适当扩大缓冲区大小到 100，平滑高频阶段
+
+        if should_flush:
+            asyncio.create_task(self.flush())
+
+        return True
+
+    async def _batch_sender_loop(self) -> None:
+        """后台批处理发送循环"""
+        while self._enabled:
+            try:
+                await asyncio.sleep(15.0)  # 延长至每 15 秒自动轮询上报一次，平滑低峰段
+                await self.flush()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"[灾害预警] 遥测后台批处理循环异常: {e}")
+
+    async def flush(self) -> bool:
+        """立即清空缓冲区并批量发送所有缓存的事件。"""
+        if not self._enabled:
+            return False
+
+        async with self._queue_lock:
+            if not self._queue:
+                return False
+            batch_data = list(self._queue)
+            self._queue.clear()
+
+        return await self._send_batch_raw(batch_data)
+
+    async def _send_batch_raw(self, batch_data: list[dict[str, Any]]) -> bool:
+        """底层实际网络上报接口，包含强制发送速率限制。"""
         payload = {
             "instance_id": self._instance_id,
             "version": self._plugin_version,
             "env": self._env,
-            "batch": [
-                {
-                    "event": event_name,
-                    "data": data or {},
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-            ],
+            "batch": batch_data,
         }
 
-        try:
-            session = await self._get_session()
-            headers = {
-                "Content-Type": "application/json",
-                "X-App-Key": self._APP_KEY,
-            }
+        # 强制两次物理发送之间必须有 _MIN_REQUEST_INTERVAL 秒间隔，避免短时间内并发多个物理请求导致 429
+        async with self._send_semaphore:
+            now_ts = time.time()
+            elapsed = now_ts - self._last_send_time
+            if elapsed < self._MIN_REQUEST_INTERVAL:
+                wait_time = self._MIN_REQUEST_INTERVAL - elapsed
+                logger.debug(
+                    f"[灾害预警] 遥测请求物理限速，后台挂起等待 {wait_time:.2f} 秒"
+                )
+                await asyncio.sleep(wait_time)
 
-            # 异步非阻塞发起匿名上报请求
-            async with session.post(
-                self._ENDPOINT, json=payload, headers=headers
-            ) as response:
-                if response.status == 200:
-                    return True
-                if response.status == 401:
-                    logger.warning("[灾害预警] App Key 无效或项目已禁用")
-                elif response.status == 429:
-                    logger.warning("[灾害预警] 遥测请求频率超限")
-                else:
-                    logger.debug(f"[灾害预警] 遥测事件发送失败: HTTP {response.status}")
+            # 更新发送时间戳，确保后续请求准确排队
+            self._last_send_time = time.time()
 
-        except asyncio.TimeoutError:
-            logger.debug("[灾害预警] 遥测请求超时")
-            return False
-        except aiohttp.ClientConnectionError as e:
-            logger.debug(f"[灾害预警] 遥测连接失败: {e}")
-            return False
-        except aiohttp.ClientPayloadError as e:
-            logger.debug(f"[灾害预警] 遥测数据负载异常，错误为 {e}")
-            return False
-        except aiohttp.ClientError as e:
-            logger.debug(f"[灾害预警] 遥测网络请求异常，错误为 {e}")
-            return False
-        except Exception as e:
-            logger.debug(f"[灾害预警] 遥测发送遇到未知异常，错误为 {e}")
-            return False
+            try:
+                session = await self._get_session()
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-App-Key": self._APP_KEY,
+                }
+
+                # 发起匿名批量上报请求
+                async with session.post(
+                    self._ENDPOINT, json=payload, headers=headers
+                ) as response:
+                    if response.status == 200:
+                        return True
+                    if response.status == 401:
+                        logger.warning("[灾害预警] App Key 无效或项目已禁用")
+                    elif response.status == 429:
+                        # 限制 429 警告日志的输出频率，避免高频刷屏
+                        now = datetime.now()
+                        if (
+                            self._last_429_time is None
+                            or (now - self._last_429_time).total_seconds() > 600
+                        ):
+                            logger.warning("[灾害预警] 遥测请求频率超限")
+                            self._last_429_time = now
+                    else:
+                        logger.debug(
+                            f"[灾害预警] 遥测事件发送失败: HTTP {response.status}"
+                        )
+
+            except asyncio.TimeoutError:
+                logger.debug("[灾害预警] 遥测请求超时")
+                return False
+            except aiohttp.ClientConnectionError as e:
+                logger.debug(f"[灾害预警] 遥测连接失败: {e}")
+                return False
+            except aiohttp.ClientPayloadError as e:
+                logger.debug(f"[灾害预警] 遥测数据负载异常，错误为 {e}")
+                return False
+            except aiohttp.ClientError as e:
+                logger.debug(f"[灾害预警] 遥测网络请求异常，错误为 {e}")
+                return False
+            except Exception as e:
+                logger.debug(f"[灾害预警] 遥测发送遇到未知异常，错误为 {e}")
+                return False
 
         return False
 
@@ -198,6 +310,7 @@ class TelemetryManager:
                 "astrbot_version_source": self._astrbot_version_info.source,
                 "astrbot_version_error": self._astrbot_version_info.error,
             },
+            immediate=True,
         )
 
     async def track_shutdown(
@@ -210,6 +323,7 @@ class TelemetryManager:
                 "exit_code": exit_code,
                 "runtime_seconds": runtime_seconds,
             },
+            immediate=True,
         )
 
     async def track_heartbeat(self, uptime_seconds: float = 0) -> bool:
@@ -257,7 +371,7 @@ class TelemetryManager:
                 if isinstance(wa, dict) and "password" in wa:
                     del wa["password"]
 
-            return await self.track("config", config_copy)
+            return await self.track("config", config_copy, immediate=True)
 
         except Exception as e:
             logger.debug(f"[灾害预警] 配置快照提取失败: {e}")
@@ -396,6 +510,19 @@ class TelemetryManager:
 
     async def close(self):
         """关闭遥测会话。"""
+        # 1. 取消后台批处理任务并安全等待其结束
+        if self._send_task and not self._send_task.done():
+            self._send_task.cancel()
+            try:
+                await self._send_task
+            except asyncio.CancelledError:
+                pass
+            self._send_task = None
+
+        # 2. 强行上报缓冲中剩余的数据
+        await self.flush()
+
+        # 3. 关闭底层会话
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None

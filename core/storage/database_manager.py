@@ -28,6 +28,14 @@ from .source_compat import (
 )
 
 
+def normalize_event_type(event_type: str | None) -> str | None:
+    """统一规范化事件类型，将历史遗留的 'weather' 类型映射为标准的 'weather_alarm'。"""
+    if not event_type:
+        return event_type
+    stripped = str(event_type).strip()
+    return "weather_alarm" if stripped == "weather" else stripped
+
+
 class DatabaseManager:
     """数据库管理器。
 
@@ -172,6 +180,9 @@ class DatabaseManager:
         返回新记录的数据库 id。
         """
         try:
+            # 插入前确保将历史遗留的 'weather' 类型归一化为标准的 'weather_alarm' 存储
+            evt_type = normalize_event_type(event_data.get("type")) or ""
+
             cursor = await self.connection.cursor()
             # 是否重大事件既允许外部直接传入，也允许在入库前重新按规则补判一次
             is_major = bool(event_data.get("is_major")) or is_major_record(event_data)
@@ -190,7 +201,7 @@ class DatabaseManager:
                 (
                     event_data.get("real_event_id"),
                     event_data.get("unique_id"),
-                    event_data.get("type"),
+                    evt_type,
                     event_data.get("source"),
                     event_data.get("source_id"),
                     event_data.get("description"),
@@ -253,6 +264,9 @@ class DatabaseManager:
         同时在 event_updates 追加一条更新记录。
         """
         try:
+            # 更新前确保将历史遗留的 'weather' 类型归一化为标准的 'weather_alarm' 存储
+            evt_type = normalize_event_type(event_data.get("type")) or ""
+
             cursor = await self.connection.cursor()
             real_event_id = event_data.get("real_event_id")
             unique_id = event_data.get("unique_id")
@@ -285,6 +299,7 @@ class DatabaseManager:
                 """
                 UPDATE events SET
                     source_id         = ?,
+                    type              = ?,
                     description       = ?,
                     subtitle          = ?,
                     weather_detail    = ?,
@@ -305,6 +320,7 @@ class DatabaseManager:
                 """,
                 (
                     event_data.get("source_id"),
+                    evt_type,
                     event_data.get("description"),
                     event_data.get("subtitle"),
                     event_data.get("weather_detail"),
@@ -483,7 +499,7 @@ class DatabaseManager:
                 """
                 SELECT *
                 FROM events
-                WHERE type='weather_alarm'
+                WHERE (type='weather' OR type='weather_alarm')
                   AND (unique_id=? OR real_event_id=?)
                 ORDER BY updated_at DESC, time DESC, id DESC
                 LIMIT 1
@@ -509,7 +525,7 @@ class DatabaseManager:
                 """
                 SELECT *
                 FROM events
-                WHERE type='weather_alarm'
+                WHERE type='weather' OR type='weather_alarm'
                 ORDER BY updated_at DESC, time DESC, id DESC
                 LIMIT ?
                 """,
@@ -542,14 +558,14 @@ class DatabaseManager:
                     FROM events
                     WHERE is_major = 1
                       AND (
-                          type NOT IN ('earthquake', 'earthquake_warning', 'weather_alarm')
+                          type NOT IN ('earthquake', 'earthquake_warning', 'weather', 'weather_alarm')
                           OR (
                               type IN ('earthquake', 'earthquake_warning')
                               AND magnitude IS NOT NULL
                               AND magnitude >= ?
                           )
                           OR (
-                              type = 'weather_alarm'
+                              (type = 'weather' OR type = 'weather_alarm')
                               AND (
                                   (
                                       COALESCE(TRIM(level), '') != ''
@@ -601,7 +617,7 @@ class DatabaseManager:
             color = weather_color_map[normalized]
             like = f"%{color}%"
             clauses.append(
-                "(type='weather_alarm' AND ("
+                "((type='weather' OR type='weather_alarm') AND ("
                 "COALESCE(level, '') LIKE ? OR "
                 "COALESCE(description, '') LIKE ? OR "
                 "COALESCE(subtitle, '') LIKE ?"
@@ -672,8 +688,13 @@ class DatabaseManager:
             params: list[Any] = []
 
             if event_type:
-                clauses.append("type=?")
-                params.append(event_type)
+                # 兼容 "weather" => "weather_alarm"
+                norm_type = normalize_event_type(event_type) or ""
+                if norm_type == "weather_alarm":
+                    clauses.append("(type='weather' OR type='weather_alarm')")
+                else:
+                    clauses.append("type=?")
+                    params.append(norm_type)
 
             self._append_source_filter_clause(sources, clauses, params)
 
@@ -732,8 +753,13 @@ class DatabaseManager:
             params: list[Any] = []
 
             if event_type:
-                clauses.append("type=?")
-                params.append(event_type)
+                # 兼容 "weather" => "weather_alarm"
+                norm_type = normalize_event_type(event_type) or ""
+                if norm_type == "weather_alarm":
+                    clauses.append("(type='weather' OR type='weather_alarm')")
+                else:
+                    clauses.append("type=?")
+                    params.append(norm_type)
 
             self._append_source_filter_clause(sources, clauses, params)
 
@@ -791,17 +817,31 @@ class DatabaseManager:
         try:
             cursor = await self.connection.cursor()
             if event_type:
-                await cursor.execute(
-                    """
-                    SELECT
-                        COALESCE(NULLIF(source_id, ''), '') AS source_id_value,
-                        COALESCE(NULLIF(source, ''), '') AS source_label
-                    FROM events
-                    WHERE type=?
-                    GROUP BY source_id_value, source_label
-                    """,
-                    (event_type,),
-                )
+                # 兼容 "weather" => "weather_alarm"
+                norm_type = normalize_event_type(event_type) or ""
+                if norm_type == "weather_alarm":
+                    await cursor.execute(
+                        """
+                        SELECT
+                            COALESCE(NULLIF(source_id, ''), '') AS source_id_value,
+                            COALESCE(NULLIF(source, ''), '') AS source_label
+                        FROM events
+                        WHERE type='weather' OR type='weather_alarm'
+                        GROUP BY source_id_value, source_label
+                        """
+                    )
+                else:
+                    await cursor.execute(
+                        """
+                        SELECT
+                            COALESCE(NULLIF(source_id, ''), '') AS source_id_value,
+                            COALESCE(NULLIF(source, ''), '') AS source_label
+                        FROM events
+                        WHERE type=?
+                        GROUP BY source_id_value, source_label
+                        """,
+                        (norm_type,),
+                    )
             else:
                 await cursor.execute(
                     """
@@ -885,7 +925,13 @@ class DatabaseManager:
             await cursor.execute(
                 f"SELECT type, COUNT(DISTINCT {dedup_group_expr}) FROM events GROUP BY type"
             )
-            by_type = {r[0]: r[1] for r in await cursor.fetchall()}
+            by_type_raw = {r[0]: r[1] for r in await cursor.fetchall()}
+
+            # 将数据库中历史遗留的 'weather' 类型统一归并到 standards 中的 'weather_alarm'
+            by_type: dict[str, int] = {}
+            for k, v in by_type_raw.items():
+                norm_key = normalize_event_type(k) or k
+                by_type[norm_key] = by_type.get(norm_key, 0) + int(v or 0)
 
             await cursor.execute(
                 f"""

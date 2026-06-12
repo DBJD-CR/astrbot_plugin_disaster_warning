@@ -69,9 +69,12 @@ class StatsLoadService:
                             int, by_source_from_db
                         )
                     if by_type_from_db:
-                        self.manager.stats["by_type"] = defaultdict(
-                            int, by_type_from_db
-                        )
+                        # 兼容处理并归并历史遗留的 "weather" 类型为 "weather_alarm"（即“气象预警”）
+                        normalized_by_type = defaultdict(int)
+                        for k, v in by_type_from_db.items():
+                            key_norm = "weather_alarm" if k == "weather" else k
+                            normalized_by_type[key_norm] += v
+                        self.manager.stats["by_type"] = normalized_by_type
                     if total_events_from_db:
                         self.manager.stats["total_events"] = int(total_events_from_db)
 
@@ -106,6 +109,9 @@ class StatsLoadService:
             for record in recent_pushes:
                 try:
                     record["is_major"] = is_major_record(record)
+                    # 迁移时将 "weather" 转换为标准 "weather_alarm" 类型
+                    if record.get("type") == "weather":
+                        record["type"] = "weather_alarm"
                     await self.manager.db.insert_event(record)
                     migrated += 1
                 except Exception as e:
@@ -157,14 +163,13 @@ class StatsLoadService:
                     if str(key)
                 },
             )
-            self.manager.stats["by_type"] = defaultdict(
-                int,
-                {
-                    str(key): int(value)
-                    for key, value in dict(by_type_from_db or {}).items()
-                    if str(key)
-                },
-            )
+            # 兼容处理并归并历史遗留的 "weather" 类型为 "weather_alarm"
+            normalized_by_type = defaultdict(int)
+            for k, v in dict(by_type_from_db or {}).items():
+                if str(k):
+                    key_norm = "weather_alarm" if k == "weather" else k
+                    normalized_by_type[key_norm] += int(v)
+            self.manager.stats["by_type"] = normalized_by_type
             self.manager.stats["total_events"] = int(total_events_from_db or 0)
 
         rebuild_events = await self.manager.db.get_statistics_rebuild_events()
@@ -208,6 +213,10 @@ class StatsLoadService:
 
         for event in events or []:
             event_type = str(event.get("type") or "").strip()
+            # 兼容历史遗留的 type 为 "weather" 记录，在统计分类中做一致性还原处理
+            if event_type == "weather":
+                event_type = "weather_alarm"
+
             if event_type == "earthquake":
                 if not self._is_cenc_official_record(event):
                     continue
@@ -292,8 +301,10 @@ class StatsLoadService:
         weather_levels[level] += 1
 
         weather_type = "其他"
+        # 仅从标题层面的文本（description 即 title_text，或者 subtitle 即 headline_text）提取气象类型，排除详细描述的影响
+        search_text = headline_text if headline_text else title_text
         for name in SORTED_WEATHER_TYPES:
-            if name in combined_text:
+            if name in search_text:
                 weather_type = name
                 break
         weather_types[weather_type] += 1

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from ....domain.display_models import WeatherDisplayModel
 from ....domain.event_context import WeatherDisplayContext
+from ....message.presenters.weather_constants import SORTED_WEATHER_TYPES
 from .common import build_projection_view, coerce_dict, first_non_empty
 
 
@@ -25,6 +26,26 @@ def _extract_weather_projection_details(
         projection_view.get("summary"),
         "",
     )
+
+    # 优先且仅从代表标题的 headline 中提取预警类型，避免描述文本干扰
+    weather_type = ""
+    search_text = headline if headline else title
+    for name in SORTED_WEATHER_TYPES:
+        if name in search_text:
+            weather_type = name
+            break
+    if not weather_type:
+        weather_type = str(
+            first_non_empty(
+                projection_view.get("weather_type"),
+                projection_view.get("type"),
+                projection_view.get("weatherType"),
+                title,
+                headline,
+                "",
+            )
+        ).strip()
+
     return {
         # 提取事件大标题/头条
         "headline": str(
@@ -42,16 +63,7 @@ def _extract_weather_projection_details(
             )
         ).strip(),
         # 提取预警的气象类型，使用多级优先级回退逻辑以确保解析出合理的中文气象类型
-        "weather_type": str(
-            first_non_empty(
-                projection_view.get("weather_type"),
-                projection_view.get("type"),
-                projection_view.get("weatherType"),
-                title,
-                headline,
-                "",
-            )
-        ).strip(),
+        "weather_type": weather_type,
     }
 
 

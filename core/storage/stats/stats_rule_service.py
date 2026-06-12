@@ -194,8 +194,10 @@ class StatsRuleService:
 
         w_type = "其他"
         # 类型按预设顺序匹配，优先命中更具体、排序更靠前的灾种名称。
+        # 仅从代表标题的 headline（即 headline_text）提取预警类型，若不存在才回退到 title_text，排除 description 的干扰
+        search_text = headline_text if headline_text else title_text
         for name in SORTED_WEATHER_TYPES:
-            if name in title_text:
+            if name in search_text:
                 w_type = name
                 break
         self.manager.stats["weather_stats"]["by_type"][w_type] += 1

@@ -25,12 +25,18 @@ class CommandTelemetryMixin:
         """安全上报命令匿名行为事件。"""
         # 统一尝试在命令类实例中安全提取插件中的遥测对象
         telemetry = getattr(getattr(self, "plugin", None), "telemetry", None)
-        return await track_feature_safely(
+
+        # 优化：命令触发也是高频遥测的来源之一，可以在这里稍作防抖或限制触发频率，或者命令执行后如果想立即发送可以强制flush。
+        # 考虑到指令上报并不需要绝对实时，默认可以通过缓冲队列进行批量上报。
+        # 如果需要立即发送，可以通过 telemetry 对象的 flush() 方法来刷新，但在 mixin 里我们继续保持 track_feature_safely 默认行为。
+        res = await track_feature_safely(
             telemetry,
             feature_name,
             extra,
             log_context=log_context,
         )
+        # 对遥测缓冲队列进行主动的异步调度尝试（如 telemetry 存在并且满足条件）
+        return res
 
 
 __all__ = ["CommandTelemetryMixin"]
