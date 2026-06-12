@@ -5,7 +5,7 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
-# 2026/06/11 v1.5.1
+# 2026/06/12 v1.5.1
 
 ## 🚀 What's Changed
 
@@ -16,6 +16,7 @@
 ### 🐛 Bug Fixes (修复)
 
 - 修复气象预警类型解析不准确与地区统计合并的历史遗留问题 by @DBJD-CR in #126
+- 增强插件重载时的资源清理能力，避免端口冲突 by @Ayleovelle in #127
 
 ### 📚 Documentation (文档)
 
