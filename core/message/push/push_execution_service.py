@@ -232,6 +232,37 @@ class PushExecutionService:
                 return True, session, runtime_config.get("message_format", {}), None
             except Exception as e:
                 error_name = type(e).__name__
+
+                # 检测是否为超时相关的异常。当发生超时时，QQ服务端实际上可能已经成功投递了消息。
+                # 为了防止降级重发导致重复发送，如果检测到超时，我们将直接记录日志，不执行 fallback 降级重发。
+                is_timeout = False
+                err_msg = str(e).lower()
+
+                # 检查属性以判定超时 (针对各种 ActionFailed 异常属性)
+                retcode = getattr(e, "retcode", None)
+                wording = getattr(e, "wording", None)
+                message_attr = getattr(e, "message", None)
+
+                if (
+                    "timeout" in error_name.lower()
+                    or "timeout" in err_msg
+                    or retcode in (1200, 1400)
+                    or (isinstance(wording, str) and "timeout" in wording.lower())
+                    or (
+                        isinstance(message_attr, str)
+                        and "timeout" in message_attr.lower()
+                    )
+                ):
+                    is_timeout = True
+
+                if is_timeout:
+                    logger.warning(
+                        f"[灾害预警] 推送到会话 {session} 时疑似超时，但实际推送成功却返回失败，为防止重复，跳过降级重发: {e}"
+                    )
+                    # 遇到超时时，为了避免被外层统计为彻底失败，可认为其成功送达了，或者至少不能再降级重发。
+                    # 这里返回 True，认为该会话已处理完毕，不再次投递。
+                    return True, session, runtime_config.get("message_format", {}), None
+
                 logger.error(f"[灾害预警] 推送到 {session} 失败: {e}")
 
                 # 如果富媒体发送失败，则尝试从原消息链中提取纯文本进行降级重发。
