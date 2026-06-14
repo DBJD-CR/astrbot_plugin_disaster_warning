@@ -5,6 +5,18 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+# 2026/06/15 v1.5.2
+
+## 🚀 What's Changed
+
+### 🐛 Bug Fixes (修复)
+
+- 修复了降级重发策略不健壮导致的重复推送问题 by @DBJD-CR in [(f24287f)](https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/commit/f24287fb4551060bce67d2aeaa7691ddb9b200dc)
+
+---
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.5.1...v1.5.2
+
 # 2026/06/12 v1.5.1
 
 ## 🚀 What's Changed
