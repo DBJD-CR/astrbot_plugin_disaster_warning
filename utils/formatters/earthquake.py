@@ -6,8 +6,13 @@
 import re
 from datetime import datetime
 
-from ...core.support.intensity_calculator import IntensityCalculator
-from ...models.models import EarthquakeData
+try:
+    from ...core.support.intensity_calculator import IntensityCalculator
+    from ...models.models import EarthquakeData
+except ImportError:  # pragma: no cover - 测试环境兼容
+    from core.support.intensity_calculator import IntensityCalculator
+    from models.models import EarthquakeData
+
 from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
 

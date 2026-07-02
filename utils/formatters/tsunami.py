@@ -2,8 +2,13 @@
 海啸预警消息格式化器
 """
 
-from ...models.data_source_config import get_data_source_config
-from ...models.models import TsunamiData
+try:
+    from ...models.data_source_config import get_data_source_config
+    from ...models.models import TsunamiData
+except ImportError:  # pragma: no cover - 测试环境兼容
+    from models.data_source_config import get_data_source_config
+    from models.models import TsunamiData
+
 from ..time_converter import TimeConverter
 from .base import BaseMessageFormatter
 

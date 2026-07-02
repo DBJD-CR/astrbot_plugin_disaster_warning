@@ -2,7 +2,11 @@
 气象预警消息格式化器
 """
 
-from ...models.models import WeatherAlarmData
+try:
+    from ...models.models import WeatherAlarmData
+except ImportError:  # pragma: no cover - 测试环境兼容
+    from models.models import WeatherAlarmData
+
 from .base import BaseMessageFormatter
 
 # 预警类型到Emoji的映射

@@ -1597,6 +1597,8 @@ class MessagePushManager:
         active_config = full_config or self.config
         display_timezone = active_config.get("display_timezone", "UTC+8")
         detailed_jma = config.get("detailed_jma_intensity", False)
+        message_format_config = active_config.get("message_format", {})
+        enable_emoji = message_format_config.get("enable_emoji", True)
 
         if isinstance(event.data, WeatherAlarmData):
             weather_config = active_config.get("weather_config", {})
@@ -1605,15 +1607,17 @@ class MessagePushManager:
                     "max_description_length", 384
                 ),
                 "timezone": display_timezone,
+                "enable_emoji": enable_emoji,
             }
             message_text = format_weather_message(source_id, event.data, options)
         elif isinstance(event.data, TsunamiData):
-            options = {"timezone": display_timezone}
+            options = {"timezone": display_timezone, "enable_emoji": enable_emoji}
             message_text = format_tsunami_message(source_id, event.data, options)
         elif isinstance(event.data, EarthquakeData):
             options = {
                 "detailed_jma_intensity": detailed_jma,
                 "timezone": display_timezone,
+                "enable_emoji": enable_emoji,
             }
             # 特殊处理 CWA 报告格式化
             if source_id == "cwa_fanstudio_report":

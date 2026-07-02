@@ -2,10 +2,14 @@
 基础消息格式化器
 """
 
+import re
 from datetime import datetime
 from typing import Any
 
-from ..time_converter import TimeConverter
+try:
+    from ..time_converter import TimeConverter
+except ImportError:  # pragma: no cover - 测试环境兼容
+    from utils.time_converter import TimeConverter
 
 
 class BaseMessageFormatter:
@@ -22,6 +26,13 @@ class BaseMessageFormatter:
     def format_time(dt: datetime, target_timezone: str = "UTC+8") -> str:
         """格式化时间显示 - 支持时区转换"""
         return TimeConverter.format_time(dt, target_timezone)
+
+    @staticmethod
+    def remove_emoji(text: str) -> str:
+        """移除消息中的 emoji 字符。"""
+        if not text:
+            return text
+        return re.sub(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", "", text)
 
     @staticmethod
     def format_message(data: Any) -> str:

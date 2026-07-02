@@ -9,6 +9,7 @@ import json
 from astrbot.api import logger
 
 from ..network.websocket_manager import WebSocketManager
+from .fan_studio_adapter import FanStudioAdapter
 
 
 class WebSocketHandlerRegistry:
@@ -66,6 +67,7 @@ class WebSocketHandlerRegistry:
                         "china_earthquake_warning_provincial",
                         "cea_pr_fanstudio",
                     ),
+                    "emsc": ("china_earthquake_warning", "cea_fanstudio"),
                     "jma": ("japan_jma_eew", "jma_fanstudio"),
                     "cwa": ("taiwan_cwa_report", "cwa_fanstudio_report"),
                     "cwa-eew": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
@@ -94,13 +96,15 @@ class WebSocketHandlerRegistry:
                 if msg_type == "initial_all":
                     for key, value in data.items():
                         if key in source_map and isinstance(value, dict):
-                            messages_to_process.append((key, value))
+                            normalized_payload = FanStudioAdapter.normalize(value)
+                            messages_to_process.append((key, normalized_payload))
 
                 # 2. 处理 update (单条更新消息)
                 elif msg_type == "update":
-                    source = data.get("source")
+                    normalized_payload = FanStudioAdapter.normalize(data)
+                    source = normalized_payload.get("source")
                     if source and source in source_map:
-                        messages_to_process.append((source, data))
+                        messages_to_process.append((source, normalized_payload))
 
                 # 3. 兜底：尝试特征识别 (兼容旧格式或无 source 的情况)
                 # 只有当消息中没有明确的 source 字段时才进行猜测

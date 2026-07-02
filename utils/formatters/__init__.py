@@ -7,8 +7,24 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ...models.models import EarthquakeData, TsunamiData, WeatherAlarmData
+try:
+    from ...models.models import EarthquakeData, TsunamiData, WeatherAlarmData
+except ImportError:  # pragma: no cover - 测试环境兼容
+    from models.models import EarthquakeData, TsunamiData, WeatherAlarmData
+
 from .base import BaseMessageFormatter
+
+
+def _apply_emoji_toggle(text: str, options: dict | None = None) -> str:
+    """根据配置决定是否移除消息中的 emoji。"""
+    if not isinstance(options, dict):
+        return text
+
+    enable_emoji = options.get("enable_emoji", True)
+    if enable_emoji is not False:
+        return text
+
+    return BaseMessageFormatter.remove_emoji(text)
 from .earthquake import (
     CEAEEWFormatter,
     CENCEarthquakeFormatter,
@@ -67,11 +83,13 @@ def _safe_format_message(source_id: str, data: Any, options: dict = None) -> str
 
     if hasattr(formatter_class, "format_message"):
         try:
-            return formatter_class.format_message(data, options=options)
+            formatted = formatter_class.format_message(data, options=options)
+            return _apply_emoji_toggle(formatted, options)
         except TypeError:
             # 如果不支持 options 参数，回退到旧调用方式
             try:
-                return formatter_class.format_message(data)
+                formatted = formatter_class.format_message(data)
+                return _apply_emoji_toggle(formatted, options)
             except Exception as e:
                 logger.error(
                     f"[灾害预警] 格式化器 {formatter_class.__name__} (旧接口) 执行出错: {e}，回退到基础格式",
@@ -84,7 +102,7 @@ def _safe_format_message(source_id: str, data: Any, options: dict = None) -> str
             )
 
     # 回退到基础格式化
-    return BaseMessageFormatter.format_message(data)
+    return _apply_emoji_toggle(BaseMessageFormatter.format_message(data), options)
 
 
 def format_earthquake_message(
