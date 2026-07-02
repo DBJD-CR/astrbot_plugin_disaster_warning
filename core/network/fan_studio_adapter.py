@@ -37,43 +37,68 @@ class FanStudioAdapter:
 
         # 统一字段名，兼容地方局与 EMSC 的常见写法
         normalized_data = {
-            "id": message_data.get("id") or message_data.get("event_id") or payload.get("id"),
-            "eventId": message_data.get("eventId") or message_data.get("event_id"),
+            "id": FanStudioAdapter._find_first_value(
+                message_data,
+                ["id", "event_id"],
+                fallback=payload.get("id"),
+            ),
+            "eventId": FanStudioAdapter._find_first_value(
+                message_data,
+                ["eventId", "event_id"],
+            ),
             "latitude": FanStudioAdapter._coerce_float(
-                message_data.get("latitude")
-                or message_data.get("lat")
-                or message_data.get("Latitude")
+                FanStudioAdapter._find_first_value(
+                    message_data,
+                    ["latitude", "lat", "Latitude"],
+                )
             ),
             "longitude": FanStudioAdapter._coerce_float(
-                message_data.get("longitude")
-                or message_data.get("lon")
-                or message_data.get("Longitude")
+                FanStudioAdapter._find_first_value(
+                    message_data,
+                    ["longitude", "lon", "Longitude"],
+                )
             ),
             "depth": FanStudioAdapter._coerce_float(
-                message_data.get("depth")
-                or message_data.get("depth_km")
-                or message_data.get("Depth")
+                FanStudioAdapter._find_first_value(
+                    message_data,
+                    ["depth", "depth_km", "Depth"],
+                )
             ),
             "magnitude": FanStudioAdapter._coerce_float(
-                message_data.get("magnitude")
-                or message_data.get("mag")
-                or message_data.get("Magnitude")
+                FanStudioAdapter._find_first_value(
+                    message_data,
+                    ["magnitude", "mag", "Magnitude"],
+                )
             ),
-            "epiIntensity": message_data.get("epiIntensity")
-            or message_data.get("intensity")
-            or message_data.get("maxIntensity"),
-            "placeName": message_data.get("placeName")
-            or message_data.get("location")
-            or message_data.get("place_name")
-            or message_data.get("region")
-            or "",
-            "province": message_data.get("province") or message_data.get("region") or "",
-            "shockTime": message_data.get("shockTime")
-            or message_data.get("time")
-            or message_data.get("origin_time")
-            or "",
-            "updates": message_data.get("updates") or 1,
-            "isFinal": message_data.get("isFinal") or message_data.get("is_final") or False,
+            "epiIntensity": FanStudioAdapter._find_first_value(
+                message_data,
+                ["epiIntensity", "intensity", "maxIntensity"],
+            ),
+            "placeName": FanStudioAdapter._find_first_value(
+                message_data,
+                ["placeName", "location", "place_name", "region"],
+                fallback="",
+            ),
+            "province": FanStudioAdapter._find_first_value(
+                message_data,
+                ["province", "region"],
+                fallback="",
+            ),
+            "shockTime": FanStudioAdapter._find_first_value(
+                message_data,
+                ["shockTime", "time", "origin_time"],
+                fallback="",
+            ),
+            "updates": FanStudioAdapter._find_first_value(
+                message_data,
+                ["updates"],
+                fallback=1,
+            ),
+            "isFinal": FanStudioAdapter._find_first_value(
+                message_data,
+                ["isFinal", "is_final"],
+                fallback=False,
+            ),
         }
 
         if normalized_data["epiIntensity"] is None and normalized_data["magnitude"] is not None:
@@ -113,7 +138,7 @@ class FanStudioAdapter:
         if lowered in {"cea", "cea-fanstudio", "china_earthquake_warning"}:
             return "cea"
         if lowered in {"emsc", "emsc-fanstudio"}:
-            return "EMSC"
+            return "emsc"
         if lowered in {"cwa", "cwa-eew", "taiwan_cwa_earthquake"}:
             return "cwa-eew"
         if "province" in message_data or message_data.get("province"):
@@ -123,8 +148,25 @@ class FanStudioAdapter:
         return source_value or "cea"
 
     @staticmethod
+    def _find_first_value(
+        data: dict[str, Any],
+        keys: list[str],
+        fallback: Any = None,
+    ) -> Any:
+        for key in keys:
+            value = data.get(key)
+            if value is None:
+                continue
+            if isinstance(value, str) and value.strip() == "":
+                continue
+            return value
+        return fallback
+
+    @staticmethod
     def _coerce_float(value: Any) -> float | None:
-        if value in (None, "", "null", "None"):
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip() in {"", "null", "None"}:
             return None
         try:
             return float(value)

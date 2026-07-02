@@ -67,7 +67,31 @@ def test_fan_studio_adapter_normalizes_local_authority_and_emsc_payloads():
     assert emsc_norm["latitude"] == 38.0
     assert emsc_norm["longitude"] == -122.0
     assert emsc_norm["depth"] == 14.0
-    assert emsc_norm["source"] == "EMSC"
+    assert emsc_norm["source"] == "emsc"
+
+
+def test_fan_studio_adapter_preserves_zero_values():
+    adapter_module = importlib.import_module("core.network.fan_studio_adapter")
+    adapter = adapter_module.FanStudioAdapter
+
+    payload = {
+        "type": "update",
+        "source": "emsc",
+        "Data": {
+            "lat": 0.0,
+            "lon": 0.0,
+            "depth_km": 0.0,
+            "mag": 0.0,
+            "time": "2024-01-01T00:00:00Z",
+        },
+    }
+
+    normalized = adapter.normalize(payload)
+
+    assert normalized["latitude"] == 0.0
+    assert normalized["longitude"] == 0.0
+    assert normalized["depth"] == 0.0
+    assert normalized["magnitude"] == 0.0
 
 
 def test_message_formatting_honors_enable_emoji_setting():

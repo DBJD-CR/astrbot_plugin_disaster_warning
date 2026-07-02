@@ -67,7 +67,7 @@ class WebSocketHandlerRegistry:
                         "china_earthquake_warning_provincial",
                         "cea_pr_fanstudio",
                     ),
-                    "emsc": ("china_earthquake_warning", "cea_fanstudio"),
+                    "emsc": ("usgs_earthquake", "usgs_fanstudio"),
                     "jma": ("japan_jma_eew", "jma_fanstudio"),
                     "cwa": ("taiwan_cwa_report", "cwa_fanstudio_report"),
                     "cwa-eew": ("taiwan_cwa_earthquake", "cwa_fanstudio"),
