@@ -93,6 +93,68 @@ class GlobalQuakeParser(BaseParser):
             logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
             return None
 
+    def _build_removal_envelope(
+        self, event_id: str, raw_payload: dict, source_entry, message_type: str
+    ) -> EventEnvelope | None:
+        """构建取消/撤销事件的统一包裹对象。"""
+        metadata = {
+            "source_family": "global_quake",
+            "source_enum": source_entry.source_enum if source_entry else "",
+            "source_type": source_entry.source_type.value
+            if source_entry
+            else "earthquake_warning",
+            "is_cancel": True,
+            "report_num": 0,
+        }
+
+        # 实例化取消的地震领域事件
+        domain_event = EarthquakeEvent(
+            occurred_at=datetime.now(timezone.utc),
+            latitude=0.0,
+            longitude=0.0,
+            depth=0.0,
+            magnitude=0.0,
+            intensity="",
+            place_name="[已撤销地震]",
+            metadata=dict(metadata),
+        )
+
+        identity = EventIdentity(
+            event_id=event_id,
+            source_id=self.source_id,
+            event_type="earthquake",
+            provider_family=source_entry.provider_family.value
+            if source_entry
+            else "global_quake",
+            source_enum=source_entry.source_enum if source_entry else "",
+            report_num=0,
+            published_at=domain_event.occurred_at,
+            aliases=(event_id,),
+            attributes={
+                "parser_name": self.source_entry.parser_name
+                if self.source_entry
+                else "",
+                "config_key": source_entry.config_key if source_entry else "",
+            },
+        )
+
+        envelope = EventEnvelope(
+            identity=identity,
+            event=domain_event,
+            received_at=datetime.now(timezone.utc),
+            payload=SourcePayload(
+                source_id=self.source_id,
+                provider_family=source_entry.provider_family.value
+                if source_entry
+                else "global_quake",
+                message_type=message_type,
+                raw=raw_payload,
+                attributes=dict(metadata),
+            ),
+            metadata=metadata,
+        )
+        return envelope
+
     def _parse_earthquake_removal_protobuf(
         self, ws_msg: WsMessage
     ) -> EventEnvelope | None:
@@ -104,61 +166,9 @@ class GlobalQuakeParser(BaseParser):
                 return None
 
             source_entry = get_source_entry(self.source_id)
-            metadata = {
-                "source_family": "global_quake",
-                "source_enum": source_entry.source_enum if source_entry else "",
-                "source_type": source_entry.source_type.value
-                if source_entry
-                else "earthquake_warning",
-                "is_cancel": True,
-                "report_num": 0,
-            }
-
-            # 实例化取消的地震领域事件
-            domain_event = EarthquakeEvent(
-                occurred_at=datetime.now(timezone.utc),
-                latitude=0.0,
-                longitude=0.0,
-                depth=0.0,
-                magnitude=0.0,
-                intensity="",
-                place_name="[已撤销地震]",
-                metadata=dict(metadata),
-            )
-
-            identity = EventIdentity(
-                event_id=event_id,
-                source_id=self.source_id,
-                event_type="earthquake",
-                provider_family=source_entry.provider_family.value
-                if source_entry
-                else "global_quake",
-                source_enum=source_entry.source_enum if source_entry else "",
-                report_num=0,
-                published_at=domain_event.occurred_at,
-                aliases=(event_id,),
-                attributes={
-                    "parser_name": self.source_entry.parser_name
-                    if self.source_entry
-                    else "",
-                    "config_key": source_entry.config_key if source_entry else "",
-                },
-            )
-
-            envelope = EventEnvelope(
-                identity=identity,
-                event=domain_event,
-                received_at=datetime.now(timezone.utc),
-                payload=SourcePayload(
-                    source_id=self.source_id,
-                    provider_family=source_entry.provider_family.value
-                    if source_entry
-                    else "global_quake",
-                    message_type="protobuf",
-                    raw={"protobuf": True, "id": event_id, "is_cancel": True},
-                    attributes=dict(metadata),
-                ),
-                metadata=metadata,
+            raw_payload = {"protobuf": True, "id": event_id, "is_cancel": True}
+            envelope = self._build_removal_envelope(
+                event_id, raw_payload, source_entry, "protobuf"
             )
 
             logger.info(f"[灾害预警] Global Quake 收到地震取消广播: ID={event_id}")
@@ -174,66 +184,14 @@ class GlobalQuakeParser(BaseParser):
     ) -> EventEnvelope | None:
         """解析 JSON 格式取消地震消息。"""
         try:
-            eq_data = data.get("data", {})
+            eq_data = data.get("data") or {}
             event_id = str(eq_data.get("id", "") or "")
             if not event_id:
                 return None
 
             source_entry = get_source_entry(self.source_id)
-            metadata = {
-                "source_family": "global_quake",
-                "source_enum": source_entry.source_enum if source_entry else "",
-                "source_type": source_entry.source_type.value
-                if source_entry
-                else "earthquake_warning",
-                "is_cancel": True,
-                "report_num": 0,
-            }
-
-            domain_event = EarthquakeEvent(
-                occurred_at=datetime.now(timezone.utc),
-                latitude=0.0,
-                longitude=0.0,
-                depth=0.0,
-                magnitude=0.0,
-                intensity="",
-                place_name="[已撤销地震]",
-                metadata=dict(metadata),
-            )
-
-            identity = EventIdentity(
-                event_id=event_id,
-                source_id=self.source_id,
-                event_type="earthquake",
-                provider_family=source_entry.provider_family.value
-                if source_entry
-                else "global_quake",
-                source_enum=source_entry.source_enum if source_entry else "",
-                report_num=0,
-                published_at=domain_event.occurred_at,
-                aliases=(event_id,),
-                attributes={
-                    "parser_name": self.source_entry.parser_name
-                    if self.source_entry
-                    else "",
-                    "config_key": source_entry.config_key if source_entry else "",
-                },
-            )
-
-            envelope = EventEnvelope(
-                identity=identity,
-                event=domain_event,
-                received_at=datetime.now(timezone.utc),
-                payload=SourcePayload(
-                    source_id=self.source_id,
-                    provider_family=source_entry.provider_family.value
-                    if source_entry
-                    else "global_quake",
-                    message_type="earthquake",
-                    raw=dict(data),
-                    attributes=dict(metadata),
-                ),
-                metadata=metadata,
+            envelope = self._build_removal_envelope(
+                event_id, dict(data), source_entry, "earthquake"
             )
 
             logger.info(
