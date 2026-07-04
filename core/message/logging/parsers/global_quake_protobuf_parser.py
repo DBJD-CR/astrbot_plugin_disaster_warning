@@ -27,6 +27,8 @@ class GlobalQuakeProtobufParser:
         MessageAction.DISCONNECTED: "disconnected",
         MessageAction.PING: "ping",
         MessageAction.PONG: "pong",
+        MessageAction.ARCHIVED: "archived",
+        MessageAction.CANCELLED: "cancelled",
     }
 
     def __init__(self, timestamp_formatter: Callable[[int], str]):
@@ -47,7 +49,10 @@ class GlobalQuakeProtobufParser:
         }
 
         if ws_msg.type == MessageType.EARTHQUAKE:
-            parsed["data"] = self._build_earthquake_payload(ws_msg)
+            if ws_msg.action == MessageAction.CANCELLED:
+                parsed["data"] = self._build_earthquake_removal_payload(ws_msg)
+            else:
+                parsed["data"] = self._build_earthquake_payload(ws_msg)
         elif ws_msg.type == MessageType.STATUS:
             parsed["data"] = {
                 "status": ws_msg.status_data.server_status,
@@ -62,6 +67,14 @@ class GlobalQuakeProtobufParser:
             return None
 
         return parsed
+
+    def _build_earthquake_removal_payload(self, ws_msg: WsMessage) -> dict[str, Any]:
+        """构建取消地震消息数据载荷。"""
+        removal = ws_msg.earthquake_removal_data
+        return {
+            "id": removal.id,
+            "is_cancel": True,
+        }
 
     def _build_earthquake_payload(self, ws_msg: WsMessage) -> dict[str, Any]:
         """构建地震消息数据载荷。"""

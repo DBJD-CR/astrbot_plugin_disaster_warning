@@ -798,6 +798,15 @@ class GlobalQuakeTextPresenter(BasePresenter):
         cls, data: EarthquakeDisplayContext, options: dict | None = None
     ) -> str:
         """构建 GlobalQuake 测定情报文本消息。"""
+        if data.is_cancel:
+            # 适配 Global Quake 取消报
+            report_num = _resolve_report_num(data)
+            return (
+                f"🚨[地震预警] [取消] Global Quake\n"
+                f"📋第 {report_num} 报 (取消报)\n"
+                "📝该地震的预警信息已被撤销/删除"
+            )
+
         if not _is_earthquake_view(data):
             return "🚨[地震预警] 数据类型错误"
 
@@ -806,7 +815,11 @@ class GlobalQuakeTextPresenter(BasePresenter):
         lines = ["🚨[地震预警] Global Quake"]
 
         report_num = _resolve_report_num(data)
-        lines.append(f"📋第 {report_num} 报")
+        is_final = data.is_final
+        report_info = f"第 {report_num} 报"
+        if is_final:
+            report_info += "(最终报)"
+        lines.append(f"📋{report_info}")
 
         shock_time = _resolve_shock_time(data)
         if shock_time:
