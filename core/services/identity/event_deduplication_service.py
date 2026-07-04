@@ -232,8 +232,10 @@ class EventDeduplicationService:
 
         # 新报数到达允许放行更新，例如第 1 报 -> 第 2 报
         if current_report not in processed_reports:
+            current_is_final = bool(active_metadata.get("is_final", False))
             logger.info(
-                f"[灾害预警] 新报数: 第{current_report}报 (已处理: {sorted(processed_reports)})"
+                f"[灾害预警] 新报数: 第 {current_report} 报 {'(最终报)' if current_is_final else ''}"
+                f" (已处理: {sorted(processed_reports)})"
             )
             return True
 

@@ -102,11 +102,17 @@ class GlobalQuakeDisplayContextBuilder:
                 location_error = f"{data_inner.get('locationError'):.1f} km"
 
         # 返回的字段名直接面向卡片模板，因此保持扁平、稳定且尽量避免模板层再做业务判断。
+        is_final = (
+            bool(metadata.get("is_final", False))
+            if isinstance(metadata, dict)
+            else False
+        )
         return {
             "magnitude": f"{mag:.1f}",
             "mag_class": mag_class,
             "intensity": domain_event.intensity if domain_event.intensity else "",
             "region": domain_event.place_name,
+            "is_final": is_final,
             "is_update": (
                 (metadata.get("report_num", 1) if isinstance(metadata, dict) else 1) > 1
             ),

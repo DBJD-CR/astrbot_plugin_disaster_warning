@@ -113,10 +113,11 @@ class WebSocketManager:
                 connect_kwargs["ssl"] = False
 
             # 外挂一层超时保护，防止 DNS 解析或三次握手长久卡死
-            websocket = await asyncio.wait_for(
+            raw_websocket = await asyncio.wait_for(
                 self.session.ws_connect(**connect_kwargs),
                 timeout=conn_timeout + 5,
             )
+            websocket = raw_websocket
 
             # 建连成功，记录状态并注册生命周期及心跳协程
             async with websocket:

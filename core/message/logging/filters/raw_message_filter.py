@@ -60,11 +60,25 @@ class RawMessageFilter:
                     message_type="websocket_message",
                     connection_info={"connection_type": "websocket"},
                 )
+                # 只有当二进制解析成功且确实是结构化 dict 时，我们才继续交给 common 过滤器
                 if isinstance(parsed_binary, dict):
+                    # 判断如果解析出来的不是实际需要的地震业务类型（比如是 status、heartbeat 或 ping/pong），直接执行过滤
+                    inner_type = str(parsed_binary.get("type") or "").lower()
+                    if inner_type != "earthquake":
+                        return f"非地震业务的二进制消息过滤: {inner_type}"
                     return self.should_filter_message(parsed_binary, source_id)
+                else:
+                    # 对于无法成功解析出业务数据的二进制包（比如非地震业务的心跳握手或状态广播），选择不过滤直接拦截不记日志
+                    return "未识别或不需要记录的二进制数据帧"
             if isinstance(payload_data, dict):
+                # 针对 JSON 结构的字典数据，如果是 Global Quake 且类型不是 earthquake 业务，也直接过滤
+                if (
+                    "global_quake" in source_id.lower()
+                    and str(payload_data.get("type") or "").lower() != "earthquake"
+                ):
+                    return "Global Quake 非地震业务JSON消息过滤"
                 return self._handle_dict_message(payload_data, source_id)
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
             pass
 
         return ""

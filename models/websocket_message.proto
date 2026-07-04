@@ -17,6 +17,7 @@ message WsMessage {
     EarthquakeData earthquake_data = 4;
     StatusData status_data = 5;
     HeartbeatData heartbeat_data = 6;
+    EarthquakeRemovalData earthquake_removal_data = 7;
   }
 }
 
@@ -34,6 +35,8 @@ enum MessageAction {
   DISCONNECTED = 3;
   PING = 4;
   PONG = 5;
+  ARCHIVED = 6;
+  CANCELLED = 7;
 }
 
 // --- 数据负载定义 ---
@@ -64,6 +67,10 @@ message StatusData {
 
 message HeartbeatData {
   int64 server_time = 1;     // 服务器当前时间
+}
+
+message EarthquakeRemovalData {
+  string id = 1;             // 取消的地震 ID
 }
 
 message ClusterInfo {
