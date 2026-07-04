@@ -254,7 +254,9 @@
             <div class="card-header-row">
                 <div style="flex: 1;">
                     <span class="region-text">{{ region }}</span>
-                    {% if is_update %}
+                    {% if is_final %}
+                    <span class="action-tag" style="background-color: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">FINAL REPORT</span>
+                    {% elif is_update %}
                     <span class="action-tag tag-update">UPDATE (Rev.{{ revision }})</span>
                     {% else %}
                     <span class="action-tag tag-new">NEW EVENT</span>
