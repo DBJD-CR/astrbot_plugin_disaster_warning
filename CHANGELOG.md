@@ -5,6 +5,22 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+# 2026/06/15 v1.5.3
+
+## 🚀 What's Changed
+
+### 🐛 Bug Fixes (修复)
+
+- 适配了新的 Global Quake 数据格式推送 by @DBJD-CR in #135
+
+### 🔧 Chore (杂项)
+
+- 调整了 Websocket 连接断开时的重连策略 by @DBJD-CR in #135
+
+---
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.5.2...v1.5.3
+
 # 2026/06/15 v1.5.2
 
 ## 🚀 What's Changed
