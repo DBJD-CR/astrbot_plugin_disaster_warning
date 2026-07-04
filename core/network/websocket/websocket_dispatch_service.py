@@ -161,15 +161,32 @@ class WebSocketDispatchService:
         if close_code is None:
             return
 
-        # 判断并路由关闭码行为
-        if close_code in self._NORMAL_CLOSE_CODES:
+        # 检查是否属于协议级严重错误且通常不可恢复的代码
+        if close_code in self._NO_RECONNECT_CODES:
+            raise Exception(f"WebSocket协议错误关闭（不重连），代码 {close_code}")
+
+        # 如果管理器正处于关闭中（例如主动 stop），或者该连接已被主动从管理器中移除/断开，则不进行重连
+        # 在 websocket_runtime_service.stop/disconnect 时，self.manager._stopping 会被置为 True
+        # 且 disconnect 会主动将连接从 connections 中移出。
+        if self.manager._stopping or name not in self.manager.connections:
             logger.info(
-                f"[灾害预警] WebSocket {name} 的连接已正常关闭，关闭码为 {close_code}"
+                f"[灾害预警] WebSocket {name} 属于用户主动断连或管理器停止流程，不触发重连。关闭码为 {close_code}"
             )
             return
 
-        if close_code in self._NO_RECONNECT_CODES:
-            raise Exception(f"WebSocket协议错误关闭（不重连），代码 {close_code}")
+        # 判断并路由关闭码行为
+        if close_code in self._NORMAL_CLOSE_CODES:
+            logger.info(
+                f"[灾害预警] WebSocket {name} 的连接正常关闭，关闭码为 {close_code}。准备尝试重新连接..."
+            )
+            # 即使是正常关闭码（1000, 1001），为了高可用性也触发重连机制，但使用 info 日志以示区别
+            self.manager._handle_connection_error(
+                name,
+                uri,
+                headers,
+                RuntimeError(f"WebSocket正常断开，尝试恢复连接，代码 {close_code}"),
+            )
+            return
 
         # 异常断开（1006 代表未经握手便直接在 TCP 层断开）
         if close_code == 1006:
@@ -185,7 +202,16 @@ class WebSocketDispatchService:
             )
             return
 
-        raise Exception(f"WebSocket意外关闭，代码 {close_code}")
+        # 兜底：其他未被标记为不可重连的意外关闭码，也尝试进行重连，防止由于其它关闭码导致监控永久失效
+        logger.warning(
+            f"[灾害预警] WebSocket {name} 意外关闭，关闭码为 {close_code}，准备尝试重连"
+        )
+        self.manager._handle_connection_error(
+            name,
+            uri,
+            headers,
+            RuntimeError(f"WebSocket意外关闭，代码 {close_code}"),
+        )
 
     async def _handle_payload_message(
         self,
