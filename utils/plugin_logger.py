@@ -21,13 +21,12 @@ class PluginLogger:
         if not is_event_linked or not self._config:
             return False, "none"
 
-        # 无论在 config 直属还是在 debug_config 下，均尝试兼容获取
-        debug_config = (
-            self._config.get("debug_config", {})
-            if isinstance(self._config, dict)
-            else {}
-        )
-        if not isinstance(debug_config, dict):
+        # 使用 hasattr 安全判断以兼容 AstrBotConfig 的 get 访问方法
+        if not hasattr(self._config, "get"):
+            return False, "none"
+
+        debug_config = self._config.get("debug_config", {})
+        if not hasattr(debug_config, "get"):
             debug_config = {}
 
         log_mode = debug_config.get("log_mode", self._config.get("log_mode", "全量"))
