@@ -9,8 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-from astrbot.api import logger
-
+from ...utils.plugin_logger import plugin_logger
 from ..services.telemetry.telemetry_utils import track_error_safely
 from ..sources.source_catalog import get_source_entry, get_source_ids_by_dispatch_family
 from ..sources.source_entry import ProviderFamily
@@ -117,13 +116,15 @@ class SourceMessageRouter:
         config_key = _resolve_config_key(source_id)
         # 校验：1. 数据源是否在当前配置中被启用
         if not self._source_runtime_query.is_source_enabled(source_id):
-            logger.debug(
+            plugin_logger.debug(
                 f"[灾害预警] 数据源 {config_key} ({source_label}) 未启用，忽略"
             )
             return False
         # 校验：2. 相应的消息解析器是否存在，避免解析抛错
         if not self._has_parser(source_id):
-            logger.warning(f"[灾害预警] 未找到解析器: {source_id}")
+            plugin_logger.warning(
+                f"[灾害预警] 未找到解析器: {source_id}", is_event_linked=True
+            )
             return False
         return True
 
@@ -156,7 +157,7 @@ class SourceMessageRouter:
             source_channel=source_channel,
         )
         log_label = parser_log_label or source_label or source_id
-        logger.debug(f"[灾害预警] {log_label} 解析成功: {event.id}")
+        plugin_logger.debug(f"[灾害预警] {log_label} 解析成功: {event.id}")
 
         # 将解析好的事件丢给分发流水线处理
         await self._dispatch_event(
@@ -210,13 +211,8 @@ class SourceMessageRouter:
                 connection_uri = (
                     connection_info.get("uri") if connection_info else "未知地址"
                 )
-                logger.error(
-                    "[灾害预警] %s 解析器处理来自 %s 的消息失败，连接地址为 %s，错误为 %s",
-                    source_id,
-                    connection_name or "未知连接",
-                    connection_uri,
-                    error,
-                    exc_info=True,
+                plugin_logger.error(
+                    f"[灾害预警] {source_id} 解析器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}"
                 )
                 # 对捕获到的具体解析异常进行遥测跟踪，保证健壮性
                 await self._track_router_error(
@@ -232,9 +228,10 @@ class SourceMessageRouter:
         # 遍历静态数据源配置中的所有 fan studio 定义，校验其解析器是否存在
         for source_name, source_id in FAN_STUDIO_PROVIDER_SOURCE_MAP.items():
             if source_id and not self._has_parser(source_id):
-                logger.warning(
+                plugin_logger.warning(
                     f"[灾害预警] Source ID '{source_id}' (源: {source_name}) 未注册解析器，"
-                    f"请检查 core/app/disaster_service.py 中的初始化。"
+                    f"请检查 core/app/disaster_service.py 中的初始化。",
+                    is_event_linked=True,
                 )
         self._parser_map_checked = True
 
@@ -256,7 +253,7 @@ class SourceMessageRouter:
                     data = json.loads(message)
                 except json.JSONDecodeError as error:
                     # 避免非 JSON 报文引起程序崩溃
-                    logger.error(f"[灾害预警] JSON解析失败: {error}")
+                    plugin_logger.error(f"[灾害预警] JSON解析失败: {error}")
                     return None
 
                 # 先校验路由映射，再把一条总线消息拆成多个候选数据源消息
@@ -274,8 +271,9 @@ class SourceMessageRouter:
                     if not self._is_source_routable(source_id, source):
                         continue
 
-                    logger.info(
-                        f"[灾害预警] 处理 {source} 数据 ({_resolve_config_key(source_id)})"
+                    plugin_logger.info(
+                        f"[灾害预警] 处理 {source} 数据 ({_resolve_config_key(source_id)})",
+                        is_event_linked=True,
                     )
                     dispatched = await self._parse_and_dispatch(
                         source_id=source_id,
@@ -302,12 +300,8 @@ class SourceMessageRouter:
                         has_data = "Data" in data or "data" in data
                         is_unhandled_initial = msg_type == "initial_all"
                         if has_data or is_unhandled_initial:
-                            logger.debug(
-                                "[灾害预警] 收到一条尚未处理的消息，连接为 %s，消息类型为 %s，来源为 %s，数据摘要：%s",
-                                connection_name,
-                                msg_type,
-                                data.get("source", "unknown"),
-                                str(data)[:100],
+                            plugin_logger.debug(
+                                f"[灾害预警] 收到一条尚未处理的消息，连接为 {connection_name}，消息类型为 {msg_type}，来源为 {data.get('source', 'unknown')}，数据摘要：{str(data)[:100]}"
                             )
 
                 return None
@@ -321,13 +315,8 @@ class SourceMessageRouter:
                     if connection_info
                     else "未知类型"
                 )
-                logger.error(
-                    "[灾害预警] FAN Studio 处理器解析来自 %s 的消息失败，连接地址为 %s，连接类型为 %s，错误为 %s",
-                    connection_name or "未知连接",
-                    connection_uri,
-                    connection_type,
-                    error,
-                    exc_info=True,
+                plugin_logger.error(
+                    f"[灾害预警] FAN Studio 处理器解析来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，连接类型为 {connection_type}，错误为 {error}"
                 )
                 # 路由异常遥测
                 await self._track_router_error(
@@ -355,8 +344,9 @@ class SourceMessageRouter:
                 code = str(data.get("code") or "").strip()
                 # 556 代表紧急地震速报 EEW
                 if code == "556":
-                    logger.info(
-                        "[灾害预警] P2P 处理器收到紧急地震速报，业务码为 556，准备解析"
+                    plugin_logger.info(
+                        "[灾害预警] P2P 处理器收到紧急地震速报，业务码为 556，准备解析",
+                        is_event_linked=True,
                     )
             except (json.JSONDecodeError, AttributeError, TypeError):
                 data = {}
@@ -384,7 +374,7 @@ class SourceMessageRouter:
                 source_channel=code or None,
             )
             if not dispatched:
-                logger.debug("[灾害预警] P2P处理器返回None，无有效事件")
+                plugin_logger.debug("[灾害预警] P2P处理器返回None，无有效事件")
 
         return p2p_handler
 
@@ -403,7 +393,7 @@ class SourceMessageRouter:
                 try:
                     data = json.loads(message)
                 except json.JSONDecodeError as error:
-                    logger.error(f"[灾害预警] Wolfx JSON解析失败: {error}")
+                    plugin_logger.error(f"[灾害预警] Wolfx JSON解析失败: {error}")
                     return None
 
                 msg_type = data.get("type")
@@ -414,7 +404,7 @@ class SourceMessageRouter:
                 # 获取 Wolfx 当前子报文类型对应的系统内 source_id
                 source_id = get_wolfx_source_id(msg_type)
                 if source_id is None:
-                    logger.debug(
+                    plugin_logger.debug(
                         f"[灾害预警] Wolfx 消息类型 {msg_type} 暂未识别，来源连接为 {connection_name}"
                     )
                     return None
@@ -422,7 +412,7 @@ class SourceMessageRouter:
                 if not self._is_source_routable(source_id, msg_type):
                     return None
 
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] 将使用 Wolfx 解析器 {source_id} 处理类型为 {msg_type} 的消息"
                 )
                 # 某些 Wolfx 消息在正式解析前需要先触发旁路副作用（比如缓存 eqlist）
@@ -449,12 +439,8 @@ class SourceMessageRouter:
                 connection_uri = (
                     connection_info.get("uri") if connection_info else "未知地址"
                 )
-                logger.error(
-                    "[灾害预警] Wolfx 处理器处理来自 %s 的消息失败，连接地址为 %s，错误为 %s",
-                    connection_name or "未知连接",
-                    connection_uri,
-                    error,
-                    exc_info=True,
+                plugin_logger.error(
+                    f"[灾害预警] Wolfx 处理器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}"
                 )
                 # 遥测路由层异常
                 await self._track_router_error(
@@ -480,7 +466,7 @@ class SourceMessageRouter:
 
             # 校验是否配备了 global_quake 对应专有 protobuf 解析模块
             if not self._has_parser("global_quake"):
-                logger.warning("[灾害预警] 未找到 Global Quake 解析器")
+                plugin_logger.warning("[灾害预警] 未找到 Global Quake 解析器")
                 return
 
             try:
@@ -499,12 +485,8 @@ class SourceMessageRouter:
                 connection_uri = (
                     connection_info.get("uri") if connection_info else "未知地址"
                 )
-                logger.error(
-                    "[灾害预警] Global Quake 解析器处理来自 %s 的消息失败，连接地址为 %s，错误为 %s",
-                    connection_name or "未知连接",
-                    connection_uri,
-                    error,
-                    exc_info=True,
+                plugin_logger.error(
+                    f"[灾害预警] Global Quake 解析器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}"
                 )
                 # 异常遥测
                 await self._track_router_error(

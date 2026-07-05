@@ -12,6 +12,7 @@ from .plugin.commands.plugin_admin_command_service import PluginAdminCommandServ
 from .plugin.commands.plugin_query_command_service import PluginQueryCommandService
 from .plugin.plugin_command_support_service import PluginCommandSupportService
 from .plugin.plugin_lifecycle_service import PluginLifecycleService
+from .utils.plugin_logger import plugin_logger
 
 
 class DisasterWarningPlugin(Star):
@@ -40,6 +41,8 @@ class DisasterWarningPlugin(Star):
         """初始化插件"""
         try:
             logger.info("[灾害预警] 正在初始化灾害预警插件...")
+
+            plugin_logger.set_config(self.config)
 
             # 初始化期先处理配置与管理员同步，再装配 disaster_service / telemetry / web_admin。
             self._lifecycle_service.sync_admin_users_from_global()

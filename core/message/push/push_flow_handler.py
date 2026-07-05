@@ -10,8 +10,7 @@ import asyncio
 import json
 from typing import Any
 
-from astrbot.api import logger
-
+from ....utils.plugin_logger import plugin_logger
 from ...domain.event_models import EarthquakeEvent, EventEnvelope
 from ...services.identity.event_identity import resolve_report_num
 from ...services.telemetry.telemetry_utils import track_feature_safely
@@ -37,11 +36,11 @@ class PushFlowHandler:
         return_details: bool = False,
     ) -> bool | dict[str, Any]:
         """执行完整推送流程：去重、会话执行、后处理与异常遥测。"""
-        logger.debug(f"[灾害预警] 执行事件推送流程: {event.id}")
+        plugin_logger.debug(f"[灾害预警] 执行事件推送流程: {event.id}")
 
         # 地震重复与烈度/警报合并过滤判断
         if not skip_dedup and not self.manager.deduplicator.should_push_event(event):
-            logger.debug(f"[灾害预警] 事件 {event.id} 被去重器过滤")
+            plugin_logger.debug(f"[灾害预警] 事件 {event.id} 被去重器过滤")
             return False
 
         try:
@@ -59,7 +58,7 @@ class PushFlowHandler:
                 return execution_result
             return success
         except Exception as e:
-            logger.error(f"[灾害预警] 推送事件失败: {e}")
+            plugin_logger.error(f"[灾害预警] 推送事件失败: {e}")
             if self.manager._telemetry and self.manager._telemetry.enabled:
                 await self.manager._telemetry.track_error(
                     e,
@@ -190,7 +189,7 @@ class PushFlowHandler:
         if not should_gen_map or not passed_sessions:
             return
 
-        logger.debug(f"[灾害预警] 触发异步地图渲染 (第 {current_report} 报)")
+        plugin_logger.debug(f"[灾害预警] 触发异步地图渲染 (第 {current_report} 报)")
         grouped_sessions: dict[str, list[str]] = {}
         grouped_config: dict[str, dict[str, Any]] = {}
         for session in passed_sessions:
@@ -258,20 +257,24 @@ class PushFlowHandler:
                 for reason, count in sorted(filter_reason_stats.items())
             )
             if push_success_count > 0:
-                logger.info(
-                    f"[灾害预警] 事件 {event.id} 已完成会话筛选，{push_success_count} 个会话通过，另有 {summary} 被拦截{failure_suffix}"
+                plugin_logger.info(
+                    f"[灾害预警] 事件 {event.id} 已完成会话筛选，{push_success_count} 个会话通过，另有 {summary} 被拦截{failure_suffix}",
+                    is_event_linked=True,
                 )
             else:
-                logger.info(
-                    f"[灾害预警] 事件 {event.id} 未通过任何会话的推送条件，拦截情况：{summary}{failure_suffix}"
+                plugin_logger.info(
+                    f"[灾害预警] 事件 {event.id} 未通过任何会话的推送条件，拦截情况：{summary}{failure_suffix}",
+                    is_event_linked=True,
                 )
         elif push_success_count > 0:
-            logger.info(
-                f"[灾害预警] 事件 {event.id} 已通过全部会话的推送条件，共 {push_success_count} 个会话{failure_suffix}"
+            plugin_logger.info(
+                f"[灾害预警] 事件 {event.id} 已通过全部会话的推送条件，共 {push_success_count} 个会话{failure_suffix}",
+                is_event_linked=True,
             )
         elif failure_summary:
-            logger.info(
-                f"[灾害预警] 事件 {event.id} 已通过发送前筛选，但发送阶段全部失败：{failure_summary}"
+            plugin_logger.info(
+                f"[灾害预警] 事件 {event.id} 已通过发送前筛选，但发送阶段全部失败：{failure_summary}",
+                is_event_linked=True,
             )
 
     def _log_push_completion(
@@ -291,23 +294,29 @@ class PushFlowHandler:
                 f"{reason}×{count}"
                 for reason, count in sorted(filter_reason_stats.items())
             )
-            logger.debug(f"[灾害预警] 事件 {event.id} 部分会话被过滤: {summary}")
+            plugin_logger.debug(f"[灾害预警] 事件 {event.id} 部分会话被过滤: {summary}")
             detailed_summary = "，".join(
                 f"{reason}×{count}" for reason, count in sorted(detailed_stats.items())
             )
-            logger.debug(f"[灾害预警] 事件 {event.id} 过滤明细: {detailed_summary}")
+            plugin_logger.debug(
+                f"[灾害预警] 事件 {event.id} 过滤明细: {detailed_summary}"
+            )
         if send_failure_stats:
             summary = "，".join(
                 f"{reason}×{count}"
                 for reason, count in sorted(send_failure_stats.items())
             )
-            logger.debug(f"[灾害预警] 事件 {event.id} 部分会话发送失败: {summary}")
+            plugin_logger.debug(
+                f"[灾害预警] 事件 {event.id} 部分会话发送失败: {summary}"
+            )
 
         if push_success_count > 0:
-            logger.info(
-                f"[灾害预警] 事件 {event.id} 推送完成，成功推送到 {push_success_count} 个会话"
+            plugin_logger.info(
+                f"[灾害预警] 事件 {event.id} 推送完成，成功推送到 {push_success_count} 个会话",
+                is_event_linked=True,
             )
         elif send_failure_stats:
-            logger.warning(
-                f"[灾害预警] 事件 {event.id} 推送完成，但没有任何会话发送成功"
+            plugin_logger.warning(
+                f"[灾害预警] 事件 {event.id} 推送完成，但没有任何会话发送成功",
+                is_event_linked=True,
             )

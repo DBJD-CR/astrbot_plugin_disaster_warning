@@ -8,9 +8,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from astrbot.api import logger
-
 from ...utils.converters import ScaleConverter, safe_float_convert
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
@@ -45,7 +44,7 @@ class CwaEewParser(BaseParser):
             place_key = str(place_name or "").strip()
             # 拼合规则：发震时间_经度（三位精度）_纬度（三位精度）_地点
             event_id = f"cwa_fan_{shock_key}_{(latitude or 0.0):.3f}_{(longitude or 0.0):.3f}_{place_key}"
-            logger.debug(
+            plugin_logger.debug(
                 f"[灾害预警] {self.source_id} 缺少 eventId，已使用稳定回退ID: {event_id}"
             )
 
@@ -129,12 +128,12 @@ class CwaEewParser(BaseParser):
         try:
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 报次或事件标识至少应命中其一，否则通常不是正式台湾地震预警消息
             if "updates" not in msg_data and "eventId" not in msg_data:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 非CWA地震预警数据(缺少updates/eventId)，跳过"
                 )
                 return None
@@ -142,12 +141,13 @@ class CwaEewParser(BaseParser):
             envelope = self._build_envelope(msg_data)
             domain_event = envelope.event
 
-            logger.info(
-                f"[灾害预警] 地震预警解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}"
+            plugin_logger.info(
+                f"[灾害预警] 地震预警解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}",
+                is_event_linked=True,
             )
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None
 
 
@@ -163,7 +163,9 @@ class CwaEewWolfxParser(BaseParser):
         try:
             # Wolfx 中只接收台湾地震预警类型，其余类型直接忽略。
             if data.get("type") != "cwa_eew":
-                logger.debug(f"[灾害预警] {self.source_id} 非 CWA 地震预警数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 CWA 地震预警数据，跳过"
+                )
                 return None
 
             raw_origin_time = data.get("OriginTime", "")
@@ -210,7 +212,7 @@ class CwaEewWolfxParser(BaseParser):
                 event_id = (
                     f"cwa_wolfx_{shock_key}_{latitude:.3f}_{longitude:.3f}_{place_key}"
                 )
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 缺少 EventID，已使用稳定回退ID: {event_id}"
                 )
 
@@ -297,11 +299,12 @@ class CwaEewWolfxParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
+            plugin_logger.info(
+                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None
