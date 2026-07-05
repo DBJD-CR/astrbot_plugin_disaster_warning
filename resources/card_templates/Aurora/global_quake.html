@@ -310,7 +310,7 @@
                     <div class="time-label">{{ time_str }}</div>
                 </div>
                 <div>
-                    {% if is_final %}<div class="status-pill" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.08); font-weight: 800; font-size: 13px; padding: 6px 18px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.5px;">Final Report</div>
+                    {% if is_final %}<div class="status-pill pill-update">Update {{ revision }} (Final Report)</div>
                     {% elif is_update %}<div class="status-pill pill-update">Update {{ revision }}</div>
                     {% else %}<div class="status-pill pill-new">New Event</div>{% endif %}
                 </div>
