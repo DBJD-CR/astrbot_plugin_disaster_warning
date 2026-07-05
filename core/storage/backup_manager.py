@@ -62,8 +62,26 @@ class BackupService:
 
             # 2. 写入 events.db
             if "db" in targets and self.db_path.exists():
-                zip_file.write(str(self.db_path), "events.db")
-                logger.info("[灾害预警] 数据库已打包")
+                import sqlite3
+                import tempfile
+                
+                temp_db_fd, temp_db_path = tempfile.mkstemp(suffix=".db")
+                os.close(temp_db_fd)
+                try:
+                    src = sqlite3.connect(str(self.db_path))
+                    dst = sqlite3.connect(temp_db_path)
+                    try:
+                        src.backup(dst)
+                    finally:
+                        dst.close()
+                        src.close()
+                    zip_file.write(temp_db_path, "events.db")
+                    logger.info("[灾害预警] 数据库已安全打包")
+                finally:
+                    try:
+                        os.remove(temp_db_path)
+                    except Exception:
+                        pass
 
             # 3. 写入 session_overrides.json
             if "sessions" in targets and self.session_file.exists():
@@ -129,22 +147,35 @@ class BackupService:
             temp_backups = []
             logger.info("[灾害预警] 正在为将被覆盖的本地数据创建临时回滚快照...")
 
-            targets_to_backup = []
-            if has_db_in_zip:
-                targets_to_backup.append(self.db_path)
-            if has_sessions_in_zip:
-                targets_to_backup.append(self.session_file)
-            if has_stats_in_zip:
-                targets_to_backup.append(self.stats_file)
-
-            for path in targets_to_backup:
-                if path.exists():
-                    bak_path = path.with_suffix(path.suffix + ".bak")
+            try:
+                if has_db_in_zip and self.db_path.exists():
+                    import sqlite3
+                    bak_path = self.db_path.with_suffix(self.db_path.suffix + ".bak")
+                    src = sqlite3.connect(str(self.db_path))
+                    dst = sqlite3.connect(str(bak_path))
                     try:
+                        src.backup(dst)
+                    finally:
+                        dst.close()
+                        src.close()
+                    temp_backups.append((self.db_path, bak_path))
+
+                for path in [self.session_file, self.stats_file]:
+                    if (path == self.session_file and has_sessions_in_zip and path.exists()) or \
+                       (path == self.stats_file and has_stats_in_zip and path.exists()):
+                        bak_path = path.with_suffix(path.suffix + ".bak")
                         shutil.copy2(str(path), str(bak_path))
                         temp_backups.append((path, bak_path))
-                    except Exception as e:
-                        logger.error(f"[灾害预警] 创建备份回滚文件失败: {e}")
+            except Exception as e:
+                logger.error(f"[灾害预警] 创建备份回滚文件失败: {e}，已中断还原流程")
+                # 清除已经创建的部分备份文件
+                for _, bak_path in temp_backups:
+                    if bak_path.exists():
+                        try:
+                            os.remove(bak_path)
+                        except Exception:
+                            pass
+                return False, f"创建本地回滚备份失败，已中止还原: {str(e)}"
 
             # 解压还原新文件
             logger.info("[灾害预警] 开始解压并替换选中的本地数据文件...")
@@ -164,7 +195,7 @@ class BackupService:
                 for path, bak_path in temp_backups:
                     if bak_path.exists():
                         try:
-                            shutil.move(str(bak_path), str(path))
+                            os.replace(str(bak_path), str(path))
                         except Exception:
                             pass
                 return False, f"解压还原数据时出错，已回滚: {str(e)}"
