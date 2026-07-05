@@ -212,7 +212,8 @@ class SourceMessageRouter:
                     connection_info.get("uri") if connection_info else "未知地址"
                 )
                 plugin_logger.error(
-                    f"[灾害预警] {source_id} 解析器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}"
+                    f"[灾害预警] {source_id} 解析器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}",
+                    exc_info=True,
                 )
                 # 对捕获到的具体解析异常进行遥测跟踪，保证健壮性
                 await self._track_router_error(
@@ -316,7 +317,8 @@ class SourceMessageRouter:
                     else "未知类型"
                 )
                 plugin_logger.error(
-                    f"[灾害预警] FAN Studio 处理器解析来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，连接类型为 {connection_type}，错误为 {error}"
+                    f"[灾害预警] FAN Studio 处理器解析来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，连接类型为 {connection_type}，错误为 {error}",
+                    exc_info=True,
                 )
                 # 路由异常遥测
                 await self._track_router_error(
@@ -440,7 +442,8 @@ class SourceMessageRouter:
                     connection_info.get("uri") if connection_info else "未知地址"
                 )
                 plugin_logger.error(
-                    f"[灾害预警] Wolfx 处理器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}"
+                    f"[灾害预警] Wolfx 处理器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}",
+                    exc_info=True,
                 )
                 # 遥测路由层异常
                 await self._track_router_error(
@@ -486,7 +489,8 @@ class SourceMessageRouter:
                     connection_info.get("uri") if connection_info else "未知地址"
                 )
                 plugin_logger.error(
-                    f"[灾害预警] Global Quake 解析器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}"
+                    f"[灾害预警] Global Quake 解析器处理来自 {connection_name or '未知连接'} 的消息失败，连接地址为 {connection_uri}，错误为 {error}",
+                    exc_info=True,
                 )
                 # 异常遥测
                 await self._track_router_error(
