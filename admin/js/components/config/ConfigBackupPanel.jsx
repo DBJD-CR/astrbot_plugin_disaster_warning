@@ -14,6 +14,8 @@ function ConfigBackupPanel() {
 
     // 弹窗相关状态
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+    const [pendingFile, setPendingFile] = useState(null);
     const [backupTargets, setBackupTargets] = useState({
         db: true,
         sessions: true,
@@ -50,19 +52,23 @@ function ConfigBackupPanel() {
     };
 
     // 触发导入完整备份
-    const handleImportFull = (e) => {
+    const handleImportFullClick = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
-        if (!confirm('导入备份会覆盖当前的事件历史库、会话差异配置以及统计快照！\n系统会自动在后台覆盖前进行备份并尝试重新加载，是否继续？')) {
-            e.target.value = '';
-            return;
-        }
+        setPendingFile(file);
+        setConfirmDialogOpen(true);
+        // 清空 input 的 value 以便用户可以选择同一个文件触发 onChange
+        e.target.value = '';
+    };
 
+    const handleConfirmImport = () => {
+        if (!pendingFile) return;
+        setConfirmDialogOpen(false);
         setImporting(true);
-        window.DisasterConfigApi.importFullBackup(file)
+        
+        window.DisasterConfigApi.importFullBackup(pendingFile)
             .then((res) => {
-                showToast(res.message || '数据还原成功，正在重新加载页面...', 'success');
+                showToast(res?.message || '数据还原成功，正在重新加载页面...', 'success');
                 setTimeout(() => {
                     window.location.reload();
                 }, 1500);
@@ -73,8 +79,13 @@ function ConfigBackupPanel() {
             })
             .finally(() => {
                 setImporting(false);
-                e.target.value = '';
+                setPendingFile(null);
             });
+    };
+
+    const handleCancelImport = () => {
+        setConfirmDialogOpen(false);
+        setPendingFile(null);
     };
 
     // 触发导出会话配置
@@ -107,7 +118,7 @@ function ConfigBackupPanel() {
             try {
                 const json = JSON.parse(event.target.result);
                 const res = await window.DisasterConfigApi.importSessionOverrides(json, mergeSessions);
-                showToast(res.message || '导入成功！', 'success');
+                showToast(res?.message || '导入成功！', 'success');
                 setTimeout(() => {
                     window.location.reload();
                 }, 1000);
@@ -122,7 +133,8 @@ function ConfigBackupPanel() {
     };
 
     const handleCheckboxChange = (name) => (event) => {
-        setBackupTargets({ ...backupTargets, [name]: event.target.checked });
+        const checked = event.target.checked;
+        setBackupTargets(prev => ({ ...prev, [name]: checked }));
     };
 
     return (
@@ -157,20 +169,20 @@ function ConfigBackupPanel() {
                             {exporting ? <CircularProgress size={16} color="inherit" style={{ marginRight: '6px' }} /> : '📤 '}
                             选择并导出备份
                         </Button>
-                        <Button 
-                            variant="outlined" 
-                            size="small" 
+                        <Button
+                            variant="outlined"
+                            size="small"
                             component="label"
                             disabled={exporting || importing}
                             className="config-backup-btn-zip-import"
                         >
                             {importing ? <CircularProgress size={16} color="inherit" style={{ marginRight: '6px' }} /> : '📥 '}
                             导入并还原
-                            <input 
-                                type="file" 
-                                accept=".zip" 
-                                hidden 
-                                onChange={handleImportFull} 
+                            <input
+                                type="file"
+                                accept=".zip"
+                                hidden
+                                onChange={handleImportFullClick}
                             />
                         </Button>
                     </Box>
@@ -221,6 +233,23 @@ function ConfigBackupPanel() {
                     </Box>
                 </Box>
             </Box>
+
+            {/* 确认导入数据弹窗 */}
+            <Dialog open={confirmDialogOpen} onClose={handleCancelImport}>
+                <DialogTitle style={{ fontSize: '16px', fontWeight: 700 }}>确认导入备份数据</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="error" style={{ fontWeight: 600, marginBottom: '8px' }}>
+                        警告：导入备份会根据备份包来选择性的覆盖当前的事件历史库、会话差异配置以及统计快照！
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        为了系统安全，覆盖操作前系统会在后台自动为您当前的本地数据创建 .bak 临时回滚快照。如果导入失败，数据将自动还原至当前状态。您是否要继续？
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCancelImport} size="small">取消</Button>
+                    <Button onClick={handleConfirmImport} variant="contained" size="small" color="error">确认覆盖导入</Button>
+                </DialogActions>
+            </Dialog>
 
             {/* 自定义备份选择弹窗 */}
             <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
