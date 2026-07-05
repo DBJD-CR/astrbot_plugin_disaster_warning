@@ -64,7 +64,7 @@ class BackupService:
             if "db" in targets and self.db_path.exists():
                 import sqlite3
                 import tempfile
-                
+
                 temp_db_fd, temp_db_path = tempfile.mkstemp(suffix=".db")
                 os.close(temp_db_fd)
                 try:
@@ -150,6 +150,7 @@ class BackupService:
             try:
                 if has_db_in_zip and self.db_path.exists():
                     import sqlite3
+
                     bak_path = self.db_path.with_suffix(self.db_path.suffix + ".bak")
                     src = sqlite3.connect(str(self.db_path))
                     dst = sqlite3.connect(str(bak_path))
@@ -161,8 +162,13 @@ class BackupService:
                     temp_backups.append((self.db_path, bak_path))
 
                 for path in [self.session_file, self.stats_file]:
-                    if (path == self.session_file and has_sessions_in_zip and path.exists()) or \
-                       (path == self.stats_file and has_stats_in_zip and path.exists()):
+                    if (
+                        path == self.session_file
+                        and has_sessions_in_zip
+                        and path.exists()
+                    ) or (
+                        path == self.stats_file and has_stats_in_zip and path.exists()
+                    ):
                         bak_path = path.with_suffix(path.suffix + ".bak")
                         shutil.copy2(str(path), str(bak_path))
                         temp_backups.append((path, bak_path))
