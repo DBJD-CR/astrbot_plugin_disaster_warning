@@ -22,6 +22,7 @@ except ImportError:  # pragma: no cover
 # 导入各类子模块的路由装配器
 from ..api.analytics_routes import register_analytics_routes
 from ..api.auth_routes import register_auth_routes
+from ..api.backup_routes import register_backup_routes
 from ..api.config_routes import register_config_routes
 from ..api.events_routes import register_events_routes
 from ..api.notification_routes import register_notification_routes
@@ -112,6 +113,7 @@ class WebServerRuntimeService:
         register_session_config_routes(
             app, disaster_service=self.server.disaster_service
         )
+        register_backup_routes(app, disaster_service=self.server.disaster_service)
 
     async def handle_websocket(self, websocket) -> None:
         """处理单个管理端 WebSocket 客户端连接。"""
