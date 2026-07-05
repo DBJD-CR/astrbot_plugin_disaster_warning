@@ -145,6 +145,8 @@ function ConfigRenderer() {
                         </Box>
                     ))}
                 </Box>
+                {/* 仅在全局配置模式下渲染数据备份面板 */}
+                {mode === 'global' && <ConfigBackupPanel />}
             </Box>
 
             {/* 底栏：全局动作交互控制栏 */}
