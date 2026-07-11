@@ -138,16 +138,12 @@ class WebAdminServer:
         logo_dir = (
             Path(__file__).resolve().parents[4] / "resources" / "weatheralarm_logo"
         )
-        logger.info(
-            f"[灾害预警] 气象预警回退图标目录检查: {logo_dir}, exists={logo_dir.exists()}"
-        )
         if logo_dir.exists():
             self.app.mount(
                 "/weatheralarm_logo",
                 StaticFiles(directory=logo_dir),
                 name="weatheralarm_logo",
             )
-            logger.info("[灾害预警] 已注册 /weatheralarm_logo 静态文件路由")
         else:
             logger.warning(
                 "[灾害预警] 未找到气象预警回退图标目录，跳过注册 /weatheralarm_logo 路由"
