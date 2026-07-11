@@ -5,8 +5,8 @@
         'web_admin', 'notification_settings', 'websocket_config', 'debug_config', 'telemetry_config'
     ]);
     
-    // 定义会话覆写专属的局部参数 Key（如单群推送开关）
-    const CONFIG_SESSION_ONLY_KEYS = new Set(['push_enabled']);
+    // 定义会话覆写专属的局部参数 Key（如单群推送开关、会话备注名）
+    const CONFIG_SESSION_ONLY_KEYS = new Set(['push_enabled', 'session_name']);
 
     /**
      * 递归获取 Schema 下所有可折叠对象节点的分支路径列表
