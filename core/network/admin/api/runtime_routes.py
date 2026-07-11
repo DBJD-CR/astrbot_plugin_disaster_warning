@@ -156,9 +156,7 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                     target_log_str = session_config_manager.get_session_log_str(
                         final_target_session
                     )
-                    logger.info(
-                        f"[灾害预警] ✅ 模拟事件已成功推送到 {target_log_str}"
-                    )
+                    logger.info(f"[灾害预警] ✅ 模拟事件已成功推送到 {target_log_str}")
                     simulation_result.report_lines.append(
                         f"\n✅ 消息已发送到: {target_log_str}"
                     )
