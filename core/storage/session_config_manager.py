@@ -334,8 +334,8 @@ class SessionConfigManager:
                     text = str(raw).strip()
                     if text:
                         return text
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[灾害预警] 读取会话 {umo} 的生效配置失败: {e}")
 
         return ""
 
