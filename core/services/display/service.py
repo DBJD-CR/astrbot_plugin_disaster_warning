@@ -55,6 +55,10 @@ def _normalize_event_summary_fields(record: dict[str, Any]) -> dict[str, Any]:
         "report_num": record.get("report_num"),
         # 提取是否是重大或特别提醒事件
         "is_major": record.get("is_major", False),
+        # 提取气象预警类型编码（供前端图标回退使用）
+        "weather_type_code": record.get("weather_type_code"),
+        # 提取气象预警图标 URL（供前端直接展示）
+        "icon_url": record.get("icon_url"),
     }
 
 
