@@ -121,7 +121,7 @@ def register_events_routes(app, *, disaster_service):
                 weather_type_code = str(event.get("weather_type_code") or "").strip()
                 if weather_type_code:
                     event["icon_url"] = (
-                        f"https://image.nmc.cn/assets/img/alarm/{weather_type_code}.png"
+                        f"https://api.fanstudio.tech/we/img/alarm_icon.php?type={weather_type_code}"
                     )
                 else:
                     event["icon_url"] = None

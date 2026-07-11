@@ -296,7 +296,7 @@ async def query_weather_alarm_data(
                 "color_emoji": color_emoji,
                 "guideline_text": guideline_text,
                 "icon_url": (
-                    f"https://image.nmc.cn/assets/img/alarm/{weather_type_code}.png"
+                    f"https://api.fanstudio.tech/we/img/alarm_icon.php?type={weather_type_code}"
                     if weather_type_code
                     else None
                 ),
@@ -411,7 +411,7 @@ async def query_weather_alarm_data(
                 "headline_text": headline_text,
                 "weather_type_code": weather_type_code,
                 "icon_url": (
-                    f"https://image.nmc.cn/assets/img/alarm/{weather_type_code}.png"
+                    f"https://api.fanstudio.tech/we/img/alarm_icon.php?type={weather_type_code}"
                     if weather_type_code
                     else None
                 ),
