@@ -1,5 +1,6 @@
 const { Typography, CircularProgress } = MaterialUI;
 const { useState, useMemo, useEffect } = React;
+const { buildWeatherIconFallbackHandler } = window.EventFormatters || {};
 
 /**
  * 气象预警快捷查询面板组件 (WeatherQueryPanel)
@@ -73,9 +74,10 @@ function WeatherQueryPanel() {
                                 alt={detail.weather_type_code || 'weather-icon'}
                                 className="weather-query-icon"
                                 loading="lazy"
-                                onError={(e) => {
-                                    e.currentTarget.classList.add('is-hidden');
-                                }}
+                                onError={buildWeatherIconFallbackHandler(
+                                    detail.weather_type_code,
+                                    (e) => e.currentTarget.classList.add('is-hidden')
+                                )}
                             />
                         </div>
                     </div>
@@ -128,9 +130,10 @@ function WeatherQueryPanel() {
                                 alt={item.weather_type_code || 'weather-icon'}
                                 className="weather-query-list-item-image"
                                 loading="lazy"
-                                onError={(e) => {
-                                    e.currentTarget.classList.add('is-hidden');
-                                }}
+                                onError={buildWeatherIconFallbackHandler(
+                                    item.weather_type_code,
+                                    (e) => e.currentTarget.classList.add('is-hidden')
+                                )}
                             />
                         )}
                         {/* 右侧：单条列表详细元数据 */}
