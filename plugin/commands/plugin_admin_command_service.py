@@ -23,6 +23,23 @@ class PluginAdminCommandService(CommandTelemetryMixin):
     def __init__(self, plugin):
         self.plugin = plugin
 
+    def _get_session_config_manager(self):
+        """安全获取会话配置管理器实例，不可用时返回 None。"""
+        service = getattr(self.plugin, "disaster_service", None)
+        if service and hasattr(service, "session_config_manager"):
+            return service.session_config_manager
+        return None
+
+    def _get_session_log_str(self, session_umo: str) -> str:
+        """获取统一格式的会话日志字符串（私聊/群聊 ID (备注名)）。
+
+        当会话配置管理器不可用时回退到原始 UMO。
+        """
+        mgr = self._get_session_config_manager()
+        if mgr:
+            return mgr.get_session_log_str(session_umo)
+        return session_umo
+
     async def handle_disaster_reconnect(self, event):
         """处理强制重连命令，尝试对所有离线或异常的数据源触发重连尝试。"""
         # 管理类命令统一在入口先做管理员校验，避免内部逻辑重复散落权限判断。
@@ -460,6 +477,9 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 yield event.plain_result("❌ 无法获取当前会话的 UMO")
                 return
 
+            # 统一使用 私聊/群聊 ID (备注名) 格式展示
+            session_log_str = self._get_session_log_str(session_umo)
+
             target_sessions = self.plugin.config.get("target_sessions", [])
             if target_sessions is None:
                 target_sessions = []
@@ -473,9 +493,9 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     {"enabled": False, "target_session_count": len(target_sessions)},
                 )
                 yield event.plain_result(
-                    f"✅ 推送已关闭\n\n会话 ({session_umo}) 已从推送列表中移除。"
+                    f"✅ 推送已关闭\n\n{session_log_str} 已从推送列表中移除。"
                 )
-                logger.info(f"[灾害预警] 会话 {session_umo} 已关闭推送")
+                logger.info(f"[灾害预警] {session_log_str} 已关闭推送")
             else:
                 target_sessions.append(session_umo)
                 self.plugin.config["target_sessions"] = target_sessions
@@ -485,9 +505,9 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     {"enabled": True, "target_session_count": len(target_sessions)},
                 )
                 yield event.plain_result(
-                    f"✅ 推送已开启\n\n会话 ({session_umo}) 已添加到推送列表。"
+                    f"✅ 推送已开启\n\n{session_log_str} 已添加到推送列表。"
                 )
-                logger.info(f"[灾害预警] 会话 {session_umo} 已开启推送")
+                logger.info(f"[灾害预警] {session_log_str} 已开启推送")
         except Exception as e:
             logger.error(f"[灾害预警] 切换推送状态失败: {e}")
             yield event.plain_result(f"❌ 切换推送状态失败: {str(e)}")
@@ -545,6 +565,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             mgr = self.plugin.disaster_service.session_config_manager
             override = mgr.get_override(session_umo)
             effective = mgr.get_effective_config(session_umo)
+            session_log_str = mgr.get_session_log_str(session_umo)
             translated_override = (
                 self.plugin._command_support_service.translate_config_recursive(
                     override, schema
@@ -561,7 +582,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 translated_effective, indent=2, ensure_ascii=False
             )
             yield event.plain_result(
-                f"🔧 会话配置详情 ({session_umo})\n"
+                f"🔧 会话配置详情 ({session_log_str})\n"
                 f"\n📌 差异覆写 (override)：\n{override_str}"
                 f"\n\n📘 合并后配置 (effective)：\n{effective_str}"
             )
