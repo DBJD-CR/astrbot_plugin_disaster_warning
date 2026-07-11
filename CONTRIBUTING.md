@@ -123,6 +123,8 @@
 - @GPT 5.5
 - @Kimi-For-Coding
 - @Kimi K2.5
+- @Kimi K2.6
+- @GLM 5.2
 - @DeepSeek V3.2
 - @sourcery-ai[bot]
 - @gemini-code-assist[bot]
