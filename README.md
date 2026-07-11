@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AstrBot-v4.24.4%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.24.4">
+  <img src="https://img.shields.io/badge/AstrBot-v4.26.4%20Compatible-brightgreen.svg" alt="Compatible with AstrBot v4.26.4">
   <img src="https://img.shields.io/github/v/release/DBJD-CR/astrbot_plugin_disaster_warning?label=Release&color=brightgreen" alt="Latest Release">
   <img src="https://img.shields.io/badge/QQ群-1033089808-12B7F3.svg" alt="QQ Group">
 </p>
@@ -92,11 +92,11 @@
 > [!TIP]
 > 本项目的相关开发数据 (持续更新中)：
 >
-> 开发时长：累计 96 天（主插件部分）
+> 开发时长：累计 99 天（主插件部分）
 >
-> 累计工时：约 448 小时（主插件部分）
+> 累计工时：约 460 小时（主插件部分）
 >
-> 使用的大模型：Kimi For Coding 、Claude Opus 4.5、Gemini 3.0 3.5 flash & Pro、GPT Codex 5.3 5.4 5.5(With RooCode in VSCode)
+> 使用的大模型：Kimi For Coding K2.6、GLM 5.2、Claude Opus 4.5 4.6、Gemini 3.0 3.5 flash & 3.1 Pro、GPT Codex 5.3 5.4 5.5(With RooCode in VSCode)
 >
 > 对话窗口搭建：VSCode RooCode 扩展
 >
@@ -236,22 +236,26 @@
 
 ### 海啸预警推送示例 (仅供参考)
 
-**中国海啸预警示例**：
+**中国海啸预警（信息）示例**：
 
 ```text
-🌊[海啸预警]
-📋海啸黄色警报
-⚠️级别：黄色
+🌊[海啸信息]
+📋海啸信息
+⚠️级别：信息
 🏢发布：自然资源部海啸预警中心
-⏰发布时间：2025年07月15日 23时30分15秒 (UTC+8)
-🌍震源：台湾花莲东部海域
-📍台湾花莲 [黄色] 预计23:45到达 波高50-100cm
-📍台东成功 [黄色] 预计00:15到达 波高30-80cm
-  ...等5个预报区域
-🔄事件编号：TS2025071501
+🕒最近更新时间：2026年07月11日 18时55分00秒 (UTC+8)
+🌍震源：南桑威奇群岛地区[大西洋]海域 (55.25°S, 28.85°W)
+🧭参数：M 6.4 / 深度20 km
+🧾批次：2
+🔗详情：
+https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/202607111826_2.html
+🗺️震中图：
+https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jpg
+🔄事件编号：202607111826
+[Image]
 ```
 
-**日本气象厅津波予報示例 (P2P)**：
+**日本气象厅津波予報示例 (仅供参考)**：
 
 ```text
 🌊[津波予報] 日本气象厅
@@ -268,11 +272,10 @@
 ### 气象预警推送示例
 
 ```text
-🍃[气象预警]
-📋云南省昆明市东川区发布大风蓝色预警🔵
-🏷️副标题：东川区气象台发布大风蓝色预警[Ⅳ级/一般]
-📝东川区气象台2026年2月27日16时34分发布大风蓝色预警信号：预计未来12小时我区铜都街道、碧谷街道、阿旺镇、乌龙镇、汤丹镇、红土地镇、拖布卡镇、因民镇将出现8级以上大风，请注意防范。
-⏰生效时间：2026年02月27日 16时39分00秒 (UTC+8)
+⚡[气象预警]
+📋内蒙古通辽市开鲁县气象台发布雷电黄色预警[III级/较重]🟡
+📝内蒙古通辽市开鲁县气象台2026年07月12日01时02分继续发布2026年07月11日19时23分发布的雷电黄色预警信号：6小时内开鲁县仍可能发生雷电活动，局部地区伴有短时强降水、雷暴大风、冰雹等强对流天气，可能造成雷电、洪涝、城市内涝等灾害事故。请有关单位和人员做好防范准备。
+⏰生效时间：2026年07月12日 01时04分42秒 (UTC+8)
 ⚠️预警图标:[Image]
 ```
 
@@ -1046,6 +1049,7 @@ AstrBot/
          ├─ .gitignore                         # Git 忽略规则
          ├─ _conf_schema.json                  # AstrBot WebUI 配置界面 schema 定义
          ├─ CHANGELOG.md                       # 插件更新日志，适用于 AstrBot v4.11.2+
+         ├─ CODE_OF_CONDUCT.md                 # 社区行为准则
          ├─ CONTRIBUTING.md                    # 本插件的贡献指南
          ├─ LICENSE                            # 许可证文件
          ├─ logo.png                           # 插件 Logo，适用于 AstrBot v4.5.0+
@@ -1275,6 +1279,7 @@ AstrBot/
          │   │   │   ├─ notification_center.py          # 通知同步、缓存、已读状态与轮询广播编排
          │   │   │   ├─ notification_normalizer.py      # 远端通知标准化与数据清洗
          │   │   │   └─ notification_remote_client.py   # 官方通知远端拉取客户端
+         │   │   │
          │   │   ├─ query/                     # 查询服务目录
          │   │   ├─ simulation/                # 模拟预警目录
          │   │   └─ telemetry/                 # 遥测服务目录
@@ -1286,6 +1291,7 @@ AstrBot/
          │   │   └─ source_router.py           # 数据源路由器
          │   │
          │   └─ storage/                       # 存储与持久化目录
+         │       ├─ backup_manager.py          # 配置备份管理器
          │       ├─ database_manager.py        # 数据库管理器 (SQLite)
          │       ├─ session_config_manager.py  # 会话差异配置管理器（多会话架构核心）
          │       ├─ source_compat.py           # 历史数据兼容辅助
@@ -1312,19 +1318,22 @@ AstrBot/
          │   ├─ epsp-area.csv                  # P2P 地震区域代码映射表
          │   ├─ fe_regions_data.json           # FE 全球地震区划映射表
          │   │
-         │   └─ card_templates/                # 消息卡片 HTML 模板
-         │       ├─ Aurora/                    # 极光主题模板
-         │       ├─ Base/                      # 基础通用模板（地图瓦片、地震列表等）
-         │       ├─ DarkNight/                 # 暗夜主题模板
-         │       ├─ leaflet.css                # Leaflet 样式资源
-         │       ├─ leaflet.js                 # Leaflet 脚本资源
-         │       └─ map_render_helper.js       # 地图瓦片渲染共享 helper
+         │   ├─ card_templates/                # 消息卡片 HTML 模板
+         │   │   ├─ Aurora/                    # 极光主题模板
+         │   │   ├─ Base/                      # 基础通用模板（地图瓦片、地震列表等）
+         │   │   ├─ DarkNight/                 # 暗夜主题模板
+         │   │   ├─ leaflet.css                # Leaflet 样式资源
+         │   │   ├─ leaflet.js                 # Leaflet 脚本资源
+         │   │   └─ map_render_helper.js       # 地图瓦片渲染共享 helper
+         │   │
+         │   └─ weatheralarm_logo/             # 气象预警类型图标资源
          │
          └─ utils/                             # 通用工具模块目录
              ├─ __init__.py
              ├─ converters.py                  # 数据类型转换工具
              ├─ geolocation.py                 # IP 地理定位工具
              ├─ map_tile_sources.py            # 地图瓦片源定义
+             ├─ plugin_logger.py               # 插件日志工具
              ├─ time_converter.py              # 时间格式转换工具
              └─ version.py                     # 获取插件版本号的工具
 ```
@@ -1354,6 +1363,7 @@ AstrBot/
          ├─ raw_messages.log                   # 原始消息日志文件（启用时记录 WebSocket/HTTP 原始报文）
          ├─ raw_messages.log.1                 # 轮转日志文件（自动管理）
          ├─ raw_messages.log.2                 # 更多轮转文件...
+         ├─ session_overrides.json             # 会话差异配置（多会话个性化推送核心）
          └─ statistics.json                    # 灾害事件统计数据（包含震级分布、历史极值等）
 ```
 
@@ -1361,6 +1371,7 @@ AstrBot/
 - **统计数据 (`statistics.json`)**: 记录自插件启动以来的统计摘要信息（如震级分布、历史极值等）。即使插件重启，去重指纹和历史统计信息也会被保留。
 - **列表缓存 (`earthquake_lists_cache.json`)**: 持久化缓存获取到的地震列表数据，用于重载插件后也能第一时间使用 `/地震列表查询` 命令。
 - **EEW 查询缓存 (`eew_query_cache.json`)**: 持久化保存机构级地震预警查询状态（如最近一次预警发布时间、有效期等），用于插件重载后继续计算“无 EEW”时长。
+- **会话差异配置 (`session_overrides.json`)**: 存储各会话的个性化配置覆写（如不同群聊使用不同的过滤阈值、关键词等），是多会话差异化推送的核心数据文件。需要在 WebUI 配置管理页修改。
 - **通知缓存 (`notifications_cache.json`)**：用于保存官方通知列表、已读映射和最近同步时间。这样通知中心在插件重启后仍能立即展示上次同步到的内容，不必等首次轮询完成。
 - **日志统计 (`logger_stats.json`)**: 记录日志过滤器的拦截统计信息，如心跳包过滤数、重复事件拦截数等。
 - **匿名ID (`.telemetry_id`)**: 用于遥测统计的匿名随机实例标识符。
@@ -2240,6 +2251,7 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 
 - [主动消息 (Proactive_chat)](https://github.com/DBJD-CR/astrbot_plugin_proactive_chat) - 它能让你的 Bot 在特定的会话长时间没有新消息后，用一个随机的时间间隔，主动发起一次拥有上下文感知、符合人设且包含动态情绪的对话。
 - [视奸面板 (Live_Dashboard)](https://github.com/DBJD-CR/astrbot_plugin_live_dashboard) - 它能让你的 Bot 和群友可以随时随地视奸你手机和电脑的活动状态。
+- [代码统计 (Count_Loc)](https://github.com/DBJD-CR/astrbot_plugin_count_loc) - 它能让你的 Bot 对任意公开的 GitHub 或 GitLab 仓库的代码行数、文件数量、注释行数、物理总行数等指标进行快捷获取和分析。
 
 其他优秀的开源 EEW 项目：
 
@@ -2252,15 +2264,8 @@ GNU Affero General Public License v3.0 - 详见 [LICENSE](LICENSE) 文件。
 
 ## ⭐️ 星星
 
-<div align="center">
-<a href="https://www.star-history.com/#DBJD-CR/astrbot_plugin_disaster_warning&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date&legend=top-left" />
-  </picture>
-</a>
+[![Star History Chart](https://api.star-history.com/svg?repos=DBJD-CR/astrbot_plugin_disaster_warning&type=Date)](https://www.star-history.com/#DBJD-CR/astrbot_plugin_disaster_warning&Date)
 
 ---
 
-Made with ❤️ by DBJD-CR & Aloys233 & Kimi & Gemini & Claude & GPT
+Made with ❤️ by DBJD-CR & Aloys233 & Kimi & GLM & Gemini & Claude & GPT
