@@ -44,6 +44,8 @@ class SessionConfigManager:
         "debug_config",
         # 会话级额外控制字段（插件自定义）
         "push_enabled",
+        # 会话备注名（仅用于日志与前端展示，不参与业务逻辑）
+        "session_name",
     }
 
     def __init__(self, default_config_ref: dict[str, Any]):
@@ -269,6 +271,102 @@ class SessionConfigManager:
         sessions = set(self.list_target_sessions())
         sessions.update(self._overrides.keys())
         return sorted(sessions)
+
+    @staticmethod
+    def _parse_session_id(session_id: str) -> tuple[str, str, str] | None:
+        """解析会话 UMO，返回 (platform, message_type, target_id)。
+
+        仅用于日志展示与备注名格式化，不对 UMO 做任何修正或重写。
+        """
+        if not isinstance(session_id, str):
+            return None
+
+        known_types = [
+            "FriendMessage",
+            "GroupMessage",
+            "PrivateMessage",
+            "GuildMessage",
+        ]
+
+        for msg_type in known_types:
+            search_pattern = f":{msg_type}:"
+            idx = session_id.find(search_pattern)
+            if idx != -1:
+                platform = session_id[:idx]
+                after_type = session_id[idx + len(search_pattern) :]
+                return platform, msg_type, after_type
+
+        parts = session_id.split(":")
+        if len(parts) == 3:
+            return parts[0], parts[1], parts[2]
+
+        if len(parts) > 3:
+            return ":".join(parts[:-2]), parts[-2], parts[-1]
+
+        return None
+
+    def get_session_name(self, umo: str) -> str:
+        """获取会话备注名（用于日志与前端展示）。
+
+        解析优先级：
+        1. 会话覆写记录中的 session_name 字段
+        2. 生效配置中的 session_name 字段
+        若均不存在则返回空字符串。
+        """
+        if not isinstance(umo, str) or not umo:
+            return ""
+
+        # 1. 优先从 override 中读取
+        override = self._overrides.get(umo, {})
+        if isinstance(override, dict):
+            raw = override.get("session_name")
+            if raw is not None:
+                text = str(raw).strip()
+                if text:
+                    return text
+
+        # 2. 再尝试从生效配置中读取
+        try:
+            effective = self.get_effective_config(umo)
+            if isinstance(effective, dict):
+                raw = effective.get("session_name")
+                if raw is not None:
+                    text = str(raw).strip()
+                    if text:
+                        return text
+        except Exception:
+            pass
+
+        return ""
+
+    def get_session_display_name(self, umo: str) -> str:
+        """获取会话展示名：备注名优先，缺失时回退原始 UMO。"""
+        name = self.get_session_name(umo)
+        return name if name else umo
+
+    def get_session_log_str(self, umo: str) -> str:
+        """获取统一格式的会话日志字符串。
+
+        格式：私聊/群聊 ID (备注名)
+        若无备注名则仅显示 类型 ID。
+        """
+        parsed = self._parse_session_id(umo)
+        session_name = self.get_session_name(umo)
+
+        if not parsed:
+            return f"{umo} ({session_name})" if session_name else umo
+
+        _, msg_type, target_id = parsed
+        type_str = "未知类型"
+        if "Friend" in msg_type or "Private" in msg_type:
+            type_str = "私聊"
+        elif "Group" in msg_type or "Guild" in msg_type:
+            type_str = "群聊"
+
+        log_str = f"{type_str} {target_id}"
+        if session_name:
+            log_str += f" ({session_name})"
+        return log_str
 
     def get_override(self, umo: str) -> dict[str, Any]:
         """获取指定会话的差异补丁副本。"""
