@@ -73,7 +73,7 @@ def get_simulation_params(
     由服务层集中维护，供管理端接口直接读取，避免前端硬编码可选来源列表。
     当传入 session_config_manager 时，target_sessions 将返回带备注名的对象列表。
     """
-    raw_target_sessions = config.get("target_sessions", [])
+    raw_target_sessions = config.get("target_sessions") or []
     if session_config_manager is not None:
         # 返回带备注名的对象列表，前端可优先展示备注名
         target_sessions = [
