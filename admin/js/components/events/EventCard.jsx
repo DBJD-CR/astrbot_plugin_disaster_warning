@@ -21,7 +21,11 @@ function EventCard({
     isExpanded = false, 
     reportIndex = null 
 }) {
-    const { buildEarthquakeTitle, getEarthquakeBadgeContent } = window.EventFormatSerialization || window.EventFormatters;
+    const {
+        buildEarthquakeTitle,
+        getEarthquakeBadgeContent,
+        buildWeatherIconFallbackHandler,
+    } = window.EventFormatSerialization || window.EventFormatters || {};
     const evt = event || {};
     const eventType = evt.type || evt._groupType || '';
     
@@ -39,6 +43,7 @@ function EventCard({
     let badgeContent = '❓';
     let badgeClass = 'badge-unknown';
     let weatherIconUrl = null;
+    let colorHint = null;
     let earthquakeBadgeMeta = null;
 
     // 1. 地震：获取烈度/震级元数据与对应危险警示判色
@@ -58,8 +63,50 @@ function EventCard({
         badgeClass = 'badge-weather';
         const normalizedIconUrl = typeof evt.icon_url === 'string' ? evt.icon_url.trim() : '';
         const weatherTypeCode = String(evt.weather_type_code || '').trim();
-        // 若服务端未传 icon_url，则从国家气象中心镜像获取对应预警代码的矢量图
-        weatherIconUrl = normalizedIconUrl || (weatherTypeCode ? `https://image.nmc.cn/assets/img/alarm/${weatherTypeCode}.png` : null);
+        // 优先使用服务端返回的 icon_url；若未传则根据颜色后缀直接构造本地回退图标路径
+        let fallbackUrl = null;
+
+        // 辅助函数：根据颜色关键词获取回退图标路径
+        const getFallbackByColor = (color) => {
+            const fallbackMap = {
+                blue: 'fallback_blue.png',
+                yellow: 'fallback_yellow.png',
+                orange: 'fallback_orange.png',
+                red: 'fallback_red.png',
+            };
+            return fallbackMap[color] ? `/weatheralarm_logo/${fallbackMap[color]}` : null;
+        };
+
+        if (weatherTypeCode) {
+            const color = weatherTypeCode.includes('_')
+                ? weatherTypeCode.split('_').pop()
+                : (weatherTypeCode.startsWith('p') && weatherTypeCode.length >= 8
+                    ? { '1': 'red', '2': 'orange', '3': 'yellow', '4': 'blue' }[weatherTypeCode.slice(-1)]
+                    : null);
+            if (color) {
+                fallbackUrl = getFallbackByColor(color);
+                colorHint = color;
+            }
+        }
+
+        // 当编码无法解析颜色时，尝试从标题/级别文本中提取颜色关键词（如"黄色"、"红色"）
+        if (!fallbackUrl) {
+            const haystack = `${evt.subtitle || ''} ${evt.description || ''} ${evt.level || ''}`;
+            const colorMatch = haystack.match(/(红色|橙色|黄色|蓝色)/);
+            if (colorMatch) {
+                const colorMap = {
+                    '红色': 'red',
+                    '橙色': 'orange',
+                    '黄色': 'yellow',
+                    '蓝色': 'blue',
+                };
+                const matchedColor = colorMap[colorMatch[1]];
+                fallbackUrl = getFallbackByColor(matchedColor);
+                colorHint = matchedColor;
+            }
+        }
+
+        weatherIconUrl = normalizedIconUrl || fallbackUrl || null;
     }
 
     // 计算报告第几期 (第几报) 的文案
@@ -106,29 +153,33 @@ function EventCard({
             {/* 左侧：特征标识徽标区 */}
             <div className={badgeClassName} style={badgeStyle}>
                 {weatherIconUrl ? (
-                    // 渲染气象预警图标
-                    <img
-                        src={weatherIconUrl}
-                        alt={badgeContent}
-                        className="event-weather-icon"
-                        style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'contain',
-                            objectPosition: 'center',
-                            transform: 'scale(1.5)',
-                            display: 'block',
-                        }}
-                        onError={(e) => {
-                            // 若网络图片加载失败，退回到默认 Unicode 文字徽标
-                            const badgeEl = e.target.parentElement;
-                            e.target.remove();
-                            if (badgeEl) {
-                                badgeEl.classList.add('mag-badge-weather-icon-fallback');
-                                badgeEl.textContent = badgeContent;
-                            }
-                        }}
-                    />
+                        // 渲染气象预警图标
+                        <img
+                            src={weatherIconUrl}
+                            alt={badgeContent}
+                            data-color-hint={colorHint}
+                            className="event-weather-icon"
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                                objectPosition: 'center',
+                                transform: 'scale(1.5)',
+                                display: 'block',
+                            }}
+                            onError={buildWeatherIconFallbackHandler(
+                                evt.weather_type_code,
+                                (e) => {
+                                    // 本地回退也失败：退回到默认 Unicode 文字徽标
+                                    const badgeEl = e.target.parentElement;
+                                    e.target.remove();
+                                    if (badgeEl) {
+                                        badgeEl.classList.add('mag-badge-weather-icon-fallback');
+                                        badgeEl.textContent = badgeContent;
+                                    }
+                                }
+                            )}
+                        />
                 ) : earthquakeBadgeMeta ? (
                     // 渲染结构化的地震速报标签（如：上方烈度，下方震级）
                     <>
