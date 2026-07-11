@@ -240,6 +240,70 @@
             .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
     }
 
+    /**
+     * 构建气象预警图标 img onError 回退处理器。
+     *
+     * 当官方图标接口（Fan Studio）返回 404 或加载失败时，
+     * 根据 weather_type_code 中的颜色后缀（如 _blue/_yellow/_orange/_red）
+     * 或旧 p 格式编码的最后一位数字（1=红, 2=橙, 3=黄, 4=蓝）
+     * 自动回退到本地通用图标；若本地也无匹配，则执行 finalCallback 兜底。
+     *
+     * @param {string} weatherTypeCode  气象预警编码，如 "11B20_yellow" 或 "p0002002"
+     * @param {Function} finalCallback   最终兜底回调，接收事件对象 e
+     * @returns {Function}              可直接绑定到 img onError 的处理器
+     */
+    function buildWeatherIconFallbackHandler(weatherTypeCode, finalCallback) {
+        // 颜色映射表
+        const COLOR_MAP = {
+            blue: 'fallback_blue.png',
+            yellow: 'fallback_yellow.png',
+            orange: 'fallback_orange.png',
+            red: 'fallback_red.png',
+        };
+        // 旧 p 格式最后一位数字映射（1=红, 2=橙, 3=黄, 4=蓝）
+        const P_FORMAT_MAP = {
+            '1': 'red',
+            '2': 'orange',
+            '3': 'yellow',
+            '4': 'blue',
+        };
+
+        return function (e) {
+            const code = String(weatherTypeCode || '').trim();
+            if (code && !e.currentTarget.dataset.fallbackTried) {
+                let color = null;
+                if (code.includes('_')) {
+                    // 新格式：11B20_yellow
+                    color = code.split('_').pop();
+                } else if (code.startsWith('p') && code.length >= 8) {
+                    // 旧格式：p0002002，最后一位数字映射颜色
+                    const lastDigit = code.slice(-1);
+                    color = P_FORMAT_MAP[lastDigit];
+                }
+                const fallbackFile = color ? COLOR_MAP[color] : null;
+                if (fallbackFile) {
+                    e.currentTarget.dataset.fallbackTried = 'true';
+                    e.currentTarget.src = `/weatheralarm_logo/${fallbackFile}`;
+                    return;
+                }
+            }
+
+            // 当 weatherTypeCode 无法解析颜色时，尝试从 data-color-hint 属性获取颜色回退
+            if (!e.currentTarget.dataset.fallbackTried) {
+                const colorHint = e.currentTarget.dataset.colorHint;
+                if (colorHint && COLOR_MAP[colorHint]) {
+                    e.currentTarget.dataset.fallbackTried = 'true';
+                    e.currentTarget.src = `/weatheralarm_logo/${COLOR_MAP[colorHint]}`;
+                    return;
+                }
+            }
+
+            if (typeof finalCallback === 'function') {
+                finalCallback(e);
+            }
+        };
+    }
+
     window.EventFormatters = {
         INT_COLOR_MAP,
         normalizeDbUtcTime,
@@ -255,5 +319,6 @@
         buildEarthquakeTitle,
         normalizeSourceOption,
         normalizeSourceOptions,
+        buildWeatherIconFallbackHandler,
     };
 })();
