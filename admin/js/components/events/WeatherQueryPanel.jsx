@@ -1,6 +1,7 @@
 const { Typography, CircularProgress } = MaterialUI;
 const { useState, useMemo, useEffect } = React;
-const { buildWeatherIconFallbackHandler } = window.EventFormatters || {};
+const { buildWeatherIconFallbackHandler: _rawBuildHandler } = window.EventFormatters || {};
+const buildWeatherIconFallbackHandler = _rawBuildHandler || ((_, cb) => (e) => typeof cb === 'function' && cb(e));
 
 /**
  * 气象预警快捷查询面板组件 (WeatherQueryPanel)

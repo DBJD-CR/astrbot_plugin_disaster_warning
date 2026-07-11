@@ -24,8 +24,11 @@ function EventCard({
     const {
         buildEarthquakeTitle,
         getEarthquakeBadgeContent,
-        buildWeatherIconFallbackHandler,
+        buildWeatherIconFallbackHandler: _rawBuildHandler,
+        resolveWeatherColor = () => null,
+        resolveWeatherFallbackUrl = () => null,
     } = window.EventFormatSerialization || window.EventFormatters || {};
+    const buildWeatherIconFallbackHandler = _rawBuildHandler || ((_, cb) => (e) => typeof cb === 'function' && cb(e));
     const evt = event || {};
     const eventType = evt.type || evt._groupType || '';
     
@@ -63,31 +66,9 @@ function EventCard({
         badgeClass = 'badge-weather';
         const normalizedIconUrl = typeof evt.icon_url === 'string' ? evt.icon_url.trim() : '';
         const weatherTypeCode = String(evt.weather_type_code || '').trim();
-        // 优先使用服务端返回的 icon_url；若未传则根据颜色后缀直接构造本地回退图标路径
-        let fallbackUrl = null;
-
-        // 辅助函数：根据颜色关键词获取回退图标路径
-        const getFallbackByColor = (color) => {
-            const fallbackMap = {
-                blue: 'fallback_blue.png',
-                yellow: 'fallback_yellow.png',
-                orange: 'fallback_orange.png',
-                red: 'fallback_red.png',
-            };
-            return fallbackMap[color] ? `/weatheralarm_logo/${fallbackMap[color]}` : null;
-        };
-
-        if (weatherTypeCode) {
-            const color = weatherTypeCode.includes('_')
-                ? weatherTypeCode.split('_').pop()
-                : (weatherTypeCode.startsWith('p') && weatherTypeCode.length >= 8
-                    ? { '1': 'red', '2': 'orange', '3': 'yellow', '4': 'blue' }[weatherTypeCode.slice(-1)]
-                    : null);
-            if (color) {
-                fallbackUrl = getFallbackByColor(color);
-                colorHint = color;
-            }
-        }
+        // 优先使用服务端返回的 icon_url；若未传则委托共享函数解析颜色与本地回退路径
+        let fallbackUrl = resolveWeatherFallbackUrl(weatherTypeCode);
+        colorHint = resolveWeatherColor(weatherTypeCode);
 
         // 当编码无法解析颜色时，尝试从标题/级别文本中提取颜色关键词（如"黄色"、"红色"）
         if (!fallbackUrl) {
@@ -100,9 +81,8 @@ function EventCard({
                     '黄色': 'yellow',
                     '蓝色': 'blue',
                 };
-                const matchedColor = colorMap[colorMatch[1]];
-                fallbackUrl = getFallbackByColor(matchedColor);
-                colorHint = matchedColor;
+                colorHint = colorMap[colorMatch[1]];
+                fallbackUrl = resolveWeatherFallbackUrl(`_${colorHint}`);
             }
         }
 
@@ -171,8 +151,8 @@ function EventCard({
                                 evt.weather_type_code,
                                 (e) => {
                                     // 本地回退也失败：退回到默认 Unicode 文字徽标
-                                    const badgeEl = e.target.parentElement;
-                                    e.target.remove();
+                                    const badgeEl = e.currentTarget.parentElement;
+                                    e.currentTarget.remove();
                                     if (badgeEl) {
                                         badgeEl.classList.add('mag-badge-weather-icon-fallback');
                                         badgeEl.textContent = badgeContent;

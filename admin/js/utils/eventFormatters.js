@@ -241,6 +241,53 @@
     }
 
     /**
+     * 根据气象预警编码解析颜色关键词。
+     *
+     * 支持两种编码格式：
+     * - 新格式 11B20_yellow：下划线后即为颜色关键词（统一转小写以兼容 _Yellow / _YELLOW）
+     * - 旧格式 p0002002：最后一位数字表示颜色（1=红, 2=橙, 3=黄, 4=蓝）
+     *
+     * @param {string} weatherTypeCode  气象预警编码
+     * @returns {string|null}           颜色关键词，如 'red' / 'yellow' / 'orange' / 'blue'
+     */
+    function resolveWeatherColor(weatherTypeCode) {
+        const P_FORMAT_MAP = {
+            '1': 'red',
+            '2': 'orange',
+            '3': 'yellow',
+            '4': 'blue',
+        };
+        const code = String(weatherTypeCode || '').trim();
+        if (!code) return null;
+
+        if (code.includes('_')) {
+            return code.split('_').pop().toLowerCase();
+        }
+        if (code.startsWith('p') && code.length >= 8) {
+            return P_FORMAT_MAP[code.slice(-1)] || null;
+        }
+        return null;
+    }
+
+    /**
+     * 根据气象预警编码解析本地回退图标 URL。
+     *
+     * @param {string} weatherTypeCode  气象预警编码
+     * @returns {string|null}           本地回退图标路径，如 /weatheralarm_logo/fallback_red.png
+     */
+    function resolveWeatherFallbackUrl(weatherTypeCode) {
+        const COLOR_MAP = {
+            blue: 'fallback_blue.png',
+            yellow: 'fallback_yellow.png',
+            orange: 'fallback_orange.png',
+            red: 'fallback_red.png',
+        };
+        const color = resolveWeatherColor(weatherTypeCode);
+        const fallbackFile = color ? COLOR_MAP[color] : null;
+        return fallbackFile ? `/weatheralarm_logo/${fallbackFile}` : null;
+    }
+
+    /**
      * 构建气象预警图标 img onError 回退处理器。
      *
      * 当官方图标接口（Fan Studio）返回 404 或加载失败时，
@@ -253,37 +300,13 @@
      * @returns {Function}              可直接绑定到 img onError 的处理器
      */
     function buildWeatherIconFallbackHandler(weatherTypeCode, finalCallback) {
-        // 颜色映射表
-        const COLOR_MAP = {
-            blue: 'fallback_blue.png',
-            yellow: 'fallback_yellow.png',
-            orange: 'fallback_orange.png',
-            red: 'fallback_red.png',
-        };
-        // 旧 p 格式最后一位数字映射（1=红, 2=橙, 3=黄, 4=蓝）
-        const P_FORMAT_MAP = {
-            '1': 'red',
-            '2': 'orange',
-            '3': 'yellow',
-            '4': 'blue',
-        };
-
         return function (e) {
             const code = String(weatherTypeCode || '').trim();
             if (code && !e.currentTarget.dataset.fallbackTried) {
-                let color = null;
-                if (code.includes('_')) {
-                    // 新格式：11B20_yellow
-                    color = code.split('_').pop();
-                } else if (code.startsWith('p') && code.length >= 8) {
-                    // 旧格式：p0002002，最后一位数字映射颜色
-                    const lastDigit = code.slice(-1);
-                    color = P_FORMAT_MAP[lastDigit];
-                }
-                const fallbackFile = color ? COLOR_MAP[color] : null;
-                if (fallbackFile) {
+                const fallbackUrl = resolveWeatherFallbackUrl(code);
+                if (fallbackUrl) {
                     e.currentTarget.dataset.fallbackTried = 'true';
-                    e.currentTarget.src = `/weatheralarm_logo/${fallbackFile}`;
+                    e.currentTarget.src = fallbackUrl;
                     return;
                 }
             }
@@ -291,10 +314,13 @@
             // 当 weatherTypeCode 无法解析颜色时，尝试从 data-color-hint 属性获取颜色回退
             if (!e.currentTarget.dataset.fallbackTried) {
                 const colorHint = e.currentTarget.dataset.colorHint;
-                if (colorHint && COLOR_MAP[colorHint]) {
-                    e.currentTarget.dataset.fallbackTried = 'true';
-                    e.currentTarget.src = `/weatheralarm_logo/${COLOR_MAP[colorHint]}`;
-                    return;
+                if (colorHint) {
+                    const fallbackUrl = resolveWeatherFallbackUrl(`_${colorHint}`);
+                    if (fallbackUrl) {
+                        e.currentTarget.dataset.fallbackTried = 'true';
+                        e.currentTarget.src = fallbackUrl;
+                        return;
+                    }
                 }
             }
 
@@ -319,6 +345,8 @@
         buildEarthquakeTitle,
         normalizeSourceOption,
         normalizeSourceOptions,
+        resolveWeatherColor,
+        resolveWeatherFallbackUrl,
         buildWeatherIconFallbackHandler,
     };
 })();
