@@ -287,11 +287,12 @@ class MessageBuildService:
             map_message = MessageChain([Comp.Image.fromBase64(b64_data)])
             # 循环向各个订阅了地图分离的会话推送地图图片消息
             for session in target_sessions:
+                session_log = self.manager._get_session_log_str(session)
                 try:
                     await self.manager.session_sender.send(session, map_message)
-                    logger.debug(f"[灾害预警] 分离地图已发送到 {session}")
+                    logger.debug(f"[灾害预警] 分离地图已发送到 {session_log}")
                 except Exception as e:
-                    logger.error(f"[灾害预警] 分离地图发送到 {session} 失败: {e}")
+                    logger.error(f"[灾害预警] 分离地图发送到 {session_log} 失败: {e}")
         except Exception as e:
             logger.error(f"[灾害预警] 异步地图渲染任务失败: {e}")
 

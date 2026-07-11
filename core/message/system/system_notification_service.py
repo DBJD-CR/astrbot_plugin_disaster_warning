@@ -41,11 +41,12 @@ class MessageSystemNotificationService:
         success_count = 0
         # 遍历目标会话并同步下发纯文本提示
         for session in sessions:
+            session_log = self.manager._get_session_log_str(session)
             try:
                 await self.manager.session_sender.send(session, msg_chain)  # 发送消息
                 success_count += 1
             except Exception as e:
-                logger.error(f"[灾害预警] 系统提示消息发送到 {session} 失败: {e}")
+                logger.error(f"[灾害预警] 系统提示消息发送到 {session_log} 失败: {e}")
 
         if success_count > 0:
             logger.info(f"[灾害预警] 系统提示消息已发送到 {success_count} 个会话")
