@@ -38,6 +38,8 @@ def register_session_config_routes(app, *, disaster_service):
                 data.append(
                     {
                         "session": session,
+                        "session_name": mgr.get_session_name(session),
+                        "session_display_name": mgr.get_session_display_name(session),
                         "has_override": bool(override),
                         "override_keys": list(override.keys()),
                         "push_enabled": effective.get("push_enabled", True),
