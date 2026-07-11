@@ -51,11 +51,15 @@ function ConfigModeToolbar({
                             onChange={(e) => setSelectedSession(e.target.value)} 
                             className="config-mode-toolbar__session-field"
                         >
-                            {sessions.map((item) => (
-                                <MenuItem key={item.session} value={item.session}>
-                                    {item.session}
-                                </MenuItem>
-                            ))}
+                            {sessions.map((item) => {
+                                const name = item.session_name;
+                                const label = name ? `${item.session} (${name})` : item.session;
+                                return (
+                                    <MenuItem key={item.session} value={item.session}>
+                                        {label}
+                                    </MenuItem>
+                                );
+                            })}
                         </TextField>
 
                         {/* 如果该会话已经保存了覆盖项，显式用高亮 Chip 提醒 */}
@@ -76,7 +80,7 @@ function ConfigModeToolbar({
             {/* 次行：仅在会话差异化配置模式且已选中会话时渲染，展示当前会话详细覆写状态说明 */}
             {mode === 'session' && selectedSessionMeta && (
                 <Typography variant="caption" color="text.secondary" className="config-mode-toolbar__meta">
-                    当前会话：{selectedSessionMeta.session} ｜ push_enabled：{selectedSessionMeta.push_enabled ? '开启' : '关闭'} ｜ override字段：{(selectedSessionMeta.override_keys || []).join(', ') || '无'}
+                    当前会话：{selectedSessionMeta.session_name ? `${selectedSessionMeta.session} (${selectedSessionMeta.session_name})` : selectedSessionMeta.session} ｜ push_enabled：{selectedSessionMeta.push_enabled ? '开启' : '关闭'} ｜ override字段：{(selectedSessionMeta.override_keys || []).join(', ') || '无'}
                 </Typography>
             )}
         </Box>

@@ -7,7 +7,7 @@ const { useState, useEffect } = React;
  * 可用于实时校准群组卡片消息推送、防灾模版排版测试。
  * 
  * 核心流程与功能：
- * 1. 模拟参数拉取：启动后从服务端 `/api/simulation/params` 获取支持的模拟格式、预选数据源模版与默认经纬度值。
+ * 1. 模拟参数拉取：启动后从服务端 /api/simulation/params 获取支持的模拟格式、预选数据源模版与默认经纬度值。
  * 2. 目标会话限制：允许定向群组测试或全网默认群组分流测试。
  * 3. 智能关联联动：切换测试格式（数据源模版）时，自动同步重设下方“数据源” key，并拉取该格式下的地理极值 defaults。
  * 4. 原生 IP 定位：提供 GPS 定位辅助功能，调取宿主 geoIP 服务，一键解析定位并填充经纬度与位置文本，无需手动输入。
@@ -195,7 +195,31 @@ function SimulationModal({ open, onClose }) {
 
     const getTargetSessionOptions = () => {
         if (!params || !params.target_sessions) return [];
+        // 兼容字符串数组和对象数组两种格式
         return params.target_sessions;
+    };
+
+    /**
+     * 获取会话的原始UMO值（用于提交请求）
+     */
+    const getSessionValue = (session) => {
+        if (typeof session === 'string') return session;
+        if (session && typeof session === 'object') {
+            return session.session || String(session);
+        }
+        return String(session);
+    };
+
+    /**
+     * 获取会话的展示名称（UMO + 备注名括号，无备注名时仅显示UMO）
+     */
+    const getSessionDisplayName = (session) => {
+        const umo = getSessionValue(session);
+        if (session && typeof session === 'object') {
+            const name = session.session_name;
+            return name ? `${umo} (${name})` : umo;
+        }
+        return umo;
     };
 
     return (
@@ -217,8 +241,8 @@ function SimulationModal({ open, onClose }) {
                                 <em>默认 (第一个配置的会话)</em>
                             </MenuItem>
                             {getTargetSessionOptions().map((session, index) => (
-                                <MenuItem key={index} value={session}>
-                                    {session}
+                                <MenuItem key={index} value={getSessionValue(session)}>
+                                    {getSessionDisplayName(session)}
                                 </MenuItem>
                             ))}
                         </Select>
