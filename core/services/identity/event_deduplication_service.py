@@ -9,8 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from astrbot.api import logger
-
+from ....utils.plugin_logger import plugin_logger
 from ...domain.event_models import EarthquakeEvent, EventEnvelope
 from ...sources.source_catalog import get_source_entry
 from .event_identity import EventIdentityService
@@ -99,7 +98,9 @@ class EventDeduplicationService:
         event_fingerprint = self.generate_event_fingerprint(event, domain_eq, source_id)
         current_time = self._to_utc(domain_eq.occurred_at, source_id)
 
-        logger.debug(f"[灾害预警] 检查事件: {source_id}, 指纹: {event_fingerprint}")
+        plugin_logger.debug(
+            f"[灾害预警] 检查事件: {source_id}, 指纹: {event_fingerprint}"
+        )
 
         # 指纹命中说明近期已有相近事件，需要进一步区分是重复还是合法更新。
         if event_fingerprint in self.recent_events:
@@ -123,7 +124,9 @@ class EventDeduplicationService:
                         source_id,
                         metadata=metadata,
                     ):
-                        logger.debug(f"[灾害预警] 允许同一数据源更新: {source_id}")
+                        plugin_logger.debug(
+                            f"[灾害预警] 允许同一数据源更新: {source_id}"
+                        )
                         current_report = self._resolve_report_num(event, metadata)
                         # 将当前的报数加入历史已处理的报数集合中，规避重复推送
                         existing_event["processed_reports"].add(current_report)
@@ -132,11 +135,16 @@ class EventDeduplicationService:
                             metadata.get("is_final", False)
                         )
                         return True
-                    logger.info(f"[灾害预警] 同一数据源重复事件，过滤: {source_id}")
+                    plugin_logger.info(
+                        f"[灾害预警] 同一数据源重复事件，过滤: {source_id}",
+                        is_event_linked=True,
+                    )
                     return False
 
             # 同一指纹但来自不同数据源的事件允许继续入链，便于后续融合策略处理。
-            logger.info(f"[灾害预警] 不同数据源，允许推送: {source_id}")
+            plugin_logger.info(
+                f"[灾害预警] 不同数据源，允许推送: {source_id}", is_event_linked=True
+            )
             current_report = self._resolve_report_num(event, metadata)
             issue_type = self._extract_issue_type_from_earthquake(domain_eq, metadata)
             self.recent_events[event_fingerprint][source_id] = {
@@ -171,7 +179,7 @@ class EventDeduplicationService:
                 "is_final": bool(metadata.get("is_final", False)),
             }
         }
-        logger.debug(f"[灾害预警] 事件通过基础去重检查: {source_id}")
+        plugin_logger.debug(f"[灾害预警] 事件通过基础去重检查: {source_id}")
         return True
 
     def generate_event_fingerprint(
@@ -233,16 +241,19 @@ class EventDeduplicationService:
         # 新报数到达允许放行更新，例如第 1 报 -> 第 2 报
         if current_report not in processed_reports:
             current_is_final = bool(active_metadata.get("is_final", False))
-            logger.info(
+            plugin_logger.info(
                 f"[灾害预警] 新报数: 第 {current_report} 报 {'(最终报)' if current_is_final else ''}"
-                f" (已处理: {sorted(processed_reports)})"
+                f" (已处理: {sorted(processed_reports)})",
+                is_event_linked=True,
             )
             return True
 
         # 若是最终报，且历史已推送记录中未判定为最终报，则放行更新
         current_is_final = bool(active_metadata.get("is_final", False))
         if current_is_final and not existing_event.get("is_final", False):
-            logger.info("[灾害预警] 最终报更新: 非最终报 -> 最终报")
+            plugin_logger.info(
+                "[灾害预警] 最终报更新: 非最终报 -> 最终报", is_event_linked=True
+            )
             return True
 
         current_info_type = str(
@@ -253,7 +264,9 @@ class EventDeduplicationService:
         if source_id == "usgs_fanstudio":
             existing_info_type = (existing_event.get("info_type", "") or "").lower()
             if existing_info_type == "automatic" and current_info_type == "reviewed":
-                logger.debug("[灾害预警] 允许USGS状态升级: automatic -> reviewed")
+                plugin_logger.debug(
+                    "[灾害预警] 允许USGS状态升级: automatic -> reviewed"
+                )
                 return True
 
         jma_types = ["ScalePrompt", "Destination", "ScaleAndDestination", "DetailScale"]
@@ -267,7 +280,7 @@ class EventDeduplicationService:
                 prev_idx = jma_types.index(existing_issue_type)
                 # 情报优先级提升时（例如震度速报 -> 地震报告），允许放行更新
                 if curr_idx > prev_idx:
-                    logger.debug(
+                    plugin_logger.debug(
                         f"[灾害预警] 允许JMA情报升级: {existing_issue_type} -> {current_issue_type}"
                     )
                     return True
@@ -277,12 +290,12 @@ class EventDeduplicationService:
         existing_info_type = (existing_event.get("info_type", "") or "").lower()
         # 允许由“自动测定”状态跃升为“正式测定”状态的更新推送
         if "自动" in existing_info_type and "正式" in current_info_type:
-            logger.debug(
+            plugin_logger.debug(
                 f"[灾害预警] 允许状态升级: {existing_info_type} -> {current_info_type}"
             )
             return True
 
-        logger.debug(f"[灾害预警] 报数 {current_report} 已处理过，跳过")
+        plugin_logger.debug(f"[灾害预警] 报数 {current_report} 已处理过，跳过")
         return False
 
     def cleanup_old_events(self):

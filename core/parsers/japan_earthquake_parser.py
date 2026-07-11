@@ -8,9 +8,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from astrbot.api import logger
-
 from ...utils.converters import ScaleConverter, safe_float_convert
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
@@ -33,16 +32,20 @@ class JmaEarthquakeP2PParser(BaseParser):
 
             # P2P 中 551 表示日本地震情报，其余业务码直接忽略。
             if code == 551:
-                logger.debug(f"[灾害预警] {self.source_id} 收到地震情报(code:551)")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 收到地震情报(code:551)"
+                )
                 return self._parse_earthquake_data(data)
 
-            logger.debug(f"[灾害预警] {self.source_id} 非地震情报数据，code: {code}")
+            plugin_logger.debug(
+                f"[灾害预警] {self.source_id} 非地震情报数据，code: {code}"
+            )
             return None
         except json.JSONDecodeError as exc:
-            logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
             return None
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
             return None
 
     def _parse_earthquake_data(self, data: dict[str, Any]) -> EventEnvelope | None:
@@ -66,7 +69,7 @@ class JmaEarthquakeP2PParser(BaseParser):
 
             # 仅在非震度速报场景下把震级视为硬性字段，兼容日本震度速报消息
             if magnitude is None and issue_type != "ScalePrompt":
-                logger.error(
+                plugin_logger.error(
                     f"[灾害预警] {self.source_id} 震级解析失败: {magnitude_raw}"
                 )
                 return None
@@ -79,7 +82,7 @@ class JmaEarthquakeP2PParser(BaseParser):
                 lon = None
 
             if (lat is None or lon is None) and issue_type != "ScalePrompt":
-                logger.error(
+                plugin_logger.error(
                     f"[灾害预警] {self.source_id} 经纬度解析失败: lat={latitude}, lon={longitude}"
                 )
                 return None
@@ -197,13 +200,14 @@ class JmaEarthquakeP2PParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
+            plugin_logger.info(
+                f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析地震情报失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析地震情报失败: {exc}")
             return None
 
 
@@ -219,7 +223,9 @@ class JmaEarthquakeWolfxParser(BaseParser):
         try:
             # Wolfx 中只对日本地震列表消息做处理，其余类型直接跳过
             if data.get("type") != "jma_eqlist":
-                logger.debug(f"[灾害预警] {self.source_id} 非 JMA 地震列表数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 JMA 地震列表数据，跳过"
+                )
                 return None
 
             eq_info = None
@@ -344,11 +350,12 @@ class JmaEarthquakeWolfxParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
+            plugin_logger.info(
+                f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None

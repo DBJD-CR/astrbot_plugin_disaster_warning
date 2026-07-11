@@ -10,6 +10,7 @@ import time
 
 from astrbot.api import logger
 
+from ....utils.plugin_logger import plugin_logger
 from ...domain.event_models import EarthquakeEvent, EventEnvelope
 from ...domain.event_payload import SourcePayload
 
@@ -130,8 +131,9 @@ class CENCFusionService:
         ):
             intensity = cached_payload["intensity"]
             type(self)._apply_intensity(event, earthquake, intensity)
-            logger.info(
-                f"[灾害预警] 融合策略: Fan CENC 事件 {event.id} 命中 Wolfx 缓存并补充烈度: {earthquake.intensity}"
+            plugin_logger.info(
+                f"[灾害预警] 融合策略: Fan CENC 事件 {event.id} 命中 Wolfx 缓存并补充烈度: {earthquake.intensity}",
+                is_event_linked=True,
             )
             return await self._execute_push(
                 event,
@@ -139,8 +141,9 @@ class CENCFusionService:
                 session_config_getter=session_config_getter,
             )
 
-        logger.info(
-            f"[灾害预警] 融合策略: 拦截 Fan CENC 事件 {event.id}，事件标识为 {event_key}，兼容槽位序号为 {report_num}，测定类型为 {measurement_type}，等待 Wolfx 补充（{timeout} 秒）..."
+        plugin_logger.info(
+            f"[灾害预警] 融合策略: 拦截 Fan CENC 事件 {event.id}，事件标识为 {event_key}，兼容槽位序号为 {report_num}，测定类型为 {measurement_type}，等待 Wolfx 补充（{timeout} 秒）...",
+            is_event_linked=True,
         )
 
         loop = asyncio.get_running_loop()
@@ -174,14 +177,20 @@ class CENCFusionService:
             store.cenc_pending.pop(pending_key, None)
 
             if result == "timeout":
-                logger.info("[灾害预警] 融合策略: CENC 等待超时，推送原始 Fan 事件")
+                plugin_logger.info(
+                    "[灾害预警] 融合策略: CENC 等待超时，推送原始 Fan 事件",
+                    is_event_linked=True,
+                )
                 return await self._execute_push(
                     event,
                     target_sessions=target_sessions,
                     session_config_getter=session_config_getter,
                 )
             if result == "fused":
-                logger.info("[灾害预警] 融合策略: CENC 融合完成，推送补充后的 Fan 事件")
+                plugin_logger.info(
+                    "[灾害预警] 融合策略: CENC 融合完成，推送补充后的 Fan 事件",
+                    is_event_linked=True,
+                )
                 return await self._execute_push(
                     event,
                     target_sessions=target_sessions,
@@ -263,8 +272,9 @@ class CENCFusionService:
                 return
 
             type(self)._apply_intensity(fan_event, fan_earthquake, intensity)
-            logger.info(
-                f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan CENC 事件 {pending_key} 的烈度: {intensity}"
+            plugin_logger.info(
+                f"[灾害预警] 融合策略: 成功用 Wolfx 补充 Fan CENC 事件 {pending_key} 的烈度: {intensity}",
+                is_event_linked=True,
             )
 
             if future is not None and hasattr(future, "done") and not future.done():

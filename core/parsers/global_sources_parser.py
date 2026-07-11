@@ -9,10 +9,9 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from astrbot.api import logger
-
 from ...models.websocket_message_pb2 import MessageAction, MessageType, WsMessage
 from ...utils.converters import ScaleConverter, safe_float_convert
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
@@ -57,17 +56,17 @@ class GlobalQuakeParser(BaseParser):
             if ws_msg.type == MessageType.HEARTBEAT:
                 return None
             if ws_msg.type == MessageType.STATUS:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 收到状态消息，服务器状态为 {ws_msg.status_data.server_status}"
                 )
                 return None
 
-            logger.debug(
+            plugin_logger.debug(
                 f"[灾害预警] {self.source_id} 收到未知类型的消息，类型值为 {ws_msg.type}"
             )
             return None
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} Protobuf 解析失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} Protobuf 解析失败: {exc}")
             return None
 
     def _parse_json_message(self, message: str) -> EventEnvelope | None:
@@ -79,7 +78,7 @@ class GlobalQuakeParser(BaseParser):
 
             # JSON 通道当前主要关心地震消息，其余类型直接忽略。
             if msg_type == "earthquake":
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 收到 JSON 地震消息，动作为 {action}"
                 )
                 # 适配新 API 中的 cancelled (取消报) 动作
@@ -87,10 +86,12 @@ class GlobalQuakeParser(BaseParser):
                     return self._parse_earthquake_removal_json(data)
                 return self._parse_earthquake_data(data)
 
-            logger.debug(f"[灾害预警] {self.source_id} 已忽略类型为 {msg_type} 的消息")
+            plugin_logger.debug(
+                f"[灾害预警] {self.source_id} 已忽略类型为 {msg_type} 的消息"
+            )
             return None
         except json.JSONDecodeError as exc:
-            logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
             return None
 
     def _build_removal_envelope(
@@ -171,10 +172,13 @@ class GlobalQuakeParser(BaseParser):
                 event_id, raw_payload, source_entry, "protobuf"
             )
 
-            logger.info(f"[灾害预警] Global Quake 收到地震取消广播: ID={event_id}")
+            plugin_logger.info(
+                f"[灾害预警] Global Quake 收到地震取消广播: ID={event_id}",
+                is_event_linked=True,
+            )
             return envelope
         except Exception as exc:
-            logger.error(
+            plugin_logger.error(
                 f"[灾害预警] {self.source_id} 解析 Protobuf 取消消息失败: {exc}"
             )
             return None
@@ -194,12 +198,15 @@ class GlobalQuakeParser(BaseParser):
                 event_id, dict(data), source_entry, "earthquake"
             )
 
-            logger.info(
-                f"[灾害预警] Global Quake 收到地震取消广播 (JSON): ID={event_id}"
+            plugin_logger.info(
+                f"[灾害预警] Global Quake 收到地震取消广播 (JSON): ID={event_id}",
+                is_event_linked=True,
             )
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析 JSON 取消消息失败: {exc}")
+            plugin_logger.error(
+                f"[灾害预警] {self.source_id} 解析 JSON 取消消息失败: {exc}"
+            )
             return None
 
     def _parse_earthquake_protobuf(self, ws_msg: WsMessage) -> EventEnvelope | None:
@@ -336,15 +343,16 @@ class GlobalQuakeParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
+            plugin_logger.info(
                 f"[灾害预警] Global Quake地震解析成功: {domain_event.place_name} "
                 f"(M {domain_event.magnitude or 0.0:.1f}), 烈度: {eq_data.intensity}, "
-                f"时间: {domain_event.occurred_at}"
+                f"时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(
+            plugin_logger.error(
                 f"[灾害预警] {self.source_id} 解析 Protobuf 地震数据失败: {exc}"
             )
             return None
@@ -354,7 +362,7 @@ class GlobalQuakeParser(BaseParser):
         try:
             eq_data = self._extract_data(data)
             if not eq_data:
-                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # JSON 格式同样兼容两种时间表达，优先用更明确的字符串时间
@@ -465,20 +473,21 @@ class GlobalQuakeParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
+            plugin_logger.info(
                 f"[灾害预警] Global Quake地震解析成功: {domain_event.place_name} "
                 f"(M {domain_event.magnitude or 0.0:.1f}), 烈度: {intensity_str}, "
-                f"时间: {domain_event.occurred_at}"
+                f"时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析地震数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析地震数据失败: {exc}")
             return None
 
     def _parse_text_message(self, message: str) -> EventEnvelope | None:
         """保留文本消息兼容处理。"""
-        logger.debug(f"[灾害预警] {self.source_id} 文本消息: {message}")
+        plugin_logger.debug(f"[灾害预警] {self.source_id} 文本消息: {message}")
         return None
 
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
@@ -502,7 +511,7 @@ class UsgsEarthquakeParser(BaseParser):
         try:
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 过滤空心跳包
@@ -523,7 +532,7 @@ class UsgsEarthquakeParser(BaseParser):
                 ):
                     missing_fields.append(field)
             if missing_fields:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 数据缺少部分字段: {missing_fields}，继续处理..."
                 )
 
@@ -549,7 +558,7 @@ class UsgsEarthquakeParser(BaseParser):
                 if not self._is_heartbeat_message(msg_data):
                     warning_msg = f"[灾害预警] {self.source_id} 缺少地震ID，跳过处理"
                     if self._should_log_warning("missing_usgs_id", warning_msg):
-                        logger.warning(warning_msg)
+                        plugin_logger.warning(warning_msg)
                 return None
 
             if usgs_latitude == 0 and usgs_longitude == 0:
@@ -563,7 +572,7 @@ class UsgsEarthquakeParser(BaseParser):
                     if self._should_log_warning(
                         "missing_usgs_place_magnitude", warning_msg
                     ):
-                        logger.warning(warning_msg)
+                        plugin_logger.warning(warning_msg)
                 return None
 
             # 翻译全球震中地点英文名称为中文
@@ -637,11 +646,12 @@ class UsgsEarthquakeParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude or 0.0}), 时间: {domain_event.occurred_at}"
+            plugin_logger.info(
+                f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude or 0.0}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None

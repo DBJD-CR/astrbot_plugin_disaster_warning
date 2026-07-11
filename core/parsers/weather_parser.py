@@ -9,8 +9,7 @@ from collections import deque
 from datetime import datetime
 from typing import Any
 
-from astrbot.api import logger
-
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EventEnvelope, WeatherEvent
 from ..domain.event_payload import SourcePayload
@@ -33,7 +32,7 @@ class WeatherAlarmParser(BaseParser):
             # 提取数据负载中的实际业务字段
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 过滤心跳包
@@ -41,10 +40,12 @@ class WeatherAlarmParser(BaseParser):
                 return None
 
             # 内存中判定当前事件ID是否已被处理过，避免同一预警短时多次派发
+            # 这里也属于去重阶段的日志，如果提示检测到重复，应由 plugin_logger 输出
             weather_id = msg_data.get("id")
             if weather_id and weather_id in self._processed_weather_ids:
-                logger.info(
-                    f"[灾害预警] {self.source_id} 检测到重复的气象预警ID: {weather_id}，忽略"
+                plugin_logger.info(
+                    f"[灾害预警] {self.source_id} 检测到重复的气象预警ID: {weather_id}，忽略",
+                    is_event_linked=True,
                 )
                 return None
 
@@ -56,7 +57,7 @@ class WeatherAlarmParser(BaseParser):
                 if field not in msg_data or msg_data[field] is None
             ]
             if missing_fields:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 气象预警数据缺少关键字段: {missing_fields}"
                 )
 
@@ -92,7 +93,7 @@ class WeatherAlarmParser(BaseParser):
                 if not self._is_heartbeat_message(msg_data):
                     warning_msg = f"[灾害预警] {self.source_id} 气象预警缺少标题、名称和描述信息，跳过处理"
                     if self._should_log_warning("missing_weather_fields", warning_msg):
-                        logger.debug(warning_msg)
+                        plugin_logger.debug(warning_msg)
                 return None
 
             source_entry = get_source_entry(self.source_id)
@@ -175,13 +176,14 @@ class WeatherAlarmParser(BaseParser):
             if envelope.id:
                 self._processed_weather_ids.append(envelope.id)
 
-            logger.info(
-                f"[灾害预警] 气象预警解析成功: {domain_event.title or domain_event.headline}, 生效时间: {issue_time}"
+            plugin_logger.info(
+                f"[灾害预警] 气象预警解析成功: {domain_event.title or domain_event.headline}, 生效时间: {issue_time}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(
+            plugin_logger.error(
                 f"[灾害预警] {self.source_id} 解析气象预警数据失败: {exc}, 数据内容: {data}"
             )
             return None

@@ -9,8 +9,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from astrbot.api import logger
-
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EventEnvelope, TsunamiEvent
 from ..domain.event_payload import SourcePayload
@@ -71,7 +70,7 @@ class TsunamiParser(BaseParser):
         if not title:
             warning_msg = f"[灾害预警] {self.source_id} 海啸消息缺少标题，跳过处理"
             if self._should_log_warning("missing_tsunami_title", warning_msg):
-                logger.debug(warning_msg)
+                plugin_logger.debug(warning_msg)
             return None
 
         # 收集预报地区列表、海啸波位水位监测站及分布图附件
@@ -98,7 +97,7 @@ class TsunamiParser(BaseParser):
                 if stable_parts
                 else "tsunami_unknown"
             )
-            logger.debug(
+            plugin_logger.debug(
                 f"[灾害预警] {self.source_id} 海啸消息缺少稳定id，已使用回退事件ID: {event_id}"
             )
 
@@ -205,7 +204,7 @@ class TsunamiParser(BaseParser):
         try:
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             if self._is_heartbeat_message(msg_data):
@@ -225,12 +224,13 @@ class TsunamiParser(BaseParser):
             if envelope is None:
                 return None
 
-            logger.info(
-                f"[灾害预警] 海啸预警解析成功: {getattr(envelope.event, 'title', '')} ({getattr(envelope.event, 'level', '')}), 发布时间: {getattr(envelope.event, 'issued_at', None)}"
+            plugin_logger.info(
+                f"[灾害预警] 海啸预警解析成功: {getattr(envelope.event, 'title', '')} ({getattr(envelope.event, 'level', '')}), 发布时间: {getattr(envelope.event, 'issued_at', None)}",
+                is_event_linked=True,
             )
             return envelope
         except Exception as exc:
-            logger.error(
+            plugin_logger.error(
                 f"[灾害预警] {self.source_id} 解析海啸预警数据失败: {exc}, 数据内容: {data}"
             )
             return None
@@ -251,16 +251,18 @@ class JmaTsunamiP2PParser(BaseParser):
 
             # P2P 中 552 业务码专指日本津波予報（海啸警报），其余直接跳过
             if code == 552:
-                logger.debug(f"[灾害预警] {self.source_id} 收到津波予報(code:552)")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 收到津波予報(code:552)"
+                )
                 return self._parse_tsunami_data(data)
 
-            logger.debug(f"[灾害预警] {self.source_id} 非海啸数据，code: {code}")
+            plugin_logger.debug(f"[灾害预警] {self.source_id} 非海啸数据，code: {code}")
             return None
         except json.JSONDecodeError as exc:
-            logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
             return None
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
             return None
 
     def _parse_tsunami_data(self, data: dict[str, Any]) -> EventEnvelope | None:
@@ -367,11 +369,12 @@ class JmaTsunamiP2PParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] JMA海啸预报解析成功: {domain_event.title}, 时间: {domain_event.issued_at}"
+            plugin_logger.info(
+                f"[灾害预警] JMA海啸预报解析成功: {domain_event.title}, 时间: {domain_event.issued_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析海啸数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析海啸数据失败: {exc}")
             return None

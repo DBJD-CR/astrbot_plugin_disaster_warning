@@ -12,8 +12,7 @@ import traceback
 from datetime import datetime
 from typing import Any
 
-from astrbot.api import logger
-
+from ...utils.plugin_logger import plugin_logger
 from ...utils.time_converter import TimeConverter
 from ..sources.source_catalog import get_source_entry
 
@@ -49,11 +48,11 @@ class BaseParser:
             payload = self.decode_message(message)
             return self.build_event(payload)
         except json.JSONDecodeError as exc:
-            logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
             return None
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
-            logger.error(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
+            plugin_logger.error(f"[灾害预警] 异常堆栈: {traceback.format_exc()}")
             return None
 
     def decode_message(self, message: str | bytes) -> Any:
@@ -84,14 +83,14 @@ class BaseParser:
         """提取实际业务数据，兼容多种外层包装格式。"""
         # 兼容首字母大写的 "Data" 键
         if "Data" in data:
-            logger.debug(f"[灾害预警] {self.source_id} 使用 Data 字段获取数据")
+            plugin_logger.debug(f"[灾害预警] {self.source_id} 使用 Data 字段获取数据")
             return data["Data"] or {}
         # 兼容小写的 "data" 键
         if "data" in data:
-            logger.debug(f"[灾害预警] {self.source_id} 使用 data 字段获取数据")
+            plugin_logger.debug(f"[灾害预警] {self.source_id} 使用 data 字段获取数据")
             return data["data"] or {}
         # 无包装时，直接视整个载荷为数据体
-        logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
+        plugin_logger.debug(f"[灾害预警] {self.source_id} 使用整个消息作为数据")
         return data
 
     def _is_heartbeat_message(self, msg_data: dict[str, Any]) -> bool:
@@ -111,7 +110,7 @@ class BaseParser:
             lat = msg_data.get("latitude")
             lon = msg_data.get("longitude")
             if lat == 0 and lon == 0:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 检测到空坐标心跳包，静默过滤"
                 )
                 return True
@@ -134,7 +133,7 @@ class BaseParser:
 
             # 若有一半以上的核心必填字段为空，视为无实际有效业务内容的心跳空包
             if missing_count >= len(required_fields) / 2:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 检测到空数据心跳包，静默过滤"
                 )
                 return True
@@ -167,5 +166,7 @@ class BaseParser:
         # 调用时间转换工具进行多格式兼容解析
         dt = TimeConverter.parse_datetime(time_str)
         if dt is None and time_str:
-            logger.warning(f"[灾害预警] 时间解析失败: '{time_str}'")
+            plugin_logger.warning(
+                f"[灾害预警] 时间解析失败: '{time_str}'", is_event_linked=True
+            )
         return dt
