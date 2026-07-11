@@ -78,7 +78,9 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
     async def get_simulation_params_api():
         """获取模拟预警可用参数选项。"""
         try:
-            return ApiResponse.success(get_simulation_params(config))
+            # 传入会话配置管理器，使 target_sessions 携带备注名信息
+            mgr = getattr(disaster_service, "session_config_manager", None)
+            return ApiResponse.success(get_simulation_params(config, mgr))
         except Exception as e:
             logger.error(f"[灾害预警] 获取模拟参数失败: {e}")
             return ApiResponse.error(str(e), status_code=500)
@@ -151,11 +153,14 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
                     bypass_fusion=True,
                 )
                 if push_success:
+                    target_log_str = session_config_manager.get_session_log_str(
+                        final_target_session
+                    )
                     logger.info(
-                        f"[灾害预警] ✅ 模拟事件已成功推送到 {final_target_session}"
+                        f"[灾害预警] ✅ 模拟事件已成功推送到 {target_log_str}"
                     )
                     simulation_result.report_lines.append(
-                        f"\n✅ 消息已发送到: {final_target_session}"
+                        f"\n✅ 消息已发送到: {target_log_str}"
                     )
                 else:
                     simulation_result.report_lines.append(
