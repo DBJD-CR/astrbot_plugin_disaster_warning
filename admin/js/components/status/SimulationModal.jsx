@@ -200,19 +200,6 @@ function SimulationModal({ open, onClose }) {
     };
 
     /**
-     * 获取会话的展示名称（UMO + 备注名括号，无备注名时仅显示UMO）
-     */
-    const getSessionDisplayName = (session) => {
-        if (typeof session === 'string') return session;
-        if (session && typeof session === 'object') {
-            const umo = session.session || String(session);
-            const name = session.session_name;
-            return name ? `${umo} (${name})` : umo;
-        }
-        return String(session);
-    };
-
-    /**
      * 获取会话的原始UMO值（用于提交请求）
      */
     const getSessionValue = (session) => {
@@ -221,6 +208,18 @@ function SimulationModal({ open, onClose }) {
             return session.session || String(session);
         }
         return String(session);
+    };
+
+    /**
+     * 获取会话的展示名称（UMO + 备注名括号，无备注名时仅显示UMO）
+     */
+    const getSessionDisplayName = (session) => {
+        const umo = getSessionValue(session);
+        if (session && typeof session === 'object') {
+            const name = session.session_name;
+            return name ? `${umo} (${name})` : umo;
+        }
+        return umo;
     };
 
     return (
