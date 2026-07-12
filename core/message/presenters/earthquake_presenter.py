@@ -14,6 +14,7 @@ from ....utils.converters import ScaleConverter
 from ....utils.time_converter import TimeConverter
 from ...domain.event_context import EarthquakeDisplayContext
 from ...services.geo.intensity_service import IntensityCalculator
+from ...services.geo.jma_seis_int_loc_loader import get_sect_map
 from .base_presenter import BasePresenter
 
 
@@ -745,37 +746,59 @@ class JmaEarthquakeInfoPresenter(BasePresenter):
                 scale_groups.setdefault(scale, []).append(addr)
 
             if scale_groups:
-                if merged_options.get("detailed_jma_intensity", False):
-                    # 详细模式下按震度从高到低逐级展开展示。
-                    sorted_scales = sorted(scale_groups.keys(), reverse=True)
-                    lines.append("📡各地震度详情：")
-                    for scale_key in sorted_scales:
-                        scale_disp = ScaleConverter.format_jma_cwa_scale_display(
-                            scale_key
+                if merged_options.get("jma_region_intensity", True):
+                    # 地域汇总模式：将町丁目按 sect 聚合，
+                    # 每个 sect 的震度取其内所有町丁目的最大震度，
+                    # 然后按震度从高到低分组展示地域列表，不做截断。
+                    sect_map = get_sect_map()
+                    if sect_map:
+                        # 每个 sect 的最大震度
+                        sect_max_scale: dict[str, object] = {}
+                        for scale_key, addrs in scale_groups.items():
+                            for addr in addrs:
+                                sect = sect_map.get(addr)
+                                if not sect:
+                                    continue
+                                prev = sect_max_scale.get(sect, 0)
+                                # 震度值可能是 int 或其他可比较类型
+                                if scale_key > prev:
+                                    sect_max_scale[sect] = scale_key
+
+                        if sect_max_scale:
+                            # 按震度从高到低分组展示地域
+                            region_scale_groups: dict[object, list[str]] = {}
+                            for sect, s_scale in sect_max_scale.items():
+                                region_scale_groups.setdefault(s_scale, []).append(sect)
+
+                            sorted_scales = sorted(
+                                region_scale_groups.keys(), reverse=True
+                            )
+                            lines.append("📡各地震度详情：")
+                            for scale_key in sorted_scales:
+                                scale_disp = (
+                                    ScaleConverter.format_jma_cwa_scale_display(
+                                        scale_key
+                                    )
+                                )
+                                emoji = _get_intensity_emoji(
+                                    scale_key, is_eew=False, is_shindo=True
+                                )
+                                # 地域级不做截断，完整展示所有地域
+                                locs = sorted(region_scale_groups[scale_key])
+                                loc_str = "、".join(locs)
+                                lines.append(f"  {emoji}[震度{scale_disp}] {loc_str}")
+                        else:
+                            # sect 映射全部未命中时回退到町丁目模式
+                            cls._render_town_scale_groups(
+                                merged_options, scale_groups, lines
+                            )
+                    else:
+                        # 映射表加载失败时回退到町丁目模式
+                        cls._render_town_scale_groups(
+                            merged_options, scale_groups, lines
                         )
-                        emoji = _get_intensity_emoji(
-                            scale_key, is_eew=False, is_shindo=True
-                        )
-                        locs = scale_groups[scale_key]
-                        max_show = 20
-                        loc_str = "、".join(locs[:max_show])
-                        if len(locs) > max_show:
-                            loc_str += f" 等{len(locs)}处"
-                        lines.append(f"  {emoji}[震度{scale_disp}] {loc_str}")
                 else:
-                    # 简略模式仅展示最大震度对应的代表观测点，控制文本长度。
-                    max_scale_key = max(scale_groups.keys())
-                    scale_disp = ScaleConverter.format_jma_cwa_scale_display(
-                        max_scale_key
-                    )
-                    emoji = _get_intensity_emoji(
-                        max_scale_key, is_eew=False, is_shindo=True
-                    )
-                    locs = scale_groups[max_scale_key][:5]
-                    suffix = "等" if len(scale_groups[max_scale_key]) > 5 else ""
-                    lines.append(
-                        f"📡震度 {scale_disp} {emoji} 观测点：{'、'.join(locs)}{suffix}"
-                    )
+                    cls._render_town_scale_groups(merged_options, scale_groups, lines)
 
         jma_comment = display_context.jma_comment
         if (
@@ -786,6 +809,41 @@ class JmaEarthquakeInfoPresenter(BasePresenter):
             lines.append(f"📝备注：{jma_comment.strip()}")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _render_town_scale_groups(
+        merged_options: dict,
+        scale_groups: dict[object, list[str]],
+        lines: list[str],
+    ) -> None:
+        """按町丁目级震度分组渲染（原始模式，带截断）。
+
+        当 detailed_jma_intensity 开启时逐级展示所有震度的町丁目，
+        否则仅展示最大震度的代表观测点。町丁目列表会做截断处理以控制文本长度。
+        """
+        if merged_options.get("detailed_jma_intensity", False):
+            # 详细模式下按震度从高到低逐级展开展示。
+            sorted_scales = sorted(scale_groups.keys(), reverse=True)
+            lines.append("📡各地震度详情：")
+            for scale_key in sorted_scales:
+                scale_disp = ScaleConverter.format_jma_cwa_scale_display(scale_key)
+                emoji = _get_intensity_emoji(scale_key, is_eew=False, is_shindo=True)
+                locs = scale_groups[scale_key]
+                max_show = 20
+                loc_str = "、".join(locs[:max_show])
+                if len(locs) > max_show:
+                    loc_str += f" 等{len(locs)}处"
+                lines.append(f"  {emoji}[震度{scale_disp}] {loc_str}")
+        else:
+            # 简略模式仅展示最大震度对应的代表观测点，控制文本长度。
+            max_scale_key = max(scale_groups.keys())
+            scale_disp = ScaleConverter.format_jma_cwa_scale_display(max_scale_key)
+            emoji = _get_intensity_emoji(max_scale_key, is_eew=False, is_shindo=True)
+            locs = scale_groups[max_scale_key][:5]
+            suffix = "等" if len(scale_groups[max_scale_key]) > 5 else ""
+            lines.append(
+                f"📡震度 {scale_disp} {emoji} 观测点：{'、'.join(locs)}{suffix}"
+            )
 
 
 class GlobalQuakeTextPresenter(BasePresenter):

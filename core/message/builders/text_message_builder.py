@@ -35,10 +35,13 @@ class TextMessageBuilder:
         display_timezone = active_config.get("display_timezone", "UTC+8")
         # 日本震度详情是否展开由消息格式配置单独控制。
         detailed_jma = config.get("detailed_jma_intensity", False)
+        # 日本震度是否按地域汇总展示，默认开启。
+        jma_region = config.get("jma_region_intensity", True)
 
         options = {
             "timezone": display_timezone,
             "detailed_jma_intensity": detailed_jma,
+            "jma_region_intensity": jma_region,
             "local_monitoring": active_config.get("local_monitoring", {}),
         }
 
