@@ -181,6 +181,12 @@ class BackupService:
                             os.remove(bak_path)
                         except Exception:
                             pass
+                # 重新初始化数据库连接，防止连接被永久关闭
+                if db_mgr and has_db_in_zip:
+                    try:
+                        await db_mgr.initialize()
+                    except Exception as init_err:
+                        logger.error(f"[灾害预警] 恢复数据库连接失败: {init_err}")
                 return False, f"创建本地回滚备份失败，已中止还原: {str(e)}"
 
             # 解压还原新文件
