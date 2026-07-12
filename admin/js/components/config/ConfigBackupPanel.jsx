@@ -112,6 +112,7 @@ function ConfigBackupPanel() {
     const handleImportSessions = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        const target = e.target;
 
         const reader = new FileReader();
         reader.onload = async (event) => {
@@ -126,7 +127,7 @@ function ConfigBackupPanel() {
                 console.error(err);
                 showToast(`解析或导入配置失败: ${err.message || err}`, 'error');
             } finally {
-                e.target.value = '';
+                target.value = '';
             }
         };
         reader.readAsText(file);
