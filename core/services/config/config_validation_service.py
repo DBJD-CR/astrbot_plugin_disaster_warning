@@ -319,6 +319,13 @@ class ConfigValidator:
             )
             cfg["host"] = "0.0.0.0"
 
+        # 密码校验：确保为字符串类型
+        if "password" in cfg and not isinstance(cfg["password"], str):
+            logger.warning(
+                "[灾害预警] 配置警告: Web 管理端密码类型错误，已重置为空字符串。"
+            )
+            cfg["password"] = ""
+
         # 布尔值校验
         ConfigValidator._ensure_bool(cfg, "enabled", False)
 
@@ -487,7 +494,7 @@ class ConfigValidator:
             if min_level and min_level not in valid_levels:
                 # 仅警告，不强制重置
                 logger.warning(
-                    f"[灾害预警] 配置警告: 气象预警级别 '{min_level}' 不在标准列表中。"
+                    f"[灾害预警] 配置警告: 气象预警级别 {min_level} 不在标准列表中。"
                 )
 
             ConfigValidator._ensure_bool(weather_filter, "enabled", False)
@@ -515,12 +522,12 @@ class ConfigValidator:
         if isinstance(max_size, (int, float)):
             if max_size < 1:
                 logger.warning(
-                    f"[灾害预警] 配置警告: 日志最大大小 {max_size}MB 过小，已修正为 1MB。"
+                    f"[灾害预警] 配置警告: 日志最大大小 {max_size} MB 过小，已修正为 1 MB。"
                 )
                 cfg["log_max_size_mb"] = 1
             elif max_size > 1024:
                 logger.warning(
-                    f"[灾害预警] 配置警告: 日志最大大小 {max_size}MB 过大，已修正为 1024MB。"
+                    f"[灾害预警] 配置警告: 日志最大大小 {max_size} MB 过大，已修正为 1024 MB。"
                 )
                 cfg["log_max_size_mb"] = 1024
 
@@ -572,6 +579,33 @@ class ConfigValidator:
                 cfg["filtered_message_types"] = [
                     str(x) for x in cfg["filtered_message_types"] if x
                 ]
+
+        # 日志模式校验
+        log_mode = cfg.get("log_mode")
+        valid_log_modes = ["全量", "简洁"]
+        if log_mode and log_mode not in valid_log_modes:
+            logger.warning(
+                f"[灾害预警] 配置警告: 日志模式 {log_mode} 不在标准列表中，已重置为 全量。"
+            )
+            cfg["log_mode"] = "全量"
+
+        # 简洁模式日志处理行为校验
+        downgrade_behavior = cfg.get("log_downgrade_behavior")
+        valid_behaviors = ["降级为DEBUG", "完全屏蔽"]
+        if downgrade_behavior and downgrade_behavior not in valid_behaviors:
+            logger.warning(
+                f"[灾害预警] 配置警告: 简洁模式日志处理行为 {downgrade_behavior} 不在标准列表中，已重置为 降级为DEBUG。"
+            )
+            cfg["log_downgrade_behavior"] = "降级为DEBUG"
+
+        # 原始消息日志路径校验
+        if "raw_message_log_path" in cfg and not isinstance(
+            cfg["raw_message_log_path"], str
+        ):
+            logger.warning(
+                "[灾害预警] 配置警告: 原始消息日志路径类型错误，已重置为 raw_messages.log。"
+            )
+            cfg["raw_message_log_path"] = "raw_messages.log"
 
         # 布尔值校验
         ConfigValidator._ensure_bool(cfg, "enable_raw_message_logging", False)
@@ -666,7 +700,7 @@ class ConfigValidator:
                 ):
                     # 仅警告，不强制重置，以支持未来扩展或自定义源
                     logger.warning(
-                        f"[灾害预警] 配置警告: 地图源 '{map_source}' 不在标准列表中，请确认是否为自定义源。"
+                        f"[灾害预警] 配置警告: 地图源 {map_source} 不在标准列表中，请确认是否为自定义源。"
                     )
 
         # Global Quake 模板校验
@@ -675,7 +709,7 @@ class ConfigValidator:
         if gq_template and gq_template not in valid_templates:
             # 仅警告，不强制重置
             logger.warning(
-                f"[灾害预警] 配置警告: GQ模板 '{gq_template}' 不在标准列表中，请确认是否为自定义模板。"
+                f"[灾害预警] 配置警告: GQ模板 {gq_template} 不在标准列表中，请确认是否为自定义模板。"
             )
 
         # Playwright 模式校验
@@ -683,7 +717,7 @@ class ConfigValidator:
         valid_modes = ["local", "remote"]
         if pw_mode and pw_mode not in valid_modes:
             logger.warning(
-                f"[灾害预警] 配置警告: Playwright 模式 '{pw_mode}' 无效，已重置为 local。"
+                f"[灾害预警] 配置警告: Playwright 模式 {pw_mode} 无效，已重置为 local。"
             )
             cfg["playwright_mode"] = "local"
 
@@ -715,6 +749,7 @@ class ConfigValidator:
         # 布尔值校验
         ConfigValidator._ensure_bool(cfg, "include_map", False)
         ConfigValidator._ensure_bool(cfg, "detailed_jma_intensity", False)
+        ConfigValidator._ensure_bool(cfg, "jma_region_intensity", True)
         ConfigValidator._ensure_bool(cfg, "use_global_quake_card", False)
 
         return cfg

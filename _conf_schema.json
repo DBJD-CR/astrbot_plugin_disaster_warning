@@ -574,6 +574,12 @@
         "hint": "开启后，日本气象厅地震情报将显示所有观测到震度1及以上的区域，而不仅是最大震度区域",
         "default": false
       },
+      "jma_region_intensity": {
+        "description": "JMA震度按地域汇总",
+        "type": "bool",
+        "hint": "开启后，日本气象厅地震情报的各地震度详情将按「地域/地方」的级别汇总展示，而非逐个町丁目列出。",
+        "default": true
+      },
       "use_global_quake_card": {
         "description": "启用 Global Quake 卡片消息",
         "type": "bool",
