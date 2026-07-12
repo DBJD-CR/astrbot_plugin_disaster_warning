@@ -753,15 +753,18 @@ class JmaEarthquakeInfoPresenter(BasePresenter):
                     sect_map = get_sect_map()
                     if sect_map:
                         # 每个 sect 的最大震度
+                        # scale_key 来自 jma_points 原始数据，可能是 int（P2P）
+                        # 或 str（Wolfx），避免异质类型比较使用 in 检查
                         sect_max_scale: dict[str, object] = {}
                         for scale_key, addrs in scale_groups.items():
                             for addr in addrs:
                                 sect = sect_map.get(addr)
                                 if not sect:
                                     continue
-                                prev = sect_max_scale.get(sect, 0)
-                                # 震度值可能是 int 或其他可比较类型
-                                if scale_key > prev:
+                                if (
+                                    sect not in sect_max_scale
+                                    or scale_key > sect_max_scale[sect]
+                                ):
                                     sect_max_scale[sect] = scale_key
 
                         if sect_max_scale:
