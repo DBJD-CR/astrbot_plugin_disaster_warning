@@ -8,9 +8,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from astrbot.api import logger
-
 from ...utils.converters import safe_float_convert
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
@@ -109,12 +108,12 @@ class CEAEEWParser(BaseParser):
         try:
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 中国地震预警数据至少应携带预计烈度字段，否则大概率不是目标消息
             if "epiIntensity" not in msg_data:
-                logger.debug(f"[灾害预警] {self.source_id} 非地震预警数据，跳过")
+                plugin_logger.debug(f"[灾害预警] {self.source_id} 非地震预警数据，跳过")
                 return None
 
             envelope = self._build_envelope(msg_data)
@@ -139,12 +138,13 @@ class CEAEEWParser(BaseParser):
             )
 
             domain_event = envelope.event
-            logger.info(
-                f"[灾害预警] 地震预警解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}"
+            plugin_logger.info(
+                f"[灾害预警] 地震预警解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}",
+                is_event_linked=True,
             )
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None
 
 
@@ -166,7 +166,9 @@ class CEAEEWWolfxParser(BaseParser):
         try:
             # Wolfx 会混发多类消息，这里只接收中国地震预警类型
             if data.get("type") != "cenc_eew":
-                logger.debug(f"[灾害预警] {self.source_id} 非 CENC 地震预警数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 CENC 地震预警数据，跳过"
+                )
                 return None
 
             raw_report_num = data.get("ReportNum", 1)
@@ -243,11 +245,12 @@ class CEAEEWWolfxParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
+            plugin_logger.info(
+                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None

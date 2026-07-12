@@ -7,9 +7,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from astrbot.api import logger
-
 from ...utils.converters import safe_float_convert
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
@@ -95,12 +94,14 @@ class CwaReportParser(BaseParser):
         try:
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 台湾地震报告类消息至少应具备发震时间与报告图片地址，否则通常不是来自 CWA 的地震报告
             if "shockTime" not in msg_data or "imageURI" not in msg_data:
-                logger.debug(f"[灾害预警] {self.source_id} 非 CWA 地震报告数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 CWA 地震报告数据，跳过"
+                )
                 return None
 
             envelope = self._build_envelope(msg_data)
@@ -113,10 +114,11 @@ class CwaReportParser(BaseParser):
             )
 
             domain_event = envelope.event
-            logger.info(
-                f"[灾害预警] CWA 地震报告解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}"
+            plugin_logger.info(
+                f"[灾害预警] CWA 地震报告解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}",
+                is_event_linked=True,
             )
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None

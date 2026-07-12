@@ -9,9 +9,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from astrbot.api import logger
-
 from ...utils.converters import ScaleConverter, safe_float_convert
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
@@ -109,17 +108,22 @@ class JmaEewFanStudioParser(BaseParser):
         try:
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 预计震度与情报类型至少应命中其一，否则通常不是正式预警消息
             if "epiIntensity" not in msg_data and "infoTypeName" not in msg_data:
-                logger.debug(f"[灾害预警] {self.source_id} 非 JMA 地震预警数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 JMA 地震预警数据，跳过"
+                )
                 return None
 
             # 取消报在当前推送链中不作为正式地震事件继续向后处理
             if msg_data.get("cancel", False):
-                logger.info(f"[灾害预警] {self.source_id} 收到取消报，跳过")
+                plugin_logger.info(
+                    f"[灾害预警] {self.source_id} 收到取消报，跳过",
+                    is_event_linked=True,
+                )
                 return None
 
             envelope = self._build_envelope(msg_data)
@@ -139,12 +143,13 @@ class JmaEewFanStudioParser(BaseParser):
                 }
             )
 
-            logger.info(
-                f"[灾害预警] JMA地震预警解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}"
+            plugin_logger.info(
+                f"[灾害预警] JMA地震预警解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}",
+                is_event_linked=True,
             )
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None
 
 
@@ -162,21 +167,25 @@ class JmaEewP2PParser(BaseParser):
 
             # P2P 用业务码区分不同类型，其中 556 才是正式紧急地震速报
             if code == 556:
-                logger.debug(f"[灾害预警] {self.source_id} 收到紧急地震速报（警报）")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 收到紧急地震速报（警报）"
+                )
                 return self._parse_eew_data(data)
             if code == 554:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 收到紧急地震速报发布检测消息，忽略"
                 )
                 return None
 
-            logger.debug(f"[灾害预警] {self.source_id} 非地震预警数据，code: {code}")
+            plugin_logger.debug(
+                f"[灾害预警] {self.source_id} 非地震预警数据，code: {code}"
+            )
             return None
         except json.JSONDecodeError as exc:
-            logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} JSON解析失败: {exc}")
             return None
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 消息处理失败: {exc}")
             return None
 
     def _parse_eew_data(self, data: dict[str, Any]) -> EventEnvelope | None:
@@ -214,7 +223,7 @@ class JmaEewP2PParser(BaseParser):
 
                 max_scale_raw = max(raw_scales) if raw_scales else -1
                 if max_scale_raw > 0:
-                    logger.warning(
+                    plugin_logger.warning(
                         f"[灾害预警] {self.source_id} 使用areas计算maxScale: {max_scale_raw}"
                     )
 
@@ -231,7 +240,7 @@ class JmaEewP2PParser(BaseParser):
             elif "originTime" in earthquake_info:
                 shock_time = self._parse_datetime(earthquake_info.get("originTime", ""))
             else:
-                logger.warning(f"[灾害预警] {self.source_id} 缺少地震时间信息")
+                plugin_logger.warning(f"[灾害预警] {self.source_id} 缺少地震时间信息")
 
             # 校验关键字段完整度
             required_hypocenter_fields = ["latitude", "longitude", "name"]
@@ -241,18 +250,24 @@ class JmaEewP2PParser(BaseParser):
                     missing_fields.append(field)
 
             if missing_fields:
-                logger.warning(
+                plugin_logger.warning(
                     f"[灾害预警] {self.source_id} 缺少震源必填字段: {missing_fields}，继续处理..."
                 )
 
             # 取消报、测试报与假定震源判定
             is_cancelled = data.get("cancelled", False)
             if is_cancelled:
-                logger.info(f"[灾害预警] {self.source_id} 收到取消的EEW事件")
+                plugin_logger.info(
+                    f"[灾害预警] {self.source_id} 收到取消的EEW事件",
+                    is_event_linked=True,
+                )
 
             is_test = data.get("test", False)
             if is_test:
-                logger.info(f"[灾害预警] {self.source_id} 收到测试模式的EEW事件")
+                plugin_logger.info(
+                    f"[灾害预警] {self.source_id} 收到测试模式的EEW事件",
+                    is_event_linked=True,
+                )
 
             is_plum = earthquake_info.get("condition") == "仮定震源要素"
             if not is_plum:
@@ -368,13 +383,14 @@ class JmaEewP2PParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
+            plugin_logger.info(
+                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析EEW数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析EEW数据失败: {exc}")
             return None
 
 
@@ -390,7 +406,9 @@ class JmaEewWolfxParser(BaseParser):
         try:
             # Wolfx 会混发多类日本消息，这里只接收日本地震预警类型
             if data.get("type") != "jma_eew":
-                logger.debug(f"[灾害预警] {self.source_id} 非 JMA 地震预警数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 JMA 地震预警数据，跳过"
+                )
                 return None
 
             report_num = (
@@ -486,11 +504,12 @@ class JmaEewWolfxParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.info(
-                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
+            plugin_logger.info(
+                f"[灾害预警] 地震预警解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None

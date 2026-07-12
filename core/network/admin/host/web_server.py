@@ -132,7 +132,24 @@ class WebAdminServer:
 
         self._register_routes()
 
-        # 装载静态网页资源目录
+        # 装载气象预警回退图标资源目录，供前端在官方图标不可用时本地回退。
+        # 注意：此 mount 必须在 admin 静态目录之前注册，否则 / 的 catch-all
+        # 会拦截 /weatheralarm_logo/ 下的所有请求导致图标 404。
+        logo_dir = (
+            Path(__file__).resolve().parents[4] / "resources" / "weatheralarm_logo"
+        )
+        if logo_dir.exists():
+            self.app.mount(
+                "/weatheralarm_logo",
+                StaticFiles(directory=logo_dir),
+                name="weatheralarm_logo",
+            )
+        else:
+            logger.warning(
+                "[灾害预警] 未找到气象预警回退图标目录，跳过注册 /weatheralarm_logo 路由"
+            )
+
+        # 装载静态网页资源目录（SPA 入口，catch-all 放最后）
         admin_dir = Path(__file__).resolve().parents[4] / "admin"
         if admin_dir.exists():
             self.app.mount(

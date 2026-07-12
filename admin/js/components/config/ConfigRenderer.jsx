@@ -114,6 +114,9 @@ function ConfigRenderer() {
         return 0;
     });
 
+    // 会话模式下的备注名当前值
+    const sessionNameValue = (mode === 'session' && config) ? (config.session_name || '') : '';
+
     return (
         <Box className="config-renderer-shell">
             {/* 顶栏：全局配置与特定会话筛选切换条 */}
@@ -130,6 +133,25 @@ function ConfigRenderer() {
             {/* 中间：带有滚动持久化的可拖拽表单滚动区域 */}
             <Box ref={scrollContainerRef} className="config-renderer-scroll-area">
                 <Box className="config-renderer-field-list">
+                    {/* 会话差异配置模式：置顶渲染备注名输入框 */}
+                    {mode === 'session' && (
+                        <Box className="config-renderer-field-item config-renderer-field-item--session-name">
+                            <ConfigField
+                                fieldKey="session_name"
+                                schema={{
+                                    type: 'string',
+                                    description: '🏷️ 会话备注名',
+                                    hint: '用于日志和管理端展示。为空时将回退显示原始 UMO。',
+                                    default: '',
+                                }}
+                                value={sessionNameValue}
+                                onChange={(newValue) => setConfig((prev) => ({ ...prev, session_name: newValue }))}
+                                path=""
+                                expandedKeys={expandedKeys}
+                                onToggleExpand={handleToggleExpand}
+                            />
+                        </Box>
+                    )}
                     {visibleSchemaEntries.map(([key, subSchema]) => (
                         <Box key={key} className="config-renderer-field-item">
                             <ConfigField
@@ -145,6 +167,8 @@ function ConfigRenderer() {
                         </Box>
                     ))}
                 </Box>
+                {/* 仅在全局配置模式下渲染数据备份面板 */}
+                {mode === 'global' && <ConfigBackupPanel />}
             </Box>
 
             {/* 底栏：全局动作交互控制栏 */}

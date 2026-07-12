@@ -5,6 +5,38 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+# 2026/07/12 v1.6.0-beta.1
+
+## 🚀 What's Changed
+
+### ✨ New Features (新功能)
+
+- 新增数据导出导入与备份功能 by @DBJD-CR in #136
+  - 你可以在插件 WebUI 的配置管理页全局配置的底部找到该功能的入口
+- 新增插件内部日志分级 by @DBJD-CR in #137
+  - 现在你可以在调试配置组里面调整日志输出，实现插件启动后的无感运行，避免大量事件刷屏（默认仍为全量打印）
+- 新增会话备注名功能，并同步调整日志打印和指令输出 by @DBJD-CR in #138
+- 迁移气象预警图标系统并补充本地回退机制 by @DBJD-CR in #139
+
+### 🎨 Visualization (可视化与渲染)
+
+- 微调了 Global Quake 卡片里最终报的样式 by @DBJD-CR in #137
+
+### 📚 Documentation (文档)
+
+- 更新适用于 v1.6.0-beat.1 的 README 文档、贡献指南和更新日志 by @DBJD-CR in #140
+
+### 🔧 Chore (杂项)
+
+- 更新 Github Actions 版本 by @dependabot[bot] in #130
+
+---
+
+**Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.5.3...v1.6.0-beta.1
+
+<details>
+<summary>点击查看历史更新内容</summary>
+
 # 2026/06/15 v1.5.3
 
 ## 🚀 What's Changed
@@ -148,9 +180,6 @@
 - @roomote made their first contribution in #104
 
 **Full Changelog**: https://github.com/DBJD-CR/astrbot_plugin_disaster_warning/compare/v1.4.5...v1.5.0
-
-<details>
-<summary>点击查看历史更新内容</summary>
 
 # 2026/03/23 v1.4.5
 

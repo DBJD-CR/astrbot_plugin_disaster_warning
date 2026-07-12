@@ -200,6 +200,8 @@ class PushExecutionService:
             session: str,
             runtime_config: dict[str, Any],
         ) -> tuple[bool, str, dict[str, Any] | None, str | None]:
+            # 获取统一格式的会话日志字符串（私聊/群聊 ID (备注名)）
+            session_log = self.manager._get_session_log_str(session)
             try:
                 # 预筛通过后，在真正发送前再次复核；真实推送提交报数状态，
                 # 模拟推送只复用筛选与渲染链路，不污染运行时规则状态。
@@ -213,22 +215,22 @@ class PushExecutionService:
                 if not decision.accepted:
                     if decision.detail:
                         logger.debug(
-                            f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{decision.reason}（{decision.detail}）"
+                            f"[灾害预警] 事件 {event.id} 在 {session_log} 发送前复核未通过，原因：{decision.reason}（{decision.detail}）"
                         )
                     else:
                         logger.debug(
-                            f"[灾害预警] 事件 {event.id} 在会话 {session} 发送前复核未通过，原因：{decision.reason}"
+                            f"[灾害预警] 事件 {event.id} 在 {session_log} 发送前复核未通过，原因：{decision.reason}"
                         )
                     return False, session, None, "发送前复核未通过"
 
                 logger.debug(
-                    f"[灾害预警] 事件 {event.id} 通过会话 {session} 的发送前复核，准备发送消息"
+                    f"[灾害预警] 事件 {event.id} 通过 {session_log} 的发送前复核，准备发送消息"
                 )
                 # 获取复用或动态渲染的图片/卡片消息链
                 message = await get_or_build_message(runtime_config)
                 # 调用底座 Session 发送器下发消息
                 await self.manager.session_sender.send(session, message)
-                logger.debug(f"[灾害预警] 事件 {event.id} 已推送到 {session}")
+                logger.debug(f"[灾害预警] 事件 {event.id} 已推送到 {session_log}")
                 return True, session, runtime_config.get("message_format", {}), None
             except Exception as e:
                 error_name = type(e).__name__
@@ -257,13 +259,13 @@ class PushExecutionService:
 
                 if is_timeout:
                     logger.warning(
-                        f"[灾害预警] 推送到会话 {session} 时疑似超时，但实际推送成功却返回失败，为防止重复，跳过降级重发: {e}"
+                        f"[灾害预警] 推送到 {session_log} 时疑似超时，但实际推送成功却返回失败，为防止重复，跳过降级重发: {e}"
                     )
                     # 遇到超时时，为了避免被外层统计为彻底失败，可认为其成功送达了，或者至少不能再降级重发。
                     # 这里返回 True，认为该会话已处理完毕，不再次投递。
                     return True, session, runtime_config.get("message_format", {}), None
 
-                logger.error(f"[灾害预警] 推送到 {session} 失败: {e}")
+                logger.error(f"[灾害预警] 推送到 {session_log} 失败: {e}")
 
                 # 如果富媒体发送失败，则尝试从原消息链中提取纯文本进行降级重发。
                 fallback_message = self._build_plaintext_fallback_message(
@@ -275,7 +277,7 @@ class PushExecutionService:
                             session, fallback_message
                         )
                         logger.warning(
-                            f"[灾害预警] 会话 {session} 富媒体发送失败，已自动降级重发: {error_name}"
+                            f"[灾害预警] {session_log} 富媒体发送失败，已自动降级重发: {error_name}"
                         )
                         return (
                             True,
@@ -286,7 +288,7 @@ class PushExecutionService:
                     except Exception as fallback_error:
                         fallback_error_name = type(fallback_error).__name__
                         logger.error(
-                            f"[灾害预警] 会话 {session} 纯文本降级重发失败: {fallback_error}"
+                            f"[灾害预警] {session_log} 纯文本降级重发失败: {fallback_error}"
                         )
                         return (
                             False,
@@ -296,7 +298,7 @@ class PushExecutionService:
                         )
 
                 logger.warning(
-                    f"[灾害预警] 会话 {session} 富媒体发送失败，且消息中无可用纯文本可降级: {error_name}"
+                    f"[灾害预警] {session_log} 富媒体发送失败，且消息中无可用纯文本可降级: {error_name}"
                 )
                 return False, session, None, f"富媒体发送失败({error_name})"
 
@@ -377,7 +379,8 @@ class PushExecutionService:
                 if simulation_bypass:
                     runtime_config["push_enabled"] = True
                 else:
-                    logger.debug(f"[灾害预警] 会话 {session} 推送开关关闭，跳过")
+                    session_log = self.manager._get_session_log_str(session)
+                    logger.debug(f"[灾害预警] {session_log} 推送开关关闭，跳过")
                     continue
 
             # 过滤判定评估
@@ -396,13 +399,14 @@ class PushExecutionService:
                 filter_reason_detail_stats[detail_key] = (
                     filter_reason_detail_stats.get(detail_key, 0) + 1
                 )
+                session_log = self.manager._get_session_log_str(session)
                 if reason_detail:
                     logger.debug(
-                        f"[灾害预警] 事件 {event.id} 在会话 {session} 的预筛选阶段被拦截，原因：{reason}（{reason_detail}）"
+                        f"[灾害预警] 事件 {event.id} 在 {session_log} 的预筛选阶段被拦截，原因：{reason}（{reason_detail}）"
                     )
                 else:
                     logger.debug(
-                        f"[灾害预警] 事件 {event.id} 在会话 {session} 的预筛选阶段被拦截，原因：{reason}"
+                        f"[灾害预警] 事件 {event.id} 在 {session_log} 的预筛选阶段被拦截，原因：{reason}"
                     )
                 continue
 

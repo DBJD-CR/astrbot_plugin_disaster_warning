@@ -64,13 +64,30 @@ def _next_sim_event_sequence() -> int:
         return _sim_event_sequence
 
 
-def get_simulation_params(config: dict[str, Any]) -> dict[str, Any]:
+def get_simulation_params(
+    config: dict[str, Any],
+    session_config_manager=None,
+) -> dict[str, Any]:
     """获取模拟预警可用参数。
 
     由服务层集中维护，供管理端接口直接读取，避免前端硬编码可选来源列表。
+    当传入 session_config_manager 时，target_sessions 将返回带备注名的对象列表。
     """
-    raw_target_sessions = config.get("target_sessions", [])
-    target_sessions = [str(item) for item in raw_target_sessions]
+    raw_target_sessions = config.get("target_sessions") or []
+    if session_config_manager is not None:
+        # 返回带备注名的对象列表，前端可优先展示备注名
+        target_sessions = [
+            {
+                "session": str(item),
+                "session_name": session_config_manager.get_session_name(str(item)),
+                "session_display_name": session_config_manager.get_session_display_name(
+                    str(item)
+                ),
+            }
+            for item in raw_target_sessions
+        ]
+    else:
+        target_sessions = [str(item) for item in raw_target_sessions]
 
     defaults = SimulationParamsDefaults()
 

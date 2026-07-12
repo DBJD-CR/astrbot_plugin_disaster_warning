@@ -16,6 +16,8 @@ from playwright.async_api import Browser, Page, async_playwright
 
 from astrbot.api import logger
 
+from ....utils.plugin_logger import plugin_logger
+
 
 class BrowserManager:
     """浏览器管理器。"""
@@ -405,7 +407,10 @@ class BrowserManager:
                             logger.warning(
                                 f"[灾害预警] 卡片渲染虽成功，但捕获到页面脚本异常: {' | '.join(page_errors[-3:])}"
                             )
-                        logger.info(f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒")
+                        plugin_logger.info(
+                            f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒",
+                            is_event_linked=True,
+                        )
                         return output_path
                     else:
                         logger.warning("[灾害预警] 截图未生成文件")

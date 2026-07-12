@@ -116,6 +116,8 @@ class DisasterWarningService:
         self.message_manager = MessagePushManager(
             config, context, telemetry=self._telemetry
         )
+        # 注入会话配置管理器引用，使推送链路可查询会话备注名等展示信息。
+        self.message_manager.set_session_config_manager(self.session_config_manager)
         # 用于离线通知节流，避免同一连接异常在短时间内反复刷屏。
         self._offline_notification_state: dict[str, dict[str, float]] = {}
 

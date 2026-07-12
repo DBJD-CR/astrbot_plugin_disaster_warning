@@ -70,6 +70,7 @@
             unwrap = true,  // 是否自动执行响应解包
             headers,
             body,
+            responseType = 'json', // 新增：指出响应体的数据解析格式，例如 'blob'、'json' 或 'text'
             ...fetchOptions
         } = options || {};
 
@@ -88,23 +89,40 @@
             body: requestBody,
         });
 
+        // 统一异常处理前，先拉取其状态码
+        if (!response.ok) {
+            let payload = null;
+            try {
+                const contentType = response.headers && response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    payload = await response.json();
+                } else {
+                    const text = await response.text();
+                    payload = text ? { message: text } : null;
+                }
+            } catch (e) {
+                // 忽略解析错误
+            }
+            const error = new Error(payload?.error || payload?.message || `API Error: ${response.status} ${response.statusText}`);
+            error.status = response.status;
+            error.payload = payload;
+            throw error;
+        }
+
+        // 解析成功响应内容
+        if (responseType === 'blob') {
+            return await response.blob();
+        } else if (responseType === 'text') {
+            return await response.text();
+        }
+
         let payload = null;
         const contentType = response.headers && response.headers.get('content-type');
-        
-        // 解析响应内容
         if (contentType && contentType.includes('application/json')) {
             payload = await response.json();
         } else {
             const text = await response.text();
             payload = text ? { message: text } : null;
-        }
-
-        // 统一异常拦截处理
-        if (!response.ok) {
-            const error = new Error(payload?.error || payload?.message || `API Error: ${response.status} ${response.statusText}`);
-            error.status = response.status;
-            error.payload = payload;
-            throw error;
         }
 
         return unwrap ? unwrapApiResponse(payload) : payload;

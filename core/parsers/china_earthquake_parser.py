@@ -8,9 +8,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from astrbot.api import logger
-
 from ...utils.converters import safe_float_convert
+from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
@@ -103,12 +102,14 @@ class CencEarthquakeParser(BaseParser):
         try:
             msg_data = self._extract_data(data)
             if not msg_data:
-                logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                plugin_logger.warning(f"[灾害预警] {self.source_id} 消息中没有有效数据")
                 return None
 
             # 这类消息至少应具备情报类型与事件标识，否则通常不是正式测定数据
             if "infoTypeName" not in msg_data or "eventId" not in msg_data:
-                logger.debug(f"[灾害预警] {self.source_id} 非 CENC 地震测定数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 CENC 地震测定数据，跳过"
+                )
                 return None
 
             envelope = self._build_envelope(msg_data)
@@ -119,12 +120,13 @@ class CencEarthquakeParser(BaseParser):
             )
 
             domain_event = envelope.event
-            logger.info(
-                f"[灾害预警] 地震数据解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}"
+            plugin_logger.info(
+                f"[灾害预警] 地震数据解析成功: {getattr(domain_event, 'place_name', '')} (M {getattr(domain_event, 'magnitude', None)}), 时间: {getattr(domain_event, 'occurred_at', None)}",
+                is_event_linked=True,
             )
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None
 
 
@@ -146,10 +148,12 @@ class CencEarthquakeWolfxParser(BaseParser):
                 if key.startswith("No") and isinstance(value, dict)
             ]
             if raw_type and raw_type != "cenc_eqlist":
-                logger.debug(f"[灾害预警] {self.source_id} 非 CENC 地震列表数据，跳过")
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 非 CENC 地震列表数据，跳过"
+                )
                 return None
             if not raw_type and not no_keys:
-                logger.debug(
+                plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 未识别到 Wolfx CENC 列表结构，跳过"
                 )
                 return None
@@ -162,7 +166,7 @@ class CencEarthquakeWolfxParser(BaseParser):
                     break
 
             if not eq_info:
-                logger.warning(
+                plugin_logger.warning(
                     f"[灾害预警] {self.source_id} 这次收到的 Wolfx CENC 列表里没有找到可解析的地震条目"
                 )
                 return None
@@ -246,11 +250,11 @@ class CencEarthquakeWolfxParser(BaseParser):
                 metadata=metadata,
             )
 
-            logger.debug(
+            plugin_logger.debug(
                 f"[灾害预警] 地震数据解析成功: {domain_event.place_name} (M {domain_event.magnitude}), 时间: {domain_event.occurred_at}"
             )
 
             return envelope
         except Exception as exc:
-            logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
             return None

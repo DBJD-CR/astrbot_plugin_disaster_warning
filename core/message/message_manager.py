@@ -54,11 +54,28 @@ class MessagePushManager:
         # 远程媒体抓取会话由消息子系统统一复用，减少重复建连开销。
         self._remote_media_session = None
         self._remote_media_session_timeout_seconds = 30
+        # 会话配置管理器引用，由上层 DisasterService 注入，
+        # 供推送执行链与构建服务获取会话备注名等展示信息。
+        self.session_config_manager = None
 
         # 装配顺序遵循“运行时基础设施 -> 消息构建能力 -> 推送执行链”。
         self._setup_runtime_infrastructure(config, telemetry)
         self._setup_message_infrastructure()
         self._setup_push_pipeline()
+
+    def set_session_config_manager(self, mgr) -> None:
+        """注入会话配置管理器引用，供下游服务查询备注名等展示信息。"""
+        self.session_config_manager = mgr
+
+    def _get_session_log_str(self, session: str) -> str:
+        """获取统一格式的会话日志字符串（私聊/群聊 ID (备注名)）。
+
+        当会话配置管理器不可用时回退到原始 UMO。
+        """
+        mgr = self.session_config_manager
+        if mgr:
+            return mgr.get_session_log_str(session)
+        return session
 
     def _setup_runtime_infrastructure(
         self,

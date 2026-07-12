@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from typing import Any
 from urllib.parse import urlparse
 
@@ -30,6 +31,23 @@ class MessageBuildService:
     """消息构建服务。"""
 
     TSUNAMI_MEDIA_KEYS: tuple[str, ...] = ("earthquake", "amplitude", "coastal")
+
+    # 气象预警颜色 → 本地回退图标路径映射。
+    # 当 Fan Studio 官方图标接口无法返回有效图标时，根据编码中的颜色后缀回退到通用图标。
+    _WEATHER_ICON_FALLBACK_MAP: dict[str, str] = {
+        "blue": "resources/weatheralarm_logo/fallback_blue.png",
+        "yellow": "resources/weatheralarm_logo/fallback_yellow.png",
+        "orange": "resources/weatheralarm_logo/fallback_orange.png",
+        "red": "resources/weatheralarm_logo/fallback_red.png",
+    }
+
+    # 旧 p 编码颜色映射（最后一位数字：1=红, 2=橙, 3=黄, 4=蓝）
+    _P_FORMAT_COLOR_MAP: dict[str, str] = {
+        "1": "red",
+        "2": "orange",
+        "3": "yellow",
+        "4": "blue",
+    }
 
     def __init__(self, manager):
         # 通过主消息管理器复用构建器、发送器、缓存和配置能力。
@@ -287,11 +305,12 @@ class MessageBuildService:
             map_message = MessageChain([Comp.Image.fromBase64(b64_data)])
             # 循环向各个订阅了地图分离的会话推送地图图片消息
             for session in target_sessions:
+                session_log = self.manager._get_session_log_str(session)
                 try:
                     await self.manager.session_sender.send(session, map_message)
-                    logger.debug(f"[灾害预警] 分离地图已发送到 {session}")
+                    logger.debug(f"[灾害预警] 分离地图已发送到 {session_log}")
                 except Exception as e:
-                    logger.error(f"[灾害预警] 分离地图发送到 {session} 失败: {e}")
+                    logger.error(f"[灾害预警] 分离地图发送到 {session_log} 失败: {e}")
         except Exception as e:
             logger.error(f"[灾害预警] 异步地图渲染任务失败: {e}")
 
@@ -388,6 +407,35 @@ class MessageBuildService:
         except Exception as e:
             logger.error(f"[灾害预警] 地图图片生成失败: {e}")
 
+    @classmethod
+    def _resolve_weather_fallback_icon_path(cls, weather_type_code: str) -> str | None:
+        """根据气象预警编码解析本地回退图标路径。
+
+        支持两种编码格式：
+        - 新格式 11B20_yellow：下划线后即为颜色关键词
+        - 旧格式 p0002002：最后一位数字表示颜色（1=红, 2=橙, 3=黄, 4=蓝）
+        """
+        color_key = None
+        if "_" in weather_type_code:
+            # 新格式：11B20_yellow
+            color_key = weather_type_code.rsplit("_", 1)[-1].lower()
+        elif weather_type_code.startswith("p") and len(weather_type_code) >= 8:
+            # 旧格式：p0002002，最后一位数字映射颜色
+            last_digit = weather_type_code[-1]
+            color_key = cls._P_FORMAT_COLOR_MAP.get(last_digit)
+
+        relative_path = (
+            cls._WEATHER_ICON_FALLBACK_MAP.get(color_key) if color_key else None
+        )
+        if not relative_path:
+            return None
+        # 以插件根目录为基准拼接绝对路径
+        plugin_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
+        abs_path = os.path.join(plugin_root, relative_path)
+        return abs_path if os.path.isfile(abs_path) else None
+
     async def _append_weather_icon_if_needed(
         self,
         chain: MessageChain,
@@ -402,25 +450,56 @@ class MessageBuildService:
             return
 
         metadata = self._get_event_metadata(event)
-        p_code = (
+        # 从多层元数据中提取气象预警类型编码（Fan Studio 新格式如 11B20_yellow）。
+        weather_type_code = (
             metadata.get("weather_code")
             or metadata.get("type")
             or metadata.get("alert_code")
             or metadata.get("code")
             or getattr(domain_event, "alert_type", "")
         )
-        if not isinstance(p_code, str) or not p_code.strip():
+        if not isinstance(weather_type_code, str) or not weather_type_code.strip():
             return
 
-        p_code = p_code.strip()
+        weather_type_code = weather_type_code.strip()
 
-        # 根据预警代码组装中央气象台对应的标准预警级别透明图件链接
-        icon_url = f"https://image.nmc.cn/assets/img/alarm/{p_code}.png"
-        try:
-            chain.chain.append(Comp.Image.fromURL(icon_url))
+        # 组装 FAN Studio 官方图标接口链接。
+        # 注意：原 image.nmc.cn 的 /assets/img/alarm/ 路径已全面下线(404)，
+        # 现使用 FAN Studio 官方图标代理接口，直接传入数据源原始 type 编码即可。
+        icon_url = (
+            f"https://api.fanstudio.tech/we/img/alarm_icon.php?type={weather_type_code}"
+        )
+        # 优先预下载官方图标转 Base64 附加，避免框架发送时因图标下载失败导致整条推送报错。
+        appended = await self._append_remote_image_component(
+            chain,
+            icon_url,
+            media_label="气象预警图标",
+            allow_url_fallback=False,
+        )
+        if appended:
             logger.debug(f"[灾害预警] 已附加气象预警图标: {icon_url}")
-        except Exception as e:
-            logger.error(f"[灾害预警] 附加气象预警图标失败: {e}")
+            return
+
+        # 官方接口下载失败时，根据颜色后缀回退到本地通用图标，保证所有预警类型都有图标展示。
+        fallback_path = self._resolve_weather_fallback_icon_path(weather_type_code)
+        if fallback_path:
+            try:
+                with open(fallback_path, "rb") as f:
+                    b64_data = base64.b64encode(f.read()).decode()
+                chain.chain.append(Comp.Image.fromBase64(b64_data))
+                logger.warning(
+                    f"[灾害预警] 气象预警官方图标下载失败，已回退到本地通用图标: "
+                    f"预警编码为 {weather_type_code}, 回退图标路径: {fallback_path}"
+                )
+                return
+            except Exception as e:
+                logger.warning(
+                    f"[灾害预警] 本地回退图标读取失败: {fallback_path}, 错误信息: {e}"
+                )
+
+        logger.warning(
+            f"[灾害预警] 气象预警图标下载失败且无可用回退图标，已跳过: {icon_url}"
+        )
 
     async def _append_tsunami_media_if_needed(
         self,

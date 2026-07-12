@@ -792,6 +792,26 @@
     "type": "object",
     "hint": "用于开发和排查问题",
     "items": {
+      "log_mode": {
+        "description": "插件日志输出选项",
+        "type": "string",
+        "options": [
+          "全量",
+          "简洁"
+        ],
+        "default": "全量",
+        "hint": "全量模式下输出所有数据接收、解析、去重和推送日志；简洁模式下会根据降级行为设置，降级或屏蔽高频的事件流日志。"
+      },
+      "log_downgrade_behavior": {
+        "description": "简洁模式日志处理行为",
+        "type": "string",
+        "options": [
+          "降级为DEBUG",
+          "完全屏蔽"
+        ],
+        "default": "降级为DEBUG",
+        "hint": "仅在日志输出选项为“简洁”时生效。降级为DEBUG：事件流日志均以 DEBUG 级别在 AstrBot 控制台输出；完全屏蔽：彻底过滤除 ERROR 外的事件流日志，不论 AstrBot 控制台为什么级别均不输出。"
+      },
       "enable_raw_message_logging": {
         "description": "启用原始消息格式记录",
         "type": "bool",

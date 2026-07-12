@@ -484,3 +484,92 @@ body.dark-theme .config-header {
 .config-field-menu-item {
     justify-content: center !important;
 }
+
+/* 数据备份还原面板样式 */
+.config-backup-panel {
+    padding: 24px;
+    margin-top: 24px;
+    border: 1px solid var(--md-sys-color-outline-variant) !important;
+    border-radius: 20px !important;
+    background-color: var(--md-sys-color-surface) !important;
+}
+
+.config-backup-title-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 8px;
+}
+
+.config-backup-title-row span {
+    font-size: 20px;
+}
+
+.config-backup-title {
+    font-weight: 700 !important;
+    color: var(--md-sys-color-on-surface) !important;
+}
+
+.config-backup-desc {
+    margin-bottom: 20px !important;
+    line-height: 1.6 !important;
+    color: var(--md-sys-color-on-surface-variant) !important;
+}
+
+.config-backup-divider {
+    margin: 16px 0 !important;
+}
+
+.config-backup-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.config-backup-card {
+    flex: 1 1 300px;
+    padding: 16px;
+    background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
+    border-radius: 12px;
+}
+
+.config-backup-card-title {
+    font-weight: 700 !important;
+    margin-bottom: 8px !important;
+    color: var(--md-sys-color-on-surface) !important;
+}
+
+.config-backup-card-desc {
+    margin-bottom: 16px !important;
+    min-height: 36px;
+    color: var(--md-sys-color-on-surface-variant) !important;
+}
+
+.config-backup-btn-group {
+    display: flex;
+    gap: 12px;
+}
+
+.config-backup-btn-zip-export {
+    background-color: #2196f3 !important;
+    color: #fff !important;
+}
+
+.config-backup-btn-zip-import {
+    border-color: #2196f3 !important;
+    color: #2196f3 !important;
+}
+
+.config-backup-switch-wrap {
+    margin-bottom: 12px !important;
+}
+
+.config-backup-btn-json-export {
+    background-color: #4caf50 !important;
+    color: #fff !important;
+}
+
+.config-backup-btn-json-import {
+    border-color: #4caf50 !important;
+    color: #4caf50 !important;
+}
