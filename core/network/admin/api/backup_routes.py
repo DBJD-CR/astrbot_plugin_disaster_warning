@@ -20,7 +20,7 @@ def register_backup_routes(app, *, disaster_service):
     backup_service = BackupService(disaster_service)
 
     @app.get("/api/backup/export")
-    async def export_backup(
+    def export_backup(
         targets: str = Query(
             None, description="需要备份的部分，以逗号分隔，如 'db,sessions,stats'"
         ),
