@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 from datetime import datetime
 from typing import Any
 
@@ -13,6 +12,7 @@ from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EventEnvelope, WeatherEvent
 from ..domain.event_payload import SourcePayload
+from ..services.weather import BoundedTTLSet
 from ..sources.source_catalog import get_source_entry
 from .base_parser import BaseParser
 
@@ -23,8 +23,10 @@ class WeatherAlarmParser(BaseParser):
     def __init__(self, message_logger=None):
         """初始化气象预警解析器与短期重复记录缓存。"""
         super().__init__("china_weather_fanstudio", message_logger)
-        # 用双端队列在内存中缓存最近 10 条已处理过气象预警标识，用于快速防重过滤
-        self._processed_weather_ids = deque(maxlen=10)
+        self._processed_weather_ids = BoundedTTLSet(
+            ttl_seconds=86_400,
+            max_entries=4_096,
+        )
 
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
         """解析中国气象局气象预警数据。"""
@@ -172,9 +174,9 @@ class WeatherAlarmParser(BaseParser):
                 metadata=metadata,
             )
 
-            # 加入防重去噪队列中
+            # 加入防重去噪缓存中
             if envelope.id:
-                self._processed_weather_ids.append(envelope.id)
+                self._processed_weather_ids.add(envelope.id)
 
             plugin_logger.info(
                 f"[灾害预警] 气象预警解析成功: {domain_event.title or domain_event.headline}, 生效时间: {issue_time}",

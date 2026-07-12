@@ -9,9 +9,26 @@ from __future__ import annotations
 import asyncio
 import json
 
+import aiohttp
 from astrbot.api import logger
 
 from ...services.query.source_runtime_query_service import SourceRuntimeQueryService
+from ...services.weather import (
+    ChinaWeatherReconciler,
+    WeatherFallbackConfig,
+    resolve_fallback_config,
+)
+
+
+_CHINA_WEATHER_INDEX_URL = "https://product.weather.com.cn/alarm/grepalarm_cn.php"
+_CHINA_WEATHER_DETAIL_BASE = "https://product.weather.com.cn/alarm/webdata/"
+_CHINA_WEATHER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+    ),
+    "Referer": "http://www.weather.com.cn/alarm/",
+}
 
 
 class DisasterServiceRuntimeService:
@@ -85,6 +102,8 @@ class DisasterServiceRuntimeService:
 
     async def start_scheduled_http_fetch(self) -> None:
         """启动定时 HTTP 数据获取。"""
+
+        fallback_config = resolve_fallback_config(self.service.config)
 
         async def fetch_wolfx_data():
             # Wolfx 列表属于低频补偿型数据：
@@ -162,6 +181,93 @@ class DisasterServiceRuntimeService:
         # 启动定时拉取后台任务
         task = asyncio.create_task(fetch_wolfx_data(), name="dw_http_fetch_wolfx")
         self.service.scheduled_tasks.append(task)
+
+        if fallback_config.enabled and self._source_runtime_query.is_source_enabled(
+            "china_weather_fanstudio"
+        ):
+            china_weather_task = asyncio.create_task(
+                self._run_china_weather_loop(fallback_config),
+                name="dw_http_fetch_china_weather",
+            )
+            self.service.scheduled_tasks.append(china_weather_task)
+
+    async def _run_china_weather_loop(
+        self,
+        fallback_config: WeatherFallbackConfig,
+        *,
+        session_factory=None,
+        sleep=None,
+    ) -> None:
+        """Run the independent China Weather reconciliation polling loop."""
+        session_factory = session_factory or aiohttp.ClientSession
+        sleep = sleep or asyncio.sleep
+        reconciler = ChinaWeatherReconciler(
+            detail_concurrency=fallback_config.detail_concurrency
+        )
+        timeout = aiohttp.ClientTimeout(total=fallback_config.request_timeout_seconds)
+        async with session_factory(
+            timeout=timeout,
+            headers=_CHINA_WEATHER_HEADERS,
+        ) as session:
+
+            async def fetch_text(url: str) -> str:
+                async with session.get(url) as response:
+                    response.raise_for_status()
+                    return await response.text()
+
+            async def fetch_detail(detail_path: str) -> str:
+                return await fetch_text(f"{_CHINA_WEATHER_DETAIL_BASE}{detail_path}")
+
+            while self.service.running:
+                try:
+                    index_script = await fetch_text(_CHINA_WEATHER_INDEX_URL)
+                    result = await reconciler.reconcile(
+                        index_script,
+                        fetch_detail,
+                        self._dispatch_china_weather_payload,
+                    )
+                    if not result.index_valid:
+                        logger.warning(
+                            "[灾害预警] China Weather 校准索引无效，保留上次有效快照"
+                        )
+                    elif (
+                        result.new_count
+                        or result.failed_identifiers
+                        or result.consumed_error_identifiers
+                    ):
+                        logger.debug(
+                            "[灾害预警] China Weather 校准完成: "
+                            f"索引 {result.reference_count}, 新增 {result.new_count}, "
+                            f"已处理 {result.consumed_count}, 失败 {len(result.failed_identifiers)}"
+                        )
+                    for identifier in result.failed_identifiers:
+                        logger.warning(
+                            "[灾害预警] China Weather 详情处理失败，保留重试资格: "
+                            f"{identifier}"
+                        )
+                    for identifier in result.consumed_error_identifiers:
+                        logger.warning(
+                            "[灾害预警] China Weather 已进入发送链但调用异常，"
+                            f"按最多一次策略不自动重试: {identifier}"
+                        )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        "[灾害预警] China Weather 索引请求失败，保留上次有效快照: "
+                        f"{type(e).__name__}: {e}"
+                    )
+
+                await sleep(fallback_config.poll_interval_seconds)
+
+    async def _dispatch_china_weather_payload(self, payload: dict[str, object]) -> None:
+        """Hand one payload to the authoritative existing event pipeline once."""
+        event = self.service.parse_event(
+            "china_weather_fanstudio",
+            json.dumps(payload, ensure_ascii=False),
+        )
+        if event is not None:
+            await self.service._handle_disaster_event(event)
 
     async def start_cleanup_task(self) -> None:
         """启动清理任务。"""

@@ -117,7 +117,7 @@
 - **日本气象厅地震情报** (P2P / Wolfx) - 详细地震情报。
 - **USGS地震测定** (FAN Studio) - 美国地质调查局地震信息。
 - **Global Quake服务器** - 全球地震测站实时计算推送，精度有限。
-- **中国气象局气象预警** (FAN Studio) - 气象灾害预警。
+- **中国气象局气象预警** (FAN Studio + 可选 China Weather 对账) - 实时推送配合全国活动预警低频补偿。
 - **自然资源部海啸预警中心** (FAN Studio) - 海啸预警信息。
 - **日本气象厅海啸预报** (P2P) - 日本海啸预报信息。
 
@@ -419,6 +419,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 | 日本气象厅地震情报 | Wolfx | Info | ✅ |
 | 美国地质调查局 | FAN Studio | Info | ✅ |
 | 中国气象局 | FAN Studio | Weather | ✅ |
+| 中国天气网活动预警索引 | China Weather（可选对账） | Weather | 🧪 |
 | 中国海啸预警中心 | FAN Studio | Tsunami | ✅ |
 | 日本气象厅海啸预报 | P2P | Tsunami | 🧪 |
 
@@ -440,7 +441,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 - **台湾中央气象署地震报告 (CWA)**：约 0.5-2s
 - **日本气象厅地震情报 (JMA)**：约 0.5-2s
 - **美国地质调查局地震测定 (USGS)**：约 0.5-15s
-- **中国气象局气象预警 (CMA)**：约 3-15 分钟
+- **中国气象局气象预警 (CMA)**：约 3-15 分钟；可选对账源按配置轮询，仅用于补偿覆盖率，不保证实时性
   - 开启地图瓦片渲染 / GQ 卡片还将额外增加约 1-2.5s 的延迟。(地图瓦片仅影响地震情报延迟，不阻塞地震预警类事件的推送)
   - 不同数据源间的**推送**延迟一般为 Fan = P2P ＜ Wolfx ＜ Global Quake
 
@@ -540,6 +541,27 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 
 - **原理**: 连接到 Global Quake 服务器。这些数据是由全球数千个测站通过算法实时计算得出的。
 - **特点**: 在偏远地区或国际海域，由于官方机构反应时间较长，GQ 往往能最先提供初步数据，但震级和位置可能随报数更新而有较大波动。
+
+#### 🔹 中国天气网全国活动预警对账 (`weather_alarm_fallback`)
+
+这是一个默认关闭的低频补偿源，用于对账 FAN Studio 气象实时流可能遗漏的中间事件，不替代 FAN Studio WebSocket。
+
+- **启用 (`enabled`)**: 仅在 FAN Studio 的中国气象预警子源同时启用时生效。
+- **首次快照**: 首次成功读取只建立基线，不会补发当前全部活动预警。
+- **后续处理**: 只请求新出现的官方预警详情，并复用现有关键词、等级、会话、展示、统计与发送规则。
+- **轮询间隔 (`poll_interval_seconds`)**: 默认 `180` 秒，范围 `60 - 3600` 秒。
+- **请求超时 (`request_timeout_seconds`)**: 默认 `15` 秒，范围 `3 - 30` 秒。
+- **详情并发 (`detail_concurrency`)**: 默认 `4`，范围 `1 - 8`。
+- **去重**: FAN 与 HTTP 对账使用相同逻辑事件 ID，并通过 24 小时、最多 4096 条的有界缓存抑制重复推送。
+
+```json
+"weather_alarm_fallback": {
+  "enabled": false,
+  "poll_interval_seconds": 180,
+  "request_timeout_seconds": 15,
+  "detail_concurrency": 4
+}
+```
 
 ---
 
