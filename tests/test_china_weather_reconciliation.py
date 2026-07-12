@@ -34,6 +34,7 @@ WarningSnapshotTracker = _RECONCILIATION_MODULE.WarningSnapshotTracker
 build_fan_weather_event_id = _RECONCILIATION_MODULE.build_fan_weather_event_id
 parse_warning_detail = _RECONCILIATION_MODULE.parse_warning_detail
 parse_warning_index = _RECONCILIATION_MODULE.parse_warning_index
+validate_detail_path = _RECONCILIATION_MODULE.validate_detail_path
 ChinaWeatherReconciler = getattr(_RECONCILIATION_MODULE, "ChinaWeatherReconciler", None)
 resolve_fallback_config = getattr(
     _RECONCILIATION_MODULE, "resolve_fallback_config", None
@@ -229,6 +230,40 @@ class MutableClock:
 
 
 class ChinaWeatherReconciliationTests(unittest.TestCase):
+    def test_validate_detail_path_accepts_safe_file_names(self) -> None:
+        for path in ("a.html", "warning_20260713.json", "index-01.txt"):
+            with self.subTest(path=path):
+                self.assertEqual(validate_detail_path(path), path)
+
+    def test_validate_detail_path_rejects_unsafe_and_malformed_inputs(self) -> None:
+        unsafe_paths = (
+            "https://evil.example/a.html",
+            "//evil.example/a.html",
+            "/absolute.html",
+            "../traversal.html",
+            "nested/a.html",
+            "nested\\a.html",
+            "a.html?query=1",
+            "a.html#fragment",
+            " leading.html",
+            "trailing.html ",
+            "\ta.html",
+            "\na.html",
+            "%2e%2e%2fencoded.html",
+            "%2E%2E%2Fencoded.html",
+            "",
+            " ",
+            ".",
+            "..",
+            None,
+            123,
+        )
+
+        for path in unsafe_paths:
+            with self.subTest(path=path):
+                with self.assertRaises(ValueError):
+                    validate_detail_path(path)
+
     def test_fallback_config_defaults_off_and_is_immutable(self) -> None:
         resolver = _require_feature(
             self, resolve_fallback_config, "resolve_fallback_config"

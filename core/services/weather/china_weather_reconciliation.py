@@ -247,13 +247,11 @@ class BoundedTTLSet:
         return value in self._entries
 
     def _purge_expired(self, now: float) -> None:
-        expired = [
-            value
-            for value, added_at in self._entries.items()
-            if now - added_at >= self._ttl_seconds
-        ]
-        for value in expired:
-            del self._entries[value]
+        while self._entries:
+            _, added_at = next(iter(self._entries.items()))
+            if now - added_at < self._ttl_seconds:
+                break
+            self._entries.popitem(last=False)
 
 
 class ChinaWeatherReconciler:
@@ -328,8 +326,7 @@ class ChinaWeatherReconciler:
             return reference.identifier, None
 
         try:
-            async with self._detail_semaphore:
-                await dispatch(payload)
+            await dispatch(payload)
         except asyncio.CancelledError:
             raise
         except Exception:
