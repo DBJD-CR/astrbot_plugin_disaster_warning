@@ -37,6 +37,7 @@ from ..parsers.parser_registry import (
 )
 from ..services.config.config_service import ConfigAccessor
 from ..services.config.connection_plan_builder import ConnectionPlanBuilder
+from ..services.geo.jma_seis_int_loc_loader import get_sect_map
 from ..services.geo.region_service import region_service
 from ..services.notification import NotificationCenter
 from ..services.query.earthquake_list_service import EarthquakeListService
@@ -260,6 +261,8 @@ class DisasterWarningService:
             validate_catalog_parser_names()
             self._check_registry_integrity()
             await region_service.load_data_async()  # 加载地理省份数据文件
+            # 预加载 JMA 町丁目->地域映射表，避免首条地震情报时延迟加载
+            get_sect_map()
             self.http_fetcher = HTTPDataFetcher(self.config)  # 初始化 HTTP 轮询拉取组件
             self._register_handlers()
             self._configure_connections()
