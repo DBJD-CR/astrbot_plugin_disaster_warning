@@ -151,11 +151,13 @@ function EventCard({
                                 evt.weather_type_code,
                                 (e) => {
                                     // 本地回退也失败：退回到默认 Unicode 文字徽标
-                                    const badgeEl = e.currentTarget.parentElement;
-                                    e.currentTarget.remove();
+                                    const img = e.currentTarget;
+                                    img.style.display = 'none';
+                                    const badgeEl = img.parentElement;
                                     if (badgeEl) {
                                         badgeEl.classList.add('mag-badge-weather-icon-fallback');
-                                        badgeEl.textContent = badgeContent;
+                                        const textNode = document.createTextNode(badgeContent);
+                                        badgeEl.appendChild(textNode);
                                     }
                                 }
                             )}
