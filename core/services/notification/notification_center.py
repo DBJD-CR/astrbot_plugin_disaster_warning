@@ -208,7 +208,7 @@ class NotificationCenter:
 
         # 挂载后台长轮询定时协程任务
         self._poll_task = asyncio.create_task(_poll_loop())
-        logger.info("[灾害预警] 通知系统已启动。")
+        logger.info("[灾害预警] 通知系统已启动")
 
     async def stop(self) -> None:
         """停止通知中心。"""
@@ -223,4 +223,4 @@ class NotificationCenter:
             self._poll_task = None
         # 停止前将当前缓存内容原子落盘保存
         await self.save_cache()
-        logger.info("[灾害预警] 通知系统已停止。")
+        logger.info("[灾害预警] 通知系统已停止")

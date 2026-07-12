@@ -127,7 +127,7 @@ class WebSocketManager:
                 )
                 self.connection_info[name].pop("offline_since", None)
                 self.connection_info[name].pop("short_retry_notified", None)
-                logger.info(f"[灾害预警] WebSocket连接成功: {name}")
+                logger.info(f"[灾害预警] WebSocket 连接成功: {name}")
 
                 # 重置重连相关的状态变量
                 self.connection_retry_counts[name] = 0
@@ -154,7 +154,7 @@ class WebSocketManager:
 
         except asyncio.CancelledError:
             # 主动关闭或插件卸载引发的任务取消，不做额外处理，正常退出
-            logger.info(f"[灾害预警] WebSocket连接任务被取消: {name}")
+            logger.info(f"[灾害预警] WebSocket 连接任务被取消: {name}")
             self.connections.pop(name, None)
             self.connection_info.pop(name, None)
             raise
@@ -374,8 +374,8 @@ class HTTPDataFetcher:
                 if response.status == 200:
                     return await response.json()
                 else:
-                    logger.warning(f"[灾害预警] HTTP请求失败 {url}: {response.status}")
+                    logger.warning(f"[灾害预警] HTTP 请求失败 {url}: {response.status}")
         except Exception as e:
-            logger.error(f"[灾害预警] HTTP请求异常 {url}: {e}")
+            logger.error(f"[灾害预警] HTTP 请求异常 {url}: {e}")
 
         return None
