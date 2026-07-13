@@ -168,6 +168,9 @@ class PushExecutionService:
                         "detailed_jma_intensity": message_format_config.get(
                             "detailed_jma_intensity", False
                         ),
+                        "jma_region_intensity": message_format_config.get(
+                            "jma_region_intensity", True
+                        ),
                     },
                     "weather": {
                         "enable_weather_icon": weather_config.get(
