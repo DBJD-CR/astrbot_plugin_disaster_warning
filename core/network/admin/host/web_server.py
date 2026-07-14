@@ -52,7 +52,11 @@ class WebAdminServer:
 
         # 延迟缓存容器，用于在健康监控与连接面板展示之间共享探测数值
         self._latency_cache: dict[str, float | None] = {}
-        self._source_health_monitor = SourceHealthMonitor(self._latency_cache)
+        eqsc_host = ConnectionsPayloadBuilder.resolve_eqsc_host(self.config)
+        self._source_health_monitor = SourceHealthMonitor(
+            self._latency_cache,
+            host_overrides={"eqsc": eqsc_host},
+        )
 
         # 注入各不同职责的 Payload 生成器
         self._connections_payload_builder = ConnectionsPayloadBuilder(

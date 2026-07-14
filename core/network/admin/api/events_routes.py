@@ -10,6 +10,8 @@ import time
 
 from astrbot.api import logger
 
+from ....domain.typhoon import resolve_data_mode
+from ....storage.source_compat import format_event_source_name
 from ..payloads.api_response import ApiResponse
 
 # 简单的基于内存的轻量级缓存，用来缓存数据源选项，降低分页查询和 sources 查询时的开销。
@@ -41,6 +43,57 @@ def invalidate_sources_cache():
     _sources_cache.clear()
 
 
+def _enrich_event_list(events: list[dict]) -> None:
+    """事件列表后处理：为气象事件补充图标地址，为台风事件注入
+    source_label / data_mode / _snapshot_level 展示友好字段。
+
+    该函数原地修改 events 中的字典，供分页列表与重大事件列表共用，
+    避免两处路由各自维护一套等价的后处理逻辑。
+    """
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_type = str(event.get("type") or "").strip()
+        if event_type == "weather_alarm":
+            weather_type_code = str(event.get("weather_type_code") or "").strip()
+            if weather_type_code:
+                event["icon_url"] = (
+                    f"https://api.fanstudio.tech/we/img/alarm_icon.php?type={weather_type_code}"
+                )
+            else:
+                event["icon_url"] = None
+        elif event_type == "typhoon":
+            info_type = str(event.get("info_type") or "").strip()
+            event["data_mode"] = resolve_data_mode(info_type, default="fan")
+            event["source_label"] = format_event_source_name(
+                event.get("source_id") or event.get("source") or "typhoon_fanstudio",
+                event_type="typhoon",
+                info_type=info_type,
+            )
+            # 注入当前观测等级（_snapshot_level）：
+            # 数据库主表 level 存峰值，event_updates 的 level 存每次观测快照。
+            # 台风的 _attach_history 保留了全部 updates（含最新一条），reversed 后
+            # history[0] 即为最新观测点，其 level 就是当前观测等级。
+            # 提取后从 history 中移除最新一条，避免前端 latestEvent 与 history 重复。
+            history = event.get("history") or []
+            if isinstance(history, list) and history:
+                latest_snapshot = history[0]
+                if isinstance(latest_snapshot, dict):
+                    event["_snapshot_level"] = str(
+                        latest_snapshot.get("level") or ""
+                    ).strip()
+                    # 当前报次的风速、气压、坐标也来自快照，不能继续使用主表峰值字段。
+                    event["_snapshot_wind_speed"] = latest_snapshot.get("wind_speed")
+                    event["_snapshot_pressure"] = latest_snapshot.get("pressure")
+                    event["_snapshot_latitude"] = latest_snapshot.get("latitude")
+                    event["_snapshot_longitude"] = latest_snapshot.get("longitude")
+                    # 移除最新一条，避免与 latestEvent（主表行）重复展示
+                    event["history"] = history[1:]
+            if not event.get("_snapshot_level"):
+                # 无 history 或 history 缺失 level 时回退到主表 level
+                event["_snapshot_level"] = str(event.get("level") or "").strip()
+
+
 def register_events_routes(app, *, disaster_service):
     """注册事件相关路由。"""
 
@@ -54,6 +107,7 @@ def register_events_routes(app, *, disaster_service):
         magnitude_order: str = "",
         keyword: str = "",
         level_filter: str = "",
+        min_wind_speed: float | None = None,
     ):
         """分页获取历史事件记录。"""
         try:
@@ -98,6 +152,7 @@ def register_events_routes(app, *, disaster_service):
                     min_magnitude=min_magnitude,
                     keyword=normalized_keyword or None,
                     level_filter=normalized_level_filter or None,
+                    min_wind_speed=min_wind_speed,
                 ),
                 db.get_events_paginated(
                     page,
@@ -108,23 +163,12 @@ def register_events_routes(app, *, disaster_service):
                     magnitude_order=normalized_magnitude_order or None,
                     keyword=normalized_keyword or None,
                     level_filter=normalized_level_filter or None,
+                    min_wind_speed=min_wind_speed,
                 ),
             )
 
-            # 气象事件在管理端列表中补充图标地址，便于前端直接展示而不再二次拼接。
-            for event in events:
-                if not isinstance(event, dict):
-                    continue
-                if event.get("type") != "weather_alarm":
-                    continue
-
-                weather_type_code = str(event.get("weather_type_code") or "").strip()
-                if weather_type_code:
-                    event["icon_url"] = (
-                        f"https://api.fanstudio.tech/we/img/alarm_icon.php?type={weather_type_code}"
-                    )
-                else:
-                    event["icon_url"] = None
+            # 事件列表后处理：统一调用公共函数补充图标、来源标签与台风当前观测等级
+            _enrich_event_list(events)
             total_pages = (total + limit - 1) // limit if total > 0 else 0
 
             # 优先从缓存获取数据源列表
@@ -206,6 +250,8 @@ def register_events_routes(app, *, disaster_service):
                 safe_limit = min(max(1, limit), 500)
 
             events = await db.get_major_events(safe_limit)
+            # 重大事件列表同样需要台风后处理（图标、来源标签、当前观测等级）
+            _enrich_event_list(events)
             return ApiResponse.success({"events": events})
         except Exception as e:
             logger.error(f"[灾害预警] 获取重大事件失败: {e}")
