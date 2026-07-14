@@ -145,26 +145,31 @@ class SourceMessageRouter:
             return False
 
         # 将收到的报文或结构化数据送入具体解析器
-        event = self.service.parse_event(source_id, parser_input)
-        if not event:
+        events = self.service.parse_event(source_id, parser_input)
+        if not events:
             return False
 
-        # 把连接来源补到事件元数据，便于后续展示来源通道与追踪链路
-        _attach_event_connection_metadata(
-            event,
-            connection_name=connection_name,
-            connection_info=connection_info,
-            source_channel=source_channel,
-        )
-        log_label = parser_log_label or source_label or source_id
-        plugin_logger.debug(f"[灾害预警] {log_label} 解析成功: {event.id}")
+        # 兼容解析器返回单个事件或事件列表
+        if not isinstance(events, list):
+            events = [events]
 
-        # 将解析好的事件丢给分发流水线处理
-        await self._dispatch_event(
-            event,
-            source_id=source_id,
-            source_label=source_label,
-        )
+        for event in events:
+            # 把连接来源补到事件元数据，便于后续展示来源通道与追踪链路
+            _attach_event_connection_metadata(
+                event,
+                connection_name=connection_name,
+                connection_info=connection_info,
+                source_channel=source_channel,
+            )
+            log_label = parser_log_label or source_label or source_id
+            plugin_logger.debug(f"[灾害预警] {log_label} 解析成功: {event.id}")
+
+            # 将解析好的事件丢给分发流水线处理
+            await self._dispatch_event(
+                event,
+                source_id=source_id,
+                source_label=source_label,
+            )
         return True
 
     async def _track_router_error(self, exception: Exception, module: str) -> None:
