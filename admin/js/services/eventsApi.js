@@ -16,6 +16,7 @@
         earthquake: 'earthquake',
         tsunami: 'tsunami',
         weather: 'weather_alarm',
+        typhoon: 'typhoon',
     };
 
     /**
@@ -30,6 +31,7 @@
         const magnitudeOrder = String(params.magnitudeOrder || '').toLowerCase();
         const keyword = String(params.keyword || '').trim();
         const levelFilter = String(params.levelFilter || '').trim();
+        const minWindSpeed = params.minWindSpeed;
 
         return {
             page: params.page || 1,
@@ -40,6 +42,7 @@
             magnitude_order: ['asc', 'desc'].includes(magnitudeOrder) ? magnitudeOrder : '',
             keyword,
             level_filter: levelFilter,
+            min_wind_speed: minWindSpeed === null || minWindSpeed === undefined || minWindSpeed === '' ? '' : minWindSpeed,
         };
     }
 
@@ -63,6 +66,24 @@
                 keyword,
                 optional_a: optionalA,
                 optional_b: optionalB,
+            },
+            unwrap: false,
+        }),
+        // 台风信息查询（优先 EQSC，失败回退本地数据库）
+        queryTyphoon: ({
+            typhoonId = '',
+            keyword = '',
+            count = 1,
+            detail = 'current',
+            activeOnly = false,
+        } = {}, options = {}) => client.request('/typhoon/query', {
+            ...options,
+            query: {
+                typhoon_id: typhoonId,
+                keyword,
+                count,
+                detail,
+                active_only: activeOnly ? 'true' : 'false',
             },
             unwrap: false,
         }),
