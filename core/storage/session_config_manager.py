@@ -41,7 +41,7 @@ class SessionConfigManager:
         "push_frequency_control",
         "strategies",
         "weather_config",
-        "debug_config",
+        "typhoon_config",
         # 会话级额外控制字段（插件自定义）
         "push_enabled",
         # 会话备注名（仅用于日志与前端展示，不参与业务逻辑）
