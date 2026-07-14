@@ -13,7 +13,10 @@ const { Typography } = MaterialUI;
  */
 function EventGroupTimeline({ group, displayTimezone, onCollapse }) {
     const { getDisplayTimeValue, formatMagnitudeBadge, getEarthquakeBadgeContent } = window.EventFormatters;
+    const typhoonFormatters = window.DisasterTyphoonFormatters;
     const totalReports = group.events.length;
+    const groupType = group.latestEvent.type || '';
+    const isTyphoonGroup = groupType === 'typhoon';
 
     return (
         <div className="event-group-expanded event-group-expanded-panel">
@@ -45,16 +48,20 @@ function EventGroupTimeline({ group, displayTimezone, onCollapse }) {
                 
                 {/* 遍历输出每一报的历史明细 */}
                 {group.events.map((evt, idx) => {
-                    // 自下而上递增计算逻辑上的第几报，若数据包自带实际 report_num 则以其为准
+                    // 台风路径点统一按时间线位置编号：主表最新状态没有 report_num，
+                    // 若混用历史快照的 report_num，会把最新点错误显示为“第1报”。
                     const reportIndex = totalReports - idx;
                     const actualReportNum = Number(evt?.report_num);
                     const hasValidReportNum = Number.isInteger(actualReportNum) && actualReportNum > 0;
-                    const displayReportNum = hasValidReportNum ? actualReportNum : reportIndex;
+                    const displayReportNum = isTyphoonGroup
+                        ? reportIndex
+                        : (hasValidReportNum ? actualReportNum : reportIndex);
                     
                     // 标识最新的这一期（第0项）
                     const isLatest = idx === 0;
                     const rowType = evt.type || group.latestEvent.type || '';
                     const isEarthquake = rowType === 'earthquake' || rowType === 'earthquake_warning';
+                    const isTyphoon = rowType === 'typhoon';
                     
                     // 获取报告中的地震参数
                     const rowDepth = evt.depth ?? group.latestEvent.depth;
@@ -62,15 +69,31 @@ function EventGroupTimeline({ group, displayTimezone, onCollapse }) {
                     const rowMagnitudeText = formatMagnitudeBadge(rowMagnitude);
                     
                     // 提取此报对应的地震烈度徽标元数据
-                    const rowBadgeMeta = getEarthquakeBadgeContent({ 
-                        ...group.latestEvent, 
-                        ...evt, 
-                        _groupMagnitude: group.latestEvent.magnitude 
+                    const rowBadgeMeta = getEarthquakeBadgeContent({
+                        ...group.latestEvent,
+                        ...evt,
+                        _groupMagnitude: group.latestEvent.magnitude
                     });
 
+                    // 台风路径点参数：优先使用当前快照字段，回退到主字段峰值。
+                    const typhoonLevel = evt._snapshot_level || evt.level || '';
+                    const typhoonWind = Number(evt._snapshot_wind_speed ?? evt.wind_speed);
+                    const typhoonPressure = evt._snapshot_pressure != null
+                        ? Number(evt._snapshot_pressure)
+                        : (evt.pressure != null ? Number(evt.pressure) : null);
+                    const typhoonLat = evt._snapshot_latitude != null
+                        ? Number(evt._snapshot_latitude)
+                        : (evt.latitude != null ? Number(evt.latitude) : null);
+                    const typhoonLon = evt._snapshot_longitude != null
+                        ? Number(evt._snapshot_longitude)
+                        : (evt.longitude != null ? Number(evt.longitude) : null);
+                    const typhoonLevelEmoji = typhoonFormatters?.getTyphoonLevelEmoji(typhoonLevel) || '🌀';
+                    const typhoonLevelColor = typhoonFormatters?.getTyphoonLevelColor(typhoonLevel) || '';
+                    const typhoonCoords = typhoonFormatters?.formatTyphoonCoords(typhoonLat, typhoonLon) || '';
+
                     return (
-                        <div 
-                            key={idx} 
+                        <div
+                            key={idx}
                             className={`event-group-timeline-item ${idx === group.events.length - 1 ? 'is-last' : ''}`}
                         >
                             {/* 时间线节点小圆点 */}
@@ -102,6 +125,30 @@ function EventGroupTimeline({ group, displayTimezone, onCollapse }) {
                                             <Typography variant="body2" className="event-group-quake-text">
                                                 深度: {(rowDepth !== undefined && rowDepth !== null) ? `${rowDepth} km` : '未知'}
                                             </Typography>
+                                        </div>
+                                    )}
+
+                                    {/* 台风专用路径点参数区（强度、位置、最大风速、气压） */}
+                                    {isTyphoon && (
+                                        <div className="event-group-typhoon-details">
+                                            <Typography variant="body2" className="event-group-typhoon-text event-group-typhoon-text--strong" style={typhoonLevelColor ? { color: typhoonLevelColor } : undefined}>
+                                                {typhoonLevelEmoji} {typhoonLevel || '未知等级'}
+                                            </Typography>
+                                            {typhoonCoords && (
+                                                <Typography variant="body2" className="event-group-typhoon-text">
+                                                    中心位置: ({typhoonCoords})
+                                                </Typography>
+                                            )}
+                                            {Number.isFinite(typhoonWind) && typhoonWind > 0 && (
+                                                <Typography variant="body2" className="event-group-typhoon-text">
+                                                    最大风速: {typhoonWind.toFixed(1)} m/s
+                                                </Typography>
+                                            )}
+                                            {typhoonPressure != null && typhoonPressure > 0 && (
+                                                <Typography variant="body2" className="event-group-typhoon-text">
+                                                    中心气压: {typhoonPressure} hPa
+                                                </Typography>
+                                            )}
                                         </div>
                                     )}
                                 </div>
