@@ -12,7 +12,7 @@ from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EventEnvelope, WeatherEvent
 from ..domain.event_payload import SourcePayload
-from ..services.weather import BoundedTTLSet
+from ..services.weather import BoundedTTLSet, normalize_weather_warning_code
 from ..sources.source_catalog import get_source_entry
 from .base_parser import BaseParser
 
@@ -101,7 +101,7 @@ class WeatherAlarmParser(BaseParser):
             source_entry = get_source_entry(self.source_id)
 
             # 多重回退以解析气象编码
-            weather_code = str(
+            source_weather_code = str(
                 msg_data.get("weather_type")
                 or msg_data.get("weatherType")
                 or msg_data.get("alertCode")
@@ -110,6 +110,18 @@ class WeatherAlarmParser(BaseParser):
                 or msg_data.get("type")
                 or ""
             ).strip()
+            weather_code = normalize_weather_warning_code(
+                source_weather_code,
+                title,
+                headline,
+                description,
+            )
+            if weather_code != source_weather_code:
+                plugin_logger.warning(
+                    f"[灾害预警] 已纠正冲突的气象预警编码: "
+                    f"{source_weather_code} -> {weather_code}",
+                    is_event_linked=True,
+                )
 
             # 整合元数据
             metadata = {

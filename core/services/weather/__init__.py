@@ -13,6 +13,7 @@ from .china_weather_reconciliation import (
     resolve_fallback_config,
     validate_detail_path,
 )
+from .warning_code_normalization import normalize_weather_warning_code
 
 __all__ = [
     "BoundedTTLSet",
@@ -25,5 +26,6 @@ __all__ = [
     "parse_warning_detail",
     "parse_warning_index",
     "resolve_fallback_config",
+    "normalize_weather_warning_code",
     "validate_detail_path",
 ]

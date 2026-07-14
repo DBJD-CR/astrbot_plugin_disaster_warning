@@ -326,6 +326,93 @@ class ChinaWeatherReconciliationTests(unittest.TestCase):
         self.assertEqual(cache._ttl_seconds, 86_400)
         self.assertEqual(cache._max_entries, 4_096)
 
+    def test_weather_parser_corrects_conflicting_standard_warning_code(self) -> None:
+        parser = WeatherAlarmParser()
+
+        event = parser._parse_data(
+            {
+                "id": "310000-20260714090800-11B0702",
+                "effective": "2026-07-14 09:08:00",
+                "title": "某区气象台发布高温黄色预警信号",
+                "description": "预计最高气温将超过35摄氏度。",
+                "type": "11B07_yellow",
+            }
+        )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.metadata["weather_type"], "11B09_yellow")
+        self.assertEqual(event.event.metadata["weather_code"], "11B09_yellow")
+
+    def test_weather_parser_normalizes_common_cma_type_codes(self) -> None:
+        cases = (
+            ("台风", "11B01_yellow", "11B01_yellow"),
+            ("暴雨", "11B02_yellow", "11B03_yellow"),
+            ("暴雪", "11B03_yellow", "11B04_yellow"),
+            ("寒潮", "11B04_yellow", "11B05_yellow"),
+            ("大风", "11B05_yellow", "11B06_yellow"),
+            ("沙尘暴", "11B06_yellow", "11B07_yellow"),
+            ("高温", "11B07_yellow", "11B09_yellow"),
+            ("干旱", "11B08_yellow", "11B22_yellow"),
+            ("雷电", "11B09_yellow", "11B14_yellow"),
+            ("冰雹", "11B10_yellow", "11B15_yellow"),
+            ("霜冻", "11B11_yellow", "11B16_yellow"),
+            ("大雾", "11B12_yellow", "11B17_yellow"),
+            ("霾", "11B13_yellow", "11B19_yellow"),
+            ("道路结冰", "11B14_yellow", "11B21_yellow"),
+        )
+
+        for index, (warning_type, source_code, expected_code) in enumerate(cases):
+            with self.subTest(warning_type=warning_type):
+                event = WeatherAlarmParser()._parse_data(
+                    {
+                        "id": f"310000-2026071409{index:02d}00-{source_code[:5]}02",
+                        "effective": "2026-07-14 09:08:00",
+                        "title": f"某区气象台发布{warning_type}黄色预警信号",
+                        "description": "防御信息。",
+                        "type": source_code,
+                    }
+                )
+
+                self.assertIsNotNone(event)
+                self.assertEqual(event.metadata["weather_type"], expected_code)
+
+    def test_weather_parser_prefers_specific_standard_warning_names(self) -> None:
+        cases = (
+            ("雷雨大风", "11B05_yellow", "11B20_yellow"),
+            ("高温中暑", "11B07_yellow", "11B24_yellow"),
+            ("低温雨雪冰冻", "11B08_yellow", "11B30_yellow"),
+            ("海上雷雨大风", "11B05_yellow", "11B52_yellow"),
+        )
+
+        for index, (warning_type, source_code, expected_code) in enumerate(cases):
+            with self.subTest(warning_type=warning_type):
+                event = WeatherAlarmParser()._parse_data(
+                    {
+                        "id": f"310000-2026071410{index:02d}00-{source_code[:5]}02",
+                        "effective": "2026-07-14 10:00:00",
+                        "title": f"某区气象台发布{warning_type}黄色预警信号",
+                        "description": "防御信息。",
+                        "type": source_code,
+                    }
+                )
+
+                self.assertIsNotNone(event)
+                self.assertEqual(event.metadata["weather_type"], expected_code)
+
+    def test_weather_parser_preserves_unknown_warning_semantics(self) -> None:
+        event = WeatherAlarmParser()._parse_data(
+            {
+                "id": "310000-20260714110000-11B9902",
+                "effective": "2026-07-14 11:00:00",
+                "title": "某区发布自定义气象风险提示",
+                "description": "防御信息。",
+                "type": "11B99_yellow",
+            }
+        )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.metadata["weather_type"], "11B99_yellow")
+
     def test_weather_parser_retains_id_after_32_later_events(self) -> None:
         parser = WeatherAlarmParser()
         first_id = "310000-20260713100000-11B0102"
