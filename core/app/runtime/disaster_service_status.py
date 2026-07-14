@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ...services.query.source_runtime_query_service import SourceRuntimeQueryService
+from ..services.typhoon_enrichment_service import TyphoonEnrichmentService
 
 
 class DisasterServiceStatusService:
@@ -35,6 +36,12 @@ class DisasterServiceStatusService:
         active_websocket_connections = sum(
             1 for status in connection_status.values() if status["connected"]
         )
+        # EQSC 为 HTTP 辅助通道，不在 ws_manager 连接表中；
+        # AccessToken 有效时计入活跃连接，配置启用时计入总连接。
+        eqsc_active, eqsc_total = TyphoonEnrichmentService.resolve_connection_counts(
+            self.service
+        )
+        active_websocket_connections += eqsc_active
         # global_quake 连接存在一定特殊性，管理端会单独关心它是否在线，
         # 这里通过任务名快速整理出一个独立布尔状态。
         global_quake_connected = any(
@@ -42,20 +49,25 @@ class DisasterServiceStatusService:
             for task in self.service.connection_tasks
         )
 
+        snapshot = self._source_runtime_query.build_runtime_snapshot(
+            actual_connections=connection_status,
+            running=self.service.running,
+            start_time=self.service.start_time.isoformat()
+            if hasattr(self.service, "start_time")
+            else None,
+            uptime=self.get_uptime(),
+            active_websocket_connections=active_websocket_connections,
+            message_logger_enabled=self.service.message_logger.enabled
+            if self.service.message_logger
+            else False,
+            global_quake_connected=global_quake_connected,
+        )
+        # total_connections 默认只统计 WS；补上 EQSC 后与活跃连接口径一致
+        snapshot["total_connections"] = (
+            int(snapshot.get("total_connections", 0) or 0) + eqsc_total
+        )
         return {
-            **self._source_runtime_query.build_runtime_snapshot(
-                actual_connections=connection_status,
-                running=self.service.running,
-                start_time=self.service.start_time.isoformat()
-                if hasattr(self.service, "start_time")
-                else None,
-                uptime=self.get_uptime(),
-                active_websocket_connections=active_websocket_connections,
-                message_logger_enabled=self.service.message_logger.enabled
-                if self.service.message_logger
-                else False,
-                global_quake_connected=global_quake_connected,
-            ),
+            **snapshot,
             # 统计摘要直接挂在顶层，便于管理端一次请求同时拿到运行状态与统计概览。
             "statistics_summary": self.service.statistics_manager.get_summary(),
         }
