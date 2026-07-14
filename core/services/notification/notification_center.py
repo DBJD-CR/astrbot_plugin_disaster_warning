@@ -191,9 +191,15 @@ class NotificationCenter:
             logger.info("[灾害预警] 通知系统未启用。")
             return
 
-        # 启动时优先执行一次远端数据拉取刷新
-        await self.refresh()
-        await self._broadcast_notification_update()
+        # 启动时将首次远端同步改为异步非阻塞，避免网络不通时卡住整个启动流程
+        async def _initial_sync() -> None:
+            try:
+                await self.refresh()
+                await self._broadcast_notification_update()
+            except Exception as e:
+                logger.warning(f"[灾害预警] 启动时同步远端通知失败: {e} (可忽略)")
+
+        asyncio.create_task(_initial_sync())
 
         async def _poll_loop() -> None:
             while True:
