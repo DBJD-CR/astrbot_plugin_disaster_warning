@@ -10,7 +10,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ....utils.plugin_logger import plugin_logger
-from ...domain.event_models import EarthquakeEvent, EventEnvelope
+from ...domain.event_models import EarthquakeEvent, EventEnvelope, TyphoonEvent
+from ...domain.typhoon.typhoon_ids import normalize_typhoon_id
 from ...sources.source_catalog import get_source_entry
 from .event_identity import EventIdentityService
 
@@ -33,6 +34,10 @@ class EventDeduplicationService:
         self.magnitude_tolerance = magnitude_tolerance
         # 内存中维护的最近事件指纹去重字典
         self.recent_events: dict[str, dict[str, dict[str, Any]]] = {}
+        # 台风去重缓存：key 为台风 ID，value 为核心参数指纹。
+        # 当同一台风的核心参数（等级、位置、风速、气压、移向移速、风圈半径）
+        # 与上次推送完全一致时直接过滤，避免数据源刷屏。
+        self._typhoon_cache: dict[str, str] = {}
 
     @staticmethod
     def _extract_issue_type_from_earthquake(
@@ -82,13 +87,136 @@ class EventDeduplicationService:
             return resolved
         return 1
 
+    @staticmethod
+    def _normalize_fingerprint_value(value: Any) -> str:
+        """规范化指纹字段，避免 int/float/None 的字符串差异导致误放行。
+
+        典型问题：
+        - 62 vs 62.0 会被 str() 判为不同指纹
+        - 0 / 0.0 在 `value or ""` 写法下会被错误折叠为空串
+        """
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "1" if value else "0"
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            if value != value:  # NaN
+                return ""
+            if value == int(value):
+                return str(int(value))
+            # 固定小数精度后再去尾零，吸收浮点噪声
+            return f"{value:.6f}".rstrip("0").rstrip(".")
+        text = str(value).strip()
+        if not text or text.lower() in {"none", "null", "无数据", "-"}:
+            return ""
+        try:
+            number = float(text)
+        except ValueError:
+            return text
+        if number != number:
+            return ""
+        if number == int(number):
+            return str(int(number))
+        return f"{number:.6f}".rstrip("0").rstrip(".")
+
+    @classmethod
+    def _generate_typhoon_fingerprint(cls, typhoon: TyphoonEvent) -> str:
+        """生成台风核心参数指纹。
+
+        对比维度包括：等级（typhoon_type）、中心位置（latitude/longitude）、
+        风速（wind_speed）、气压（pressure）、移动方向（move_direction）、
+        移动速度（move_speed）以及风圈半径（radius7/radius10）。
+        当这些参数完全一致时，指纹相同，视为重复数据。
+
+        说明：多台风共舞时，FAN Studio 会在“任意一个台风变化”时整包重推数组。
+        因此指纹必须按单台风 ID 粒度稳定比较，不能因为数组内其他台风变化而失效。
+        """
+        return "|".join(
+            [
+                str(typhoon.typhoon_type or "").strip(),
+                cls._normalize_fingerprint_value(typhoon.latitude),
+                cls._normalize_fingerprint_value(typhoon.longitude),
+                cls._normalize_fingerprint_value(typhoon.wind_speed),
+                cls._normalize_fingerprint_value(typhoon.pressure),
+                str(typhoon.move_direction or "").strip(),
+                cls._normalize_fingerprint_value(typhoon.move_speed),
+                cls._normalize_fingerprint_value(typhoon.radius7),
+                cls._normalize_fingerprint_value(typhoon.radius10),
+            ]
+        )
+
+    def peek_typhoon_should_push(self, event: EventEnvelope) -> bool:
+        """只读检查台风是否应推送，不写入缓存。
+
+        供富化前的早期过滤使用：未变化的台风可跳过昂贵的 EQSC 查询，
+        真正放行后再由 should_push_event / commit 写入缓存。
+        """
+        typhoon = event.event
+        if not isinstance(typhoon, TyphoonEvent):
+            return True
+
+        typhoon_id = normalize_typhoon_id(typhoon.typhoon_id)
+        if not typhoon_id:
+            return True
+
+        fingerprint = self._generate_typhoon_fingerprint(typhoon)
+        cached_fingerprint = self._typhoon_cache.get(typhoon_id)
+        if cached_fingerprint is not None and cached_fingerprint == fingerprint:
+            plugin_logger.info(
+                f"[灾害预警] 台风 {typhoon_id} 核心参数未变化，过滤重复推送",
+                is_event_linked=True,
+            )
+            return False
+        return True
+
+    def _should_push_typhoon(self, event: EventEnvelope) -> bool:
+        """台风事件去重判定。
+
+        若同一台风 ID 的核心参数指纹与缓存中上次推送的指纹完全一致，
+        则判定为重复数据直接过滤；否则更新缓存并放行。
+        """
+        typhoon = event.event
+        if not isinstance(typhoon, TyphoonEvent):
+            return True
+
+        typhoon_id = normalize_typhoon_id(typhoon.typhoon_id)
+        if not typhoon_id:
+            # 缺少 ID 无法建立缓存，直接放行避免误杀
+            return True
+
+        fingerprint = self._generate_typhoon_fingerprint(typhoon)
+        cached_fingerprint = self._typhoon_cache.get(typhoon_id)
+
+        if cached_fingerprint is not None and cached_fingerprint == fingerprint:
+            plugin_logger.info(
+                f"[灾害预警] 台风 {typhoon_id} 核心参数未变化，过滤重复推送",
+                is_event_linked=True,
+            )
+            return False
+
+        # 参数有变化（或首次出现），更新缓存并放行
+        self._typhoon_cache[typhoon_id] = fingerprint
+        plugin_logger.debug(
+            f"[灾害预警] 台风 {typhoon_id} 核心参数已更新，允许推送 (指纹: {fingerprint})"
+        )
+        return True
+
     def should_push_event(self, event: EventEnvelope) -> bool:
         """判断是否应该推送事件。
 
-        对非地震事件默认直接放行，地震事件则进入指纹与报次更新判定链路。
+        台风事件走专用核心参数指纹去重链路，
+        地震事件进入指纹与报次更新判定链路，
+        其余非地震事件（海啸/气象预警等）直接放行。
         """
         envelope = event
         domain_eq = self._get_domain_earthquake(event)
+
+        # 台风事件：基于核心参数指纹去重，过滤数据源完全一致的重复推送
+        if isinstance(envelope.event, TyphoonEvent):
+            return self._should_push_typhoon(envelope)
+
         # 非地震事件（海啸/气象预警等）直接放行，无需在此进行滑动时间窗口位置碰撞去重
         if domain_eq is None:
             return True
@@ -318,6 +446,14 @@ class EventDeduplicationService:
         # 从内存缓存中剔除超时的去重条目
         for fingerprint in old_fingerprints:
             del self.recent_events[fingerprint]
+
+        # 台风去重缓存不按时间过期：只要核心参数发生变化就会放行并更新缓存，
+        # 台风消散后数据源不再推送该 ID，缓存条目自然不再被访问。
+        # 此处仅在缓存条目过多时输出调试日志，便于排查内存占用问题。
+        if len(self._typhoon_cache) > 64:
+            plugin_logger.debug(
+                f"[灾害预警] 台风去重缓存当前持有 {len(self._typhoon_cache)} 个条目"
+            )
 
     @staticmethod
     def _to_utc(dt: datetime | None, source_id: str | None = None) -> datetime:
