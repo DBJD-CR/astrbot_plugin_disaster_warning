@@ -595,6 +595,38 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         payload_signatures=(("type",),),
         payload_predicates=("weather_alert",),
     ),
+    # typhoon_fanstudio: 实时活跃台风 - 来自 FAN Studio
+    # 作为台风实时触发器，收到推送后由富化服务向 EQSC 拉取详细轨迹数据
+    "typhoon_fanstudio": SourceEntry(
+        source_id="typhoon_fanstudio",
+        source_enum="fan_studio_typhoon",
+        source_type=SourceType.TYPHOON,
+        provider_family=ProviderFamily.FAN_STUDIO,
+        config_group="fan_studio",
+        config_key="china_typhoon",
+        parser_name="typhoon_parser",
+        presentation_type="typhoon",
+        text_presenter_key="typhoon",
+        report_policy="none",
+        intensity_mode="none",
+        priority=1,
+        display_name="中国气象局：实时活跃台风 - Fan",
+        description="实时活跃台风 - FAN Studio WebSocket（触发器）+ EQSC 富化",
+        default_timezone="Asia/Shanghai",
+        publish_time_field="update_time",
+        fingerprint_prefix="typhoon",
+        connection_group="fan_studio_all",
+        connection_handler="fan_studio",
+        connection_data_source="fan_studio_mixed",
+        connection_url="wss://ws.fanstudio.tech/all",
+        connection_backup_url="wss://ws.fanstudio.hk/all",
+        dispatch_family="fan_studio_typhoon",
+        provider_source_names=("typhoon",),
+        provider_aliases=("fan_studio_typhoon", "typhoon"),
+        routing_tags=("fan_studio", "china", "typhoon"),
+        payload_signatures=(("moveDirection", "windSpeed", "pressure"),),
+        payload_predicates=("typhoon_active",),
+    ),
 }
 
 
