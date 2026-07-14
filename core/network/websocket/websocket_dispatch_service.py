@@ -23,12 +23,13 @@ class WebSocketDispatchService:
         1001,
     }
 
-    # 协议级严重错误且通常不可恢复的代码集合，这类情况重试意义不大，需要抛出异常
+    # 协议级严重错误且通常不可恢复的代码集合，这类情况短时重试意义不大
+    # 注意：1008（Policy Violation）不在此列。
+    # FAN Studio 等上游会用 1008 表达限流/策略拒绝，连接配额释放后仍可恢复。
     _NO_RECONNECT_CODES = {
         1002,
         1003,
         1007,
-        1008,
         1009,
         1010,
         1011,
@@ -199,6 +200,20 @@ class WebSocketDispatchService:
                 uri,
                 headers,
                 RuntimeError(f"WebSocket异常关闭（连接中断），代码 {close_code}"),
+            )
+            return
+
+        # 策略违规（1008）：常见于上游限流、连接数配额或策略拒绝，释放后通常可恢复
+        if close_code == 1008:
+            logger.warning(
+                f"[灾害预警] WebSocket {name} 因策略违规关闭，关闭码为 {close_code}，"
+                "将释放本地连接后尝试重连"
+            )
+            self.manager._handle_connection_error(
+                name,
+                uri,
+                headers,
+                RuntimeError(f"WebSocket策略违规关闭，代码 {close_code}"),
             )
             return
 

@@ -23,11 +23,20 @@ class WebSocketReconnectService:
         self, name: str, uri: str, headers: dict | None, error: Exception
     ) -> None:
         """统一处理连接错误。"""
-        # 断开连接时，先从管理器活跃连接字典中移除句柄，并取消与之绑定的保活心跳任务
-        self.manager.connections.pop(name, None)
-        if name in self.manager.heartbeat_tasks:
-            self.manager.heartbeat_tasks[name].cancel()
-            self.manager.heartbeat_tasks.pop(name, None)
+        # 先摘掉活跃连接映射，并异步关闭底层句柄，避免旧连接继续占用上游配额
+        existing = self.manager.connections.pop(name, None)
+        if existing is not None:
+            asyncio.create_task(
+                self.manager._close_websocket_quietly(
+                    existing,
+                    reason=f"{name} 连接错误清理",
+                )
+            )
+
+        heartbeat_task = self.manager.heartbeat_tasks.pop(name, None)
+        if heartbeat_task is not None and not heartbeat_task.done():
+            heartbeat_task.cancel()
+        self.manager.last_heartbeat_time.pop(name, None)
 
         # 记录首次断开连接的时间戳，为后续判断“已持续离线多长时间”做数据支撑
         connection_info = self.manager.connection_info.get(name, {})
@@ -193,8 +202,13 @@ class WebSocketReconnectService:
                 if not self.manager.running:
                     return
 
-                # 释放占位 task，在后台发起全新连接请求
+                # 释放占位 task，并在重连前清理可能残留的旧句柄
                 self.manager.reconnect_tasks.pop(name, None)
+                await self.manager._release_existing_connection(
+                    name,
+                    reason="兜底重连前清理旧连接",
+                    keep_connection_info=True,
+                )
                 await self.manager.connect(
                     name,
                     uri,
@@ -252,8 +266,13 @@ class WebSocketReconnectService:
             if not self.manager.running:
                 return
 
-            # 释放占位 task，并发起物理重连
+            # 释放占位 task，并在重连前清理可能残留的旧句柄
             self.manager.reconnect_tasks.pop(name, None)
+            await self.manager._release_existing_connection(
+                name,
+                reason="短时重连前清理旧连接",
+                keep_connection_info=True,
+            )
             await self.manager.connect(
                 name,
                 target_uri,
