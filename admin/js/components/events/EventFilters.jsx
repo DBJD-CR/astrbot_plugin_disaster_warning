@@ -193,7 +193,7 @@ function EventFilters({
                             <Typography variant="body2" className="event-filter-label">最小风速</Typography>
                             <div className="event-filter-inline-controls">
                                 <select value={windSpeedFilter} onChange={(e) => setWindSpeedFilter(e.target.value)} className="event-filter-select event-filter-select-md">
-                                    {window.DisasterTyphoonFormatters.WIND_SPEED_FILTER_OPTIONS.map((option) => (
+                                    {(window.DisasterTyphoonFormatters?.WIND_SPEED_FILTER_OPTIONS || []).map((option) => (
                                         <option key={option.value} value={option.value}>{option.label}</option>
                                     ))}
                                 </select>
