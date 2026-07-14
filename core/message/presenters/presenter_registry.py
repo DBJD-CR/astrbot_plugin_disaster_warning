@@ -22,6 +22,7 @@ from .earthquake_presenter import (
 )
 from .text_presenter import TextPresenter, get_text_presenter_keys
 from .tsunami_presenter import JmaTsunamiPresenter, TsunamiAlertPresenter
+from .typhoon_presenter import TyphoonPresenter
 from .weather_presenter import WeatherAlertPresenter
 
 # 按展示类型分发的主注册表，适合从来源目录中的展示类型直接解析展示器。
@@ -31,6 +32,7 @@ _PRESENTATION_PRESENTER_REGISTRY: dict[str, type[BasePresenter]] = {
     "global_quake": GlobalQuakeTextPresenter,
     "tsunami": TextPresenter,
     "weather": WeatherAlertPresenter,
+    "typhoon": TyphoonPresenter,
 }
 
 # 按文本展示键分发的细粒度注册表，用于来源级别的精确匹配。
@@ -46,6 +48,7 @@ _TEXT_KEY_PRESENTER_REGISTRY: dict[str, type[BasePresenter]] = {
     "tsunami_cn": TsunamiAlertPresenter,
     "tsunami_jma": JmaTsunamiPresenter,
     "weather_cn": WeatherAlertPresenter,
+    "typhoon": TyphoonPresenter,
 }
 
 # 当前两类注册都无法命中时，按灾种选择默认展示器兜底。
@@ -53,6 +56,7 @@ _DEFAULT_PRESENTERS_BY_EVENT_TYPE: dict[str, type[BasePresenter]] = {
     "earthquake": TextPresenter,
     "tsunami": TextPresenter,
     "weather": WeatherAlertPresenter,
+    "typhoon": TyphoonPresenter,
 }
 
 
