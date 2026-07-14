@@ -267,6 +267,60 @@ function normalizeSourceName(source) {
 }
 
 /**
+ * 从完整 UMO 中截取尾部 session_id。
+ * 例：aiocqhttp:GroupMessage:123456 -> 123456
+ * @param {string} umo - 统一消息来源标识
+ * @returns {string}
+ */
+function formatSessionIdFromUmo(umo = '') {
+    const raw = String(umo || '').trim();
+    if (!raw) return '';
+
+    const knownTypes = ['FriendMessage', 'GroupMessage', 'PrivateMessage', 'GuildMessage'];
+    for (const msgType of knownTypes) {
+        const marker = `:${msgType}:`;
+        const idx = raw.indexOf(marker);
+        if (idx !== -1) {
+            const sessionId = raw.slice(idx + marker.length).trim();
+            return sessionId || raw;
+        }
+    }
+
+    const parts = raw.split(':');
+    if (parts.length >= 3) {
+        return (parts[parts.length - 1] || '').trim() || raw;
+    }
+    return raw;
+}
+
+/**
+ * 将会话 UMO 格式化为短展示名。
+ * 优先使用 session_id；若存在备注名则附加括号。
+ * @param {string|Object} sessionOrUmo - UMO 字符串，或含 session/session_id/session_name 的对象
+ * @returns {string}
+ */
+function formatSessionDisplayLabel(sessionOrUmo) {
+    if (sessionOrUmo && typeof sessionOrUmo === 'object') {
+        const sessionId = String(
+            sessionOrUmo.session_id
+            || sessionOrUmo.sessionId
+            || formatSessionIdFromUmo(sessionOrUmo.session || '')
+            || sessionOrUmo.session
+            || ''
+        ).trim();
+        const sessionName = String(
+            sessionOrUmo.session_name || sessionOrUmo.sessionName || ''
+        ).trim();
+        if (!sessionId) {
+            return sessionName || '未知会话';
+        }
+        return sessionName ? `${sessionId} (${sessionName})` : sessionId;
+    }
+
+    return formatSessionIdFromUmo(sessionOrUmo) || String(sessionOrUmo || '').trim() || '未知会话';
+}
+
+/**
  * 将数据源代码转换为用户友好的显示名称
  * @param {string} source - 数据源代码
  * @returns {string} 友好的中文名称
@@ -284,6 +338,10 @@ function formatSourceName(source) {
         'jma_fanstudio': '日本气象厅: 紧急地震速报 - Fan',
         'china_weather_fanstudio': '中国气象局: 气象预警',
         'china_tsunami_fanstudio': '自然资源部海啸预警中心',
+        // 贡献榜中性名：实时通道（fan + enriched）不强制带 - Fan
+        'typhoon_fanstudio': '中国气象局：实时活跃台风',
+        // EQSC 历史重建在贡献统计中单独成源
+        'typhoon_eqsc_rebuild': '中国气象局：台风历史 - EQSC',
 
         // P2P (新规范)
         'jma_p2p': '日本气象厅: 紧急地震速报 - P2P',
@@ -308,4 +366,87 @@ function formatSourceName(source) {
         'unknown': '未知来源'
     };
     return sourceMap[normalizedSource] || String(source || '').trim() || '未知来源';
+}
+
+/**
+ * 解析台风数据形态标签。
+ * @param {string|Object} infoTypeOrEvent - info_type 或事件对象
+ * @returns {'fan'|'enriched'|'eqsc_rebuild'|''}
+ */
+function resolveTyphoonDataMode(infoTypeOrEvent) {
+    let raw = '';
+    if (infoTypeOrEvent && typeof infoTypeOrEvent === 'object') {
+        // 后端已注入 data_mode 时直接使用，避免前端重复解析
+        if (infoTypeOrEvent.data_mode) {
+            return String(infoTypeOrEvent.data_mode);
+        }
+        raw = String(
+            infoTypeOrEvent.info_type
+            || infoTypeOrEvent.infoType
+            || infoTypeOrEvent.data_source
+            || infoTypeOrEvent.dataSource
+            || ''
+        ).trim();
+    } else {
+        raw = String(infoTypeOrEvent || '').trim();
+    }
+
+    const key = raw.toLowerCase();
+    if (!key) return '';
+    if (['enriched', 'fan+eqsc', 'fan_eqsc', 'eqsc_enriched'].includes(key)) {
+        return 'enriched';
+    }
+    if (['eqsc_rebuild', 'eqsc', 'eqsc_history', 'history_rebuild', 'rebuild'].includes(key)) {
+        return 'eqsc_rebuild';
+    }
+    if (['fan', 'fan_studio', 'fanstudio'].includes(key)) {
+        return 'fan';
+    }
+    return '';
+}
+
+/**
+ * 台风来源展示名：统一 source_id=typhoon_fanstudio，按数据形态追加后缀。
+ * @param {string} source
+ * @param {string|Object} [infoTypeOrEvent]
+ * @returns {string}
+ */
+function formatTyphoonSourceName(source, infoTypeOrEvent) {
+    // 事件详情按数据形态细分；贡献榜请用 formatSourceName（中性实时名）
+    const normalized = normalizeSourceName(source || 'typhoon_fanstudio');
+    const mode = resolveTyphoonDataMode(infoTypeOrEvent);
+    if (mode === 'enriched') {
+        return '中国气象局：实时活跃台风 - Fan+EQSC';
+    }
+    if (mode === 'eqsc_rebuild' || normalized === 'typhoon_eqsc_rebuild') {
+        return '中国气象局：台风历史 - EQSC';
+    }
+    // fan 或缺省：事件详情仍标明 Fan 触发
+    return '中国气象局：实时活跃台风 - Fan';
+}
+
+/**
+ * 事件级来源展示名（台风会按 info_type 细分数据形态）。
+ * @param {Object|string} eventOrSource
+ * @returns {string}
+ */
+function formatEventSourceName(eventOrSource) {
+    if (eventOrSource && typeof eventOrSource === 'object') {
+        // 后端已注入 source_label 时直接使用，避免前端重复解析 mode
+        if (eventOrSource.source_label) {
+            return String(eventOrSource.source_label);
+        }
+        const source = eventOrSource.source_id || eventOrSource.source || '';
+        const normalized = normalizeSourceName(source);
+        const type = String(eventOrSource.type || eventOrSource.event_type || '').toLowerCase();
+        if (
+            normalized === 'typhoon_fanstudio'
+            || normalized === 'typhoon_eqsc_rebuild'
+            || type === 'typhoon'
+        ) {
+            return formatTyphoonSourceName(source || 'typhoon_fanstudio', eventOrSource);
+        }
+        return formatSourceName(source);
+    }
+    return formatSourceName(eventOrSource);
 }
