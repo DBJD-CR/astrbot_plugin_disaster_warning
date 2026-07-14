@@ -296,11 +296,17 @@ def build_earthquake_simulation(
 
         dist_str = f"{dist:.1f} km" if dist is not None else "未知"
         inte_str = f"{inte:.1f}" if inte is not None else "未知"
+        p_sec = local_result.get("p_travel_sec")
+        s_sec = local_result.get("s_travel_sec")
+        p_str = f"{p_sec:.0f} 秒" if p_sec is not None else "未知"
+        s_str = f"{s_sec:.0f} 秒" if s_sec is not None else "未知"
         report_lines.extend(
             [
                 f"   ⦁ 距本地: {dist_str}",
                 f"   ⦁ 预估最大本地烈度: {inte_str}",
                 f"   ⦁ 本地烈度阈值: {local_monitor.threshold}",
+                f"   ⦁ 预计P波到达: {p_str}",
+                f"   ⦁ 预计S波到达: {s_str}",
             ]
         )
 
