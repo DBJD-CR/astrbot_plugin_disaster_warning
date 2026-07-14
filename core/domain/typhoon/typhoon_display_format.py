@@ -1,0 +1,201 @@
+"""台风展示层格式化工具。
+
+供推送 Presenter 与查询 Presenter 共用，避免查询层反向依赖消息展示器。
+仅处理展示文案，不改变业务字段语义。
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from .typhoon_values import clean_text, to_float
+
+# 台风强度等级圆形指示器：蓝 → 绿 → 黄 → 橙 → 红 → 紫（由弱到强）
+TYPHOON_LEVEL_EMOJI: dict[str, str] = {
+    "热带低压": "🔵",
+    "热带风暴": "🟢",
+    "强热带风暴": "🟡",
+    "台风": "🟠",
+    "强台风": "🔴",
+    "超强台风": "🟣",
+}
+
+# 移动方向展示映射：仅用于展示本地化，不改动原始业务字段。
+MOVE_DIRECTION_DISPLAY_MAP: dict[str, str] = {
+    "北": "正北",
+    "东": "正东",
+    "南": "正南",
+    "西": "正西",
+    "正北": "正北",
+    "正东": "正东",
+    "正南": "正南",
+    "正西": "正西",
+    "北东": "东北",
+    "东北": "东北",
+    "南东": "东南",
+    "东南": "东南",
+    "南西": "西南",
+    "西南": "西南",
+    "北西": "西北",
+    "西北": "西北",
+    "北北东": "东北偏北",
+    "东北东": "东北偏东",
+    "东东北": "东北偏东",
+    "东南东": "东南偏东",
+    "东东南": "东南偏东",
+    "南南东": "东南偏南",
+    "南南西": "西南偏南",
+    "西南西": "西南偏西",
+    "西西南": "西南偏西",
+    "西北西": "西北偏西",
+    "西西北": "西北偏西",
+    "北北西": "西北偏北",
+    "东北偏北": "东北偏北",
+    "东北偏东": "东北偏东",
+    "东南偏东": "东南偏东",
+    "东南偏南": "东南偏南",
+    "西南偏南": "西南偏南",
+    "西南偏西": "西南偏西",
+    "西北偏西": "西北偏西",
+    "西北偏北": "西北偏北",
+    "北偏东": "东北偏北",
+    "东偏北": "东北偏东",
+    "东偏南": "东南偏东",
+    "南偏东": "东南偏南",
+    "南偏西": "西南偏南",
+    "西偏南": "西南偏西",
+    "西偏北": "西北偏西",
+    "北偏西": "西北偏北",
+}
+
+WIND_CIRCLE_LABELS = {
+    "30KTS": "7级风圈",
+    "50KTS": "10级风圈",
+    "64KTS": "12级风圈",
+}
+WIND_QUADRANT_LABELS = {
+    "NE": "东北",
+    "SE": "东南",
+    "SW": "西南",
+    "NW": "西北",
+}
+
+
+def format_coordinates(latitude: float | None, longitude: float | None) -> str:
+    """把经纬度格式化为带方向标识的文本。"""
+    if latitude is None or longitude is None:
+        return ""
+    lat_dir = "N" if latitude >= 0 else "S"
+    lon_dir = "E" if longitude >= 0 else "W"
+    return f"{abs(latitude):.1f}°{lat_dir}, {abs(longitude):.1f}°{lon_dir}"
+
+
+def is_valid_radius_value(value: Any) -> bool:
+    """判断单值风圈是否可展示。"""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text in {"无数据", "NULL", "null", "None", "-"}:
+            return False
+        try:
+            return float(text) > 0
+        except ValueError:
+            return False
+    if isinstance(value, (int, float)):
+        return value > 0
+    return False
+
+
+def format_wind_circle(wind_circle: dict[str, Any] | None) -> list[str]:
+    """格式化 EQSC 四象限风圈数据为文本行。"""
+    lines: list[str] = []
+    if not wind_circle or not isinstance(wind_circle, dict):
+        return lines
+
+    for circle_key, label in WIND_CIRCLE_LABELS.items():
+        circle_data = wind_circle.get(circle_key)
+        if not isinstance(circle_data, dict):
+            continue
+        parts: list[str] = []
+        for quadrant, quad_label in WIND_QUADRANT_LABELS.items():
+            radius = circle_data.get(quadrant)
+            if radius is None:
+                continue
+            if isinstance(radius, str) and radius.strip().upper() in {
+                "",
+                "NULL",
+                "NONE",
+                "无数据",
+            }:
+                continue
+            number = to_float(radius)
+            if number is None or number <= 0:
+                continue
+            radius_text = (
+                str(int(number)) if float(number).is_integer() else str(number)
+            )
+            parts.append(f"{quad_label}{radius_text}km")
+        if parts:
+            lines.append(f"  • {label}：{' / '.join(parts)}")
+    return lines
+
+
+def format_wind_speed(wind_speed: float | None, power: int | None) -> str | None:
+    """把风速与风力合并为「20 m/s（8级）」格式。"""
+    if wind_speed is None and power is None:
+        return None
+    parts: list[str] = []
+    if wind_speed is not None:
+        parts.append(f"{wind_speed} m/s")
+    if power is not None:
+        if parts:
+            parts.append(f"（{power}级）")
+        else:
+            parts.append(f"{power}级")
+    return " ".join(parts)
+
+
+def get_typhoon_level_emoji(typhoon_type: str | None) -> str:
+    """根据台风强度等级返回圆形颜色 emoji。"""
+    level = clean_text(typhoon_type)
+    if not level:
+        return ""
+    if level in TYPHOON_LEVEL_EMOJI:
+        return TYPHOON_LEVEL_EMOJI[level]
+    # 兼容包含关系：按强度从高到低匹配，避免“强台风”被“台风”抢先命中
+    for key in (
+        "超强台风",
+        "强台风",
+        "强热带风暴",
+        "热带风暴",
+        "热带低压",
+        "台风",
+    ):
+        if key in level:
+            return TYPHOON_LEVEL_EMOJI[key]
+    return ""
+
+
+def format_move_direction(direction: str | None) -> str:
+    """把源侧移动方向本地化为日常可读写法（仅展示层）。"""
+    text = clean_text(direction)
+    if not text:
+        return ""
+    mapped = MOVE_DIRECTION_DISPLAY_MAP.get(text)
+    if mapped:
+        return mapped
+    compact = text.replace(" ", "").replace("　", "")
+    return MOVE_DIRECTION_DISPLAY_MAP.get(compact, text)
+
+
+__all__ = [
+    "MOVE_DIRECTION_DISPLAY_MAP",
+    "TYPHOON_LEVEL_EMOJI",
+    "format_coordinates",
+    "format_move_direction",
+    "format_wind_circle",
+    "format_wind_speed",
+    "get_typhoon_level_emoji",
+    "is_valid_radius_value",
+]
