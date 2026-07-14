@@ -389,7 +389,8 @@ class DatabaseManager:
             # 更新前确保将历史遗留的 'weather' 类型归一化为标准的 'weather_alarm' 存储
             evt_type = normalize_event_type(event_data.get("type")) or ""
 
-            cursor = await self.connection.cursor()
+            connection = await self._ensure_connection()
+            cursor = await connection.cursor()
             real_event_id = event_data.get("real_event_id")
             unique_id = event_data.get("unique_id")
             # 台风的 is_major 只增不减：一旦标记为重大事件，即使后续减弱也保留，
