@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from astrbot.api import logger
 
-from ...domain.event_models import EarthquakeEvent, EventEnvelope
+from ...domain.event_models import EarthquakeEvent, EventEnvelope, TyphoonEvent
 from .event_record_factory import EventRecordFactory
 from .event_record_merger import EventRecordMerger
 
@@ -77,7 +77,26 @@ class StatsRecordService:
                 try:
                     if is_major:
                         push_record["is_major"] = True
-                    await self.manager.db.insert_event(push_record)
+                    # 台风事件可能已通过 EQSC 历史重建写入数据库但不在内存列表中，
+                    # 此时走 insert_event 会创建重复主表记录。
+                    # 先检查数据库是否已有该台风，若有则走 update_event 追加新报次。
+                    if isinstance(event.event, TyphoonEvent):
+                        existing = await self.manager.db.find_event_by_real_id(
+                            push_record.get("real_event_id"),
+                            push_record.get("source"),
+                        )
+                        if existing:
+                            # 数据库已有记录（来自 EQSC 重建），走更新而非插入
+                            push_record["update_count"] = (
+                                int(existing.get("update_count", 1) or 1) + 1
+                            )
+                            await self.manager.db.update_event(
+                                push_record.get("source"), push_record
+                            )
+                        else:
+                            await self.manager.db.insert_event(push_record)
+                    else:
+                        await self.manager.db.insert_event(push_record)
                 except Exception as e:
                     logger.debug(f"[灾害预警] 保存到数据库失败（可能已存在）: {e}")
 

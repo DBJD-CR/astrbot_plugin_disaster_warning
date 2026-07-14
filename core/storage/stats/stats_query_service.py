@@ -40,6 +40,7 @@ class StatsQueryService:
             "earthquake_warning": "地震预警",
             "tsunami": "海啸",
             "weather_alarm": "气象",
+            "typhoon": "台风",
         }
         for type_key, count in s["by_type"].items():
             # 未在映射表中的类型保持原值，避免新增事件类型时被直接丢失显示。
@@ -128,6 +129,98 @@ class StatsQueryService:
 
         if not has_weather and not sorted_types:
             text.append("(暂无数据)")
+
+        # 台风统计块：展示强度等级分布、风王榜与最低气压榜。
+        typhoon_stats = s.get("typhoon_stats", {})
+        typhoon_by_level = typhoon_stats.get("by_level", {})
+        typhoon_by_max_level = typhoon_stats.get("by_max_level", {})
+        max_wind_typhoons = typhoon_stats.get("max_wind_typhoons", {})
+        min_pressure_typhoons = typhoon_stats.get("min_pressure_typhoons", {})
+        if (
+            typhoon_by_level
+            or typhoon_by_max_level
+            or max_wind_typhoons
+            or min_pressure_typhoons
+        ):
+            text.extend(["", "🌀 台风统计:"])
+            if typhoon_by_max_level:
+                text.append("强度等级分布 (按台风个体最高等级):")
+                # 按数量倒序输出等级分布。
+                sorted_max_levels = sorted(
+                    typhoon_by_max_level.items(), key=lambda x: x[1], reverse=True
+                )
+                for level_name, count in sorted_max_levels:
+                    text.append(f"{level_name}: {count}")
+            if typhoon_by_level:
+                text.append("")
+                text.append("强度等级推送频次:")
+                # 按数量倒序输出推送频次。
+                sorted_typhoon_levels = sorted(
+                    typhoon_by_level.items(), key=lambda x: x[1], reverse=True
+                )
+                for level_name, count in sorted_typhoon_levels:
+                    text.append(f"{level_name}: {count}")
+            if max_wind_typhoons:
+                text.append("")
+                text.append("🏆 风王榜Top10 (按最大风速):")
+
+                def _wind_entry_speed(item: Any) -> float:
+                    if isinstance(item, dict):
+                        try:
+                            return float(item.get("wind_speed") or 0.0)
+                        except (TypeError, ValueError):
+                            return 0.0
+                    try:
+                        return float(item or 0.0)
+                    except (TypeError, ValueError):
+                        return 0.0
+
+                def _wind_entry_pressure(item: Any) -> float | None:
+                    if not isinstance(item, dict):
+                        return None
+                    try:
+                        value = item.get("pressure")
+                        return float(value) if value is not None else None
+                    except (TypeError, ValueError):
+                        return None
+
+                sorted_wind = sorted(
+                    max_wind_typhoons.items(),
+                    key=lambda x: _wind_entry_speed(x[1]),
+                    reverse=True,
+                )
+                for typhoon_name, entry in sorted_wind[:10]:
+                    wind_speed = _wind_entry_speed(entry)
+                    pressure = _wind_entry_pressure(entry)
+                    if pressure is not None and pressure > 0:
+                        pressure_text = (
+                            str(int(pressure))
+                            if float(pressure).is_integer()
+                            else f"{pressure:.1f}"
+                        )
+                        text.append(
+                            f"{typhoon_name}: {wind_speed:.1f} m/s（{pressure_text} hPa）"
+                        )
+                    else:
+                        text.append(f"{typhoon_name}: {wind_speed:.1f} m/s")
+            if min_pressure_typhoons:
+                text.append("")
+                text.append("🎈 最低气压榜Top10 (数值越低越强):")
+                sorted_pressure = sorted(
+                    (
+                        (name, float(pressure))
+                        for name, pressure in min_pressure_typhoons.items()
+                        if pressure is not None
+                    ),
+                    key=lambda x: x[1],
+                )
+                for typhoon_name, pressure in sorted_pressure[:10]:
+                    pressure_text = (
+                        str(int(pressure))
+                        if float(pressure).is_integer()
+                        else f"{pressure:.1f}"
+                    )
+                    text.append(f"{typhoon_name}: {pressure_text} hPa")
 
         text.extend(["", "📡 数据源事件统计:"])
         sorted_sources = sorted(

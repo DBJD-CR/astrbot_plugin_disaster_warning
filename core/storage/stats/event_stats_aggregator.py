@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ...domain.event_models import EarthquakeEvent, EventEnvelope, WeatherEvent
+from ...domain.event_models import (
+    EarthquakeEvent,
+    EventEnvelope,
+    TyphoonEvent,
+    WeatherEvent,
+)
 
 
 class EventStatsAggregator:
@@ -31,15 +36,18 @@ class EventStatsAggregator:
 
         envelope = event
         source_id = envelope.source_id or "unknown"
-        source_for_display = source_id
+        # 贡献统计键：台风 fan/enriched 合并；eqsc_rebuild 单独计数
+        source_stats_key = self._resolve_source_stats_key(envelope)
+        source_for_display = source_stats_key
 
         event_unique_id = self.manager.get_unique_event_id(event)
         # 源内唯一键用于统计同一来源下是否重复收到同一事件。
-        source_event_unique_id = f"{source_id}:{event_unique_id}"
+        # 使用贡献统计键，使历史重建与实时台风可分别计入 by_source。
+        source_event_unique_id = f"{source_stats_key}:{event_unique_id}"
 
         if source_event_unique_id not in self.manager._recorded_source_event_ids:
             # 只有来源内首次出现时，才累加来源维度统计。
-            stats["by_source"][source_id] += 1
+            stats["by_source"][source_stats_key] += 1
             self.manager._recorded_source_event_ids.add(source_event_unique_id)
             stats["recent_source_event_ids"].append(source_event_unique_id)
             if len(stats["recent_source_event_ids"]) > 2000:
@@ -76,6 +84,11 @@ class EventStatsAggregator:
 
             self.manager.rule_service.record_time_series(event)
 
+        # 台风统计在 is_new_event 分支外调用，使 by_level 统计每次推送频次，
+        # by_max_level 跟踪台风发展过程中的最高等级变化，max_wind_typhoons 更新最大风速。
+        if isinstance(envelope.event, TyphoonEvent):
+            self.manager.rule_service.record_typhoon_stats(event)
+
         return {
             "current_time": current_time,
             "source_id": source_id,
@@ -83,3 +96,34 @@ class EventStatsAggregator:
             "event_unique_id": event_unique_id,
             "is_new_event": is_new_event,
         }
+
+    @staticmethod
+    def _resolve_source_stats_key(envelope: EventEnvelope) -> str:
+        """解析写入 by_source 的贡献统计键。"""
+        from ..source_compat import build_source_stats_key
+
+        source_id = envelope.source_id or "unknown"
+        event_type = envelope.event_type or ""
+        info_type = ""
+
+        metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
+        for key in ("typhoon_data_mode", "info_type", "data_source"):
+            raw = metadata.get(key)
+            if raw:
+                info_type = str(raw).strip()
+                break
+
+        if not info_type and isinstance(envelope.event, TyphoonEvent):
+            event_metadata = getattr(envelope.event, "metadata", None)
+            if isinstance(event_metadata, dict):
+                for key in ("typhoon_data_mode", "info_type", "data_source"):
+                    raw = event_metadata.get(key)
+                    if raw:
+                        info_type = str(raw).strip()
+                        break
+
+        return build_source_stats_key(
+            source_id,
+            event_type=event_type,
+            info_type=info_type,
+        )

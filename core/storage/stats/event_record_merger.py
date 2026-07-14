@@ -11,6 +11,7 @@ from ...domain.event_models import (
     EarthquakeEvent,
     EventEnvelope,
     TsunamiEvent,
+    TyphoonEvent,
     WeatherEvent,
 )
 from .event_record_factory import EventRecordFactory
@@ -42,8 +43,19 @@ class EventRecordMerger:
                 earthquake_level=earthquake_level,
             )
 
+        if isinstance(event.event, TyphoonEvent):
+            # 台风事件同样需要保留报次演进历史（路径点），走多报合并分支。
+            return EventRecordMerger._merge_typhoon_record(
+                target_list,
+                event,
+                source_id=source_id,
+                event_unique_id=event_unique_id,
+                current_time=current_time,
+                description=description,
+            )
+
         if isinstance(event.event, (WeatherEvent, TsunamiEvent)):
-            # 气象与海啸事件通常按唯一标识覆盖最新摘要，不维护地震那样的报次历史。
+            # 气象与海啸事件通常按唯一标识覆盖最新摘要，不维护报次历史。
             return EventRecordMerger._merge_non_earthquake_record(
                 target_list,
                 event,
@@ -128,6 +140,76 @@ class EventRecordMerger:
         return None
 
     @staticmethod
+    def _merge_typhoon_record(
+        target_list: list[dict[str, Any]],
+        event: EventEnvelope,
+        *,
+        source_id: str,
+        event_unique_id: str,
+        current_time: str,
+        description: str,
+    ) -> dict[str, Any] | None:
+        """台风事件多报合并：维护路径点历史链条。
+
+        与地震类似，每次台风观测报文都作为一个路径点保留在 history 中，
+        主记录始终展示最新观测，level/wind_speed/pressure 仍存峰值。
+        """
+        domain_event = event.event
+        if not isinstance(domain_event, TyphoonEvent):
+            return None
+
+        real_event_id = str(domain_event.typhoon_id or "").strip()
+        if not real_event_id:
+            return None
+
+        for i, record in enumerate(target_list):
+            rec_source = record.get("source")
+            rec_real_id = record.get("real_event_id")
+            rec_legacy_id = record.get("event_id")
+            if rec_source != source_id:
+                continue
+
+            rec_unique_id = record.get("unique_id")
+            is_match = False
+            if rec_real_id and rec_real_id == real_event_id:
+                is_match = True
+            elif not rec_real_id and rec_legacy_id == real_event_id:
+                is_match = True
+            elif rec_unique_id and rec_unique_id == event_unique_id:
+                is_match = True
+
+            if not is_match:
+                continue
+
+            # 命中旧记录时，先把旧摘要压入 history，再用当前事件内容覆盖主记录。
+            old_record = record.copy()
+            old_record.pop("history", None)
+            if "history" not in record:
+                record["history"] = []
+            record["history"].insert(0, old_record)
+            if len(record["history"]) > 50:
+                record["history"] = record["history"][:50]
+
+            EventRecordFactory.apply_common_fields(
+                record,
+                event,
+                current_time=current_time,
+                event_unique_id=event_unique_id,
+                description=description,
+                source_id=source_id,
+                update_count=record.get("update_count", 1) + 1,
+            )
+            record["real_event_id"] = real_event_id
+            EventRecordFactory.apply_typhoon_fields(record, event)
+
+            # 更新后的记录重新放回列表头部，保证最近一次报文始终排在最前面。
+            updated_record = target_list.pop(i)
+            target_list.insert(0, updated_record)
+            return updated_record
+
+        return None
+
+    @staticmethod
     def _merge_non_earthquake_record(
         target_list: list[dict[str, Any]],
         event: EventEnvelope,
@@ -161,6 +243,8 @@ class EventRecordMerger:
                 EventRecordFactory.apply_weather_fields(record, event)
             elif isinstance(event.event, TsunamiEvent):
                 EventRecordFactory.apply_tsunami_fields(record, event)
+            elif isinstance(event.event, TyphoonEvent):
+                EventRecordFactory.apply_typhoon_fields(record, event)
 
             updated_record = target_list.pop(i)
             target_list.insert(0, updated_record)
