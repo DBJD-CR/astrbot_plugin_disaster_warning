@@ -72,19 +72,25 @@ class ConfigValidator:
                 config["weather_config"]
             )
 
-        # 7. 调试配置校验
+        # 7 台风配置校验
+        if "typhoon_config" in config:
+            config["typhoon_config"] = ConfigValidator._validate_typhoon_config(
+                config["typhoon_config"]
+            )
+
+        # 8. 调试配置校验
         if "debug_config" in config:
             config["debug_config"] = ConfigValidator._validate_debug_config(
                 config["debug_config"]
             )
 
-        # 8. 推送列表校验
+        # 9. 推送列表校验
         if "target_sessions" in config:
             config["target_sessions"] = ConfigValidator._validate_target_sessions(
                 config["target_sessions"], key_name="target_sessions"
             )
 
-        # 9. 离线通知会话列表校验
+        # 10. 离线通知会话列表校验
         if "offline_notification_sessions" in config:
             config["offline_notification_sessions"] = (
                 ConfigValidator._validate_target_sessions(
@@ -93,43 +99,43 @@ class ConfigValidator:
                 )
             )
 
-        # 10. 管理员列表校验
+        # 11. 管理员列表校验
         if "admin_users" in config:
             config["admin_users"] = ConfigValidator._validate_admin_users(
                 config["admin_users"]
             )
 
-        # 11. 消息格式配置校验
+        # 12. 消息格式配置校验
         if "message_format" in config:
             config["message_format"] = ConfigValidator._validate_message_format(
                 config["message_format"]
             )
 
-        # 12. 推送频率控制校验
+        # 13. 推送频率控制校验
         if "push_frequency_control" in config:
             config["push_frequency_control"] = ConfigValidator._validate_push_frequency(
                 config["push_frequency_control"]
             )
 
-        # 13. 时区配置校验
+        # 14. 时区配置校验
         if "display_timezone" in config:
             config["display_timezone"] = ConfigValidator._validate_timezone(
                 config["display_timezone"]
             )
 
-        # 14. 遥测配置校验
+        # 15. 遥测配置校验
         if "telemetry_config" in config:
             config["telemetry_config"] = ConfigValidator._validate_telemetry(
                 config["telemetry_config"]
             )
 
-        # 15. 数据源配置结构校验
+        # 16. 数据源配置结构校验
         if "data_sources" in config:
             config["data_sources"] = ConfigValidator._validate_data_sources(
                 config["data_sources"]
             )
 
-        # 16. 通知中心配置校验
+        # 17. 通知中心配置校验
         if "notification_settings" in config:
             config["notification_settings"] = (
                 ConfigValidator._validate_notification_settings(
@@ -137,7 +143,7 @@ class ConfigValidator:
                 )
             )
 
-        # 17. 顶层开关校验
+        # 18. 顶层开关校验
         if "enabled" in config and not isinstance(config["enabled"], bool):
             config["enabled"] = True
 
@@ -512,6 +518,160 @@ class ConfigValidator:
         return cfg
 
     @staticmethod
+    def _clamp_number(
+        value: Any,
+        *,
+        minimum: float,
+        maximum: float,
+        default: float,
+        field_name: str,
+    ) -> float:
+        """将数值限制在闭区间内，非法类型回退默认值。"""
+        if not isinstance(value, (int, float)):
+            return float(default)
+        number = float(value)
+        if number < minimum or number > maximum:
+            logger.warning(
+                f"[灾害预警] 配置警告: {field_name} {number} 超出范围 "
+                f"({minimum}~{maximum})，已自动修正。"
+            )
+            return max(minimum, min(maximum, number))
+        return number
+
+    @staticmethod
+    def _validate_typhoon_config(cfg: dict[str, Any]) -> dict[str, Any]:
+        """校验台风配置。"""
+        if not isinstance(cfg, dict):
+            return cfg
+
+        # 展示开关与过滤逻辑解耦：关闭后消息不暴露本地距离/逼近文案。
+        ConfigValidator._ensure_bool(cfg, "show_local_estimation", False)
+
+        typhoon_filter = cfg.get("typhoon_filter", {})
+        if not isinstance(typhoon_filter, dict):
+            return cfg
+
+        ConfigValidator._ensure_bool(typhoon_filter, "enabled", False)
+        ConfigValidator._ensure_bool(typhoon_filter, "only_active", True)
+
+        valid_levels = [
+            "热带低压",
+            "热带风暴",
+            "强热带风暴",
+            "台风",
+            "强台风",
+            "超强台风",
+        ]
+        min_level = typhoon_filter.get("min_level")
+        if min_level and min_level not in valid_levels:
+            logger.warning(
+                f"[灾害预警] 配置警告: 台风强度等级 {min_level} 不在标准列表中，"
+                "已重置为 热带风暴。"
+            )
+            typhoon_filter["min_level"] = "热带风暴"
+
+        combine_mode = str(typhoon_filter.get("combine_mode") or "any").strip().lower()
+        if combine_mode not in {"all", "any"}:
+            logger.warning(
+                f"[灾害预警] 配置警告: 台风 combine_mode {combine_mode} 无效，已重置为 any。"
+            )
+            combine_mode = "any"
+        typhoon_filter["combine_mode"] = combine_mode
+
+        typhoon_filter["max_pressure"] = int(
+            ConfigValidator._clamp_number(
+                typhoon_filter.get("max_pressure", 0),
+                minimum=0,
+                maximum=1050,
+                default=0,
+                field_name="台风中心气压上限",
+            )
+        )
+        typhoon_filter["min_wind_speed"] = ConfigValidator._clamp_number(
+            typhoon_filter.get("min_wind_speed", 0),
+            minimum=0,
+            maximum=100,
+            default=0,
+            field_name="台风最小风速",
+        )
+        typhoon_filter["min_power"] = int(
+            ConfigValidator._clamp_number(
+                typhoon_filter.get("min_power", 0),
+                minimum=0,
+                maximum=20,
+                default=0,
+                field_name="台风最小风力等级",
+            )
+        )
+
+        for list_key in ("name_whitelist", "name_blacklist"):
+            raw_list = typhoon_filter.get(list_key)
+            if not isinstance(raw_list, list):
+                typhoon_filter[list_key] = []
+            else:
+                typhoon_filter[list_key] = [
+                    str(item).strip() for item in raw_list if str(item).strip()
+                ]
+
+        distance_filter = typhoon_filter.get("distance_filter", {})
+        if not isinstance(distance_filter, dict):
+            distance_filter = {}
+        ConfigValidator._ensure_bool(distance_filter, "enabled", False)
+        ConfigValidator._ensure_bool(distance_filter, "use_local_monitoring", True)
+        ConfigValidator._ensure_bool(distance_filter, "within_wind_circle", True)
+        distance_filter["max_distance_km"] = ConfigValidator._clamp_number(
+            distance_filter.get("max_distance_km", 1200),
+            minimum=50,
+            maximum=5000,
+            default=1200,
+            field_name="台风最大中心距离",
+        )
+        distance_filter["latitude"] = ConfigValidator._clamp_number(
+            distance_filter.get("latitude", 39.9042),
+            minimum=-90,
+            maximum=90,
+            default=39.9042,
+            field_name="台风关注点纬度",
+        )
+        distance_filter["longitude"] = ConfigValidator._clamp_number(
+            distance_filter.get("longitude", 116.4074),
+            minimum=-180,
+            maximum=180,
+            default=116.4074,
+            field_name="台风关注点经度",
+        )
+        if "place_name" in distance_filter and not isinstance(
+            distance_filter.get("place_name"), str
+        ):
+            distance_filter["place_name"] = str(distance_filter.get("place_name") or "")
+        typhoon_filter["distance_filter"] = distance_filter
+
+        approach_filter = typhoon_filter.get("approach_filter", {})
+        if not isinstance(approach_filter, dict):
+            approach_filter = {}
+        ConfigValidator._ensure_bool(approach_filter, "enabled", True)
+        approach_filter["horizon_hours"] = int(
+            ConfigValidator._clamp_number(
+                approach_filter.get("horizon_hours", 48),
+                minimum=6,
+                maximum=120,
+                default=48,
+                field_name="台风预报时间窗",
+            )
+        )
+        approach_filter["max_approach_distance_km"] = ConfigValidator._clamp_number(
+            approach_filter.get("max_approach_distance_km", 500),
+            minimum=50,
+            maximum=2000,
+            default=500,
+            field_name="台风预报最近距离阈值",
+        )
+        typhoon_filter["approach_filter"] = approach_filter
+
+        cfg["typhoon_filter"] = typhoon_filter
+        return cfg
+
+    @staticmethod
     def _validate_debug_config(cfg: dict[str, Any]) -> dict[str, Any]:
         """校验调试配置。"""
         if not isinstance(cfg, dict):
@@ -842,6 +1002,70 @@ class ConfigValidator:
                 else:
                     # 仅确保 enabled 为 bool，其他字段保持原样以支持扩展（如 API Key 等字符串配置）
                     ConfigValidator._ensure_bool(cfg[key], "enabled", True)
+
+        # 校验 FAN Studio 下的台风开关
+        fan_studio_cfg = cfg.get("fan_studio")
+        if isinstance(fan_studio_cfg, dict):
+            ConfigValidator._ensure_bool(fan_studio_cfg, "china_typhoon", True)
+
+        # 校验 EQSC 台风富化数据源配置
+        eqsc_cfg = cfg.get("eqsc")
+        if isinstance(eqsc_cfg, dict):
+            ConfigValidator._ensure_bool(eqsc_cfg, "enabled", False)
+
+            # Base URL 校验：确保为非空字符串且去除尾部斜杠
+            base_url = eqsc_cfg.get("base_url")
+            if isinstance(base_url, str):
+                base_url = base_url.strip().rstrip("/")
+                if base_url:
+                    eqsc_cfg["base_url"] = base_url
+                else:
+                    logger.warning(
+                        "[灾害预警] 配置警告: EQSC base_url 为空，已重置为默认值。"
+                    )
+                    eqsc_cfg["base_url"] = "https://equake.top"
+            elif base_url is not None:
+                logger.warning(
+                    "[灾害预警] 配置警告: EQSC base_url 类型错误，已重置为默认值。"
+                )
+                eqsc_cfg["base_url"] = "https://equake.top"
+
+            # RefreshToken 校验：确保为字符串类型
+            refresh_token = eqsc_cfg.get("refresh_token")
+            if refresh_token is not None and not isinstance(refresh_token, str):
+                logger.warning(
+                    "[灾害预警] 配置警告: EQSC refresh_token 类型错误，已重置为空。"
+                )
+                eqsc_cfg["refresh_token"] = ""
+
+            # 缓存 TTL 校验：确保为合理范围内的整数
+            cache_ttl = eqsc_cfg.get("cache_ttl")
+            if isinstance(cache_ttl, int):
+                if cache_ttl < 60:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 缓存 TTL {cache_ttl} 过小，已修正为 60。"
+                    )
+                    eqsc_cfg["cache_ttl"] = 60
+                elif cache_ttl > 3600:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 缓存 TTL {cache_ttl} 过大，已修正为 3600。"
+                    )
+                    eqsc_cfg["cache_ttl"] = 3600
+            elif cache_ttl is not None:
+                logger.warning(
+                    "[灾害预警] 配置警告: EQSC 缓存 TTL 类型错误，已重置为 300。"
+                )
+                eqsc_cfg["cache_ttl"] = 300
+
+            # EQSC 启用但缺少 RefreshToken 时输出警告
+            if (
+                eqsc_cfg.get("enabled")
+                and not str(eqsc_cfg.get("refresh_token", "")).strip()
+            ):
+                logger.warning(
+                    "[灾害预警] 配置警告: EQSC 台风富化已启用但未配置 refresh_token，"
+                    "富化服务将无法正常工作，台风将回退到 FAN Studio 基础数据。"
+                )
 
         return cfg
 

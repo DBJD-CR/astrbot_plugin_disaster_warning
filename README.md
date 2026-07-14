@@ -769,7 +769,59 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 
 ---
 
-### 🔌 9. WebSocket 连接配置 (`websocket_config`)
+### 🌀 9. 台风信息过滤 (`typhoon_config`)
+
+- **显示本地预估信息 (`show_local_estimation`)**: 默认关闭。开启后，推送文本中会显示距本地距离、是否位于风圈内、预报路径逼近等信息；关闭后这些信息仅用于内部过滤，不会出现在消息正文中。
+- **台风推送过滤器 (`typhoon_filter`)**:
+  - **启用 (`enabled`)**: 默认关闭。关闭时保持“源开启 + 去重通过即推送”。
+  - **最低强度等级 (`min_level`)**: 热带低压 < 热带风暴 < 强热带风暴 < 台风 < 强台风 < 超强台风。
+  - **中心气压上限 (`max_pressure`)**: 单位 hPa，`0` 表示不限制；气压越低通常越强。
+  - **最小风速 / 最小风力 (`min_wind_speed` / `min_power`)**: `0` 表示不限制。
+  - **基础条件组合方式 (`combine_mode`)**: 默认 `any`（OR），与地震类过滤器一致；可选 `all`（AND）。
+  - **仅活跃台风 (`only_active`)**: 默认开启，忽略已停编台风。
+  - **名称黑白名单 (`name_whitelist` / `name_blacklist`)**: 可填中文名、英文名或编号片段。
+  - **距离过滤器 (`distance_filter`)**:
+    - 默认复用 `local_monitoring` 坐标；无坐标时自动跳过，不会误杀。
+    - `within_wind_circle`：中心距离超限但本地仍在 7/10 级风圈内时可放行。
+  - **预报路径逼近 (`approach_filter`)**:
+    - 基于 EQSC 富化后的 `future_track`。
+    - 若未来路径在时间窗内逼近本地，即使当前中心仍很远也会放行，便于提前关注。
+    - 无预报路径时自动跳过该条件。
+
+```json
+"typhoon_config": {
+  "show_local_estimation": false,    // 是否在消息中展示本地距离/逼近信息
+  "typhoon_filter": {
+    "enabled": true,                 // 是否启用台风过滤（默认 false）
+    "min_level": "热带风暴",         // 最低强度等级
+    "max_pressure": 0,               // 中心气压上限（hPa），0 表示不限制
+    "min_wind_speed": 0,             // 最小风速（m/s），0 表示不限制
+    "min_power": 0,                  // 最小风力等级，0 表示不限制
+    "only_active": true,             // 仅推送活跃编报台风
+    "combine_mode": "any",           // 基础条件组合：any=OR，all=AND
+    "name_whitelist": [],            // 名称/编号白名单（留空不启用）
+    "name_blacklist": [],            // 名称/编号黑名单
+    "distance_filter": {
+      "enabled": true,               // 启用中心距离过滤
+      "max_distance_km": 1200,       // 中心距本地最大距离（km）
+      "use_local_monitoring": true,  // 复用本地监控坐标
+      "within_wind_circle": true     // 落在风圈内也视为距离命中
+    },
+    "approach_filter": {
+      "enabled": true,               // 启用 future_track 预报逼近
+      "horizon_hours": 48,           // 预报时间窗（小时）
+      "max_approach_distance_km": 500 // 预报最近距离阈值（km）
+    }
+  }
+}
+```
+
+> [!NOTE]
+> 距离过滤失败时，只要预报路径逼近命中仍会推送。本地预估文案仅在 `show_local_estimation=true` 时出现在消息中。
+
+---
+
+### 🔌 10. WebSocket 连接配置 (`websocket_config`)
 
 - **重连间隔 (`reconnect_interval`)**: 范围 `1 - 60` 秒。
 - **最大重连次数 (`max_reconnect_retries`)**: 范围 `1 - 10`。
@@ -793,7 +845,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 
 ---
 
-### 💻 10. Web 管理端 (`web_admin`)
+### 💻 11. Web 管理端 (`web_admin`)
 
 - **启用 (`enabled`)**: 是否启用内置 Web 管理后台。
 - **监听地址 (`host`)**: 默认 `127.0.0.1`（仅本机访问，更安全）；如需局域网访问可改为 `0.0.0.0`。
@@ -811,7 +863,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 
 ---
 
-### 🔔 11. 官方通知配置 (`notification_settings`)
+### 🔔 12. 官方通知配置 (`notification_settings`)
 
 用于控制插件官方通知系统。该模块会从远端通知平台拉取插件更新、修复说明、注意事项等公告，并同步到内置 Web 管理端的通知中心。
 
@@ -836,7 +888,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 
 ---
 
-### 🛠️ 12. 调试配置 (`debug_config`)
+### 🛠️ 13. 调试配置 (`debug_config`)
 
 - **原始消息日志 (`enable_raw_message_logging`)**: 记录并格式化上游原始 JSON 报文到 `raw_messages.log`。
 - **原始日志路径 (`raw_message_log_path`)**: 相对于插件数据目录。
@@ -865,7 +917,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 
 ---
 
-### 📡 13. 匿名遥测 (`telemetry_config`)
+### 📡 14. 匿名遥测 (`telemetry_config`)
 
 - **启用匿名遥测 (`enabled`)**:
   - 默认开启。插件会发送匿名的使用统计（如活跃状态、报错信息）以帮助开发者改进插件。
@@ -887,6 +939,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 - `push_frequency_control`
 - `message_format`（大部分展示参数）
 - `weather_config`（消息显示相关项）
+- `typhoon_config`（台风过滤阈值与距离/逼近规则）
 
 #### ⚠️ 典型“建议重载后生效”配置
 

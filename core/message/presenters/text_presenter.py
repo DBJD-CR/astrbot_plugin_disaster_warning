@@ -22,6 +22,7 @@ from .earthquake_presenter import (
     UsgsEarthquakePresenter,
 )
 from .tsunami_presenter import JmaTsunamiPresenter, TsunamiAlertPresenter
+from .typhoon_presenter import TyphoonPresenter
 from .weather_presenter import WeatherAlertPresenter
 
 # 文本展示键到具体展示器的映射表。
@@ -37,6 +38,7 @@ _TEXT_PRESENTER_REGISTRY = {
     "tsunami_cn": TsunamiAlertPresenter,
     "tsunami_jma": JmaTsunamiPresenter,
     "weather_cn": WeatherAlertPresenter,
+    "typhoon": TyphoonPresenter,
 }
 
 # 当来源未声明专用文本展示器时，按灾种选择默认展示器。
@@ -44,6 +46,7 @@ DEFAULT_TEXT_PRESENTERS_BY_EVENT_TYPE = {
     "earthquake": CwaReportPresenter,
     "tsunami": TsunamiAlertPresenter,
     "weather": WeatherAlertPresenter,
+    "typhoon": TyphoonPresenter,
 }
 
 

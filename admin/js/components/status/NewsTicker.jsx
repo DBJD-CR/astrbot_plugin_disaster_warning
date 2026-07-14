@@ -95,6 +95,7 @@ function NewsTicker({ style }) {
         if (type.includes('earthquake')) return '🌍';
         if (type.includes('tsunami')) return '🌊';
         if (type.includes('weather')) return '⛈️';
+        if (type.includes('typhoon')) return '🌀';
         return '📢';
     };
 

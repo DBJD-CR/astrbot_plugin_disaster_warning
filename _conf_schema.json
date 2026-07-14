@@ -97,6 +97,12 @@
             "type": "bool",
             "default": true,
             "hint": "通过FAN Studio WebSocket接收自然资源部海啸预警中心海啸预警信息"
+          },
+          "china_typhoon": {
+            "description": "中国气象局：实时活跃台风",
+            "type": "bool",
+            "default": true,
+            "hint": "通过FAN Studio WebSocket接收实时活跃台风信息，并自动从EQSC拉取详细数据富化展示"
           }
         }
       },
@@ -182,6 +188,43 @@
             "type": "bool",
             "hint": "连接到GlobalQuake Monitor服务器获取全球地震实时数据",
             "default": true
+          }
+        }
+      },
+      "eqsc": {
+        "description": "EQSC API 数据源",
+        "type": "object",
+        "hint": "通过 EQSC API 获取灾害预警信息",
+        "items": {
+          "enabled": {
+            "description": "启用EQSC台风富化",
+            "type": "bool",
+            "default": true,
+            "hint": "启用后，收到FAN Studio台风推送时将自动向EQSC拉取详细数据。未启用时台风仅使用FAN Studio基础数据展示。"
+          },
+          "base_url": {
+            "description": "EQSC API 基础地址",
+            "type": "string",
+            "default": "https://equake.top",
+            "hint": "EQSC API 的基础URL，默认为官方地址"
+          },
+          "refresh_token": {
+            "description": "EQSC 访问令牌 (RefreshToken)",
+            "type": "string",
+            "default": "",
+            "hint": "从 EQuake 设置界面获取的访问令牌（以 ARh. 开头），用于创建 AccessToken。请妥善保管，不要泄露。",
+            "hidden": true
+          },
+          "cache_ttl": {
+            "description": "台风数据缓存时间",
+            "type": "int",
+            "hint": "单位：秒。EQSC台风数据的内存缓存有效期，与EQSC更新频率（约5分钟）一致。",
+            "default": 300,
+            "slider": {
+              "min": 60,
+              "max": 3600,
+              "step": 30
+            }
           }
         }
       }
@@ -651,6 +694,205 @@
         "type": "bool",
         "hint": "启用后将根据预警类型自动在消息末尾附加中国气象局官方图标。",
         "default": true
+      }
+    }
+  },
+  "typhoon_config": {
+    "description": "🌀 台风信息配置",
+    "type": "object",
+    "hint": "配置台风推送的强度、气压、距离与预报路径逼近过滤。",
+    "items": {
+      "show_local_estimation": {
+        "description": "显示本地预估信息",
+        "type": "bool",
+        "hint": "开启后，推送文本中会显示距本地距离、是否位于风圈内、预报路径逼近等信息。关闭后仅用于内部过滤，不会出现在消息正文中",
+        "default": false
+      },
+      "typhoon_filter": {
+        "description": "台风推送过滤器",
+        "type": "object",
+        "hint": "启用后按强度、气压、风速、距离与预报逼近条件筛选台风推送。基础条件默认使用 OR 逻辑",
+        "items": {
+          "enabled": {
+            "description": "启用台风过滤",
+            "type": "bool",
+            "hint": "关闭时只要数据源开启且通过去重即推送。",
+            "default": false
+          },
+          "min_level": {
+            "description": "最低强度等级",
+            "type": "string",
+            "options": [
+              "热带低压",
+              "热带风暴",
+              "强热带风暴",
+              "台风",
+              "强台风",
+              "超强台风"
+            ],
+            "default": "热带风暴",
+            "hint": "只推送等于或高于此强度等级的台风。排序：热带低压 < 热带风暴 < 强热带风暴 < 台风 < 强台风 < 超强台风"
+          },
+          "max_pressure": {
+            "description": "中心气压上限",
+            "type": "int",
+            "hint": "单位：hPa。只推送中心气压小于等于此值的台风（气压越低通常越强）。设为 0 表示不限制。",
+            "default": 0,
+            "slider": {
+              "min": 0,
+              "max": 1050,
+              "step": 10
+            }
+          },
+          "min_wind_speed": {
+            "description": "最小风速",
+            "type": "float",
+            "hint": "单位：m/s。低于此风速的台风将被过滤。设为 0 表示不限制。",
+            "default": 0,
+            "slider": {
+              "min": 0,
+              "max": 100,
+              "step": 1
+            }
+          },
+          "min_power": {
+            "description": "最小风力等级",
+            "type": "int",
+            "hint": "中心附近最大风力等级下限。设为 0 表示不限制。",
+            "default": 0,
+            "slider": {
+              "min": 0,
+              "max": 20,
+              "step": 1
+            }
+          },
+          "only_active": {
+            "description": "仅推送活跃台风",
+            "type": "bool",
+            "hint": "开启后忽略已停止编报的台风。",
+            "default": true
+          },
+          "combine_mode": {
+            "description": "基础条件组合方式",
+            "type": "string",
+            "options": [
+              "all",
+              "any"
+            ],
+            "default": "any",
+            "hint": "all：强度/气压/风速/风力全部满足才通过；any：上述已配置条件满足任一即可。距离与预报逼近不在此组合内。"
+          },
+          "name_whitelist": {
+            "description": "台风名称白名单",
+            "type": "list",
+            "hint": "填写中文名、英文名或编号片段。设置后仅推送名称/编号命中白名单的台风；留空不启用。",
+            "default": []
+          },
+          "name_blacklist": {
+            "description": "台风名称黑名单",
+            "type": "list",
+            "hint": "填写中文名、英文名或编号片段。命中黑名单的台风将被过滤。",
+            "default": []
+          },
+          "distance_filter": {
+            "description": "距离过滤器",
+            "type": "object",
+            "hint": "按台风中心到本地的距离过滤。默认复用本地烈度监控坐标；未配置坐标时自动跳过，不会误杀。",
+            "items": {
+              "enabled": {
+                "description": "启用距离过滤",
+                "type": "bool",
+                "default": false
+              },
+              "max_distance_km": {
+                "description": "最大中心距离",
+                "type": "float",
+                "hint": "单位：km。台风中心距本地超过此值时，除非命中预报路径逼近，否则不推送。",
+                "default": 1200,
+                "slider": {
+                  "min": 50,
+                  "max": 5000,
+                  "step": 50
+                }
+              },
+              "use_local_monitoring": {
+                "description": "复用本地监控坐标",
+                "type": "bool",
+                "hint": "开启后优先使用「本地烈度监控配置」中的经纬度与地名。",
+                "default": true
+              },
+              "latitude": {
+                "description": "台风关注点纬度",
+                "type": "float",
+                "hint": "当未复用本地监控，或需要覆盖本地监控坐标时使用。",
+                "default": 39.9042,
+                "slider": {
+                  "min": -90.0,
+                  "max": 90.0,
+                  "step": 0.0001
+                }
+              },
+              "longitude": {
+                "description": "台风关注点经度",
+                "type": "float",
+                "hint": "当未复用本地监控，或需要覆盖本地监控坐标时使用。",
+                "default": 116.4074,
+                "slider": {
+                  "min": -180.0,
+                  "max": 180.0,
+                  "step": 0.0001
+                }
+              },
+              "place_name": {
+                "description": "台风关注点地名",
+                "type": "string",
+                "hint": "用于消息中展示“距某地约 xxx km”。留空时回退本地监控地名或“本地”。",
+                "default": ""
+              },
+              "within_wind_circle": {
+                "description": "风圈内也视为命中",
+                "type": "bool",
+                "hint": "开启后，即使中心距离超限，只要本地落在 7 级/10 级风圈内仍可通过距离过滤。",
+                "default": true
+              }
+            }
+          },
+          "approach_filter": {
+            "description": "预报路径逼近过滤",
+            "type": "object",
+            "hint": "基于 EQSC 富化后的 future_track。若预报路径在未来时段内逼近本地，即使当前中心仍很远也会放行推送，便于提前关注。无预报路径时自动跳过。",
+            "items": {
+              "enabled": {
+                "description": "启用预报路径逼近",
+                "type": "bool",
+                "hint": "开启后，会用 future_track 计算未来路径与本地的最近距离；命中时可覆盖当前距离过滤失败。",
+                "default": true
+              },
+              "horizon_hours": {
+                "description": "预报时间窗",
+                "type": "int",
+                "hint": "单位：小时。只评估更新时间起未来 N 小时内的预报点。",
+                "default": 48,
+                "slider": {
+                  "min": 6,
+                  "max": 120,
+                  "step": 6
+                }
+              },
+              "max_approach_distance_km": {
+                "description": "预报最近距离阈值",
+                "type": "float",
+                "hint": "单位：km。未来路径上任意有效点距本地小于等于此值时视为逼近命中。",
+                "default": 500,
+                "slider": {
+                  "min": 50,
+                  "max": 2000,
+                  "step": 50
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

@@ -11,6 +11,7 @@ from ...domain.event_models import (
     EarthquakeEvent,
     EventEnvelope,
     TsunamiEvent,
+    TyphoonEvent,
     WeatherEvent,
 )
 
@@ -104,6 +105,14 @@ class StatsEventSupportService:
 
         if isinstance(domain_event, TsunamiEvent):
             return f"{domain_event.title} ({domain_event.level})"
+
+        if isinstance(domain_event, TyphoonEvent):
+            # 台风描述包含名称与当前等级，便于在统计列表中快速识别。
+            name_label = (
+                domain_event.name or domain_event.name_en or domain_event.typhoon_id
+            )
+            type_label = domain_event.typhoon_type or "台风"
+            return f"{type_label} {name_label}"
 
         if isinstance(domain_event, WeatherEvent):
             return f"{domain_event.title or domain_event.headline}"

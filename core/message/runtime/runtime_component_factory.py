@@ -122,6 +122,48 @@ class MessageRuntimeComponentFactory:
         return weather_filter_config
 
     @staticmethod
+    def _build_typhoon_filter_config(runtime_config: dict[str, Any]) -> dict[str, Any]:
+        """构建台风过滤配置，供 TyphoonRule 读取。"""
+        top_level_typhoon_filter = runtime_config.get("typhoon_filter", {})
+        typhoon_config = runtime_config.get("typhoon_config", {})
+        nested_typhoon_filter = (
+            typhoon_config.get("typhoon_filter", {})
+            if isinstance(typhoon_config, dict)
+            else {}
+        )
+
+        typhoon_filter_config: dict[str, Any] = {}
+        if isinstance(top_level_typhoon_filter, dict):
+            typhoon_filter_config.update(top_level_typhoon_filter)
+        if isinstance(nested_typhoon_filter, dict):
+            typhoon_filter_config.update(nested_typhoon_filter)
+
+        # 规范化名称名单
+        for key in ("name_whitelist", "name_blacklist"):
+            raw_list = typhoon_filter_config.get(key)
+            if not isinstance(raw_list, list):
+                typhoon_filter_config[key] = []
+            else:
+                typhoon_filter_config[key] = [
+                    str(item).strip() for item in raw_list if str(item).strip()
+                ]
+
+        # 规范化嵌套过滤器
+        distance_filter = typhoon_filter_config.get("distance_filter")
+        if not isinstance(distance_filter, dict):
+            typhoon_filter_config["distance_filter"] = {}
+        approach_filter = typhoon_filter_config.get("approach_filter")
+        if not isinstance(approach_filter, dict):
+            typhoon_filter_config["approach_filter"] = {}
+
+        # 组合方式默认与地震类过滤器保持一致：OR
+        combine_mode = str(typhoon_filter_config.get("combine_mode") or "any").strip()
+        if combine_mode not in {"all", "any"}:
+            combine_mode = "any"
+        typhoon_filter_config["combine_mode"] = combine_mode
+        return typhoon_filter_config
+
+    @staticmethod
     def build_shared_components(
         runtime_config: dict[str, Any],
         *,
@@ -151,6 +193,9 @@ class MessageRuntimeComponentFactory:
             "weather_filter": MessageRuntimeComponentFactory._build_weather_filter_config(
                 runtime_config,
                 emit_enable_log=emit_weather_enable_log,
+            ),
+            "typhoon_filter": MessageRuntimeComponentFactory._build_typhoon_filter_config(
+                runtime_config
             ),
         }
 

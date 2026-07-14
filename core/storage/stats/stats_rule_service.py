@@ -14,13 +14,16 @@ from ...domain.event_models import (
     EarthquakeEvent,
     EventEnvelope,
     TsunamiEvent,
+    TyphoonEvent,
     WeatherEvent,
 )
+from ...domain.typhoon import format_display_name
 from ...message.presenters.weather_constants import (
     COLOR_LEVEL_EMOJI,
     SORTED_WEATHER_TYPES,
 )
 from ...services.identity.event_classifier import is_major_event
+from .typhoon_stats_accumulator import record_typhoon_observation
 
 
 class StatsRuleService:
@@ -206,8 +209,6 @@ class StatsRuleService:
 
     def record_time_series(self, event: EventEnvelope) -> None:
         """记录时间序列统计。"""
-        from ...domain.event_models import EarthquakeEvent
-
         envelope = event
         domain_event = envelope.event
         source_id = envelope.source_id or ""
@@ -219,6 +220,8 @@ class StatsRuleService:
             event_time = domain_event.issued_at
         elif isinstance(domain_event, WeatherEvent):
             event_time = domain_event.effective_at
+        elif isinstance(domain_event, TyphoonEvent):
+            event_time = domain_event.updated_at
 
         # 各类事件时间字段名称不同，这里统一归一为 UTC 时间后再写入时间序列桶。
         event_time = self.manager.normalize_utc_datetime(
@@ -229,6 +232,25 @@ class StatsRuleService:
 
         day_key = event_time.strftime("%Y-%m-%d")
         self.manager.stats["daily_counts"][day_key] += 1
+
+    def record_typhoon_stats(self, event: EventEnvelope) -> None:
+        """记录一次实时台风观测，聚合公式由共享累加器统一维护。"""
+        data = event.event
+        if not isinstance(data, TyphoonEvent):
+            return
+        display_name = format_display_name(
+            str(data.name or "").strip(),
+            str(data.name_en or "").strip(),
+            str(data.typhoon_id or "").strip(),
+            fallback="",
+        )
+        record_typhoon_observation(
+            self.manager.stats["typhoon_stats"],
+            display_name=display_name,
+            level=str(data.typhoon_type or "未知").strip(),
+            wind_speed=data.wind_speed,
+            pressure=data.pressure,
+        )
 
     def log_weather_stats_skip(self) -> None:
         """记录气象统计被跳过的日志。"""

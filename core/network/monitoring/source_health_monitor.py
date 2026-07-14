@@ -20,6 +20,8 @@ class SourceHealthMonitor:
         "p2p_main": "api.p2pquake.net",
         "wolfx_all": "ws-api.wolfx.jp",
         "global_quake": "gqm.aloys23.link",
+        # EQSC 为 HTTP 辅助通道，默认探测官方主机；可被 host_overrides 覆盖
+        "eqsc": "equake.top",
     }
 
     # 静态映射：数据源标识 -> 在管理后台展示的可读中文名称
@@ -28,11 +30,37 @@ class SourceHealthMonitor:
         "p2p_main": "P2P地震情報",
         "wolfx_all": "Wolfx",
         "global_quake": "Global Quake",
+        "eqsc": "EQSC API",
     }
 
-    def __init__(self, latency_cache: dict[str, float | None] | None = None):
-        """初始化延迟缓存容器。"""
+    def __init__(
+        self,
+        latency_cache: dict[str, float | None] | None = None,
+        host_overrides: dict[str, str] | None = None,
+    ):
+        """初始化延迟缓存容器。
+
+        Args:
+            latency_cache: 共享延迟缓存字典。
+            host_overrides: 可选主机覆盖表（如 EQSC base_url 解析出的主机名）。
+        """
         self.latency_cache = latency_cache if latency_cache is not None else {}
+        self._host_overrides: dict[str, str] = {
+            str(key): str(value).strip()
+            for key, value in (host_overrides or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
+
+    def set_host_override(self, source_name: str, host: str | None) -> None:
+        """动态更新某个数据源的探测主机。"""
+        key = str(source_name or "").strip()
+        value = str(host or "").strip()
+        if not key:
+            return
+        if value:
+            self._host_overrides[key] = value
+        else:
+            self._host_overrides.pop(key, None)
 
     def get_expected_data_sources(self) -> dict[str, str]:
         """返回管理端面板预期展示的数据源列表。"""
@@ -40,6 +68,8 @@ class SourceHealthMonitor:
 
     def get_data_source_host(self, source_name: str) -> str | None:
         """获取指定数据源对应的探测主机名。"""
+        if source_name in self._host_overrides:
+            return self._host_overrides[source_name]
         return self.HOST_MAP.get(source_name)
 
     async def ping_host(

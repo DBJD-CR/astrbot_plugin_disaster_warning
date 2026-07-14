@@ -23,6 +23,19 @@ const EVENT_LEVEL_FILTER_CONFIG = {
             { value: 'tsunami_warning', label: '预警' },
         ],
     },
+    typhoon: {
+        label: '台风强度',
+        allLabel: '全部强度',
+        // 等级选项从 typhoonFormatters 统一导出，保持与后端筛选映射一致
+        options: (window.DisasterTyphoonFormatters && window.DisasterTyphoonFormatters.TYPHOON_LEVEL_FILTER_OPTIONS) || [
+            { value: 'typhoon_tropical_depression', label: '热带低压' },
+            { value: 'typhoon_tropical_storm', label: '热带风暴' },
+            { value: 'typhoon_severe_tropical_storm', label: '强热带风暴' },
+            { value: 'typhoon', label: '台风' },
+            { value: 'typhoon_severe_typhoon', label: '强台风' },
+            { value: 'typhoon_super_typhoon', label: '超强台风' },
+        ],
+    },
 };
 
 /**
@@ -43,6 +56,8 @@ const EVENT_LEVEL_FILTER_CONFIG = {
  * @param {Function} props.setMagnitudeOrder 变更震级排序的回调
  * @param {string} props.keyword 关键词搜索文本值
  * @param {Function} props.setKeyword 变更关键词的回调
+ * @param {string} props.windSpeedFilter 台风最小风速过滤值（m/s）
+ * @param {Function} props.setWindSpeedFilter 修改台风最小风速过滤值的回调
  * @param {Array} props.availableSources 可供筛选的规范化数据源列表
  * @param {string} props.sourceFilterMode 数据源筛选模式 ('single' 单选 | 'multi' 多选)
  * @param {Function} props.onSourceFilterModeChange 修改数据源筛选模式的回调
@@ -62,6 +77,8 @@ function EventFilters({
     setMagnitudeOrder,
     keyword,
     setKeyword,
+    windSpeedFilter,
+    setWindSpeedFilter,
     availableSources,
     sourceFilterMode,
     onSourceFilterModeChange,
@@ -95,6 +112,7 @@ function EventFilters({
         { id: 'earthquake', label: '地震情报' },
         { id: 'weather', label: '气象预警' },
         { id: 'tsunami', label: '海啸预警' },
+        { id: 'typhoon', label: '台风信息' },
     ];
 
     // 根据所选模式，动态映射右侧多维过滤选项
@@ -137,6 +155,7 @@ function EventFilters({
                                     setFilterType(item.id);
                                     setMagnitudeFilter('all');
                                     setMagnitudeOrder('default');
+                                    setWindSpeedFilter('all');
                                 }}
                             >
                                 {filterType === item.id && <span className="event-filter-checkmark">✓</span>}
@@ -157,7 +176,7 @@ function EventFilters({
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                             </select>
-                            {/* 仅在非气象/非海啸等地震速报模式下才显示“震级排序”选择器 */}
+                            {/* 仅在地震类型下显示震级排序选择器 */}
                             {!levelFilterConfig && (
                                 <select value={magnitudeOrder} onChange={(e) => setMagnitudeOrder(e.target.value)} className="event-filter-select event-filter-select-md">
                                     <option value="default">默认排序</option>
@@ -168,7 +187,21 @@ function EventFilters({
                         </div>
                     </div>
 
-                    {/* B. 数据源过滤 (支持单选与多选模式) */}
+                    {/* B. 台风专属最小风速筛选，单位为 m/s；阈值来自 typhoonFormatters */}
+                    {filterType === 'typhoon' && (
+                        <div className="filter-group event-filter-group-nowrap event-filter-field-group event-filter-field-card event-filter-field-card-wind-speed">
+                            <Typography variant="body2" className="event-filter-label">最小风速</Typography>
+                            <div className="event-filter-inline-controls">
+                                <select value={windSpeedFilter} onChange={(e) => setWindSpeedFilter(e.target.value)} className="event-filter-select event-filter-select-md">
+                                    {(window.DisasterTyphoonFormatters?.WIND_SPEED_FILTER_OPTIONS || []).map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* C. 数据源过滤 (支持单选与多选模式) */}
                     {availableSources.length > 0 && (
                         <div className="filter-group event-filter-group-nowrap event-filter-field-group event-filter-field-card event-filter-field-card-source">
                             <Typography variant="body2" className="event-filter-label">数据源</Typography>
@@ -219,14 +252,14 @@ function EventFilters({
                         </div>
                     )}
 
-                    {/* C. 文本/地点关键字模糊检索输入框 */}
+                    {/* D. 文本/地点关键字模糊检索输入框 */}
                     <div className="filter-group event-filter-group-nowrap event-filter-field-group event-filter-field-card event-filter-field-card-keyword">
                         <Typography variant="body2" className="event-filter-label">关键词</Typography>
                         <div className="event-filter-inline-controls event-filter-inline-controls-keyword">
                             <input
                                 value={keyword}
                                 onChange={(e) => setKeyword(e.target.value)}
-                                placeholder="搜索地点、标题、来源..."
+                                placeholder={filterType === 'typhoon' ? '搜索台风名称、编号、来源...' : '搜索地点、标题、来源...'}
                                 className="event-filter-select event-filter-keyword-input"
                             />
                         </div>

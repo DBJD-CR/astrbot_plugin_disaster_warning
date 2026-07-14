@@ -28,6 +28,7 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
     const [magnitudeFilter, setMagnitudeFilter] = React.useState('all');      // 震级过滤值或气象海啸级别过滤值
     const [magnitudeOrder, setMagnitudeOrder] = React.useState('default');      // 排序方式：default 默认，asc 升序，desc 降序
     const [keyword, setKeyword] = React.useState('');                          // 地区或内容关键字检索
+    const [windSpeedFilter, setWindSpeedFilter] = React.useState('all');       // 台风最小风速过滤值（m/s）
 
     // 跨渲染周期的最新状态引用，以供异步事件拉取时获取最新快照
     const abortControllerRef = React.useRef(null);
@@ -38,11 +39,31 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
     const magnitudeFilterRef = React.useRef(magnitudeFilter);
     const magnitudeOrderRef = React.useRef(magnitudeOrder);
     const keywordRef = React.useRef(keyword);
+    const windSpeedFilterRef = React.useRef(windSpeedFilter);
+
+    /**
+     * 统一装配事件查询过滤参数，避免 useEffect / goToPage / WS 刷新三处重复。
+     */
+    const buildEventQueryFilters = React.useCallback((
+        type,
+        magnitudeValue,
+        orderValue,
+        windSpeedValue,
+    ) => {
+        const usesLevelFilter = ['weather', 'tsunami', 'typhoon'].includes(type);
+        const minMagnitude = usesLevelFilter || magnitudeValue === 'all' ? null : Number(magnitudeValue);
+        const levelFilter = usesLevelFilter && magnitudeValue !== 'all' ? magnitudeValue : '';
+        const magnitudeSort = usesLevelFilter || orderValue === 'default' ? '' : orderValue;
+        const minWindSpeed = type === 'typhoon' && windSpeedValue !== 'all'
+            ? Number(windSpeedValue)
+            : null;
+        return { usesLevelFilter, minMagnitude, levelFilter, magnitudeSort, minWindSpeed };
+    }, []);
 
     /**
      * 核心拉取函数：装配并提交多维过滤参数，控制加载逻辑
      */
-    const fetchEvents = React.useCallback((page, type, limit, sources = [], minMagnitude = null, magnitudeSort = '', searchKeyword = '', levelFilter = '', options = {}) => {
+    const fetchEvents = React.useCallback((page, type, limit, sources = [], minMagnitude = null, magnitudeSort = '', searchKeyword = '', levelFilter = '', minWindSpeed = null, options = {}) => {
         // 请求拦截：如果先前有未完成的网络响应，强行中断，清理网络通道
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -71,6 +92,7 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
             magnitudeOrder: magnitudeSort,
             keyword: searchKeyword,
             levelFilter,
+            minWindSpeed,
         }, { signal: controller.signal })
             .then((data) => {
                 setEvents(Array.isArray(data.events) ? data.events : []);
@@ -111,15 +133,16 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
     React.useEffect(() => {
         setCurrentPage(1);
         setPageInput('');
-        
-        // 气象与海啸没有震级属性，需要转换为级别过滤
-        const usesLevelFilter = filterType === 'weather' || filterType === 'tsunami';
-        const minMagnitude = usesLevelFilter || magnitudeFilter === 'all' ? null : Number(magnitudeFilter);
-        const levelFilter = usesLevelFilter && magnitudeFilter !== 'all' ? magnitudeFilter : '';
-        const magnitudeSort = usesLevelFilter || magnitudeOrder === 'default' ? '' : magnitudeOrder;
-        
-        fetchEvents(1, filterType, pageSize, selectedSources, minMagnitude, magnitudeSort, keyword, levelFilter);
-    }, [filterType, pageSize, selectedSources, magnitudeFilter, magnitudeOrder, keyword, fetchEvents]);
+
+        const { minMagnitude, levelFilter, magnitudeSort, minWindSpeed } = buildEventQueryFilters(
+            filterType,
+            magnitudeFilter,
+            magnitudeOrder,
+            windSpeedFilter,
+        );
+
+        fetchEvents(1, filterType, pageSize, selectedSources, minMagnitude, magnitudeSort, keyword, levelFilter, minWindSpeed);
+    }, [filterType, pageSize, selectedSources, magnitudeFilter, magnitudeOrder, keyword, windSpeedFilter, fetchEvents, buildEventQueryFilters]);
 
     // 限制单页显示数不超出接口允许的最大上限
     React.useEffect(() => {
@@ -135,17 +158,20 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
         magnitudeFilterRef.current = magnitudeFilter;
         magnitudeOrderRef.current = magnitudeOrder;
         keywordRef.current = keyword;
+        windSpeedFilterRef.current = windSpeedFilter;
     });
 
     // 响应长连接的实时事件推送，若收到新灾害推送，进行滚动条保存并静默拉取最新列表
     React.useEffect(() => {
         if (!wsConnected) return;
         const currentFilterType = filterTypeRef.current;
-        const usesLevelFilter = currentFilterType === 'weather' || currentFilterType === 'tsunami';
-        const minMagnitude = usesLevelFilter || magnitudeFilterRef.current === 'all' ? null : Number(magnitudeFilterRef.current);
-        const levelFilter = usesLevelFilter && magnitudeFilterRef.current !== 'all' ? magnitudeFilterRef.current : '';
-        const magnitudeSort = usesLevelFilter || magnitudeOrderRef.current === 'default' ? '' : magnitudeOrderRef.current;
-        
+        const { minMagnitude, levelFilter, magnitudeSort, minWindSpeed } = buildEventQueryFilters(
+            currentFilterType,
+            magnitudeFilterRef.current,
+            magnitudeOrderRef.current,
+            windSpeedFilterRef.current,
+        );
+
         fetchEvents(
             currentPageRef.current,
             currentFilterType,
@@ -155,9 +181,10 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
             magnitudeSort,
             keywordRef.current,
             levelFilter,
+            minWindSpeed,
             { preserveScroll: true }
         );
-    }, [wsEvents, wsConnected, fetchEvents]);
+    }, [wsEvents, wsConnected, fetchEvents, buildEventQueryFilters]);
 
     // 组件卸载时自动终止未完成的网络请求
     React.useEffect(() => {
@@ -175,16 +202,18 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
         if (totalPages <= 0) return;
         const safePage = Math.max(1, Math.min(totalPages, targetPage)); // 边界安全限幅
         if (safePage === currentPage) return;
-        
+
         setCurrentPage(safePage);
         setPageInput('');
-        const usesLevelFilter = filterType === 'weather' || filterType === 'tsunami';
-        const minMagnitude = usesLevelFilter || magnitudeFilter === 'all' ? null : Number(magnitudeFilter);
-        const levelFilter = usesLevelFilter && magnitudeFilter !== 'all' ? magnitudeFilter : '';
-        const magnitudeSort = usesLevelFilter || magnitudeOrder === 'default' ? '' : magnitudeOrder;
-        
-        fetchEvents(safePage, filterType, pageSize, selectedSources, minMagnitude, magnitudeSort, keyword, levelFilter);
-    }, [currentPage, totalPages, fetchEvents, filterType, pageSize, selectedSources, magnitudeFilter, magnitudeOrder, keyword]);
+        const { minMagnitude, levelFilter, magnitudeSort, minWindSpeed } = buildEventQueryFilters(
+            filterType,
+            magnitudeFilter,
+            magnitudeOrder,
+            windSpeedFilter,
+        );
+
+        fetchEvents(safePage, filterType, pageSize, selectedSources, minMagnitude, magnitudeSort, keyword, levelFilter, minWindSpeed);
+    }, [currentPage, totalPages, fetchEvents, filterType, pageSize, selectedSources, magnitudeFilter, magnitudeOrder, keyword, windSpeedFilter, buildEventQueryFilters]);
 
     return {
         filterType, setFilterType,
@@ -200,6 +229,7 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
         magnitudeFilter, setMagnitudeFilter,
         magnitudeOrder, setMagnitudeOrder,
         keyword, setKeyword,
+        windSpeedFilter, setWindSpeedFilter,
         fetchEvents,
         goToPage,
     };

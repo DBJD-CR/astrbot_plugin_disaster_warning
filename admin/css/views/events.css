@@ -951,6 +951,25 @@ html.theme-dark .event-filter-source-menu {
     font-weight: 600 !important;
 }
 
+/* 台风路径点参数区（强度、风速、气压、位置） */
+.event-group-typhoon-details {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.event-group-typhoon-text {
+    opacity: 0.8;
+    font-size: 13px !important;
+}
+
+.event-group-typhoon-text--strong {
+    opacity: 0.9;
+    font-weight: 600 !important;
+}
+
 /* 速报更新等级芯片(如 "第1报" 芯片) */
 .event-group-report-chip,
 .event-group-latest-chip {
@@ -1599,8 +1618,188 @@ body.dark-theme .weather-query-error {
 
 .weather-query-pagination-row {
     justify-content: center;
-    gap: 12px;
-    margin-top: 16px;
+}
+
+/* ==========================================================================
+   9.1 台风信息快捷查询面板 (Typhoon Query Panel)
+   视觉风格对齐气象预警快捷查询，扩展多参数表单与路径展示
+   ========================================================================== */
+.typhoon-query-panel {
+    margin-top: 0;
+}
+
+.typhoon-query-form {
+    display: grid;
+    /* 台风 ID 加宽，保证 placeholder 完整可读；数量字段带前缀/后缀引导 */
+    grid-template-columns:
+        minmax(280px, 1.8fr)
+        minmax(160px, 1.1fr)
+        minmax(132px, 0.75fr)
+        minmax(120px, 0.75fr)
+        auto
+        auto
+        auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.typhoon-query-id,
+.typhoon-query-keyword {
+    min-width: 0;
+}
+
+/* 数量输入：左侧“数量”+ 中间数字 + 右侧“条”，降低纯数字框的认知成本 */
+.typhoon-query-count-field {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 10px;
+    background: var(--md-sys-color-surface);
+    overflow: hidden;
+    min-height: 38px;
+}
+
+.typhoon-query-count-field:focus-within {
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 0 0 3px rgba(103, 80, 164, 0.12);
+}
+
+.typhoon-query-count-field.is-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.typhoon-query-count-label,
+.typhoon-query-count-suffix {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    opacity: 0.78;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.typhoon-query-count-label {
+    padding: 0 0 0 10px;
+}
+
+.typhoon-query-count-suffix {
+    padding: 0 10px 0 0;
+}
+
+.typhoon-query-count {
+    min-width: 0;
+    flex: 1 1 auto;
+    width: 100%;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    text-align: center;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    background: transparent !important;
+    /* 隐藏 number 输入框多余上下箭头，视觉更干净 */
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.typhoon-query-count::-webkit-outer-spin-button,
+.typhoon-query-count::-webkit-inner-spin-button {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.typhoon-query-active-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    white-space: nowrap;
+    user-select: none;
+    opacity: 0.92;
+}
+
+.typhoon-query-active-toggle input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--md-sys-color-primary);
+}
+
+.typhoon-query-result-card {
+    margin-bottom: 10px;
+}
+
+.typhoon-query-result-body {
+    display: grid;
+    gap: 4px;
+}
+
+.typhoon-query-meta-line {
+    opacity: 0.92;
+    line-height: 1.45 !important;
+}
+
+.typhoon-query-source-line {
+    opacity: 0.7 !important;
+    margin-top: 2px !important;
+}
+
+.typhoon-query-wind-circle {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--glass-border);
+}
+
+.typhoon-query-track-wrap {
+    margin-top: 10px;
+}
+
+.typhoon-query-expand-btn {
+    margin-bottom: 8px;
+}
+
+.typhoon-query-track-block {
+    display: grid;
+    gap: 10px;
+}
+
+.typhoon-query-track-section {
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--md-sys-color-surface-variant) 45%, transparent);
+    padding: 10px 12px;
+}
+
+.typhoon-query-track-title {
+    display: block;
+    font-weight: 700 !important;
+    opacity: 0.86;
+    margin-bottom: 6px !important;
+}
+
+.typhoon-query-track-list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 4px;
+}
+
+.typhoon-query-track-list li {
+    font-size: 12.5px;
+    line-height: 1.45;
+    opacity: 0.9;
+}
+
+.typhoon-query-list-item-wrap + .typhoon-query-list-item-wrap {
+    margin-top: 8px;
+}
+
+.typhoon-query-caption-muted {
+    opacity: 0.7;
 }
 
 /* 历史列表单行条目卡片 */
@@ -1781,6 +1980,16 @@ body.dark-theme .weather-query-error {
     .weather-query-btn {
         width: 100%;
         justify-content: center;
+    }
+
+    /* 台风查询表单在手机端同样改为单列 */
+    .typhoon-query-form {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .typhoon-query-active-toggle {
+        min-height: 38px;
     }
 
     .weather-query-list-item {

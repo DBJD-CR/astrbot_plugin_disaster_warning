@@ -130,6 +130,7 @@ class DisasterWarningPlugin(Star):
 • /地震列表查询 或 /地震列表 [数据源] [数量] [格式] - 查询最新地震列表
 • /地震预警查询 或 /地震预警 - 查询各机构 EEW 状态与无 EEW 计时
 • /气象预警查询 或 /气象预警 <省份/地名|全国> [预警类型] [预警颜色] 或 <预警ID>
+• /台风信息查询 或 /台风查询 [台风ID|名称|数量] [完整|简要] [活跃] - 查询台风信息（优先EQSC，失败回退本地）
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息 (仅管理员)
 • /灾害预警推送开关 - 开启或关闭当前会话的推送 (仅管理员)
@@ -236,6 +237,23 @@ class DisasterWarningPlugin(Star):
             keyword=keyword,
             optional_a=optional_a,
             optional_b=optional_b,
+        ):
+            yield result
+
+    @filter.command("台风信息查询", alias={"台风查询", "台风信息"})
+    async def query_typhoon_info(
+        self,
+        event: AstrMessageEvent,
+        arg1: str = None,
+        arg2: str = None,
+        arg3: str = None,
+    ):
+        """台风信息查询（优先 EQSC，失败回退本地数据库）"""
+        async for result in self._query_command_service.handle_query_typhoon(
+            event,
+            arg1=arg1,
+            arg2=arg2,
+            arg3=arg3,
         ):
             yield result
 

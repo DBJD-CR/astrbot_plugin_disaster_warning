@@ -15,6 +15,7 @@ from .japan_eew_parser import JmaEewFanStudioParser, JmaEewP2PParser, JmaEewWolf
 from .taiwan_earthquake_parser import CwaReportParser
 from .taiwan_eew_parser import CwaEewParser, CwaEewWolfxParser
 from .tsunami_parser import JmaTsunamiP2PParser, TsunamiParser
+from .typhoon_parser import TyphoonParser
 from .weather_parser import WeatherAlarmParser
 
 # 静态映射：配置中的解析器名(parser_name) -> 数据源解析器类(Parser Class)
@@ -28,6 +29,7 @@ PARSER_CLASS_BY_NAME = {
     "china_tsunami_parser": TsunamiParser,
     "japan_tsunami_parser": JmaTsunamiP2PParser,
     "weather_alarm_parser": WeatherAlarmParser,
+    "typhoon_parser": TyphoonParser,
     "global_report_parser": UsgsEarthquakeParser,
     "global_quake_parser": GlobalQuakeParser,
 }

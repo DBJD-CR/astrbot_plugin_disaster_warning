@@ -206,13 +206,54 @@
    ========================================================================== */
 .status-connections-grid {
     display: grid;
-    /* 核心接口响应式多列铺开 */
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    /* 固定 4 列：第 4 列为 GQ + EQSC 上下堆叠 */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
+    align-items: stretch;
 }
 
 .status-connections-grid.connections-grid {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* 第 4 列：Global Quake 与 EQSC 共享高度的纵向堆叠容器 */
+.connection-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    height: 100%;
+}
+
+.connection-stack > .connection-item,
+.connection-stack > .status-connection-skeleton-card {
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+@media (max-width: 1024px) {
+    .status-connections-grid,
+    .status-connections-grid.connections-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+}
+
+@media (max-width: 768px) {
+    .status-connections-grid,
+    .status-connections-grid.connections-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .status-connections-grid .connection-stack {
+        display: contents;
+    }
+
+    .status-connections-grid .connection-item--compact {
+        min-height: 140px;
+        padding: 16px;
+    }
 }
 
 /* 长连接项目列表项骨架屏 */
@@ -270,6 +311,34 @@
         transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
         box-shadow 0.22s ease-out;
     will-change: transform, box-shadow, border-color;
+}
+
+/* 堆叠列内的精简卡片（GQ / EQSC） */
+.connection-item--compact {
+    min-height: 0;
+    padding: 14px 16px;
+}
+
+.connection-item--compact .connection-card-header {
+    margin-bottom: 10px;
+}
+
+.connection-item--compact .connection-title {
+    font-size: 1rem !important;
+}
+
+.connection-item--compact .connection-summary {
+    margin-bottom: 10px;
+}
+
+.connection-item--compact .connection-sub-source-section {
+    margin-top: 4px;
+    padding-top: 6px;
+}
+
+.status-connection-skeleton-card--compact {
+    min-height: 110px;
+    padding: 14px 16px;
 }
 
 .connection-item:hover {

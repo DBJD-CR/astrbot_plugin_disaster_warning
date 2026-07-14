@@ -22,6 +22,7 @@ function StatsView() {
     const eqRegions = stats && stats.earthquakeRegions ? stats.earthquakeRegions : [];
     const weatherTypes = stats && stats.weatherTypes ? stats.weatherTypes : [];
     const weatherRegions = stats && stats.weatherRegions ? stats.weatherRegions : [];
+    const topSessions = stats && stats.topSessions ? stats.topSessions : [];
 
     return (
         <Box>
@@ -70,7 +71,7 @@ function StatsView() {
                     <TopListCard title="数据源贡献 (TOP 10)" icon="📡" data={sources} tone="source" />
                 </div>
 
-                {/* 排行榜单模块（第三行）：包含气象区域、气象警报级别和底层日志文件磁盘状态 */}
+                {/* 排行榜单模块（第三行）：包含气象区域、气象警报级别和会话推送统计 */}
                 {/* 1. 气象预警频发地理区域统计 */}
                 <div className="span-4">
                     <TopListCard title="气象预警地区分布 (TOP 10)" icon="🗺️" data={weatherRegions} tone="region" />
@@ -78,6 +79,20 @@ function StatsView() {
                 {/* 2. 气象警报按级别（蓝、黄、橙、红）数量占比柱图 */}
                 <div className="span-4">
                     <WeatherLevelCard />
+                </div>
+                {/* 3. 会话推送统计 Top 10 */}
+                <div className="span-4">
+                    <SessionPushCard />
+                </div>
+
+                {/* 排行榜单模块（第四行）：风王榜、台风强度等级分布等 */}
+                {/* 1. 台风风王榜 Top 10 */}
+                <div className="span-4">
+                    <TyphoonWindKingCard />
+                </div>
+                {/* 2. 台风强度等级环形比例图 */}
+                <div className="span-4">
+                    <TyphoonLevelCard />
                 </div>
                 {/* 3. 系统后台运行日志大小、占用空间与存储信息统计 */}
                 <div className="span-4">

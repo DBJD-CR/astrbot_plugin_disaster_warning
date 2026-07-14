@@ -15,6 +15,9 @@ import aiosqlite
 
 from astrbot.api import logger
 
+from ...utils.time_converter import TimeConverter
+from ..domain.typhoon.typhoon_ids import to_eqsc_id, to_fan_id
+from ..domain.typhoon.typhoon_peaks import resolve_storage_peak_fields
 from ..services.identity.event_classifier import (
     MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
     MAJOR_WEATHER_LEVEL_KEYWORD,
@@ -22,6 +25,7 @@ from ..services.identity.event_classifier import (
     is_major_record,
 )
 from .source_compat import (
+    build_source_stats_key,
     expand_source_aliases,
     format_source_name,
     normalize_source_name,
@@ -58,6 +62,19 @@ class DatabaseManager:
     async def initialize(self):
         """异步初始化数据库，检测并执行必要的结构迁移。"""
         try:
+            # 已初始化且连接可用时直接复用，避免重复建连。
+            if self.connection is not None:
+                try:
+                    await self.connection.execute("SELECT 1")
+                    return
+                except Exception:
+                    # 连接失效时重建
+                    try:
+                        await self.connection.close()
+                    except Exception:
+                        pass
+                    self.connection = None
+
             # 先确保数据库目录存在，再建立连接并统一使用字典风格行对象。
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self.connection = await aiosqlite.connect(str(self.db_path))
@@ -70,6 +87,14 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"[灾害预警] 数据库初始化失败: {e}")
             raise
+
+    async def _ensure_connection(self) -> aiosqlite.Connection:
+        """确保数据库连接可用；未初始化时自动建连。"""
+        if self.connection is None:
+            await self.initialize()
+        if self.connection is None:
+            raise RuntimeError("数据库连接尚未建立")
+        return self.connection
 
     async def _ensure_schema(self, cursor):
         """检测并补齐数据表字段，再创建表和索引。"""
@@ -95,6 +120,11 @@ class DatabaseManager:
                 await cursor.execute("ALTER TABLE events ADD COLUMN info_type TEXT")
             if "place_name" not in columns:
                 await cursor.execute("ALTER TABLE events ADD COLUMN place_name TEXT")
+            if "wind_speed" not in columns:
+                await cursor.execute("ALTER TABLE events ADD COLUMN wind_speed REAL")
+            if "pressure" not in columns:
+                # 台风主表 pressure 语义为历史最低中心气压，供气压榜/风王榜重建。
+                await cursor.execute("ALTER TABLE events ADD COLUMN pressure REAL")
 
         # 检查 event_updates 报次更新表是否存在
         await cursor.execute(
@@ -106,6 +136,23 @@ class DatabaseManager:
             updates_columns = {row[1] for row in await cursor.fetchall()}
             if "level" not in updates_columns:
                 await cursor.execute("ALTER TABLE event_updates ADD COLUMN level TEXT")
+            if "wind_speed" not in updates_columns:
+                await cursor.execute(
+                    "ALTER TABLE event_updates ADD COLUMN wind_speed REAL"
+                )
+            if "pressure" not in updates_columns:
+                # 报次快照记录当次中心气压，供历史最低气压重建。
+                await cursor.execute(
+                    "ALTER TABLE event_updates ADD COLUMN pressure REAL"
+                )
+            if "latitude" not in updates_columns:
+                await cursor.execute(
+                    "ALTER TABLE event_updates ADD COLUMN latitude REAL"
+                )
+            if "longitude" not in updates_columns:
+                await cursor.execute(
+                    "ALTER TABLE event_updates ADD COLUMN longitude REAL"
+                )
 
         # 创建不存在的表
         await self._create_tables(cursor)
@@ -134,6 +181,8 @@ class DatabaseManager:
                 report_num      INTEGER,
                 weather_type_code TEXT,
                 level           TEXT,
+                wind_speed      REAL,
+                pressure        REAL,
                 time            TEXT,
                 is_major        INTEGER DEFAULT 0,
                 update_count    INTEGER DEFAULT 1,
@@ -154,6 +203,10 @@ class DatabaseManager:
                 depth           REAL,
                 description     TEXT,
                 level           TEXT,
+                wind_speed      REAL,
+                pressure        REAL,
+                latitude        REAL,
+                longitude       REAL,
                 time            TEXT,
                 recorded_at     TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -167,6 +220,7 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_ev_type      ON events(type)",
             "CREATE INDEX IF NOT EXISTS idx_ev_source_id ON events(source_id)",
             "CREATE INDEX IF NOT EXISTS idx_ev_time      ON events(time)",
+            "CREATE INDEX IF NOT EXISTS idx_ev_wind_speed ON events(wind_speed)",
             "CREATE INDEX IF NOT EXISTS idx_ev_is_major  ON events(is_major)",
             "CREATE INDEX IF NOT EXISTS idx_upd_event_id ON event_updates(event_id)",
         ):
@@ -178,14 +232,29 @@ class DatabaseManager:
         """
         插入新事件，同时在 event_updates 记录首次推送。
         返回新记录的数据库 id。
+
+        可选字段：
+        - updated_at / created_at：用于历史回填场景，避免把旧事件写成“刚刚更新”
+          从而打乱事件列表按 updated_at 的时间线排序。
         """
         try:
+            connection = await self._ensure_connection()
             # 插入前确保将历史遗留的 'weather' 类型归一化为标准的 'weather_alarm' 存储
             evt_type = normalize_event_type(event_data.get("type")) or ""
 
-            cursor = await self.connection.cursor()
+            cursor = await connection.cursor()
             # 是否重大事件既允许外部直接传入，也允许在入库前重新按规则补判一次
             is_major = bool(event_data.get("is_major")) or is_major_record(event_data)
+
+            event_time = event_data.get("time")
+            # 历史回填可显式指定 created_at/updated_at；缺省时回退到事件时间，
+            # 再缺省才走数据库 CURRENT_TIMESTAMP。
+            created_at = (
+                event_data.get("created_at")
+                or event_data.get("updated_at")
+                or event_time
+            )
+            updated_at = event_data.get("updated_at") or created_at
 
             # 向 events 表插入主记录
             await cursor.execute(
@@ -194,9 +263,9 @@ class DatabaseManager:
                     real_event_id, unique_id, type, source, source_id,
                     description, subtitle, weather_detail, info_type, place_name, latitude, longitude,
                     magnitude, depth, report_num,
-                    weather_type_code, level, time,
-                    is_major, update_count
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    weather_type_code, level, wind_speed, pressure, time,
+                    is_major, update_count, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     event_data.get("real_event_id"),
@@ -216,19 +285,31 @@ class DatabaseManager:
                     event_data.get("report_num"),
                     event_data.get("weather_type_code"),
                     event_data.get("level"),
-                    event_data.get("time"),
+                    event_data.get("wind_speed"),
+                    event_data.get("pressure"),
+                    event_time,
                     1 if is_major else 0,
                     event_data.get("update_count", 1),
+                    created_at,
+                    updated_at,
                 ),
             )
             new_id = cursor.lastrowid
 
-            # 首次写入主事件表后，同步写入一条更新记录，保证历史链条从首报开始完整
+            # 首次写入主事件表后，同步写入一条更新记录，保证历史链条从首报开始完整。
+            # 台风快照优先使用当次观测值，避免与主表峰值语义混淆。
+            snapshot_level = event_data.get("_snapshot_level", event_data.get("level"))
+            snapshot_wind = event_data.get(
+                "_snapshot_wind_speed", event_data.get("wind_speed")
+            )
+            snapshot_pressure = event_data.get(
+                "_snapshot_pressure", event_data.get("pressure")
+            )
             await cursor.execute(
                 """
                 INSERT INTO event_updates
-                    (event_id, source_event_id, report_num, magnitude, depth, description, level, time)
-                VALUES (?,?,?,?,?,?,?,?)
+                    (event_id, source_event_id, report_num, magnitude, depth, description, level, wind_speed, pressure, latitude, longitude, time)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     new_id,
@@ -237,12 +318,16 @@ class DatabaseManager:
                     event_data.get("magnitude"),
                     event_data.get("depth"),
                     event_data.get("description"),
-                    event_data.get("level"),
+                    snapshot_level,
+                    snapshot_wind,
+                    snapshot_pressure,
+                    event_data.get("latitude"),
+                    event_data.get("longitude"),
                     event_data.get("time"),
                 ),
             )
 
-            await self.connection.commit()
+            await connection.commit()
 
             # 清理缓存，保证接口能够立刻加载出最新写入的数据
             try:
@@ -255,8 +340,45 @@ class DatabaseManager:
             return new_id
         except Exception as e:
             logger.error(f"[灾害预警] 插入事件失败: {e}")
-            await self.connection.rollback()
+            if self.connection is not None:
+                await self.connection.rollback()
             raise
+
+    @staticmethod
+    def _resolve_typhoon_peak_update_fields(
+        event_data: dict[str, Any],
+        *,
+        existing_level: Any,
+        existing_wind_speed: Any,
+        existing_pressure: Any,
+    ) -> dict[str, Any]:
+        """台风记录策略：主表峰值 + updates 当次快照。
+
+        峰值公式由 domain.resolve_storage_peak_fields 统一维护，
+        数据库层只负责调用并落库，不再内嵌业务公式。
+        返回 dict 可直接 update 到 event_data。
+        """
+        (
+            level_to_store,
+            wind_speed_to_store,
+            pressure_to_store,
+            snapshot_level,
+            snapshot_wind,
+            snapshot_pressure,
+        ) = resolve_storage_peak_fields(
+            existing_level=existing_level,
+            existing_wind=existing_wind_speed,
+            existing_pressure=existing_pressure,
+            event_data=event_data,
+        )
+        return {
+            "level": level_to_store,
+            "wind_speed": wind_speed_to_store,
+            "pressure": pressure_to_store,
+            "_snapshot_level": snapshot_level,
+            "_snapshot_wind_speed": snapshot_wind,
+            "_snapshot_pressure": snapshot_pressure,
+        }
 
     async def update_event(self, source: str, event_data: dict[str, Any]) -> bool:
         """
@@ -267,32 +389,92 @@ class DatabaseManager:
             # 更新前确保将历史遗留的 'weather' 类型归一化为标准的 'weather_alarm' 存储
             evt_type = normalize_event_type(event_data.get("type")) or ""
 
-            cursor = await self.connection.cursor()
+            connection = await self._ensure_connection()
+            cursor = await connection.cursor()
             real_event_id = event_data.get("real_event_id")
             unique_id = event_data.get("unique_id")
-            is_major = bool(event_data.get("is_major")) or is_major_record(event_data)
+            # 台风的 is_major 只增不减：一旦标记为重大事件，即使后续减弱也保留，
+            # 以保证时间轴上已有的重大事件点不被降级移除。
+            incoming_is_major = bool(event_data.get("is_major")) or is_major_record(
+                event_data
+            )
+            existing_is_major = False
+            if evt_type == "typhoon" and (real_event_id or unique_id):
+                existing_is_major = await self._query_existing_is_major(
+                    real_event_id, unique_id, source
+                )
+            is_major = incoming_is_major or existing_is_major
 
             # 先在主事件表中找到对应物理记录，再决定是更新还是返回未命中。
+            # 台风峰值语义由 domain.resolve_storage_peak_fields 统一解析；
+            # 数据库层只落库最终字段，不再内嵌峰值公式。
             db_id = None
+            existing_level = None
+            existing_wind_speed = None
+            existing_pressure = None
             if real_event_id:
                 await cursor.execute(
-                    "SELECT id FROM events WHERE real_event_id=? AND source=? LIMIT 1",
+                    """
+                    SELECT id, level, wind_speed, pressure
+                    FROM events
+                    WHERE real_event_id=? AND source=?
+                    LIMIT 1
+                    """,
                     (real_event_id, source),
                 )
                 r = await cursor.fetchone()
                 if r:
                     db_id = r[0]
+                    existing_level = r[1]
+                    existing_wind_speed = r[2]
+                    existing_pressure = r[3]
             if db_id is None and unique_id:
                 await cursor.execute(
-                    "SELECT id FROM events WHERE unique_id=? AND source=? LIMIT 1",
+                    """
+                    SELECT id, level, wind_speed, pressure
+                    FROM events
+                    WHERE unique_id=? AND source=?
+                    LIMIT 1
+                    """,
                     (unique_id, source),
                 )
                 r = await cursor.fetchone()
                 if r:
                     db_id = r[0]
+                    existing_level = r[1]
+                    existing_wind_speed = r[2]
+                    existing_pressure = r[3]
 
             if db_id is None:
                 return False
+
+            # event_updates 始终写当次观测快照；主表写最终峰值字段。
+            level_to_store = event_data.get("level")
+            wind_speed_to_store = event_data.get("wind_speed")
+            pressure_to_store = event_data.get("pressure")
+            update_snapshot_level = event_data.get(
+                "_snapshot_level", event_data.get("level")
+            )
+            update_snapshot_wind = event_data.get(
+                "_snapshot_wind_speed", event_data.get("wind_speed")
+            )
+            update_snapshot_pressure = event_data.get(
+                "_snapshot_pressure", event_data.get("pressure")
+            )
+            if evt_type == "typhoon":
+                peak_fields = self._resolve_typhoon_peak_update_fields(
+                    event_data,
+                    existing_level=existing_level,
+                    existing_wind_speed=existing_wind_speed,
+                    existing_pressure=existing_pressure,
+                )
+                event_data.update(peak_fields)
+                level_to_store = event_data["level"]
+                wind_speed_to_store = event_data["wind_speed"]
+                pressure_to_store = event_data["pressure"]
+                update_snapshot_level = event_data["_snapshot_level"]
+                update_snapshot_wind = event_data["_snapshot_wind_speed"]
+                update_snapshot_pressure = event_data["_snapshot_pressure"]
 
             # 更新主表中的事件字段
             await cursor.execute(
@@ -314,6 +496,8 @@ class DatabaseManager:
                     update_count      = ?,
                     weather_type_code = ?,
                     level             = ?,
+                    wind_speed        = ?,
+                    pressure          = ?,
                     is_major          = ?,
                     updated_at        = CURRENT_TIMESTAMP
                 WHERE id = ?
@@ -334,18 +518,21 @@ class DatabaseManager:
                     event_data.get("time"),
                     event_data.get("update_count", 1),
                     event_data.get("weather_type_code"),
-                    event_data.get("level"),
+                    level_to_store,
+                    wind_speed_to_store,
+                    pressure_to_store,
                     1 if is_major else 0,
                     db_id,
                 ),
             )
 
-            # 主事件表字段更新后，再追加一条报次快照记录，保留每次演进轨迹
+            # 主事件表字段更新后，再追加一条报次快照记录，保留每次演进轨迹。
+            # 台风快照写入本次观测值，避免把“已抬升的峰值”误记成当前观测。
             await cursor.execute(
                 """
                 INSERT INTO event_updates
-                    (event_id, source_event_id, report_num, magnitude, depth, description, level, time)
-                VALUES (?,?,?,?,?,?,?,?)
+                    (event_id, source_event_id, report_num, magnitude, depth, description, level, wind_speed, pressure, latitude, longitude, time)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     db_id,
@@ -354,7 +541,11 @@ class DatabaseManager:
                     event_data.get("magnitude"),
                     event_data.get("depth"),
                     event_data.get("description"),
-                    event_data.get("level"),
+                    update_snapshot_level,
+                    update_snapshot_wind,
+                    update_snapshot_pressure,
+                    event_data.get("latitude"),
+                    event_data.get("longitude"),
                     event_data.get("time"),
                 ),
             )
@@ -374,6 +565,107 @@ class DatabaseManager:
             logger.error(f"[灾害预警] 更新事件失败: {e}")
             await self.connection.rollback()
             raise
+
+    async def insert_typhoon_track_updates(
+        self,
+        event_db_id: int,
+        track_nodes: list[dict[str, Any]],
+        *,
+        source_event_id: str | None = None,
+    ) -> int:
+        """批量插入台风路径点到 event_updates 表。
+
+        用于 EQSC 历史重建场景，把 historyTrack 中的每个有效观测节点
+        作为一条 event_updates 记录入库，使前端能展示完整路径点。
+        返回实际插入的记录数。
+        """
+        if not track_nodes:
+            return 0
+        try:
+            connection = await self._ensure_connection()
+            cursor = await connection.cursor()
+            # 先清除 insert_event 已写入的首报 event_updates 记录，
+            # 避免首报与 historyTrack 第一个路径点重复。
+            await cursor.execute(
+                "DELETE FROM event_updates WHERE event_id = ?",
+                (event_db_id,),
+            )
+            inserted = 0
+            for idx, node in enumerate(track_nodes):
+                if not isinstance(node, dict):
+                    continue
+                node_time = node.get("time")
+                node_level = str(
+                    node.get("level") or node.get("typeNameCN") or ""
+                ).strip()
+                node_wind = node.get("wind_speed")
+                node_pressure = node.get("pressure")
+                await cursor.execute(
+                    """
+                    INSERT INTO event_updates
+                        (event_id, source_event_id, report_num, magnitude, depth, description, level, wind_speed, pressure, latitude, longitude, time, recorded_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        event_db_id,
+                        source_event_id,
+                        idx + 1,
+                        None,
+                        None,
+                        node.get("description"),
+                        node_level,
+                        node_wind,
+                        node_pressure,
+                        node.get("latitude"),
+                        node.get("longitude"),
+                        node_time,
+                        # recorded_at 使用路径点自身的观测时间，
+                        # 避免前端展示为重建入库的当前时间。
+                        node_time,
+                    ),
+                )
+                inserted += 1
+            # 更新主表 update_count 以匹配实际路径点数
+            if inserted > 0:
+                await cursor.execute(
+                    "UPDATE events SET update_count = ? WHERE id = ?",
+                    (inserted, event_db_id),
+                )
+            await connection.commit()
+            return inserted
+        except Exception as e:
+            logger.error(f"[灾害预警] 批量插入台风路径点失败: {e}")
+            await self.connection.rollback()
+            return 0
+
+    async def _query_existing_is_major(
+        self,
+        real_event_id: str | None,
+        unique_id: str | None,
+        source: str,
+    ) -> bool:
+        """查询已有记录的 is_major 状态（用于台风只增不减逻辑）。"""
+        try:
+            cursor = await self.connection.cursor()
+            if real_event_id:
+                await cursor.execute(
+                    "SELECT is_major FROM events WHERE real_event_id=? AND source=? LIMIT 1",
+                    (real_event_id, source),
+                )
+                row = await cursor.fetchone()
+                if row:
+                    return bool(row[0])
+            if unique_id:
+                await cursor.execute(
+                    "SELECT is_major FROM events WHERE unique_id=? AND source=? LIMIT 1",
+                    (unique_id, source),
+                )
+                row = await cursor.fetchone()
+                if row:
+                    return bool(row[0])
+        except Exception:
+            pass
+        return False
 
     # ──────────────────────────── 读操作 ────────────────────────────
 
@@ -412,8 +704,14 @@ class DatabaseManager:
         for event in events_need_history:
             updates = updates_by_event.get(event["id"], [])
             if len(updates) > 1:
-                # 历史链条中去掉了当前最新报本身，只保存以前的变更快照
-                event["history"] = list(reversed(updates[:-1]))
+                event_type = str(event.get("type") or "").strip()
+                if event_type == "typhoon":
+                    # 台风主表 level 存峰值，最新观测等级在 event_updates 最后一条。
+                    # 保留全部 updates（含最新），前端从 history[0] 取当前观测等级。
+                    event["history"] = list(reversed(updates))
+                else:
+                    # 其他事件类型：历史链条中去掉当前最新报本身，只保存以前的变更快照
+                    event["history"] = list(reversed(updates[:-1]))
 
         return events
 
@@ -457,11 +755,19 @@ class DatabaseManager:
         params.extend(normalized_aliases)
 
     async def get_recent_events(self, limit: int = 500) -> list[dict[str, Any]]:
-        """获取最近事件（含 history），按更新时间倒序"""
+        """获取最近事件（含 history），按业务时间线倒序。"""
         try:
             cursor = await self.connection.cursor()
             await cursor.execute(
-                "SELECT * FROM events ORDER BY updated_at DESC, time DESC LIMIT ?",
+                """
+                SELECT * FROM events
+                ORDER BY
+                    CASE WHEN NULLIF(time, '') IS NULL THEN 1 ELSE 0 END ASC,
+                    time DESC,
+                    updated_at DESC,
+                    id DESC
+                LIMIT ?
+                """,
                 (limit,),
             )
             events = [dict(row) for row in await cursor.fetchall()]
@@ -473,9 +779,10 @@ class DatabaseManager:
     async def find_event_by_real_id(
         self, real_event_id: str, source: str
     ) -> dict[str, Any] | None:
-        """按 real_event_id + source 查找事件"""
+        """按 real_event_id + source 查找事件。"""
         try:
-            cursor = await self.connection.cursor()
+            connection = await self._ensure_connection()
+            cursor = await connection.cursor()
             await cursor.execute(
                 "SELECT * FROM events WHERE real_event_id=? AND source=? LIMIT 1",
                 (real_event_id, source),
@@ -537,8 +844,168 @@ class DatabaseManager:
             logger.error(f"[灾害预警] 查询最近气象事件失败: {e}")
             return []
 
+    async def find_typhoon_event_by_id(self, typhoon_id: str) -> dict[str, Any] | None:
+        """按台风编号查找事件，兼容 4 位 EQSC / 6 位 Fan 编号。"""
+        try:
+            raw_id = str(typhoon_id or "").strip()
+            if not raw_id:
+                return None
+
+            # 编号互转统一复用领域 API，避免数据库层维护第二套 4/6 位规则。
+            candidates: list[str] = []
+            for item in (raw_id, to_fan_id(raw_id), to_eqsc_id(raw_id)):
+                text = str(item or "").strip()
+                if text and text not in candidates:
+                    candidates.append(text)
+            if not candidates:
+                return None
+
+            cursor = await self.connection.cursor()
+            placeholders = ",".join("?" for _ in candidates)
+            await cursor.execute(
+                f"""
+                SELECT *
+                FROM events
+                WHERE type='typhoon'
+                  AND (
+                    unique_id IN ({placeholders})
+                    OR real_event_id IN ({placeholders})
+                  )
+                ORDER BY updated_at DESC, time DESC, id DESC
+                LIMIT 1
+                """,
+                tuple(candidates + candidates),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            events = await self._attach_history([dict(row)])
+            return events[0]
+        except Exception as e:
+            logger.error(f"[灾害预警] 按台风编号查找事件失败: {e}")
+            return None
+
+    async def get_recent_typhoon_events(self, limit: int = 200) -> list[dict[str, Any]]:
+        """获取最近台风事件（含 history），按事件时间倒序。"""
+        try:
+            safe_limit = max(1, min(int(limit or 200), 1000))
+            cursor = await self.connection.cursor()
+            await cursor.execute(
+                """
+                SELECT *
+                FROM events
+                WHERE type='typhoon'
+                ORDER BY
+                    CASE WHEN NULLIF(time, '') IS NULL THEN 1 ELSE 0 END ASC,
+                    time DESC,
+                    updated_at DESC,
+                    id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            )
+            events = [dict(row) for row in await cursor.fetchall()]
+            return await self._attach_history(events)
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询最近台风事件失败: {e}")
+            return []
+
+    async def _build_typhoon_major_transition_events(self) -> list[dict[str, Any]]:
+        """从台风观测快照生成重大事件时间轴点。
+
+        重大点定义为：
+        - 从阈值以下进入强台风及以上；
+        - 在重大区间内发生等级变化（强台风 <-> 超强台风）；
+        - 跌破阈值后再次进入重大区间。
+        连续相同等级的观测不重复生成点。
+        """
+        from ..domain.typhoon.typhoon_levels import level_weight
+
+        cursor = await self.connection.cursor()
+        await cursor.execute(
+            """
+            SELECT e.*, eu.id AS update_id, eu.report_num AS update_report_num,
+                   eu.level AS update_level, eu.wind_speed AS update_wind_speed,
+                   eu.pressure AS update_pressure, eu.latitude AS update_latitude,
+                   eu.longitude AS update_longitude, eu.time AS update_time,
+                   eu.recorded_at AS update_recorded_at
+            FROM events e
+            JOIN event_updates eu ON eu.event_id = e.id
+            WHERE e.type = 'typhoon'
+            ORDER BY e.source, e.real_event_id, eu.id ASC
+            """
+        )
+        rows = await cursor.fetchall()
+        grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in rows:
+            item = dict(row)
+            key = (
+                str(item.get("source") or ""),
+                str(item.get("real_event_id") or item.get("unique_id") or ""),
+            )
+            grouped.setdefault(key, []).append(item)
+
+        def snapshot_time(snapshot: dict[str, Any]) -> tuple[float, int]:
+            """按观测时间排序；无法解析时退回 event_updates 自增 ID。"""
+            value = snapshot.get("update_time") or snapshot.get("time")
+            parsed = TimeConverter.parse_datetime(value)
+            if parsed is None:
+                return (0.0, int(snapshot.get("update_id") or 0))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=TimeConverter._get_timezone("UTC+8"))
+            return (parsed.timestamp(), int(snapshot.get("update_id") or 0))
+
+        transitions: list[dict[str, Any]] = []
+        for _, snapshots in grouped.items():
+            snapshots.sort(key=snapshot_time)
+            previous_level = ""
+            previous_major = False
+            for snapshot in snapshots:
+                level = str(snapshot.get("update_level") or "").strip()
+                current_major = level_weight(level) >= 5
+                is_transition = current_major and (
+                    not previous_major or level != previous_level
+                )
+                if is_transition:
+                    event = dict(snapshot)
+                    event["id"] = (
+                        f"typhoon-major-{snapshot.get('id')}-{snapshot.get('update_id')}"
+                    )
+                    event["event_id"] = event["id"]
+                    event["real_event_id"] = snapshot.get("real_event_id")
+                    event["unique_id"] = snapshot.get("unique_id")
+                    event["time"] = snapshot.get("update_time") or snapshot.get("time")
+                    event["timestamp"] = event["time"]
+                    event["updated_at"] = (
+                        snapshot.get("update_recorded_at") or event["time"]
+                    )
+                    event["level"] = level
+                    event["_snapshot_level"] = level
+                    # 主表 description 保存的是历史峰值，重大点必须使用本次快照等级。
+                    name = str(
+                        snapshot.get("subtitle")
+                        or snapshot.get("place_name")
+                        or snapshot.get("real_event_id")
+                        or "未知台风"
+                    ).strip()
+                    event["subtitle"] = name
+                    event["description"] = f"{level} {name}".strip()
+                    event["wind_speed"] = snapshot.get("update_wind_speed")
+                    event["pressure"] = snapshot.get("update_pressure")
+                    event["latitude"] = snapshot.get("update_latitude")
+                    event["longitude"] = snapshot.get("update_longitude")
+                    event["report_num"] = snapshot.get("update_report_num")
+                    event["is_major"] = 1
+                    event["history"] = []
+                    event["update_count"] = 1
+                    transitions.append(event)
+                previous_level = level
+                previous_major = current_major
+
+        return transitions
+
     async def get_major_events(self, limit: int = 100) -> list[dict[str, Any]]:
-        """获取重大事件（is_major=1），按同源同事件去重后返回最新记录"""
+        """获取重大事件，并将台风等级转折投影为独立时间轴点。"""
         try:
             cursor = await self.connection.cursor()
             await cursor.execute(
@@ -547,53 +1014,56 @@ class DatabaseManager:
                     SELECT
                         *,
                         ROW_NUMBER() OVER (
-                            PARTITION BY
-                                source,
-                                COALESCE(real_event_id, unique_id, CAST(id AS TEXT))
-                            ORDER BY
-                                updated_at DESC,
-                                time DESC,
-                                id DESC
+                            PARTITION BY source, COALESCE(real_event_id, unique_id, CAST(id AS TEXT))
+                            ORDER BY updated_at DESC, time DESC, id DESC
                         ) AS rn
                     FROM events
                     WHERE is_major = 1
                       AND (
-                          type NOT IN ('earthquake', 'earthquake_warning', 'weather', 'weather_alarm')
-                          OR (
-                              type IN ('earthquake', 'earthquake_warning')
-                              AND magnitude IS NOT NULL
-                              AND magnitude >= ?
-                          )
-                          OR (
-                              (type = 'weather' OR type = 'weather_alarm')
-                              AND (
-                                  (
-                                      COALESCE(TRIM(level), '') != ''
-                                      AND level LIKE ?
-                                  )
-                                  OR (
-                                      COALESCE(TRIM(level), '') = ''
-                                      AND description LIKE ?
-                                  )
-                                  )
-                              )
-                          )
+                          type NOT IN ('typhoon', 'earthquake', 'earthquake_warning', 'weather', 'weather_alarm')
+                          OR (type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)
+                          OR ((type = 'weather' OR type = 'weather_alarm') AND (
+                              (COALESCE(TRIM(level), '') != '' AND level LIKE ?)
+                              OR (COALESCE(TRIM(level), '') = '' AND description LIKE ?)
+                          ))
                       )
-                SELECT *
-                FROM ranked
-                WHERE rn = 1
+                )
+                SELECT * FROM ranked WHERE rn = 1
                 ORDER BY time DESC, updated_at DESC
-                LIMIT ?
                 """,
                 (
                     MAJOR_EARTHQUAKE_MAGNITUDE_THRESHOLD,
                     f"%{MAJOR_WEATHER_LEVEL_KEYWORD}%",
                     *(f"%{phrase}%" for phrase in MAJOR_WEATHER_TEXT_PHRASES),
-                    limit,
                 ),
             )
             events = [dict(row) for row in await cursor.fetchall()]
-            return await self._attach_history(events)
+            events = await self._attach_history(events)
+            typhoon_events = await self._build_typhoon_major_transition_events()
+            events.extend(typhoon_events)
+
+            def event_time(item: dict[str, Any]) -> tuple[float, int]:
+                parsed = TimeConverter.parse_datetime(item.get("time"))
+                if parsed is None:
+                    parsed = TimeConverter.parse_datetime(item.get("updated_at"))
+                if parsed is None:
+                    return (
+                        0.0,
+                        int(item.get("id") or 0)
+                        if str(item.get("id") or "").isdigit()
+                        else 0,
+                    )
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=TimeConverter._get_timezone("UTC+8"))
+                return (
+                    parsed.timestamp(),
+                    int(item.get("id") or 0)
+                    if str(item.get("id") or "").isdigit()
+                    else 0,
+                )
+
+            events.sort(key=event_time, reverse=True)
+            return events[: max(1, int(limit or 100))]
         except Exception as e:
             logger.error(f"[灾害预警] 查询重大事件失败: {e}")
             return []
@@ -604,7 +1074,7 @@ class DatabaseManager:
         clauses: list[str],
         params: list[Any],
     ) -> None:
-        """追加气象颜色或海啸级别筛选条件。"""
+        """追加气象颜色、海啸级别或台风强度等级筛选条件。"""
         normalized = str(level_filter or "").strip().lower()
         weather_color_map = {
             "weather_white": "白色",
@@ -672,6 +1142,27 @@ class DatabaseManager:
                     "%大津波警報%",
                 ]
             )
+            return
+
+        typhoon_levels = {
+            "typhoon_tropical_depression": "热带低压",
+            "typhoon_tropical_storm": "热带风暴",
+            "typhoon_severe_tropical_storm": "强热带风暴",
+            "typhoon": "台风",
+            "typhoon_severe_typhoon": "强台风",
+            "typhoon_super_typhoon": "超强台风",
+        }
+        if normalized in typhoon_levels:
+            like = f"%{typhoon_levels[normalized]}%"
+            clauses.append(
+                "(type='typhoon' AND ("
+                "COALESCE(level, '') = ? OR "
+                "(COALESCE(level, '') = '' AND ("
+                "COALESCE(description, '') LIKE ? OR "
+                "COALESCE(subtitle, '') LIKE ?"
+                "))))"
+            )
+            params.extend([typhoon_levels[normalized], like, like])
 
     async def get_events_count(
         self,
@@ -680,6 +1171,7 @@ class DatabaseManager:
         min_magnitude: float | None = None,
         keyword: str | None = None,
         level_filter: str | None = None,
+        min_wind_speed: float | None = None,
     ) -> int:
         """获取事件总数（支持按类型、数据源、最小震级与关键词过滤）"""
         try:
@@ -705,6 +1197,12 @@ class DatabaseManager:
                 params.append(min_magnitude)
 
             self._append_level_filter_clause(level_filter, clauses, params)
+
+            if min_wind_speed is not None:
+                clauses.append(
+                    "(type='typhoon' AND wind_speed IS NOT NULL AND wind_speed >= ?)"
+                )
+                params.append(min_wind_speed)
 
             normalized_keyword = str(keyword or "").strip()
             if normalized_keyword:
@@ -743,6 +1241,7 @@ class DatabaseManager:
         magnitude_order: str | None = None,
         keyword: str | None = None,
         level_filter: str | None = None,
+        min_wind_speed: float | None = None,
     ) -> list[dict[str, Any]]:
         """分页获取事件（含 history，支持按类型、数据源、最小震级、关键词过滤与震级排序）"""
         try:
@@ -771,6 +1270,12 @@ class DatabaseManager:
 
             self._append_level_filter_clause(level_filter, clauses, params)
 
+            if min_wind_speed is not None:
+                clauses.append(
+                    "(type='typhoon' AND wind_speed IS NOT NULL AND wind_speed >= ?)"
+                )
+                params.append(min_wind_speed)
+
             normalized_keyword = str(keyword or "").strip()
             if normalized_keyword:
                 keyword_like = f"%{normalized_keyword}%"
@@ -789,16 +1294,24 @@ class DatabaseManager:
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
 
+            # 默认按“事件时间线”排序：优先业务时间 time，再回退 updated_at。
+            # 这样历史回填记录即使刚刚写入，也不会因为 updated_at=now 整块顶到列表最前。
+            timeline_order = (
+                "CASE WHEN NULLIF(time, '') IS NULL THEN 1 ELSE 0 END ASC, "
+                "time DESC, "
+                "updated_at DESC, "
+                "id DESC"
+            )
             normalized_order = (magnitude_order or "").lower().strip()
             if normalized_order in {"asc", "desc"}:
                 order_sql = (
                     " ORDER BY "
                     "CASE WHEN magnitude IS NULL THEN 1 ELSE 0 END ASC, "
                     f"magnitude {normalized_order.upper()}, "
-                    "updated_at DESC, time DESC"
+                    f"{timeline_order}"
                 )
             else:
-                order_sql = " ORDER BY updated_at DESC, time DESC"
+                order_sql = f" ORDER BY {timeline_order}"
 
             sql = f"SELECT * FROM events{where_sql}{order_sql} LIMIT ? OFFSET ?"
             params.extend([limit, offset])
@@ -913,7 +1426,8 @@ class DatabaseManager:
     async def get_statistics(self) -> dict[str, Any]:
         """获取数据库统计信息（按稳定事件集合去重，而非按物理行计数）。"""
         try:
-            cursor = await self.connection.cursor()
+            connection = await self._ensure_connection()
+            cursor = await connection.cursor()
 
             dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
 
@@ -933,20 +1447,26 @@ class DatabaseManager:
                 norm_key = normalize_event_type(k) or k
                 by_type[norm_key] = by_type.get(norm_key, 0) + int(v or 0)
 
+            # 贡献统计：台风 fan/enriched 合并为 typhoon_fanstudio；
+            # eqsc_rebuild 单独计入 typhoon_eqsc_rebuild。
             await cursor.execute(
                 f"""
                 SELECT COALESCE(NULLIF(source_id, ''), source) AS source_key,
+                       type AS event_type,
+                       info_type AS info_type,
                        COUNT(DISTINCT {dedup_group_expr}) AS source_count
                 FROM events
-                GROUP BY source_key
+                GROUP BY source_key, event_type, info_type
                 """
             )
             by_source: dict[str, int] = {}
             for row in await cursor.fetchall():
-                normalized_source = normalize_source_name(str(row[0] or ""))
-                by_source[normalized_source] = by_source.get(
-                    normalized_source, 0
-                ) + int(row[1] or 0)
+                stats_key = build_source_stats_key(
+                    str(row[0] or ""),
+                    event_type=str(row[1] or ""),
+                    info_type=str(row[2] or ""),
+                )
+                by_source[stats_key] = by_source.get(stats_key, 0) + int(row[3] or 0)
 
             db_size_mb = self.db_path.stat().st_size / (1024 * 1024)
             return {
@@ -960,7 +1480,10 @@ class DatabaseManager:
             return {}
 
     async def get_statistics_rebuild_events(self) -> list[dict[str, Any]]:
-        """获取去重后的全量事件，用于从数据库重建内存派生统计。"""
+        """获取去重后的全量事件，用于从数据库重建内存派生统计。
+
+        台风峰值直接读取主表 level / wind_speed / pressure 列。
+        """
         try:
             cursor = await self.connection.cursor()
             dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
@@ -993,6 +1516,8 @@ class DatabaseManager:
                     magnitude,
                     depth,
                     level,
+                    wind_speed,
+                    pressure,
                     weather_type_code,
                     time,
                     unique_id,

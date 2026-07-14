@@ -10,17 +10,20 @@ from typing import Any
 from ...domain.display_models import (
     EarthquakeDisplayModel,
     TsunamiDisplayModel,
+    TyphoonDisplayModel,
     WeatherDisplayModel,
 )
 from ...domain.event_context import (
     EarthquakeDisplayContext,
     TsunamiDisplayContext,
+    TyphoonDisplayContext,
     WeatherDisplayContext,
 )
 from ...domain.event_models import EventEnvelope
 from .builders.common import prepare_display_projection
 from .builders.earthquake_context_builder import build_earthquake_display_context
 from .builders.tsunami_context_builder import build_tsunami_display_context
+from .builders.typhoon_context_builder import build_typhoon_display_context
 from .builders.weather_context_builder import build_weather_display_context
 
 
@@ -78,13 +81,16 @@ def build_display_context(
         projection["envelope"], "event_type", "unknown"
     )
 
-    # 地震类事件（含地震预警）共用地震展示上下文；海啸与气象分别走各自分支。
+    # 地震类事件（含地震预警）共用地震展示上下文；海啸、气象与台风分别走各自分支。
     if event_type in {"earthquake", "earthquake_warning"}:
         # 调用地震展示上下文构建器进行精细化构建
         return build_earthquake_display_context(projection, options)
     if event_type == "tsunami":
         # 调用海啸展示上下文构建器进行精细化构建
         return build_tsunami_display_context(projection, options)
+    if event_type == "typhoon":
+        # 调用台风展示上下文构建器进行精细化构建
+        return build_typhoon_display_context(projection, options)
     # 默认或其他未知类型均作为气象/通用展示事件处理
     return build_weather_display_context(projection, options)
 
@@ -162,9 +168,10 @@ def build_admin_statistics_projection(
     if not isinstance(stats, dict):
         stats = {}
 
-    # 从原始统计中分离出地震、气象专项统计子节点
+    # 从原始统计中分离出地震、气象、台风专项统计子节点
     earthquake_stats = dict(stats.get("earthquake_stats", {}))
     weather_stats = dict(stats.get("weather_stats", {}))
+    typhoon_stats = dict(stats.get("typhoon_stats", {}))
     # 取最近250条推送记录用于管理端面板渲染，多余的予以截断以减轻前台压力
     recent_push_records = list(stats.get("recent_pushes", [])[:250])
     # 解析用于地图渲染的地震位置标记列表
@@ -195,6 +202,18 @@ def build_admin_statistics_projection(
             # 按气象发生省份分类的计数
             "by_region": dict(weather_stats.get("by_region", {})),
         },
+        "typhoon_stats": {
+            # 按台风强度等级分类的推送频次统计（含同一台风多次推送）
+            "by_level": dict(typhoon_stats.get("by_level", {})),
+            # 按台风个体去重的最高强度等级分布
+            "by_max_level": dict(typhoon_stats.get("by_max_level", {})),
+            # 按台风名称记录的最大风速（可附带气压），用于风王榜
+            "max_wind_typhoons": dict(typhoon_stats.get("max_wind_typhoons", {})),
+            # 按台风名称记录的最低中心气压，用于气压榜
+            "min_pressure_typhoons": dict(
+                typhoon_stats.get("min_pressure_typhoons", {})
+            ),
+        },
         # 原始推送历史缓存
         "recent_pushes": recent_push_records,
         # 归一化后的事件快照列表
@@ -211,9 +230,11 @@ def build_admin_statistics_projection(
 __all__ = [
     "EarthquakeDisplayContext",
     "TsunamiDisplayContext",
+    "TyphoonDisplayContext",
     "WeatherDisplayContext",
     "EarthquakeDisplayModel",
     "TsunamiDisplayModel",
+    "TyphoonDisplayModel",
     "WeatherDisplayModel",
     "build_display_context",
     "build_event_summary_view",

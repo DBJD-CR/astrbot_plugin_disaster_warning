@@ -36,11 +36,31 @@ function EventCard({
     const isEarthquake = eventType === 'earthquake' || eventType === 'earthquake_warning';
     const isTsunami = eventType === 'tsunami';
     const isWeather = eventType === 'weather_alarm';
+    const isTyphoon = eventType === 'typhoon';
     
-    // 生成动态标题文本：地震调用特定算法，气象优先展示 subtitle，其他事件展示 description
+    // 生成动态标题文本：地震调用特定算法，气象与台风优先展示 subtitle，其他事件展示 description
+    const normalizeTyphoonTitle = (value) => {
+        const text = String(value || '').trim();
+        if (!text) return '';
+        // 统一括号风格，避免“巴威（BAVI）”与“巴威 (BAVI)”混杂
+        return text
+            .replace(/\s*\(\s*/g, '（')
+            .replace(/\s*\)\s*/g, '）')
+            .replace(/TD\s*No\.?\s*/gi, 'TD');
+    };
     const displayTitle = isEarthquake
         ? buildEarthquakeTitle(evt)
-        : (isWeather ? (evt.subtitle || evt.description || '未知位置') : (evt.description || '未知位置'));
+        : (isTyphoon
+            ? (
+                normalizeTyphoonTitle(evt.subtitle)
+                || normalizeTyphoonTitle(evt.description)
+                || normalizeTyphoonTitle(evt.place_name)
+                || normalizeTyphoonTitle(evt.real_event_id)
+                || '未知台风'
+            )
+            : ((isWeather)
+                ? (evt.subtitle || evt.description || '未知位置')
+                : (evt.description || '未知位置')));
 
     // 初始化徽标内容与对应 CSS 类名
     let badgeContent = '❓';
@@ -88,6 +108,46 @@ function EventCard({
 
         weatherIconUrl = normalizedIconUrl || fallbackUrl || null;
     }
+    // 4. 台风：使用专属旋风徽标；风速使用独立 wind_speed 字段（单位 m/s）。
+    else if (isTyphoon) {
+        badgeContent = '🌀';
+        badgeClass = 'badge-typhoon';
+    }
+
+    const typhoonWind = Number(evt._snapshot_wind_speed ?? evt.wind_speed);
+    const typhoonPressure = evt._snapshot_pressure != null
+        ? Number(evt._snapshot_pressure)
+        : (evt.pressure != null ? Number(evt.pressure) : null);
+    // 区分当前观测强度与历史峰值：level 存峰值，_snapshot_level 存当前观测
+    const typhoonCurrentLevel = evt._snapshot_level || '';
+    const typhoonPeakLevel = evt.level || '';
+    const typhoonShowPeakDiff = typhoonCurrentLevel && typhoonPeakLevel && typhoonCurrentLevel !== typhoonPeakLevel;
+    // 台风中心位置：复用 typhoonFormatters 的坐标格式化工具
+    const typhoonFormatters = window.DisasterTyphoonFormatters;
+    const typhoonCoords = isTyphoon && typhoonFormatters
+        ? typhoonFormatters.formatTyphoonCoords(
+            evt._snapshot_latitude ?? evt.latitude,
+            evt._snapshot_longitude ?? evt.longitude,
+        )
+        : '';
+    const typhoonMeta = isTyphoon
+        ? [
+            typhoonCurrentLevel
+                ? (typhoonShowPeakDiff
+                    ? `当前强度：${typhoonCurrentLevel}（峰值：${typhoonPeakLevel}）`
+                    : `强度：${typhoonCurrentLevel}`)
+                : (typhoonPeakLevel ? `强度：${typhoonPeakLevel}` : ''),
+            typhoonCoords ? `中心位置：(${typhoonCoords})` : '',
+            // 过滤 0 / 负数 / 非数字，避免脏数据展示"最大风速：0.0 m/s"
+            (Number.isFinite(typhoonWind) && typhoonWind > 0)
+                ? `最大风速：${typhoonWind.toFixed(1)} m/s`
+                : '',
+            // 气压：过滤 0 / 负数 / 非数字
+            (Number.isFinite(typhoonPressure) && typhoonPressure > 0)
+                ? `中心气压：${typhoonPressure} hPa`
+                : '',
+        ].filter(Boolean).join(' · ')
+        : '';
 
     // 计算报告第几期 (第几报) 的文案
     let reportLabel = '';
@@ -201,9 +261,16 @@ function EventCard({
                     </span>
                     <span className="event-meta-item">
                         <span className="event-meta-separator">•</span>
-                        📡 {formatSourceName(evt.source_id || evt.source)}
+                        📡 {(typeof formatEventSourceName === 'function'
+                            ? formatEventSourceName(evt)
+                            : formatSourceName(evt.source_id || evt.source))}
                     </span>
                 </div>
+                {typhoonMeta && (
+                    <div className="event-meta event-meta-typhoon">
+                        <span className="event-meta-item">{typhoonMeta}</span>
+                    </div>
+                )}
             </div>
 
             {/* 极右侧：多更新折叠控制提示（若包含） */}

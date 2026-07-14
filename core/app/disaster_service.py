@@ -54,6 +54,8 @@ from .runtime.disaster_service_notice import DisasterServiceNoticeService
 from .runtime.disaster_service_reconnect import DisasterServiceReconnectService
 from .runtime.disaster_service_runtime import DisasterServiceRuntimeService
 from .runtime.disaster_service_status import DisasterServiceStatusService
+from .services.typhoon_enrichment_service import TyphoonEnrichmentService
+from .services.typhoon_history_rebuild_service import TyphoonHistoryRebuildService
 
 
 def _is_source_enabled_by_catalog(source_id: str, data_sources: dict[str, Any]) -> bool:
@@ -155,6 +157,17 @@ class DisasterWarningService:
         )
         # 通知中心独立维护远端通知同步、本地缓存和已读状态，供管理端前端复用。
         self.notification_center = NotificationCenter(self)
+        # 台风 EQSC 富化服务，在台风事件进入流水线前按需拉取 EQSC 详细数据。
+        # 注入 message_logger，使 EQSC HTTP 响应进入原始消息日志链路。
+        self.typhoon_enrichment_service = TyphoonEnrichmentService(
+            config,
+            message_logger=self.message_logger,
+        )
+        # 冷启动历史重建编排独立服务，避免主服务继续堆叠台风业务细节。
+        self.typhoon_history_rebuild_service = TyphoonHistoryRebuildService(
+            enrichment_service=self.typhoon_enrichment_service,
+            statistics_manager=self.statistics_manager,
+        )
         self._setup_runtime_services()
 
     def _setup_runtime_services(self) -> None:
@@ -266,7 +279,18 @@ class DisasterWarningService:
             self.http_fetcher = HTTPDataFetcher(self.config)  # 初始化 HTTP 轮询拉取组件
             self._register_handlers()
             self._configure_connections()
+            # 台风富化服务在 EQSC 启用时输出就绪日志
+            if self.typhoon_enrichment_service.is_enabled:
+                logger.info("[灾害预警] EQSC 台风富化服务已就绪")
+            else:
+                logger.info(
+                    "[灾害预警] EQSC 台风富化服务未启用，台风将使用 FAN Studio 基础数据"
+                )
             logger.info("[灾害预警] 灾害预警服务初始化完成")
+
+            # 注意：EQSC 历史台风重建不得在 initialize() 中同步/阻塞执行。
+            # 该阶段会阻塞后续 start()，而 token 网络请求可能长达数十秒。
+            # 重建统一放到 start() 完成后由后台任务触发。
 
         except Exception as e:
             logger.error(f"[灾害预警] 初始化服务失败: {e}")
@@ -275,6 +299,31 @@ class DisasterWarningService:
                     e, module="core.disaster_service.initialize"
                 )
             raise
+
+    def schedule_eqsc_token_warmup(self) -> None:
+        """启动后第一时间后台预热 EQSC AccessToken，避免状态长期显示鉴权失效。"""
+        if not self.typhoon_enrichment_service.is_enabled:
+            return
+        warmup_task = asyncio.create_task(
+            self.typhoon_enrichment_service.warm_up_access_token(),
+            name="dw_eqsc_token_warmup",
+        )
+        self.register_background_task(warmup_task)
+
+    def schedule_typhoon_db_rebuild(self) -> None:
+        """在后台调度 EQSC 历史台风数据库重建，避免阻塞启动链路。"""
+        if not self.typhoon_enrichment_service.is_enabled:
+            return
+        # 依赖可能在 initialize 后才完全就绪，调度前再绑定一次。
+        self.typhoon_history_rebuild_service.bind(
+            enrichment_service=self.typhoon_enrichment_service,
+            statistics_manager=self.statistics_manager,
+        )
+        rebuild_task = asyncio.create_task(
+            self.typhoon_history_rebuild_service.try_cold_start_rebuild(),
+            name="dw_rebuild_typhoon_db",
+        )
+        self.register_background_task(rebuild_task)
 
     def _register_handlers(self):
         """注册消息调度处理器。"""
@@ -352,6 +401,23 @@ class DisasterWarningService:
             return
 
         try:
+            # 台风事件：多台风共舞时 FAN 会整包重推数组。
+            # 必须在 EQSC 富化前按“单台风核心参数指纹”做只读去重，
+            # 否则无变化台风会因数组中其他台风更新而被连带推送，并白白消耗 EQSC 查询。
+            if event.event_type == "typhoon":
+                deduplicator = getattr(
+                    getattr(self, "message_manager", None), "deduplicator", None
+                )
+                peek = getattr(deduplicator, "peek_typhoon_should_push", None)
+                if callable(peek) and not peek(event):
+                    logger.debug(
+                        f"[灾害预警] 台风事件在富化前被去重过滤，跳过后续推送: {event.id}"
+                    )
+                    return
+
+                # 仅对确认有变化（或首次出现）的台风执行 EQSC 富化
+                event = await self.typhoon_enrichment_service.enrich(event)
+
             # 真正的日志记录、推送、统计与 Web 管理端通知由事件流水线统一处理。
             await self.event_pipeline.handle(event)
 

@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from .....utils.version import get_plugin_version
+from ....app.services.typhoon_enrichment_service import TyphoonEnrichmentService
 from ....services.display import build_admin_statistics_projection
 from ....services.query.source_runtime_query_service import SourceRuntimeQueryService
 from .connections_payload_builder import ConnectionsPayloadBuilder
@@ -72,11 +73,16 @@ class RealtimePayloadBuilder:
             for status in actual_connections.values()
             if isinstance(status, dict) and status.get("connected")
         )
+        # EQSC HTTP 通道：AccessToken 有效计入活跃连接，配置启用计入总连接
+        eqsc_active, eqsc_total = TyphoonEnrichmentService.resolve_connection_counts(
+            self.disaster_service
+        )
+        active_websocket_connections += eqsc_active
         global_quake_connected = any(
             "global_quake" in task.get_name() if hasattr(task, "get_name") else False
             for task in getattr(self.disaster_service, "connection_tasks", [])
         )
-        return self.source_runtime_query.build_runtime_snapshot(
+        snapshot = self.source_runtime_query.build_runtime_snapshot(
             actual_connections=actual_connections,
             latency_cache=self.latency_cache,
             running=bool(getattr(self.disaster_service, "running", False)),
@@ -92,6 +98,11 @@ class RealtimePayloadBuilder:
             else False,
             global_quake_connected=global_quake_connected,
         )
+        # 补上 EQSC 后，活跃/总连接口径与状态卡片一致
+        snapshot["total_connections"] = (
+            int(snapshot.get("total_connections", 0) or 0) + eqsc_total
+        )
+        return snapshot
 
     def build_status_payload(self) -> dict[str, Any]:
         """构建管理端状态面板所需的状态数据。"""
@@ -120,7 +131,7 @@ class RealtimePayloadBuilder:
             return {}
 
         statistics_manager = self.disaster_service.statistics_manager
-        return build_admin_statistics_projection(
+        payload = build_admin_statistics_projection(
             statistics_manager.stats,
             log_stats=(
                 self.disaster_service.message_logger.get_log_summary()
@@ -128,6 +139,77 @@ class RealtimePayloadBuilder:
                 else {}
             ),
         )
+        return self._enrich_session_stats_for_display(payload)
+
+    def _enrich_session_stats_for_display(
+        self, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """为会话推送统计补充 session_id 与备注名，便于前端短展示。"""
+        if not isinstance(payload, dict):
+            return payload
+
+        session_stats = payload.get("session_stats")
+        if not isinstance(session_stats, dict):
+            return payload
+
+        top_sessions = session_stats.get("top_sessions")
+        if not isinstance(top_sessions, list) or not top_sessions:
+            return payload
+
+        session_config_manager = getattr(
+            self.disaster_service, "session_config_manager", None
+        )
+        enriched_top_sessions: list[dict[str, Any]] = []
+
+        for item in top_sessions:
+            if not isinstance(item, dict):
+                continue
+
+            session = str(item.get("session") or "").strip()
+            session_id = self._extract_session_id(session)
+            session_name = ""
+            if session and session_config_manager is not None:
+                try:
+                    session_name = str(
+                        session_config_manager.get_session_name(session) or ""
+                    ).strip()
+                except Exception:
+                    session_name = ""
+
+            enriched_item = dict(item)
+            enriched_item["session"] = session
+            enriched_item["session_id"] = session_id
+            enriched_item["session_name"] = session_name
+            enriched_top_sessions.append(enriched_item)
+
+        next_session_stats = dict(session_stats)
+        next_session_stats["top_sessions"] = enriched_top_sessions
+        next_payload = dict(payload)
+        next_payload["session_stats"] = next_session_stats
+        return next_payload
+
+    @staticmethod
+    def _extract_session_id(umo: str) -> str:
+        """从完整 UMO 中提取尾部 session_id。"""
+        if not isinstance(umo, str) or not umo:
+            return ""
+
+        known_types = (
+            "FriendMessage",
+            "GroupMessage",
+            "PrivateMessage",
+            "GuildMessage",
+        )
+        for msg_type in known_types:
+            marker = f":{msg_type}:"
+            idx = umo.find(marker)
+            if idx != -1:
+                return umo[idx + len(marker) :].strip() or umo
+
+        parts = umo.split(":")
+        if len(parts) >= 3:
+            return parts[-1].strip() or umo
+        return umo.strip()
 
     def build_connections_payload(
         self, expected_sources: dict[str, str] | None = None

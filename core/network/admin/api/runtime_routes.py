@@ -13,6 +13,11 @@ from fastapi import Request
 from astrbot.api import logger
 
 from .....utils.geolocation import fetch_location_from_ip
+from ....services.query.typhoon_query_service import (
+    normalize_typhoon_count,
+    normalize_typhoon_detail,
+    query_typhoon_data,
+)
 from ....services.query.weather_query_service import query_weather_alarm_data
 from ....services.simulation.simulation_service import (
     build_earthquake_simulation,
@@ -72,6 +77,55 @@ def register_runtime_routes(app, disaster_service, config: dict[str, Any]):
             return ApiResponse.success(query_result)
         except Exception as e:
             logger.error(f"[灾害预警] Web端查询气象预警失败: {e}")
+            return ApiResponse.error(str(e), status_code=500, success=False)
+
+    @app.get("/api/typhoon/query")
+    async def query_typhoon_info(
+        typhoon_id: str = "",
+        keyword: str = "",
+        count: int = 1,
+        detail: str = "current",
+        active_only: bool = False,
+    ):
+        """查询台风信息，逻辑与命令侧 `/台风信息查询` 保持一致。
+
+        优先 EQSC；配置无效或查询失败时回退本地数据库。
+        """
+        try:
+            guard_result = ApiResponse.guard_service_ready(
+                disaster_service,
+                "statistics_manager",
+            )
+            if guard_result is not None:
+                return guard_result
+
+            db = disaster_service.statistics_manager.db
+            enrichment = getattr(disaster_service, "typhoon_enrichment_service", None)
+            query_result = await query_typhoon_data(
+                db,
+                enrichment,
+                typhoon_id=typhoon_id or None,
+                keyword=keyword or None,
+                count=normalize_typhoon_count(count),
+                detail=normalize_typhoon_detail(detail),
+                active_only=bool(active_only),
+            )
+            await _track_runtime_feature(
+                "web_typhoon_query",
+                {
+                    "success": bool(query_result.get("success")),
+                    "query_mode": str(query_result.get("query_mode") or "unknown"),
+                    "source": str(query_result.get("source") or "unknown"),
+                    "detail": str(query_result.get("detail") or "current"),
+                    "has_id": bool(typhoon_id),
+                    "has_keyword": bool(keyword),
+                    "active_only": bool(active_only),
+                    "result_count": int(query_result.get("total") or 0),
+                },
+            )
+            return ApiResponse.success(query_result)
+        except Exception as e:
+            logger.error(f"[灾害预警] Web端查询台风信息失败: {e}")
             return ApiResponse.error(str(e), status_code=500, success=False)
 
     @app.get("/api/simulation-params")

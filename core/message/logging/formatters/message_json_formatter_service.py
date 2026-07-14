@@ -32,6 +32,38 @@ class MessageJsonFormatterService:
         "updated_at": "更新时间",
         "started_at": "开始时间",
         "expire": "过期时间",
+        # 🌀 台风相关字段（Fan Studio / EQSC）
+        "typhoon": "台风列表",
+        "nameEN": "英文名",
+        "nameCN": "中文名",
+        "name_en": "英文名",
+        "isActive": "是否活跃",
+        "historyTrack": "历史路径",
+        "futureTrack": "预测路径",
+        "history_track": "历史路径",
+        "future_track": "预测路径",
+        "typeNameCN": "强度等级(中文)",
+        "pressure": "中心气压(hPa)",
+        "speed": "移动速度(km/h)",
+        "direction": "移动方向",
+        "directionCN": "移动方向(中文)",
+        "moveDirection": "移动方向",
+        "moveSpeed": "移动速度(km/h)",
+        "windSpeed": "最大风速(m/s)",
+        "power": "中心风力(级)",
+        "radius7": "七级风圈半径(km)",
+        "radius10": "十级风圈半径(km)",
+        "windCircle": "风圈半径",
+        "wind_circle": "风圈半径",
+        "30KTS": "七级风圈(30KTS)",
+        "50KTS": "十级风圈(50KTS)",
+        "64KTS": "十二级风圈(64KTS)",
+        "NE": "东北象限(km)",
+        "SE": "东南象限(km)",
+        "SW": "西南象限(km)",
+        "NW": "西北象限(km)",
+        "Data": "数据主体",
+        "provider": "数据服务商",
         # 🏔️ 地震核心信息
         "earthquake": "地震信息",
         "magnitude": "震级",
@@ -43,7 +75,7 @@ class MessageJsonFormatterService:
         "longitude": "经度",
         "Longitude": "经度",  # 大写版本
         "placeName": "地名",
-        "name": "地点名称",
+        "name": "名称",  # 通用：地名/台风中文名等
         "shockTime": "发震时间",
         "OriginTime": "发震时间",  # JMA格式
         "place": "震中",
@@ -243,6 +275,9 @@ class MessageJsonFormatterService:
             return "无数据"
         if value == "":
             return "空字符串"
+        # EQSC 台风路径字段常用 "NULL" 表示缺失
+        if isinstance(value, str) and value.strip().upper() in {"NULL", "NONE"}:
+            return "无数据"
         if isinstance(value, bool):
             return "是" if value else "否"
         if isinstance(value, (int, float)):
@@ -261,6 +296,24 @@ class MessageJsonFormatterService:
             return f"{value:.2f}km" if isinstance(value, float) else f"{value}km"
         if key in ["latitude", "Latitude", "longitude", "Longitude"]:
             return f"{value:.5f}"
+        # 台风气压 / 风速 / 移速 / 风圈半径
+        if key in ["pressure", "Pressure"]:
+            return f"{value} hPa"
+        if key in ["windSpeed", "WindSpeed"]:
+            if isinstance(value, float) and not value.is_integer():
+                return f"{value:.1f} m/s"
+            return f"{int(value) if float(value).is_integer() else value} m/s"
+        if key in ["moveSpeed", "speed", "Speed"]:
+            # EQSC speed 可能是数值，也可能是 STNR 字符串（字符串分支已处理）
+            if isinstance(value, float) and not value.is_integer():
+                return f"{value:.1f} km/h"
+            return f"{int(value) if float(value).is_integer() else value} km/h"
+        if key in ["radius7", "radius10", "NE", "SE", "SW", "NW"]:
+            if isinstance(value, float) and not value.is_integer():
+                return f"{value:.1f} km"
+            return f"{int(value) if float(value).is_integer() else value} km"
+        if key == "power":
+            return f"{int(value) if float(value).is_integer() else value} 级"
         if key in [
             "maxPGA",
             "errOrigin",

@@ -125,6 +125,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     ("p2p_earthquake", "P2P地震情報"),
                     ("wolfx", "Wolfx"),
                     ("global_quake", "Global Quake"),
+                    ("eqsc", "EQSC API"),
                 ]
             )
             source_label_map = {
@@ -138,6 +139,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 "eew": "紧急地震速报",
                 "earthquake_info": "地震情报",
                 "global_quake": "Global Quake",
+                "china_typhoon": "中国气象局：实时活跃台风",
             }
             scoped_sub_source_label_map = {
                 "FAN Studio": {
@@ -149,6 +151,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     "usgs_earthquake": "美国地质调查局 (USGS)",
                     "china_weather_alarm": "中国气象局: 气象预警",
                     "china_tsunami": "自然资源部海啸预警中心",
+                    "china_typhoon": "中国气象局：实时活跃台风",
                     "japan_jma_eew": "日本气象厅: 紧急地震速报",
                 },
                 "P2P地震情報": {
@@ -165,6 +168,9 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 },
                 "Global Quake": {
                     "enabled": "实时数据流",
+                },
+                "EQSC API": {
+                    "china_typhoon": "中国气象局：实时活跃台风",
                 },
             }
 
@@ -193,7 +199,62 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     source_label_map.get(normalized_key, normalized_key),
                 )
 
-            # 1. 总体概览行
+            # EQSC 为 HTTP 辅助通道，不在 ws_manager 连接表中，单独补充
+            # 注意：get_service_status() 已把 EQSC 计入 active/total，这里只负责展示详情
+            eqsc_health: dict = {}
+            enrichment = getattr(
+                self.plugin.disaster_service, "typhoon_enrichment_service", None
+            )
+            if enrichment is not None:
+                getter = getattr(enrichment, "get_health_status", None)
+                if callable(getter):
+                    try:
+                        maybe_health = getter()
+                        if isinstance(maybe_health, dict):
+                            eqsc_health = maybe_health
+                    except Exception:
+                        eqsc_health = {}
+
+            if not eqsc_health:
+                # 富化服务不可用时，回退到配置层判定
+                eqsc_cfg = (
+                    (self.plugin.config.get("data_sources", {}) or {}).get("eqsc", {})
+                    if isinstance(self.plugin.config, dict)
+                    else {}
+                )
+                if not isinstance(eqsc_cfg, dict):
+                    eqsc_cfg = {}
+                config_enabled = bool(eqsc_cfg.get("enabled", False))
+                token_configured = bool(
+                    str(eqsc_cfg.get("refresh_token", "") or "").strip()
+                )
+                eqsc_health = {
+                    "enabled": config_enabled and token_configured,
+                    "config_enabled": config_enabled,
+                    "token_configured": token_configured,
+                    "access_token_valid": False,
+                    "circuit_open": False,
+                    # 子数据源启用仅跟随台风富化开关
+                    "sub_sources": {
+                        "china_typhoon": config_enabled,
+                    },
+                }
+
+            eqsc_enabled = bool(eqsc_health.get("enabled"))
+            eqsc_config_enabled = bool(eqsc_health.get("config_enabled", eqsc_enabled))
+            eqsc_circuit_open = bool(eqsc_health.get("circuit_open", False))
+            eqsc_token_valid = bool(eqsc_health.get("access_token_valid", False))
+            if not eqsc_enabled:
+                eqsc_state_text = "⚪ 未启用"
+            elif eqsc_circuit_open:
+                eqsc_state_text = "🟠 熔断中"
+            elif eqsc_token_valid:
+                # AccessToken 有效 = 活跃连接
+                eqsc_state_text = "🟢 可用"
+            else:
+                eqsc_state_text = "🔴 鉴权失效"
+
+            # 1. 总体概览行（active/total 已由 status 服务计入 EQSC）
             overview_lines = [
                 "📊 灾害预警服务状态",
                 "",
@@ -211,6 +272,8 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 state_text = "🟢 正常" if connected else "🔴 异常"
                 connection_lines.append(f"• {display_name}：{state_text}")
 
+            connection_lines.append(f"• EQSC API：{eqsc_state_text}")
+
             # 3. 各子数据源的细化开关状况行
             data_source_lines = ["📚 子数据源启用状况"]
             active_sources = status.get("data_sources", [])
@@ -221,7 +284,16 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 if source_name:
                     grouped_sources[service_name].append(source_name)
 
-            sub_source_status = status.get("sub_source_status", {})
+            sub_source_status = dict(status.get("sub_source_status", {}) or {})
+            # 注入 EQSC 子源（不在 SOURCE_CATALOG 的 WebSocket 分组内）
+            # 子数据源启用仅跟随「启用EQSC台风富化」配置开关
+            eqsc_sub_sources = eqsc_health.get("sub_sources")
+            if not isinstance(eqsc_sub_sources, dict):
+                eqsc_sub_sources = {"china_typhoon": eqsc_config_enabled}
+            sub_source_status["eqsc"] = dict(eqsc_sub_sources)
+            if eqsc_config_enabled:
+                grouped_sources.setdefault("eqsc", ["china_typhoon"])
+
             for service_name, display_name in source_group_label_map.items():
                 if (
                     service_name not in grouped_sources

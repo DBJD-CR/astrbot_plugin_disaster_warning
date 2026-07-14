@@ -1,6 +1,6 @@
 """
 插件查询与模拟命令服务。
-负责气象预警查询、地震预警查询、地震列表查询与灾害预警模拟命令逻辑，
+负责气象预警查询、台风信息查询、地震预警查询、地震列表查询与灾害预警模拟命令逻辑，
 减少 main.DisasterWarningPlugin 中的查询与展示流程实现。
 """
 
@@ -14,6 +14,11 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
 from ...core.app.services import format_earthquake_list_text, quoted_plain_result
+from ...core.services.query.typhoon_query_service import (
+    build_typhoon_query_text,
+    parse_typhoon_query_args,
+    query_typhoon_data,
+)
 from ...core.services.query.weather_query_service import query_weather_alarm_data
 from ...core.services.simulation.simulation_service import build_earthquake_simulation
 from .telemetry_mixin import CommandTelemetryMixin
@@ -287,6 +292,60 @@ class PluginQueryCommandService(CommandTelemetryMixin):
             yield _quoted_plain_result("\n".join(lines))
         except Exception as e:
             logger.error(f"[灾害预警] 查询气象预警失败: {e}")
+            yield _quoted_plain_result(f"❌ 查询失败: {e}")
+
+    async def handle_query_typhoon(
+        self,
+        event,
+        arg1: str | None = None,
+        arg2: str | None = None,
+        arg3: str | None = None,
+    ):
+        """处理台风信息查询命令。
+
+        优先复用 EQSC 查询逻辑；配置无效或查询失败时回退本地数据库（Fan/EQSC重建）。
+        支持指定 ID、名称、数量、活跃过滤与详细程度（当前信息/完整路径）。
+        """
+
+        def _quoted_plain_result(text: str):
+            return quoted_plain_result(self.plugin, event, text)
+
+        if not self.plugin.disaster_service:
+            yield _quoted_plain_result("❌ 灾害预警服务未启动")
+            return
+
+        try:
+            parsed = parse_typhoon_query_args(arg1, arg2, arg3)
+            db = self.plugin.disaster_service.statistics_manager.db
+            enrichment = getattr(
+                self.plugin.disaster_service, "typhoon_enrichment_service", None
+            )
+            result = await query_typhoon_data(
+                db,
+                enrichment,
+                typhoon_id=parsed.get("typhoon_id"),
+                keyword=parsed.get("keyword"),
+                count=parsed.get("count"),
+                detail=parsed.get("detail"),
+                active_only=bool(parsed.get("active_only")),
+            )
+
+            await self._track_command_feature(
+                "command_typhoon_query",
+                {
+                    "success": bool(result.get("success")),
+                    "query_mode": str(result.get("query_mode") or "unknown"),
+                    "source": str(result.get("source") or "unknown"),
+                    "detail": str(result.get("detail") or "current"),
+                    "has_id": bool(parsed.get("typhoon_id")),
+                    "has_keyword": bool(parsed.get("keyword")),
+                    "active_only": bool(parsed.get("active_only")),
+                    "result_count": int(result.get("total") or 0),
+                },
+            )
+            yield _quoted_plain_result(build_typhoon_query_text(result))
+        except Exception as e:
+            logger.error(f"[灾害预警] 查询台风信息失败: {e}")
             yield _quoted_plain_result(f"❌ 查询失败: {e}")
 
     async def handle_query_earthquake_warning(self, event):

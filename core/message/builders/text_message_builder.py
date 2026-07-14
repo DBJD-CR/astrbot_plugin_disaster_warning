@@ -43,6 +43,8 @@ class TextMessageBuilder:
             "detailed_jma_intensity": detailed_jma,
             "jma_region_intensity": jma_region,
             "local_monitoring": active_config.get("local_monitoring", {}),
+            # 台风展示是否暴露本地距离/逼近信息，对齐地震 local_monitoring.enabled。
+            "typhoon_config": active_config.get("typhoon_config", {}),
         }
 
         data = event.event

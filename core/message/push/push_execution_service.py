@@ -142,6 +142,9 @@ class PushExecutionService:
             # 构建缓存键时纳入所有会影响展示结果的关键配置，避免不同配置误复用。
             message_format_config = runtime_config.get("message_format", {})
             weather_config = runtime_config.get("weather_config", {})
+            typhoon_config = runtime_config.get("typhoon_config", {})
+            if not isinstance(typhoon_config, dict):
+                typhoon_config = {}
             cache_key = json.dumps(
                 {
                     "event_id": event.id,
@@ -178,6 +181,11 @@ class PushExecutionService:
                         ),
                         "max_description_length": weather_config.get(
                             "max_description_length", 384
+                        ),
+                    },
+                    "typhoon": {
+                        "show_local_estimation": typhoon_config.get(
+                            "show_local_estimation", False
                         ),
                     },
                 },

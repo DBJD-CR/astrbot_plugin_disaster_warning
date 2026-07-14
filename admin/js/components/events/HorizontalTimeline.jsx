@@ -405,7 +405,15 @@ function HorizontalTimeline({ style }) {
             return 'is-yellow';
         }
 
-        // B. 海啸：按级别或描述关键字判色
+        // B. 台风：强台风使用红色，超强台风使用紫色
+        if (event.type === 'typhoon') {
+            const level = String(event._snapshot_level || event.level || '');
+            if (level.includes('超强台风')) return 'is-purple';
+            if (level.includes('强台风')) return 'is-red';
+            return 'is-primary';
+        }
+
+        // C. 海啸：按级别或描述关键字判色
         if (event.type === 'tsunami') {
             const level = event.level || '';
             const desc = event.description || '';
@@ -415,7 +423,7 @@ function HorizontalTimeline({ style }) {
             return 'is-blue';
         }
 
-        // C. 气象预警：按级别中英文字段判色
+        // D. 气象预警：按级别中英文字段判色
         if (event.level) {
             if (event.level.includes('红')) return 'is-red';
             if (event.level.includes('橙')) return 'is-orange';
@@ -434,8 +442,12 @@ function HorizontalTimeline({ style }) {
 
     /**
      * 获取数据源规范化中文名
+     * 台风会按 info_type 细分为 Fan / Fan+EQSC / EQSC
      */
     const getSourceLabel = (event) => {
+        if (typeof formatEventSourceName === 'function') {
+            return formatEventSourceName(event || 'unknown');
+        }
         return formatSourceName(event?.source_id || event?.source || 'unknown');
     };
 

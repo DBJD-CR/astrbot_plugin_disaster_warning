@@ -66,6 +66,14 @@ def _payload_matches_predicate(payload: dict[str, Any], predicate: str) -> bool:
     if predicate == "usgs_report":
         # USGS 报文通常会附带官方详情地址，可作为辅助识别条件
         return "usgs.gov" in str(payload.get("url", "") or "")
+    if predicate == "typhoon_active":
+        # 台风数据必须包含移动方向、风速和气压字段，且数据为数组格式
+        # FAN Studio 台风推送的 Data 字段是数组，unwrap 后可能仍为数组
+        if isinstance(payload, list):
+            return len(payload) > 0 and isinstance(payload[0], dict)
+        if isinstance(payload, dict):
+            # 兼容单对象格式
+            return "moveDirection" in payload and "windSpeed" in payload
     return False
 
 

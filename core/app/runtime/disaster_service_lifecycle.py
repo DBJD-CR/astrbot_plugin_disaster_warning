@@ -73,6 +73,16 @@ class DisasterServiceLifecycleService:
                         "[灾害预警] 原始消息日志记录未启用。如需调试或记录原始数据，请使用命令 '/灾害预警日志开关' 启用。"
                     )
 
+                # EQSC AccessToken 启动后立刻后台预热，让状态面板尽快显示“可用”。
+                # 不阻塞 WebSocket/管理端启动；历史重建仍放在其后。
+                if hasattr(self.service, "schedule_eqsc_token_warmup"):
+                    self.service.schedule_eqsc_token_warmup()
+
+                # EQSC 历史台风重建放到启动完成后的后台任务：
+                # 此时数据库已就绪，且不会阻塞 WebSocket/管理端启动。
+                if hasattr(self.service, "schedule_typhoon_db_rebuild"):
+                    self.service.schedule_typhoon_db_rebuild()
+
                 logger.info("[灾害预警] 灾害预警服务已启动")
             except Exception as e:
                 # 启动失败时必须回滚运行标记，避免外部误判服务已可用。
@@ -150,6 +160,13 @@ class DisasterServiceLifecycleService:
                     await (
                         self.service.http_fetcher.close()
                     )  # 关闭 HTTP 客户端 Session 连接池
+
+                # 关闭台风 EQSC 富化服务的 HTTP 会话与令牌管理器资源
+                typhoon_enrichment = getattr(
+                    self.service, "typhoon_enrichment_service", None
+                )
+                if typhoon_enrichment:
+                    await typhoon_enrichment.close()
 
                 # 统计数据库只在已初始化时关闭，避免访问尚未建立的数据库句柄。
                 if (

@@ -45,6 +45,7 @@ function EventsList() {
         magnitudeFilter, setMagnitudeFilter,
         magnitudeOrder, setMagnitudeOrder,
         keyword, setKeyword,
+        windSpeedFilter, setWindSpeedFilter,
         goToPage,
     } = query;
 
@@ -165,6 +166,8 @@ function EventsList() {
                 setMagnitudeOrder={setMagnitudeOrder}
                 keyword={keyword}
                 setKeyword={setKeyword}
+                windSpeedFilter={windSpeedFilter}
+                setWindSpeedFilter={setWindSpeedFilter}
                 availableSources={availableSources}
                 sourceFilterMode={sourceFilterMode}
                 onSourceFilterModeChange={handleSourceFilterModeChange}
