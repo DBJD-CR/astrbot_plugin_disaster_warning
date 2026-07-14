@@ -13,6 +13,9 @@ import re
 from ....utils.converters import ScaleConverter
 from ....utils.time_converter import TimeConverter
 from ...domain.event_context import EarthquakeDisplayContext
+from ...services.geo.cn_district_intensity_service import (
+    CnDistrictIntensityService,
+)
 from ...services.geo.intensity_service import IntensityCalculator
 from ...services.geo.jma_seis_int_loc_loader import get_sect_map
 from .base_presenter import BasePresenter
@@ -173,6 +176,59 @@ def _append_local_estimation(
     lines.append(f"📍{place}预估：")
     lines.append(f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})")
 
+    # 追加 P/S 波预计到达时间
+    p_sec = local_est.get("p_travel_sec")
+    s_sec = local_est.get("s_travel_sec")
+    if p_sec is not None:
+        lines.append(f"⏱️预计P波到达：约 {p_sec:.0f} 秒")
+    if s_sec is not None:
+        lines.append(f"⏱️预计S波到达：约 {s_sec:.0f} 秒")
+
+
+def _append_cn_district_estimation(
+    lines: list[str],
+    display_context: EarthquakeDisplayContext,
+) -> None:
+    """把中国影响区县预估列表附加到文本尾部。
+
+    仅在震中位于中国大陆附近、且能解析出受影响区县时输出。
+    资源加载失败或无命中区县时静默跳过，不影响主推送链路。
+    """
+    lat = display_context.latitude
+    lon = display_context.longitude
+    mag = display_context.magnitude
+    depth = display_context.depth
+    # 缺少必要参数时跳过
+    if lat is None or lon is None or mag is None or depth is None:
+        return
+
+    try:
+        estimates = CnDistrictIntensityService.estimate_affected_districts(
+            float(lat), float(lon), float(mag), float(depth)
+        )
+    except Exception:
+        return
+
+    if not estimates:
+        return
+
+    # 按烈度整数分组
+    groups = CnDistrictIntensityService.group_by_intensity(estimates)
+    if not groups:
+        return
+
+    lines.append("")
+    lines.append("📡预估影响区县（仅供参考）：")
+    for level, names in groups.items():
+        emoji = _get_intensity_emoji(float(level), is_eew=True, is_shindo=False)
+        # 每行最多展示 5 个区县名，超出部分用「等N处」省略
+        max_show = 5
+        if len(names) > max_show:
+            loc_str = "、".join(names[:max_show]) + f" 等{len(names)}处"
+        else:
+            loc_str = "、".join(names)
+        lines.append(f"  {emoji}[烈度{level}] {loc_str}")
+
 
 class CeaEewPresenter(BasePresenter):
     """中国地震预警网展示器。"""
@@ -233,16 +289,24 @@ class CeaEewPresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
-        """展示 CeaEew 消息入口，并附带本地影响距离估值。"""
+        """展示 CeaEew 消息入口，并附带本地影响距离估值与影响区县列表。
+
+        本地预估（距离/烈度/P-S 波）跟随会话级 local_monitoring 配置：
+        仅当该配置启用且上下文携带 local_estimation 时才会输出。
+        影响区县列表为独立增强，不依赖本地监控开关。
+        """
         rendered = cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
         if not _is_earthquake_view(display_context):
             return rendered
         lines = rendered.split("\n") if rendered else []
-        # 若正文尚未包含本地预估，则在尾部补充，避免重复展示。
+        # 本地预估仅在上下文携带 local_estimation 时输出（跟随会话级配置）
         if not any("距离震中" in line for line in lines):
             _append_local_estimation(lines, display_context)
+        # 追加中国影响区县预估列表（独立于本地监控配置）
+        if not any("预估影响区县" in line for line in lines):
+            _append_cn_district_estimation(lines, display_context)
         return "\n".join(lines)
 
 
@@ -533,10 +597,24 @@ class CencEarthquakePresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
-        """展示中国地震台网测定。"""
-        return cls.format_message(
+        """展示中国地震台网测定，并附带本地预估与影响区县列表。
+
+        本地预估跟随会话级 local_monitoring 配置生效；
+        影响区县列表为独立增强，不依赖本地监控开关。
+        """
+        rendered = cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
+        if not _is_earthquake_view(display_context):
+            return rendered
+        lines = rendered.split("\n") if rendered else []
+        # 本地预估仅在上下文携带 local_estimation 时输出（跟随会话级配置）
+        if not any("距离震中" in line for line in lines):
+            _append_local_estimation(lines, display_context)
+        # 追加中国影响区县预估列表（独立于本地监控配置）
+        if not any("预估影响区县" in line for line in lines):
+            _append_cn_district_estimation(lines, display_context)
+        return "\n".join(lines)
 
 
 class UsgsEarthquakePresenter(BasePresenter):
