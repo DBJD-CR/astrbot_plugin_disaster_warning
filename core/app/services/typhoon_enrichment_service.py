@@ -259,7 +259,7 @@ class TyphoonEnrichmentService:
         if not text or text.upper() in {"NULL", "NONE", "无数据"}:
             return None
 
-        # 兼容 EQSC/FAN 常见时间格式
+        # 兼容 EQSC/FAN 常见时间格式（含带毫秒的 ISO8601）
         for fmt in (
             "%Y/%m/%d %H:%M:%S",
             "%Y-%m-%d %H:%M:%S",
@@ -267,6 +267,8 @@ class TyphoonEnrichmentService:
             "%Y-%m-%d %H:%M",
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M:%S.%f%z",
         ):
             try:
                 return datetime.strptime(text.replace("Z", "+0000"), fmt)
