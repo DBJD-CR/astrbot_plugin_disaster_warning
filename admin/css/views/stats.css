@@ -930,7 +930,328 @@
 }
 
 /* ==========================================================================
-   8. 响应式布局大断点媒体查询适配
+   8. 会话推送统计排行榜卡片 (Session Push Top 10)
+   ========================================================================== */
+
+.session-push-card {
+    height: 100%;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+}
+
+.session-push-empty-text {
+    opacity: 0.5;
+    text-align: center;
+    padding-top: 32px;
+    padding-bottom: 32px;
+}
+
+.session-push-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.session-push-row {
+    position: relative;
+    padding: 6px 8px;
+    border-radius: 8px;
+    z-index: 1;
+    overflow: hidden;
+}
+
+/* 排行单项内的条形对比进度条背景 */
+.session-push-progress {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 40px;
+    right: 8px;
+    z-index: -1;
+}
+
+.session-push-progress-bar {
+    width: var(--session-push-percent, 0%);
+    height: 100%;
+    background: var(--md-sys-color-primary);
+    opacity: 0.2;
+    border-radius: 4px;
+    transition: width 0.5s ease-out;
+}
+
+.session-push-content,
+.session-push-label-wrap {
+    display: flex;
+    align-items: center;
+}
+
+.session-push-content {
+    justify-content: space-between;
+    position: relative;
+}
+
+.session-push-label-wrap {
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
+}
+
+/* 排行名次序号小盒子 */
+.session-push-rank {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--md-sys-color-surface-variant);
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* 前三名高亮 */
+.session-push-rank--podium {
+    background: var(--md-sys-color-primary);
+    color: #fff;
+}
+
+.session-push-label {
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    max-width: 100%;
+}
+
+.session-push-metrics {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.session-push-pushed {
+    font-weight: 700;
+    font-size: 13px;
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   9. 台风强度等级环形比例图表卡片 (Typhoon Level Donut Chart)
+   ========================================================================== */
+
+.typhoon-level-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 200px;
+}
+
+.typhoon-level-card-empty-text {
+    opacity: 0.5;
+    text-align: center;
+    padding: 32px 0 !important;
+}
+
+.typhoon-level-card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 16px 0;
+}
+
+/* 环形比例甜甜圈饼图框架 */
+.typhoon-level-card-donut {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    position: relative;
+    margin-bottom: 32px;
+}
+
+/* 甜甜圈中央圆环遮罩，内部展示台风累计总量 */
+.typhoon-level-card-donut-inner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%;
+    height: 60%;
+    background: var(--md-sys-color-surface);
+    background-color: #e5e7eb;
+    background-image: linear-gradient(var(--md-sys-color-surface), var(--md-sys-color-surface));
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.typhoon-level-card-total {
+    font-weight: 800 !important;
+    line-height: 1 !important;
+}
+
+.typhoon-level-card-total-label {
+    opacity: 0.6;
+    font-size: 11px !important;
+    margin-top: 4px !important;
+}
+
+.typhoon-level-card-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.typhoon-level-card-row,
+.typhoon-level-card-row-label,
+.typhoon-level-card-row-metrics {
+    display: flex;
+    align-items: center;
+}
+
+.typhoon-level-card-row {
+    justify-content: space-between;
+    font-size: 13px;
+}
+
+.typhoon-level-card-row-label,
+.typhoon-level-card-row-metrics {
+    gap: 8px;
+}
+
+.typhoon-level-card-color-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.typhoon-level-card-level {
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.typhoon-level-card-count {
+    font-weight: 700;
+}
+
+.typhoon-level-card-ratio {
+    opacity: 0.5;
+    min-width: 45px;
+    text-align: right;
+}
+
+/* ==========================================================================
+   10. 台风风王榜排行榜卡片 (Typhoon Wind King Top 10)
+   ========================================================================== */
+
+.typhoon-wind-king-card {
+    height: 100%;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+}
+
+.typhoon-wind-king-empty-text {
+    opacity: 0.5;
+    text-align: center;
+    padding-top: 32px;
+    padding-bottom: 32px;
+}
+
+.typhoon-wind-king-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.typhoon-wind-king-row {
+    position: relative;
+    padding: 6px 8px;
+    border-radius: 8px;
+    z-index: 1;
+    overflow: hidden;
+}
+
+/* 排行单项内的条形对比进度条背景 */
+.typhoon-wind-king-progress {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 40px;
+    right: 8px;
+    z-index: -1;
+}
+
+.typhoon-wind-king-progress-bar {
+    width: var(--typhoon-wind-king-percent, 0%);
+    height: 100%;
+    opacity: 0.25;
+    border-radius: 4px;
+    transition: width 0.5s ease-out;
+}
+
+.typhoon-wind-king-content,
+.typhoon-wind-king-label-wrap {
+    display: flex;
+    align-items: center;
+}
+
+.typhoon-wind-king-content {
+    justify-content: space-between;
+    position: relative;
+}
+
+.typhoon-wind-king-label-wrap {
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
+}
+
+/* 排行名次序号小盒子 */
+.typhoon-wind-king-rank {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--md-sys-color-surface-variant);
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* 前三名高亮 */
+.typhoon-wind-king-rank--podium {
+    background: var(--md-sys-color-error, #F44336);
+    color: #fff;
+}
+
+.typhoon-wind-king-label {
+    font-weight: 600 !important;
+    font-size: 13px !important;
+}
+
+.typhoon-wind-king-wind {
+    font-weight: 700 !important;
+    opacity: 0.7;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   11. 响应式布局大断点媒体查询适配
    ========================================================================== */
 
 /* 中尺寸屏幕设备（如PC窄窗口或平板电脑） */

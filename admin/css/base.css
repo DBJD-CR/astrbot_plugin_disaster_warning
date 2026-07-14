@@ -589,7 +589,9 @@ body.dark-theme .bl-error {
 .connection-item,
 .connection-sub-source-item,
 .weather-query-panel,
+.typhoon-query-panel,
 .weather-query-result-card,
+.typhoon-query-result-card,
 .weather-query-list-item,
 .news-ticker-card,
 .notifications-hero-card,
@@ -864,9 +866,18 @@ body.dark-theme .btn-action:hover {
 /* 灾害数据源连接网格容器 */
 .connections-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
     width: 100%;
+    align-items: stretch;
+}
+
+.connections-grid .connection-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    height: 100%;
 }
 
 /* 过滤按钮组容器 */
@@ -990,8 +1001,13 @@ body.dark-theme .btn-action:hover {
     .span-12 { grid-column: span 6; }
 
     .connections-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
+    }
+
+    /* 中屏：GQ+EQSC 堆叠列仍占一格，避免变成 5 卡散落 */
+    .connections-grid .connection-stack {
+        gap: 10px;
     }
 
     .card {
@@ -1022,6 +1038,16 @@ body.dark-theme .btn-action:hover {
     .connections-grid {
         grid-template-columns: 1fr;
         gap: 12px;
+    }
+
+    /* 小屏：堆叠列改为普通纵向序列，卡片恢复常规高度 */
+    .connections-grid .connection-stack {
+        display: contents;
+    }
+
+    .connections-grid .connection-item--compact {
+        min-height: 140px;
+        padding: 16px;
     }
 
     .card {
@@ -1242,7 +1268,9 @@ html.theme-dark .skeleton {
     .connection-item,
     .connection-sub-source-item,
     .weather-query-panel,
+    .typhoon-query-panel,
     .weather-query-result-card,
+    .typhoon-query-result-card,
     .weather-query-list-item,
     .news-ticker-card,
     .notifications-hero-card,
