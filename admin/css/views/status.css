@@ -206,7 +206,7 @@
    ========================================================================== */
 .status-connections-grid {
     display: grid;
-    /* 固定 4 列：第 4 列为 GQ + EQSC 上下堆叠 */
+    /* 固定 4 列：第 2 列 P2P+S-Net，第 4 列 GQ+EQSC 上下堆叠 */
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
     align-items: stretch;
@@ -216,7 +216,7 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-/* 第 4 列：Global Quake 与 EQSC 共享高度的纵向堆叠容器 */
+/* 堆叠列：P2P+S-Net / GQ+EQSC 共享高度 */
 .connection-stack {
     display: flex;
     flex-direction: column;
@@ -295,22 +295,46 @@
     width: 60%;
 }
 
-/* 单个连接通道卡片本体 */
+/* 单个连接通道卡片本体 —— 命中壳 / 视觉面分离 */
 .connection-item {
+    --hover-lift: 2px;
+    --card-bg: var(--md-sys-color-surface);
+    --card-border-color: var(--glass-border);
+    --card-shadow: none;
+    --card-hover-border-color: var(--md-sys-color-primary);
+    --card-hover-shadow: var(--glass-shadow), 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
     position: relative;
+    isolation: isolate;
     border-radius: 16px;
-    border: 1px solid var(--glass-border);
+    border: 1px solid transparent;
     padding: 20px;
     display: flex;
     flex-direction: column;
     min-height: 140px;
-    background-color: var(--md-sys-color-surface);
+    background: transparent;
+    box-shadow: none;
+    transition: color 0.2s ease-out;
+}
+
+.connection-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border-color);
+    box-shadow: var(--card-shadow);
+    pointer-events: none;
     transition:
-        background-color 0.2s ease-out,
-        border-color 0.2s ease-out,
         transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+        background 0.2s ease-out,
+        border-color 0.2s ease-out,
         box-shadow 0.22s ease-out;
-    will-change: transform, box-shadow, border-color;
+}
+
+.connection-item > * {
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* 堆叠列内的精简卡片（GQ / EQSC） */
@@ -341,34 +365,37 @@
     padding: 14px 16px;
 }
 
-.connection-item:hover {
-    transform: translateY(-2px);
-    border-color: var(--md-sys-color-primary);
-    box-shadow: var(--glass-shadow), 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+.connection-item:hover::before,
+.connection-item:hover > * {
+    transform: translateY(calc(-1 * var(--hover-lift)));
 }
 
-html.theme-dark .connection-item:hover,
-body.dark-theme .connection-item:hover {
-    border-color: var(--md-sys-color-primary);
-    box-shadow: var(--glass-shadow), 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 26%, transparent);
+.connection-item:hover::before {
+    border-color: var(--card-hover-border-color);
+    box-shadow: var(--card-hover-shadow);
+}
+
+html.theme-dark .connection-item,
+body.dark-theme .connection-item {
+    --card-hover-shadow: var(--glass-shadow), 0 0 0 1px color-mix(in srgb, var(--md-sys-color-primary) 26%, transparent);
 }
 
 /* 通道正常在线 (绿色底纹混合) */
 .connection-item-online {
-    background: var(--status-tone-online-soft);
-    border-color: var(--status-tone-online-border);
+    --card-bg: var(--status-tone-online-soft);
+    --card-border-color: var(--status-tone-online-border);
 }
 
 /* 通道网络离线或重连中 (红色底纹混合) */
 .connection-item-offline {
-    background: var(--status-tone-offline-soft);
-    border-color: var(--status-tone-offline-border);
+    --card-bg: var(--status-tone-offline-soft);
+    --card-border-color: var(--status-tone-offline-border);
 }
 
 /* 通道未配置或被管理员停用 (灰色底纹混合) */
 .connection-item-disabled {
-    background: var(--status-tone-disabled-soft);
-    border-color: var(--status-tone-disabled-border);
+    --card-bg: var(--status-tone-disabled-soft);
+    --card-border-color: var(--status-tone-disabled-border);
 }
 
 .connection-card-header {
@@ -619,6 +646,7 @@ body.dark-theme .connection-sub-source-off-badge {
    6. 顶部实报横滚动条 (EEW & Earthquake News Ticker)
    ========================================================================== */
 .news-ticker-card {
+    --hover-lift: 0px;
     padding: 0 24px !important;
     height: 56px;
     display: flex;
@@ -629,13 +657,13 @@ body.dark-theme .connection-sub-source-off-badge {
 }
 
 .news-ticker-card.is-dark {
-    background: var(--md-sys-color-surface);
+    --card-bg: var(--md-sys-color-surface);
+    --card-border-color: rgba(255, 255, 255, 0.1);
     color: var(--md-sys-color-on-surface);
-    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .news-ticker-card.is-light {
-    background: var(--md-sys-color-secondary-container);
+    --card-bg: var(--md-sys-color-secondary-container);
     color: var(--md-sys-color-on-secondary-container);
 }
 
@@ -651,7 +679,8 @@ body.dark-theme .connection-sub-source-off-badge {
     font-weight: 800;
     min-width: fit-content;
     z-index: 2;
-    background: inherit;
+    /* 卡片视觉面在 ::before，不能 inherit 透明壳；改用 --card-bg */
+    background: var(--card-bg, var(--md-sys-color-surface));
     padding-right: 12px;
     box-shadow: 10px 0 10px -5px rgba(0, 0, 0, 0.1);
 }
