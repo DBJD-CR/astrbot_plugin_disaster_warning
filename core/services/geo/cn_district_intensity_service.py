@@ -197,12 +197,13 @@ class CnDistrictIntensityService:
         # 质心（算术平均，足够做核心区裁剪）
         mean_lng = sum(p[1] for p in points) / len(points)
         mean_lat = sum(p[2] for p in points) / len(points)
+        cos_lat_factor = max(0.2, math.cos(math.radians(mean_lat)))
 
         core: list[tuple[float, float, float]] = []
         for dist, lng, lat in points:
             # 点到质心的近似平面距离
             dlat = (lat - mean_lat) * 111.0
-            dlng = (lng - mean_lng) * 111.0 * max(0.2, math.cos(math.radians(mean_lat)))
+            dlng = (lng - mean_lng) * 111.0 * cos_lat_factor
             if math.hypot(dlng, dlat) <= cls.LARGE_DISTRICT_CORE_RADIUS_KM:
                 core.append((dist, lng, lat))
 
@@ -213,7 +214,7 @@ class CnDistrictIntensityService:
         ranked = sorted(
             points,
             key=lambda p: math.hypot(
-                (p[1] - mean_lng) * 111.0 * max(0.2, math.cos(math.radians(mean_lat))),
+                (p[1] - mean_lng) * 111.0 * cos_lat_factor,
                 (p[2] - mean_lat) * 111.0,
             ),
         )
