@@ -12,6 +12,7 @@ from .china_eew_parser import CEAEEWParser, CEAEEWPRParser, CEAEEWWolfxParser
 from .global_sources_parser import GlobalQuakeParser, UsgsEarthquakeParser
 from .japan_earthquake_parser import JmaEarthquakeP2PParser, JmaEarthquakeWolfxParser
 from .japan_eew_parser import JmaEewFanStudioParser, JmaEewP2PParser, JmaEewWolfxParser
+from .snet_parser import SnetParser
 from .taiwan_earthquake_parser import CwaReportParser
 from .taiwan_eew_parser import CwaEewParser, CwaEewWolfxParser
 from .tsunami_parser import JmaTsunamiP2PParser, TsunamiParser
@@ -32,6 +33,7 @@ PARSER_CLASS_BY_NAME = {
     "typhoon_parser": TyphoonParser,
     "global_report_parser": UsgsEarthquakeParser,
     "global_quake_parser": GlobalQuakeParser,
+    "snet_parser": SnetParser,
 }
 
 
