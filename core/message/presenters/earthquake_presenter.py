@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
+from datetime import timezone as dt_timezone
 
 from ....utils.converters import ScaleConverter
 from ....utils.time_converter import TimeConverter
@@ -42,7 +44,8 @@ def _get_intensity_emoji(value, is_eew: bool = True, is_shindo: bool = False) ->
         val_str = str(value)
         num_val = None
 
-        match = re.search(r"(\d+(\.\d+)?)", val_str)
+        # 必须捕获可选负号，否则 S-Net 計測震度 -2.8 会被当成 2.8
+        match = re.search(r"(-?\d+(?:\.\d+)?)", val_str)
         if match:
             num_val = float(match.group(1))
 
@@ -68,6 +71,7 @@ def _get_intensity_emoji(value, is_eew: bool = True, is_shindo: bool = False) ->
                     else:
                         idx = 6
                 else:
+                    # 0 以下 / 震度 0~1 ：最低档（白）
                     if num_val < 1.5:
                         idx = 0
                     elif num_val < 2.5:
@@ -1060,3 +1064,90 @@ class CwaReportPresenter(BasePresenter):
         merged_options.setdefault("image_uri", display_context.image_uri)
         merged_options.setdefault("shakemap_uri", display_context.shakemap_uri)
         return cls.format_message(display_context, merged_options)
+
+
+class SnetPresenter(BasePresenter):
+    """NIED S-Net 海底震度分布展示器。"""
+
+    presenter_name = "snet_presenter"
+    _TOP_N = 5
+
+    @classmethod
+    def format_message(
+        cls, data: EarthquakeDisplayContext, options: dict | None = None
+    ) -> str:
+        """构建 S-Net 文本消息。
+
+        样例（手机窄屏尽量单行）：
+        🚨[S-Net震度分布] NIED
+        ⏰更新时间：2026年07月15日 20时29分00秒 (UTC+8)
+        📊震度降序前 5 测站：
+          N.S5N06  ⚪震度0以下 (-0.792)
+        """
+        merged_options = dict(options or {})
+        timezone = merged_options.get("timezone", "UTC+8")
+        metadata = data.metadata if isinstance(data.metadata, dict) else {}
+
+        stations = metadata.get("stations") or data.stations or []
+        if isinstance(stations, dict):
+            stations = list(stations.values())
+        if not isinstance(stations, list):
+            stations = []
+        station_rows = [s for s in stations if isinstance(s, dict)]
+
+        display_time = "未知时间"
+        shock_time = _resolve_shock_time(data)
+        if shock_time:
+            display_time = TimeConverter.format_time(shock_time, timezone)
+        else:
+            timestamp = str(metadata.get("timestamp") or "").strip()
+            if timestamp:
+                try:
+                    dt = datetime.strptime(timestamp, "%Y%m%d%H%M00").replace(
+                        tzinfo=dt_timezone.utc
+                    )
+                    display_time = TimeConverter.format_time(dt, timezone)
+                except (ValueError, TypeError):
+                    display_time = timestamp
+
+        sorted_stations = sorted(
+            station_rows,
+            key=lambda s: float(s.get("shindo", -999.0)),
+            reverse=True,
+        )
+        top_n = int(merged_options.get("top_n", cls._TOP_N) or cls._TOP_N)
+        top_n = max(1, min(top_n, 20))
+        top_stations = sorted_stations[:top_n]
+
+        lines = [
+            "🚨[S-Net震度分布] NIED",
+            f"⏰更新时间：{display_time}",
+            f"📊震度降序前 {len(top_stations)} 测站：",
+        ]
+        for station in top_stations:
+            name = str(station.get("name") or "?").strip() or "?"
+            try:
+                shindo = float(station.get("shindo", 0.0))
+            except (TypeError, ValueError):
+                shindo = 0.0
+            # 复用项目统一震度文本与圆形 emoji 指示器
+            scale_text = ScaleConverter.format_measured_intensity_display(shindo)
+            if not scale_text:
+                scale_text = "?"
+            # 0以下仍走最低档白色圆形指示；其余按計測震度阈值选色
+            emoji = _get_intensity_emoji(shindo, is_eew=True, is_shindo=True) or "⚪"
+            # 两个空格 + 站名 + 两个空格 + emoji + 震度描述 + 空格 + 半角括号数值
+            lines.append(f"  {name}  {emoji}震度{scale_text} ({shindo:.3f})")
+
+        return "\n".join(lines)
+
+    @classmethod
+    def present(
+        cls,
+        display_context: EarthquakeDisplayContext,
+        options: dict | None = None,
+    ) -> str:
+        """展示 S-Net 消息入口。"""
+        return cls.format_message(
+            display_context, _resolve_options(display_context, options)
+        )

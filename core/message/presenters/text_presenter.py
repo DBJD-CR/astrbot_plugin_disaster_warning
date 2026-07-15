@@ -19,6 +19,7 @@ from .earthquake_presenter import (
     GlobalQuakeTextPresenter,
     JmaEarthquakeInfoPresenter,
     JmaEewPresenter,
+    SnetPresenter,
     UsgsEarthquakePresenter,
 )
 from .tsunami_presenter import JmaTsunamiPresenter, TsunamiAlertPresenter
@@ -35,6 +36,7 @@ _TEXT_PRESENTER_REGISTRY = {
     "cenc_report": CencEarthquakePresenter,
     "jma_report": JmaEarthquakeInfoPresenter,
     "usgs_report": UsgsEarthquakePresenter,
+    "snet": SnetPresenter,
     "tsunami_cn": TsunamiAlertPresenter,
     "tsunami_jma": JmaTsunamiPresenter,
     "weather_cn": WeatherAlertPresenter,

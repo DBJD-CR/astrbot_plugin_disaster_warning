@@ -18,6 +18,7 @@ from .earthquake_presenter import (
     GlobalQuakeTextPresenter,
     JmaEarthquakeInfoPresenter,
     JmaEewPresenter,
+    SnetPresenter,
     UsgsEarthquakePresenter,
 )
 from .text_presenter import TextPresenter, get_text_presenter_keys
@@ -30,6 +31,7 @@ _PRESENTATION_PRESENTER_REGISTRY: dict[str, type[BasePresenter]] = {
     "earthquake_eew": TextPresenter,
     "earthquake_report": TextPresenter,
     "global_quake": GlobalQuakeTextPresenter,
+    "snet": SnetPresenter,
     "tsunami": TextPresenter,
     "weather": WeatherAlertPresenter,
     "typhoon": TyphoonPresenter,
@@ -45,6 +47,7 @@ _TEXT_KEY_PRESENTER_REGISTRY: dict[str, type[BasePresenter]] = {
     "cenc_report": CencEarthquakePresenter,
     "jma_report": JmaEarthquakeInfoPresenter,
     "usgs_report": UsgsEarthquakePresenter,
+    "snet": SnetPresenter,
     "tsunami_cn": TsunamiAlertPresenter,
     "tsunami_jma": JmaTsunamiPresenter,
     "weather_cn": WeatherAlertPresenter,
