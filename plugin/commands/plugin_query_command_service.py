@@ -7,13 +7,20 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import os
+import time
 import traceback
+from datetime import datetime, timezone
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
 from ...core.app.services import format_earthquake_list_text, quoted_plain_result
+from ...core.domain.event_context import EarthquakeDisplayContext
+from ...core.message.presenters.earthquake_presenter import SnetPresenter
+from ...core.message.push.message_build_service import MessageBuildService
 from ...core.services.query.typhoon_query_service import (
     build_typhoon_query_text,
     parse_typhoon_query_args,
@@ -579,3 +586,145 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                 yield result
         except TimeoutError:
             yield quoted_plain_result(self.plugin, event, "❌ 查询超时，请稍后重试")
+
+    async def handle_query_snet(self, event, arg: str | None = None):
+        """处理 /snet 查询：即时抓取 MSIL 瓦片并渲染测站分布。
+
+        用法：
+          /snet
+          /snet random
+          /snet 7 / 6+ / 6- / 5+ / 5- / 4 / 3 / 2 / 1 / 0
+        """
+
+        def _quoted_plain_result(text: str):
+            return quoted_plain_result(self.plugin, event, text)
+
+        service = getattr(self.plugin, "disaster_service", None)
+        if service is None:
+            yield _quoted_plain_result("❌ 灾害预警服务未就绪")
+            return
+
+        snet_poll = getattr(service, "snet_poll_service", None)
+        if snet_poll is None:
+            yield _quoted_plain_result("❌ S-Net 轮询服务未就绪")
+            return
+
+        raw_arg = (arg or "").strip()
+        debug_mode = None
+        if raw_arg:
+            key = raw_arg.lower()
+            allowed = {
+                "random",
+                "7",
+                "6+",
+                "6-",
+                "5+",
+                "5-",
+                "4",
+                "3",
+                "2",
+                "1",
+                "0",
+            }
+            if key not in allowed:
+                yield _quoted_plain_result(
+                    "用法：/snet 或 /snet random|7|6+|6-|5+|5-|4|3|2|1|0"
+                )
+                return
+            debug_mode = key
+
+        try:
+            result = await snet_poll.fetch_for_query(
+                min_shindo=-3.0,
+                debug_mode=debug_mode,
+            )
+            if not result or not result.get("stations"):
+                yield _quoted_plain_result("🗺️ 暂无 S-Net 测站数据（瓦片可能延迟）")
+                return
+
+            stations = result["stations"]
+            timestamp = str(result.get("timestamp") or "")
+            # 组装临时 display context 复用 SnetPresenter
+            occurred_at = None
+            if timestamp:
+                try:
+                    occurred_at = datetime.strptime(timestamp, "%Y%m%d%H%M00").replace(
+                        tzinfo=timezone.utc
+                    )
+                except (ValueError, TypeError):
+                    occurred_at = None
+
+            ctx = EarthquakeDisplayContext(
+                event_id=f"snet_query_{timestamp or int(time.time())}",
+                source_id="snet_msil",
+                title="日本海沟 S-Net 海底观测网",
+                occurred_at=occurred_at,
+                metadata={
+                    "stations": stations,
+                    "timestamp": timestamp,
+                    "triggered": result.get("triggered") or [],
+                },
+                options={"timezone": "UTC+8"},
+            )
+            text = SnetPresenter.format_message(ctx, {"timezone": "UTC+8"})
+            if debug_mode:
+                text = text.replace(
+                    "🚨[S-Net震度分布] NIED",
+                    f"🚨[S-Net震度分布] NIED（调试:{debug_mode}）",
+                )
+
+            chain_parts: list = [Comp.Plain(text)]
+            # 渲染测站图（与推送链路共用 RenderImageCache）
+            message_manager = getattr(service, "message_manager", None)
+            renderer = (
+                getattr(message_manager, "snet_map_renderer", None)
+                if message_manager
+                else None
+            )
+            if renderer is not None:
+                try:
+                    temp_dir = getattr(message_manager, "temp_dir", None)
+                    cache_key = MessageBuildService._build_snet_map_cache_key(
+                        stations, timestamp
+                    )
+                    safe_ts = timestamp or str(int(time.time()))
+                    img_path = os.path.join(
+                        str(temp_dir or "."),
+                        f"snet_map_{safe_ts}.png",
+                    )
+
+                    async def _render_snet() -> str | None:
+                        return await renderer.render(stations, img_path, timestamp)
+
+                    render_with_cache = getattr(
+                        message_manager, "_render_with_cache", None
+                    )
+                    if callable(render_with_cache):
+                        out = await render_with_cache(cache_key, _render_snet)
+                    else:
+                        out = await renderer.render(stations, img_path, timestamp)
+                    if out and os.path.exists(out):
+                        with open(out, "rb") as f:
+                            b64 = base64.b64encode(f.read()).decode()
+                        chain_parts.append(Comp.Image.fromBase64(b64))
+                        # 缓存命中依赖磁盘文件，查询路径不主动 unlink
+                except Exception as e:
+                    logger.warning(f"[灾害预警] /snet 测站图渲染失败: {e}")
+
+            # 优先 chain 结果
+            try:
+                yield event.chain_result(chain_parts)
+            except Exception:
+                # 回退：先发文本再尝试发图
+                yield _quoted_plain_result(text)
+                if len(chain_parts) > 1:
+                    try:
+                        await self.plugin.context.send_message(
+                            event.unified_msg_origin,
+                            MessageChain([chain_parts[1]]),
+                        )
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"[灾害预警] /snet 查询失败: {e}\n{traceback.format_exc()}")
+            yield _quoted_plain_result(f"❌ S-Net 查询失败: {e}")
