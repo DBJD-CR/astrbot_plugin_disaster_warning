@@ -18,6 +18,7 @@ _CONNECTION_GROUP_ALIAS: dict[str, str] = {
     ProviderFamily.P2P.value: "p2p_main",
     ProviderFamily.WOLFX.value: "wolfx_all",
     ProviderFamily.GLOBAL_QUAKE.value: "global_quake",
+    ProviderFamily.DIRECT_HTTP.value: "snet_msil",
 }
 
 # 物理连接的友好展示名称，供管理后台和 API 使用
@@ -26,6 +27,7 @@ _CONNECTION_DISPLAY_NAME: dict[str, str] = {
     "p2p_main": "P2P地震情報",
     "wolfx_all": "Wolfx",
     "global_quake": "Global Quake",
+    "snet_msil": "NIED S-Net",
 }
 
 
