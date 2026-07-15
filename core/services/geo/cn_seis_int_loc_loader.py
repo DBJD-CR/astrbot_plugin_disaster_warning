@@ -98,6 +98,8 @@ def _parse_js_district_points(js_path: Path) -> dict[str, list[tuple[float, floa
     )
 
     district_points: dict[str, list[tuple[float, float]]] = {}
+    # 提取所有 [lng, lat] 对（循环外编译，避免重复 compile）
+    coord_pattern = re.compile(r"\[([\d.\-]+)\s*,\s*([\d.\-]+)\]")
 
     for match in entry_pattern.finditer(obj_text):
         name = match.group(2).strip()
@@ -108,8 +110,6 @@ def _parse_js_district_points(js_path: Path) -> dict[str, list[tuple[float, floa
             continue
 
         raw = obj_text[bracket_start + 1 : bracket_end]
-        # 提取所有 [lng, lat] 对
-        coord_pattern = re.compile(r"\[([\d.\-]+)\s*,\s*([\d.\-]+)\]")
         points: list[tuple[float, float]] = []
         for coord_match in coord_pattern.finditer(raw):
             lng = float(coord_match.group(1))
