@@ -22,13 +22,26 @@ function NewsTicker({ style }) {
     const [paused, setPaused] = useState(false);
     const isDark = state.theme === 'dark';
 
+    /**
+     * S-Net 海底震度推送频繁且描述偏噪声，不进跑马灯以免刷屏。
+     */
+    const isSnetEvent = (event) => {
+        const source = String(event?.source || event?.source_id || '').toLowerCase();
+        if (source.includes('snet') || source.includes('s-net') || source.includes('nied')) {
+            return true;
+        }
+        const desc = String(event?.description || event?.title || '').toLowerCase();
+        return desc.includes('s-net') || desc.includes('snet') || desc.includes('海底震度');
+    };
+
     // 核心数据处理：过滤近期事件、限额5条并反转倒序以迎合跑马灯左进右出的播放体验
     const tickerItems = useMemo(() => {
         if (!events || !Array.isArray(events) || events.length === 0) return [];
         
-        // 过滤保留 1 小时内发生的新事件
+        // 过滤保留 1 小时内发生的新事件；排除 S-Net
         const oneHourAgo = Date.now() - 3600000;
         const recentEvents = events.filter(e => {
+            if (isSnetEvent(e)) return false;
             const t = parseEventTimeToDate(e.time || e.timestamp, e.source || '')?.getTime() || 0;
             return t > oneHourAgo;
         });
