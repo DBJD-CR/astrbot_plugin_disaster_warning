@@ -45,6 +45,7 @@ from ..services.notification import NotificationCenter
 from ..services.query.earthquake_list_service import EarthquakeListService
 from ..services.query.eew_query_state_service import EEWQueryStateService
 from ..services.query.source_runtime_query_service import SourceRuntimeQueryService
+from ..services.snet.snet_poll_service import SnetPollService
 from ..sources.source_catalog import SOURCE_CATALOG
 from ..sources.source_institution_catalog import get_institution_catalog
 from ..storage.session_config_manager import SessionConfigManager
@@ -170,6 +171,8 @@ class DisasterWarningService:
             enrichment_service=self.typhoon_enrichment_service,
             statistics_manager=self.statistics_manager,
         )
+        # S-Net MSIL 瓦片轮询（直连 HTTP，不走 WebSocket）
+        self.snet_poll_service = SnetPollService(self)
         self._setup_runtime_services()
 
     def _setup_runtime_services(self) -> None:

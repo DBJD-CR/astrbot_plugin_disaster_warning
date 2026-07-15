@@ -58,6 +58,10 @@ class DisasterServiceLifecycleService:
                     self.service._start_scheduled_http_fetch()
                 )  # 开启定时拉取 HTTP 接口协程
                 await self.service._start_cleanup_task()  # 开启过期缓存定时清理协程
+                # S-Net 专用轮询（MSIL 瓦片，不同于 Wolfx 列表补偿）
+                snet_poll = getattr(self.service, "snet_poll_service", None)
+                if snet_poll is not None:
+                    await snet_poll.start()
                 if getattr(self.service, "notification_center", None):
                     await (
                         self.service.notification_center.start()
