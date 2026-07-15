@@ -3,12 +3,14 @@ const { useMemo } = React;
 
 /**
  * 连接状态网格组件 (ConnectionsGrid)
- * 显示主流数据源（FAN Studio / P2P / Wolfx / Global Quake）与 HTTP 辅助通道 EQSC 的
- * 实时连接情况、TCP 延迟、重试次数以及启用的子数据源明细。
+ * 显示主流数据源（FAN Studio / P2P / Wolfx / Global Quake）与 HTTP 辅助通道
+ * EQSC、NIED S-Net 的实时连接情况、TCP 延迟、重试次数以及启用的子数据源明细。
  *
  * 布局：
- * - 前三列：FAN / P2P / Wolfx 独立卡片
- * - 第四列：Global Quake 与 EQSC API 上下堆叠（connection-stack）
+ * - 第 1 列：FAN Studio
+ * - 第 2 列：P2P + NIED S-Net 上下堆叠（connection-stack）
+ * - 第 3 列：Wolfx
+ * - 第 4 列：Global Quake + EQSC API 上下堆叠
  *
  * 延迟评级：
  * - < 150ms  fast (绿色)
@@ -68,7 +70,7 @@ function ConnectionsGrid() {
             latency = Number.isFinite(normalizedLatency) ? normalizedLatency : null;
         }
 
-        // EQSC HTTP 通道优先使用后端状态文案（可用 / 熔断中 / 离线 / 未启用）
+        // HTTP 通道（EQSC / S-Net）优先使用后端状态文案（可用 / 轮询中 / 离线 / 未启用）
         if (!statusLabel) {
             if (status === 'online') {
                 statusLabel = connectionType === 'http' ? '可用' : '在线';
@@ -108,6 +110,17 @@ function ConnectionsGrid() {
                 id: 'p2p',
                 displayName: 'P2P地震情報',
                 matcher: (key) => String(key || '').toLowerCase().includes('p2p'),
+                compact: true,
+            },
+            {
+                id: 'snet',
+                displayName: 'NIED S-Net',
+                connectionType: 'http',
+                matcher: (key) => {
+                    const k = String(key || '').toLowerCase();
+                    return k.includes('s-net') || k.includes('snet') || k.includes('nied');
+                },
+                compact: true,
             },
             {
                 id: 'wolfx',
@@ -145,12 +158,12 @@ function ConnectionsGrid() {
             return normalizeConnection(target, matchedEntries);
         });
 
-        // 第 4 列：GQ 上 + EQSC 下，共享同一列高度
+        // 第 2 列：P2P 上 + S-Net 下；第 4 列：GQ 上 + EQSC 下
         return [
             { type: 'single', items: [normalized[0]] },
-            { type: 'single', items: [normalized[1]] },
-            { type: 'single', items: [normalized[2]] },
-            { type: 'stack', items: [normalized[3], normalized[4]] },
+            { type: 'stack', items: [normalized[1], normalized[2]] },
+            { type: 'single', items: [normalized[3]] },
+            { type: 'stack', items: [normalized[4], normalized[5]] },
         ];
     }, [connections]);
 
@@ -189,6 +202,9 @@ function ConnectionsGrid() {
                 japan_jma_earthquake: '日本气象厅: 地震情报',
                 japan_jma_tsunami: '日本气象厅: 海啸予报',
             },
+            'NIED S-Net': {
+                snet_msil: '日本海沟 S-Net 海底震度计',
+            },
             Wolfx: {
                 japan_jma_eew: '日本气象厅: 紧急地震速报',
                 china_cenc_eew: '中国地震预警网 (CEA)',
@@ -212,7 +228,7 @@ function ConnectionsGrid() {
             : rawKey;
 
         return String(formattedName)
-            .replace(/\s+-\s+(Fan|P2P|Wolfx|EQSC)$/i, '')
+            .replace(/\s+-\s+(Fan|P2P|Wolfx|EQSC|S-Net|SNET)$/i, '')
             .trim();
     };
 
@@ -316,23 +332,40 @@ function ConnectionsGrid() {
         );
     };
 
-    // 骨架屏：前三列单卡 + 第四列双卡堆叠
+    // 骨架屏：第 1/3 列单卡，第 2/4 列双卡堆叠（P2P+S-Net / GQ+EQSC）
     if (!dataLoaded) {
         return (
             <div className="connections-grid status-connections-grid">
-                {[1, 2, 3].map((i) => (
-                    <div key={i} className="status-connection-skeleton-card">
-                        <div className="status-skeleton-row">
-                            <div className="skeleton status-skeleton-title"></div>
-                            <div className="skeleton status-skeleton-badge"></div>
-                        </div>
-                        <div className="skeleton status-skeleton-subtitle"></div>
-                        <div className="skeleton status-skeleton-subtitle status-skeleton-subtitle--short"></div>
+                <div className="status-connection-skeleton-card">
+                    <div className="status-skeleton-row">
+                        <div className="skeleton status-skeleton-title"></div>
+                        <div className="skeleton status-skeleton-badge"></div>
                     </div>
-                ))}
+                    <div className="skeleton status-skeleton-subtitle"></div>
+                    <div className="skeleton status-skeleton-subtitle status-skeleton-subtitle--short"></div>
+                </div>
                 <div className="connection-stack">
                     {[1, 2].map((i) => (
-                        <div key={`stack-${i}`} className="status-connection-skeleton-card status-connection-skeleton-card--compact">
+                        <div key={`stack-p2p-${i}`} className="status-connection-skeleton-card status-connection-skeleton-card--compact">
+                            <div className="status-skeleton-row">
+                                <div className="skeleton status-skeleton-title"></div>
+                                <div className="skeleton status-skeleton-badge"></div>
+                            </div>
+                            <div className="skeleton status-skeleton-subtitle status-skeleton-subtitle--short"></div>
+                        </div>
+                    ))}
+                </div>
+                <div className="status-connection-skeleton-card">
+                    <div className="status-skeleton-row">
+                        <div className="skeleton status-skeleton-title"></div>
+                        <div className="skeleton status-skeleton-badge"></div>
+                    </div>
+                    <div className="skeleton status-skeleton-subtitle"></div>
+                    <div className="skeleton status-skeleton-subtitle status-skeleton-subtitle--short"></div>
+                </div>
+                <div className="connection-stack">
+                    {[1, 2].map((i) => (
+                        <div key={`stack-gq-${i}`} className="status-connection-skeleton-card status-connection-skeleton-card--compact">
                             <div className="status-skeleton-row">
                                 <div className="skeleton status-skeleton-title"></div>
                                 <div className="skeleton status-skeleton-badge"></div>
