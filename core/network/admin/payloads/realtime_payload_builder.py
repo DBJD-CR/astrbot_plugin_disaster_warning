@@ -78,6 +78,20 @@ class RealtimePayloadBuilder:
             self.disaster_service
         )
         active_websocket_connections += eqsc_active
+        # S-Net HTTP 轮询：任务在跑计入活跃，配置启用计入总连接
+        snet_poll = getattr(self.disaster_service, "snet_poll_service", None)
+        snet_enabled = False
+        snet_total = 0
+        try:
+            snet_enabled = bool(
+                self.source_runtime_query.is_source_enabled("snet_msil")
+            )
+        except Exception:
+            snet_enabled = False
+        if snet_enabled:
+            snet_total = 1
+            if snet_poll is not None and getattr(snet_poll, "running", False):
+                active_websocket_connections += 1
         global_quake_connected = any(
             "global_quake" in task.get_name() if hasattr(task, "get_name") else False
             for task in getattr(self.disaster_service, "connection_tasks", [])
@@ -98,9 +112,9 @@ class RealtimePayloadBuilder:
             else False,
             global_quake_connected=global_quake_connected,
         )
-        # 补上 EQSC 后，活跃/总连接口径与状态卡片一致
+        # 补上 EQSC / S-Net 后，活跃/总连接口径与状态卡片一致
         snapshot["total_connections"] = (
-            int(snapshot.get("total_connections", 0) or 0) + eqsc_total
+            int(snapshot.get("total_connections", 0) or 0) + eqsc_total + snet_total
         )
         return snapshot
 
