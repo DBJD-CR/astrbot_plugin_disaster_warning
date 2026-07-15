@@ -191,6 +191,7 @@ def _append_cn_district_estimation(
 ) -> None:
     """把中国影响区县预估列表附加到文本尾部。
 
+    仅用于中国地震预警展示；正式测定不附加。
     仅在震中位于中国大陆附近、且能解析出受影响区县时输出。
     资源加载失败或无命中区县时静默跳过，不影响主推送链路。
     """
@@ -597,10 +598,10 @@ class CencEarthquakePresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
-        """展示中国地震台网测定，并附带本地预估与影响区县列表。
+        """展示中国地震台网测定，并附带本地预估。
 
-        本地预估跟随会话级 local_monitoring 配置生效；
-        影响区县列表为独立增强，不依赖本地监控开关。
+        本地预估跟随会话级 local_monitoring 配置生效。
+        影响区县预估仅用于中国地震预警，正式测定不附加。
         """
         rendered = cls.format_message(
             display_context, _resolve_options(display_context, options)
@@ -611,9 +612,6 @@ class CencEarthquakePresenter(BasePresenter):
         # 本地预估仅在上下文携带 local_estimation 时输出（跟随会话级配置）
         if not any("距离震中" in line for line in lines):
             _append_local_estimation(lines, display_context)
-        # 追加中国影响区县预估列表（独立于本地监控配置）
-        if not any("预估影响区县" in line for line in lines):
-            _append_cn_district_estimation(lines, display_context)
         return "\n".join(lines)
 
 
