@@ -52,26 +52,25 @@ class WebSocketRuntimeService:
 
     async def disconnect(self, name: str) -> None:
         """断开连接。"""
-        # 断开指定命名的物理连接并释放资源
-        if name in self.manager.connections:
-            try:
-                await self.manager.connections[name].close()
-                logger.debug(f"[灾害预警] WebSocket {name} 的连接句柄已关闭")
-            except Exception as e:
-                logger.error(f"[灾害预警] WebSocket {name} 断开连接时出错，错误为 {e}")
-            finally:
-                # 无论 close 最终是否成功，都必须彻底清理管理器持有的状态，避免脏数据挂载
-                self.manager.connections.pop(name, None)
-                self.manager.connection_info.pop(name, None)
-                # 取消该连接对应的主动心跳保活循环任务
-                if name in self.manager.heartbeat_tasks:
-                    self.manager.heartbeat_tasks[name].cancel()
-                    self.manager.heartbeat_tasks.pop(name, None)
+        # 断开指定命名的物理连接并释放资源（包含半开/仅元数据残留场景）
+        try:
+            await self.manager._release_existing_connection(
+                name,
+                reason="主动断开连接",
+                keep_connection_info=False,
+            )
+            logger.debug(f"[灾害预警] WebSocket {name} 的连接句柄已关闭")
+        except Exception as e:
+            logger.error(f"[灾害预警] WebSocket {name} 断开连接时出错，错误为 {e}")
+            self.manager.connections.pop(name, None)
+            self.manager.connection_info.pop(name, None)
+            self.manager.last_heartbeat_time.pop(name, None)
 
         # 清除处于等待队列中的重连任务
         if name in self.manager.reconnect_tasks:
-            self.manager.reconnect_tasks[name].cancel()
-            self.manager.reconnect_tasks.pop(name, None)
+            task = self.manager.reconnect_tasks.pop(name, None)
+            if task is not None and not task.done():
+                task.cancel()
 
     async def cancel_and_wait(self, tasks: list[asyncio.Task]) -> None:
         """取消并等待任务结束。"""

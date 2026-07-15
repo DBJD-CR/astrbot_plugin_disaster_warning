@@ -12,6 +12,7 @@ from typing import TypedDict
 from astrbot.api import logger
 
 from ...services.geo.intensity_service import IntensityCalculator
+from ...services.geo.travel_time_service import TravelTimeService
 
 
 class LocalEstimationResult(TypedDict):
@@ -21,6 +22,9 @@ class LocalEstimationResult(TypedDict):
     distance: float
     intensity: float
     place_name: str
+    # P/S 波预计到达时间（秒），走时模型不可用时为 None
+    p_travel_sec: float | None
+    s_travel_sec: float | None
 
 
 class LocalMonitor:
@@ -72,9 +76,24 @@ class LocalMonitor:
             return None
 
         is_allowed, distance, intensity = self.check_event(earthquake)
+
+        # 基于震源深度与震中距估算 P/S 波预计到达时间
+        depth = getattr(earthquake, "depth", None)
+        p_travel_sec: float | None = None
+        s_travel_sec: float | None = None
+        if depth is not None and distance > 0:
+            try:
+                travel_result = TravelTimeService.lookup(float(depth), float(distance))
+                p_travel_sec = travel_result.p_travel_sec
+                s_travel_sec = travel_result.s_travel_sec
+            except Exception as exc:
+                logger.debug(f"[灾害预警] P/S 波走时查询失败: {exc}")
+
         return {
             "is_allowed": is_allowed,
             "distance": distance,
             "intensity": intensity,
             "place_name": self.place_name,
+            "p_travel_sec": p_travel_sec,
+            "s_travel_sec": s_travel_sec,
         }

@@ -77,15 +77,31 @@ class WebSocketManager:
             timeout = aiohttp.ClientTimeout(total=timeout_val)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
+        # 重连/并发建连前先释放同名旧连接，避免上游按 IP 计数时被僵尸连接占满配额
+        await self._release_existing_connection(
+            name,
+            reason="建连前清理旧连接",
+            keep_connection_info=True,
+        )
+
+        websocket: ClientWebSocketResponse | None = None
         try:
             # 记录连接参数以便重连或状态上报
+            preserved_info = self.connection_info.get(name, {})
+            merged_info = {
+                **preserved_info,
+                **(connection_info or {}),
+            }
+            # 避免把旧会话的离线标记带进新连接元数据
+            merged_info.pop("offline_since", None)
+            merged_info.pop("short_retry_notified", None)
             self.connection_info[name] = {
                 "uri": uri,
                 "headers": headers,
                 "connection_type": "websocket",
                 "established_time": None,
                 "retry_count": 0,
-                **(connection_info or {}),
+                **merged_info,
             }
 
             # 递增重试次数
@@ -113,11 +129,10 @@ class WebSocketManager:
                 connect_kwargs["ssl"] = False
 
             # 外挂一层超时保护，防止 DNS 解析或三次握手长久卡死
-            raw_websocket = await asyncio.wait_for(
+            websocket = await asyncio.wait_for(
                 self.session.ws_connect(**connect_kwargs),
                 timeout=conn_timeout + 5,
             )
-            websocket = raw_websocket
 
             # 建连成功，记录状态并注册生命周期及心跳协程
             async with websocket:
@@ -134,7 +149,8 @@ class WebSocketManager:
                 self.fallback_retry_counts[name] = 0
                 self.last_heartbeat_time[name] = asyncio.get_running_loop().time()
 
-                # 启动后台应用层心跳保活协程
+                # 启动后台应用层心跳保活协程前，确保旧心跳任务不会残留
+                await self._cancel_heartbeat_task(name)
                 self.heartbeat_tasks[name] = asyncio.create_task(
                     self._heartbeat_loop(name, websocket)
                 )
@@ -153,10 +169,14 @@ class WebSocketManager:
             self._handle_connection_error(name, uri, headers, e)
 
         except asyncio.CancelledError:
-            # 主动关闭或插件卸载引发的任务取消，不做额外处理，正常退出
+            # 主动关闭或插件卸载引发的任务取消，清理局部资源后正常退出
             logger.info(f"[灾害预警] WebSocket 连接任务被取消: {name}")
-            self.connections.pop(name, None)
-            self.connection_info.pop(name, None)
+            await self._release_existing_connection(
+                name,
+                reason="连接任务取消",
+                keep_connection_info=False,
+                websocket=websocket,
+            )
             raise
         except Exception as e:
             # 非预期类型错误，上报异常遥测
@@ -169,10 +189,84 @@ class WebSocketManager:
                     )
                 )
             self._handle_connection_error(name, uri, headers, e)
+        finally:
+            # 会话退出后做一次幂等清理，防止已关闭 socket / 心跳任务残留占位
+            await self._cleanup_closed_connection(name, websocket)
 
     def _log_message(self, name: str, message: Any, uri: str):
         """记录消息的辅助入口。"""
         self._dispatch_service.log_message(name, message, uri)
+
+    async def _cancel_heartbeat_task(self, name: str) -> None:
+        """取消指定连接的心跳任务并等待其退出。"""
+        task = self.heartbeat_tasks.pop(name, None)
+        if task is None:
+            return
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+
+    async def _close_websocket_quietly(
+        self,
+        websocket: ClientWebSocketResponse | None,
+        *,
+        reason: str,
+    ) -> None:
+        """安静关闭底层 WebSocket，避免清理路径抛出二次异常。"""
+        if websocket is None:
+            return
+        try:
+            if not websocket.closed:
+                await websocket.close(code=1000, message=reason.encode("utf-8")[:120])
+        except Exception as e:
+            logger.debug(f"[灾害预警] 关闭 WebSocket 时忽略异常: {e}")
+
+    async def _release_existing_connection(
+        self,
+        name: str,
+        *,
+        reason: str,
+        keep_connection_info: bool = True,
+        websocket: ClientWebSocketResponse | None = None,
+    ) -> None:
+        """释放同名旧连接与心跳任务，降低上游连接配额被占满的风险。"""
+        existing = self.connections.pop(name, None)
+        target = existing if existing is not None else websocket
+        if target is not None:
+            logger.debug(f"[灾害预警] {name} {reason}，正在释放旧 WebSocket 句柄")
+            await self._close_websocket_quietly(target, reason=reason)
+
+        await self._cancel_heartbeat_task(name)
+        self.last_heartbeat_time.pop(name, None)
+
+        if not keep_connection_info:
+            self.connection_info.pop(name, None)
+
+    async def _cleanup_closed_connection(
+        self,
+        name: str,
+        websocket: ClientWebSocketResponse | None,
+    ) -> None:
+        """会话结束后清理已关闭连接对应的本地状态。"""
+        current = self.connections.get(name)
+        # 仅清理当前会话对应句柄，避免误删并发重建出的新连接
+        if current is not None and (websocket is None or current is websocket):
+            if current.closed:
+                self.connections.pop(name, None)
+                await self._cancel_heartbeat_task(name)
+                self.last_heartbeat_time.pop(name, None)
+            return
+
+        if websocket is not None and websocket.closed:
+            await self._cancel_heartbeat_task(name)
+            if self.connections.get(name) is websocket:
+                self.connections.pop(name, None)
+            self.last_heartbeat_time.pop(name, None)
 
     def _handle_connection_error(
         self, name: str, uri: str, headers: dict | None, error: Exception
@@ -212,22 +306,29 @@ class WebSocketManager:
     async def force_reconnect(self, name: str) -> bool:
         """强制立即重连指定连接，跳过原有等待队列。"""
         # 若已有健康连接，没必要强行断开
-        if name in self.connections and not self.connections[name].closed:
+        existing = self.connections.get(name)
+        if existing is not None and not existing.closed:
             return False
 
         # 取消已处于等待计时队列中的待执行重试任务，避免竞争
         if name in self.reconnect_tasks:
-            task = self.reconnect_tasks[name]
-            if not task.done():
+            task = self.reconnect_tasks.pop(name, None)
+            if task is not None and not task.done():
                 task.cancel()
                 logger.debug(f"[灾害预警] 取消了 {name} 正在等待的重连任务 (强制重连)")
-            self.reconnect_tasks.pop(name, None)
 
         # 检查是否保留了该连接的配置元信息
         info = self.connection_info.get(name)
         if not info:
             logger.warning(f"[灾害预警] 无法重连 {name}: 找不到连接信息")
             return False
+
+        # 强制重连前先释放可能残留的半开/已关闭句柄，避免上游连接配额被占
+        await self._release_existing_connection(
+            name,
+            reason="强制重连前清理旧连接",
+            keep_connection_info=True,
+        )
 
         uri = info.get("uri")
         headers = info.get("headers")

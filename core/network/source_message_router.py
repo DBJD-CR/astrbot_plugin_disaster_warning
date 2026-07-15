@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
+from astrbot.api import logger
+
 from ...utils.plugin_logger import plugin_logger
 from ..services.telemetry.telemetry_utils import track_error_safely
 from ..sources.source_catalog import get_source_entry, get_source_ids_by_dispatch_family
@@ -116,13 +118,13 @@ class SourceMessageRouter:
         config_key = _resolve_config_key(source_id)
         # 校验：1. 数据源是否在当前配置中被启用
         if not self._source_runtime_query.is_source_enabled(source_id):
-            plugin_logger.debug(
+            logger.debug(
                 f"[灾害预警] 数据源 {config_key} ({source_label}) 未启用，忽略"
             )
             return False
         # 校验：2. 相应的消息解析器是否存在，避免解析抛错
         if not self._has_parser(source_id):
-            plugin_logger.warning(
+            logger.warning(
                 f"[灾害预警] 未找到解析器: {source_id}", is_event_linked=True
             )
             return False
@@ -133,7 +135,6 @@ class SourceMessageRouter:
         *,
         source_id: str,
         source_label: str,
-        payload,
         parser_input,
         connection_name=None,
         connection_info=None,
@@ -202,7 +203,6 @@ class SourceMessageRouter:
                         if callable(source_label_resolver)
                         else source_id
                     ),
-                    payload=None,
                     parser_input=parser_input,
                     connection_name=connection_name,
                     connection_info=connection_info,
@@ -262,6 +262,33 @@ class SourceMessageRouter:
                     plugin_logger.error(f"[灾害预警] JSON解析失败: {error}")
                     return None
 
+                # FAN Studio 会以业务错误包表达限流/策略拒绝；收到后主动关闭，尽快释放上游配额
+                if (
+                    isinstance(data, dict)
+                    and str(data.get("type") or "").strip() == "error"
+                ):
+                    error_message = str(
+                        data.get("message") or data.get("msg") or ""
+                    ).strip()
+                    plugin_logger.warning(
+                        f"[灾害预警] FAN Studio 返回错误包，连接为 {connection_name or 'unknown'}："
+                        f"{error_message or data}"
+                    )
+                    ws_manager = getattr(self.service, "ws_manager", None)
+                    if connection_name and ws_manager is not None:
+                        try:
+                            websocket = ws_manager.connections.get(connection_name)
+                            if websocket is not None and not websocket.closed:
+                                close_reason = (
+                                    error_message or "FAN Studio policy error"
+                                ).encode("utf-8")[:120]
+                                await websocket.close(code=1000, message=close_reason)
+                        except Exception as close_error:
+                            plugin_logger.debug(
+                                f"[灾害预警] 关闭 FAN Studio 错误连接失败: {close_error}"
+                            )
+                    return None
+
                 # 先校验路由映射，再把一条总线消息拆成多个候选数据源消息
                 self._ensure_fan_studio_parser_mapping()
                 routed_messages = route_fan_studio_message(data)
@@ -284,7 +311,6 @@ class SourceMessageRouter:
                     dispatched = await self._parse_and_dispatch(
                         source_id=source_id,
                         source_label=source,
-                        payload=payload,
                         parser_input=json.dumps(payload),
                         connection_name=connection_name,
                         connection_info=connection_info,
@@ -433,7 +459,6 @@ class SourceMessageRouter:
                 await self._parse_and_dispatch(
                     source_id=source_id,
                     source_label=msg_type,
-                    payload=data,
                     parser_input=message,
                     connection_name=connection_name,
                     connection_info=connection_info,
@@ -482,7 +507,6 @@ class SourceMessageRouter:
                 await self._parse_and_dispatch(
                     source_id="global_quake",
                     source_label="global_quake",
-                    payload=None,
                     parser_input=message,
                     connection_name=connection_name,
                     connection_info=connection_info,
