@@ -180,6 +180,11 @@ class MessagePushManager:
         return self._bootstrap_service.global_quake_card_builder
 
     @property
+    def snet_map_renderer(self):
+        """S-Net 测站分布图渲染器。"""
+        return self._bootstrap_service.snet_map_renderer
+
+    @property
     def browser_manager(self):
         """浏览器管理器。"""
         return self.__dict__.get("_browser_manager")

@@ -93,6 +93,27 @@ class MessageBuildService:
         return (getattr(event, "source_id", "") or "").strip()
 
     @staticmethod
+    def _build_snet_map_cache_key(
+        stations: list[Any],
+        timestamp: str,
+    ) -> str:
+        """构建 S-Net 测站图缓存键（timestamp + 测站震度指纹）。"""
+        rows: list[tuple[str, float]] = []
+        for item in stations:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            try:
+                shindo = round(float(item.get("shindo", -999.0)), 3)
+            except (TypeError, ValueError):
+                shindo = -999.0
+            rows.append((name, shindo))
+        rows.sort(key=lambda x: x[0])
+        # 全量排序指纹：同分钟同分布可跨推送/查询复用渲染结果
+        fingerprint = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+        return f"snet_map|{timestamp}|{fingerprint}"
+
+    @staticmethod
     def _build_map_cache_key(lat: float, lon: float, config: dict[str, Any]) -> str:
         """构建地图渲染缓存键。"""
         key_obj = {
@@ -256,13 +277,16 @@ class MessageBuildService:
             full_config=active_config,
         )
 
-        # 地图渲染与插入
-        await self._append_map_if_needed(
-            chain,
-            event,
-            source_id=source_id,
-            message_format_config=message_format_config,
-        )
+        # S-Net 测站分布图（替代通用地图）
+        await self._append_snet_map_if_needed(chain, event, source_id=source_id)
+        # 地图渲染与插入（S-Net 跳过，避免重复）
+        if source_id != "snet_msil":
+            await self._append_map_if_needed(
+                chain,
+                event,
+                source_id=source_id,
+                message_format_config=message_format_config,
+            )
         # 气象警报图标附加
         await self._append_weather_icon_if_needed(chain, event, active_config)
         # 海啸观测与预报图附加
@@ -358,6 +382,49 @@ class MessageBuildService:
         except Exception as e:
             logger.error(f"[灾害预警] Global Quake 卡片渲染失败: {e}，回退到文本模式")
             return None
+
+    async def _append_snet_map_if_needed(
+        self,
+        chain: MessageChain,
+        event: EventEnvelope,
+        *,
+        source_id: str,
+    ) -> None:
+        """为 S-Net 事件附加测站分布图（走 RenderImageCache，避免重复截图）。"""
+        if source_id != "snet_msil":
+            return
+        renderer = getattr(self.manager, "snet_map_renderer", None)
+        if renderer is None:
+            return
+
+        metadata = self._get_event_metadata(event)
+        stations = metadata.get("stations")
+        if not isinstance(stations, list) or not stations:
+            return
+
+        timestamp = str(metadata.get("timestamp") or "").strip()
+        cache_key = self._build_snet_map_cache_key(stations, timestamp)
+        try:
+
+            async def _render_snet() -> str | None:
+                # 缓存键稳定时固定文件名，便于命中磁盘复用
+                safe_ts = timestamp or "unknown"
+                img_path = os.path.join(
+                    str(self.manager.temp_dir),
+                    f"snet_map_{safe_ts}.png",
+                )
+                return await renderer.render(stations, img_path, timestamp)
+
+            out = await self.manager._render_with_cache(cache_key, _render_snet)
+            if not out or not os.path.exists(out):
+                return
+            with open(out, "rb") as f:
+                b64_data = base64.b64encode(f.read()).decode()
+            chain.chain.append(Comp.Image.fromBase64(b64_data))
+            logger.debug("[灾害预警] 已附加 S-Net 测站分布图")
+            # 不删除 out：交给 RenderImageCache / 临时目录清理服务回收
+        except Exception as e:
+            logger.error(f"[灾害预警] S-Net 测站图渲染失败: {e}")
 
     async def _append_map_if_needed(
         self,
