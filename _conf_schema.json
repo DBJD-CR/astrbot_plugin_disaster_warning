@@ -227,6 +227,30 @@
             }
           }
         }
+      },
+      "snet": {
+        "description": "NIED S-Net 海底震度",
+        "type": "object",
+        "hint": "直连国土交通省 MSIL 强震动瓦片，解码 S-Net 海底测站震度分布",
+        "items": {
+          "enabled": {
+            "description": "启用 S-Net 数据源",
+            "type": "bool",
+            "default": false,
+            "hint": "开启后将每分钟轮询 MSIL 瓦片；无触发测站时不会推送"
+          },
+          "poll_interval_seconds": {
+            "description": "轮询间隔（秒）",
+            "type": "int",
+            "default": 60,
+            "hint": "建议 60 秒；过短可能增加对 MSIL 的请求压力",
+            "slider": {
+              "min": 30,
+              "max": 600,
+              "step": 10
+            }
+          }
+        }
       }
     }
   },
@@ -455,6 +479,29 @@
             "slider": {
               "min": 0,
               "max": 10,
+              "step": 0.1
+            }
+          }
+        }
+      },
+      "snet_filter": {
+        "description": "S-Net 海底震度专用过滤器",
+        "type": "object",
+        "hint": "基于 S-Net 海底测站实测震度过滤（日本震度标准，0-7级）。无震级字段，仅按最大测站震度判断。",
+        "items": {
+          "enabled": {
+            "description": "启用 S-Net 过滤器",
+            "type": "bool",
+            "default": true
+          },
+          "min_shindo": {
+            "description": "最小震度",
+            "type": "float",
+            "hint": "任一测站震度大于等于该阈值才推送",
+            "default": 0.5,
+            "slider": {
+              "min": -3.0,
+              "max": 7,
               "step": 0.1
             }
           }
