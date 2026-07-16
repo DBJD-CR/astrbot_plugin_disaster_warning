@@ -24,14 +24,17 @@ function NewsTicker({ style }) {
 
     /**
      * S-Net 海底震度推送频繁且描述偏噪声，不进跑马灯以免刷屏。
+     * 仅按 source / source_id 精确识别，避免描述关键字误伤其他事件。
      */
     const isSnetEvent = (event) => {
         const source = String(event?.source || event?.source_id || '').toLowerCase();
-        if (source.includes('snet') || source.includes('s-net') || source.includes('nied')) {
-            return true;
-        }
-        const desc = String(event?.description || event?.title || '').toLowerCase();
-        return desc.includes('s-net') || desc.includes('snet') || desc.includes('海底震度');
+        return (
+            source.includes('snet')
+            || source.includes('s-net')
+            || source === 'snet_msil'
+            || source.includes('nied s-net')
+            || source.includes('nied snet')
+        );
     };
 
     // 核心数据处理：过滤近期事件、限额5条并反转倒序以迎合跑马灯左进右出的播放体验
