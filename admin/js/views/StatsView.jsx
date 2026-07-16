@@ -30,19 +30,27 @@ function StatsView() {
             <div className="dashboard-grid">
                 {/* 第一栏大板块：地震震级历史占比与近期核心指标 */}
                 <div className="stats-overview-grid">
-                    {/* 左侧：占比分布曲线/圆饼图（主卡片） */}
+                    {/* 左侧：震级分布主图 + 下方并排极值卡片 */}
                     <div className="stats-overview-main">
-                        <div className="stats-fill-column">
-                            <MagnitudeChart className="stats-flex-fill" />
+                        <div className="stats-fill-column stats-overview-main-stack">
+                            <MagnitudeChart className="stats-flex-fill" showNote={false} />
+                            <div className="stats-peak-pair">
+                                <div className="stats-peak-pair-item">
+                                    <MaxMagCard />
+                                </div>
+                                <div className="stats-peak-pair-item">
+                                    <SnetMaxCard />
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    {/* 右侧：纵向堆叠的指标小卡片和历史极值归档 */}
+                    {/* 右侧：总览指标 + 统计口径说明（与下方极值卡片等高） */}
                     <div className="stats-overview-side">
                         <div className="stats-fill-column stats-flex-fill">
                             <StatsCard className="stats-flex-fill" />
                         </div>
-                        <div className="stats-fill-column stats-flex-fill">
-                             <MaxMagCard />
+                        <div className="stats-fill-column stats-note-slot">
+                            <StatsNoteCard className="stats-flex-fill" />
                         </div>
                     </div>
                 </div>
