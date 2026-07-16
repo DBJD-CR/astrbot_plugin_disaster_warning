@@ -197,10 +197,16 @@
         "hint": "通过 EQSC API 获取灾害预警信息",
         "items": {
           "enabled": {
-            "description": "启用EQSC台风富化",
+            "description": "启用 EQSC 数据源",
             "type": "bool",
             "default": true,
-            "hint": "启用后，收到FAN Studio台风推送时将自动向EQSC拉取详细数据。未启用时台风仅使用FAN Studio基础数据展示。"
+            "hint": "控制 EQSC 通道是否启用（鉴权、连通性、后续子能力入口）。关闭后所有 EQSC 子能力均不可用。"
+          },
+          "typhoon_enrichment": {
+            "description": "启用台风富化",
+            "type": "bool",
+            "default": true,
+            "hint": "启用后，收到 FAN Studio 台风推送时将自动向 EQSC 拉取详细轨迹与风圈。未启用时台风仅使用 FAN Studio 基础数据展示。"
           },
           "base_url": {
             "description": "EQSC API 基础地址",
