@@ -4,6 +4,7 @@
 作为 storage 目录中统计子系统的统一协调层。
 """
 
+from datetime import datetime, timezone
 from typing import Any
 
 from astrbot.api import logger
@@ -71,6 +72,11 @@ class StatisticsManager:
         self.aggregator = EventStatsAggregator(self)
         self.record_service = StatsRecordService(self)
         self.load_service = StatsLoadService(self)
+        # S-Net 峰值观测：独立于通用事件流，维护测站历史最大震度档案。
+        # 延迟导入，避免 snet ↔ storage 包级循环依赖。
+        from ..services.snet.snet_peak_service import SnetPeakService
+
+        self.snet_peak_service = SnetPeakService(self)
 
     async def initialize(self):
         """异步初始化数据库并加载历史数据"""
@@ -90,6 +96,18 @@ class StatisticsManager:
             # 这里统一串联聚合、近期列表更新、会话统计与持久化流程。
             if not self._db_initialized:
                 await self.initialize()
+
+            # S-Net 是连续观测网：只更新测站峰值档案，不进入通用事件计数/列表/热力图。
+            if self.snet_peak_service.is_snet_event(event):
+                await self.snet_peak_service.observe_event(event)
+                pushed_sessions = pushed_sessions or []
+                current_time = datetime.now(timezone.utc).isoformat()
+                if pushed_sessions:
+                    self.session_service.record_session_stats(
+                        pushed_sessions, current_time
+                    )
+                self.save_stats()
+                return
 
             # 先完成聚合，统一拿到本次写入所需的时间、来源与唯一标识。
             aggregate_result = await self.aggregator.aggregate_event(event)
@@ -170,7 +188,10 @@ class StatisticsManager:
 
             if self._db_initialized:
                 await self.db.clear_all_events()
+                await self.snet_peak_service.clear_peaks()
 
+            # 重置后 query_service 仍引用旧 stats 字典，需要重新绑定。
+            self.query_service = StatsQueryService(self.stats, self.display_timezone)
             self.save_stats()
             logger.info("[灾害预警] 统计数据已重置")
 
