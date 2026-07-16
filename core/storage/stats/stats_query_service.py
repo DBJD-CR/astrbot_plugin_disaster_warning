@@ -127,7 +127,10 @@ class StatsQueryService:
                         f"⏰ 时间: {time_part}",
                     ]
                 )
-                station_count = int(snet_stats.get("station_count") or 0)
+                try:
+                    station_count = int(snet_stats.get("station_count") or 0)
+                except (TypeError, ValueError):
+                    station_count = 0
                 if station_count > 0:
                     text.append(f"已归档测站: {station_count}")
 
