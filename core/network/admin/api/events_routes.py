@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
 from astrbot.api import logger
 
+from .....utils.time_converter import TimeConverter
 from ....domain.typhoon import resolve_data_mode
 from ....storage.source_compat import format_event_source_name
 from ..payloads.api_response import ApiResponse
@@ -242,7 +244,8 @@ def register_events_routes(app, *, disaster_service):
             if guard_result is not None:
                 return ApiResponse.success({"events": []})
 
-            db = disaster_service.statistics_manager.db
+            stats_manager = disaster_service.statistics_manager
+            db = stats_manager.db
             # 负数或零表示“不限制”，但这里仍显式映射为数据库可接受的大整数上限。
             if limit <= 0:
                 safe_limit = 9223372036854775807
@@ -250,6 +253,37 @@ def register_events_routes(app, *, disaster_service):
                 safe_limit = min(max(1, limit), 500)
 
             events = await db.get_major_events(safe_limit)
+
+            # S-Net 峰值重大条目（震度 >= 5弱）由峰值服务单独注入，不进通用 events 表。
+            peak_service = getattr(stats_manager, "snet_peak_service", None)
+            if peak_service is not None:
+                try:
+                    snet_events = await peak_service.list_major_peak_events(
+                        limit=safe_limit
+                    )
+                    if snet_events:
+                        events.extend(snet_events)
+
+                        def _major_event_sort_key(item: dict[str, Any]):
+                            parsed = TimeConverter.parse_datetime(item.get("time"))
+                            if parsed is None:
+                                parsed = TimeConverter.parse_datetime(
+                                    item.get("updated_at")
+                                )
+                            ts = parsed.timestamp() if parsed is not None else 0.0
+                            raw_id = item.get("id") or 0
+                            try:
+                                id_part = int(raw_id)
+                            except (TypeError, ValueError):
+                                id_part = 0
+                            return (ts, id_part)
+
+                        events.sort(key=_major_event_sort_key, reverse=True)
+                        if limit > 0:
+                            events = events[:safe_limit]
+                except Exception as snet_exc:
+                    logger.debug(f"[灾害预警] 注入 S-Net 重大峰值失败: {snet_exc}")
+
             # 重大事件列表同样需要台风后处理（图标、来源标签、当前观测等级）
             _enrich_event_list(events)
             return ApiResponse.success({"events": events})

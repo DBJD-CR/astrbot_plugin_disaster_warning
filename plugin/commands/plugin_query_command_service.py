@@ -609,6 +609,16 @@ class PluginQueryCommandService(CommandTelemetryMixin):
             yield _quoted_plain_result("❌ S-Net 轮询服务未就绪")
             return
 
+        # 全局总闸：全局未启用时不允许 /snet（与轮询启动口径一致）
+        try:
+            if hasattr(snet_poll, "is_enabled") and not snet_poll.is_enabled():
+                yield _quoted_plain_result(
+                    "❌ S-Net 数据源未在全局配置中启用，无法查询"
+                )
+                return
+        except Exception:
+            pass
+
         raw_arg = (arg or "").strip()
         debug_mode = None
         if raw_arg:
