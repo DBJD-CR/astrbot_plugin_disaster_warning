@@ -145,6 +145,17 @@ class PushExecutionService:
             typhoon_config = runtime_config.get("typhoon_config", {})
             if not isinstance(typhoon_config, dict):
                 typhoon_config = {}
+            data_sources = runtime_config.get("data_sources", {})
+            if not isinstance(data_sources, dict):
+                data_sources = {}
+            eqsc_cfg = data_sources.get("eqsc", {})
+            if not isinstance(eqsc_cfg, dict):
+                eqsc_cfg = {}
+            # 会话级 typhoon_enrichment 影响台风正文是否展示 EQSC 富化字段。
+            if "typhoon_enrichment" in eqsc_cfg:
+                typhoon_enrichment = bool(eqsc_cfg.get("typhoon_enrichment"))
+            else:
+                typhoon_enrichment = bool(eqsc_cfg.get("enabled", True))
             cache_key = json.dumps(
                 {
                     "event_id": event.id,
@@ -187,6 +198,7 @@ class PushExecutionService:
                         "show_local_estimation": typhoon_config.get(
                             "show_local_estimation", False
                         ),
+                        "typhoon_enrichment": typhoon_enrichment,
                     },
                 },
                 sort_keys=True,

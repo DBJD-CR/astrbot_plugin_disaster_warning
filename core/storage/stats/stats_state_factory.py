@@ -58,6 +58,15 @@ class StatsStateFactory:
                 "max_wind_typhoons": {},
                 "min_pressure_typhoons": {},
             },
+            # S-Net 观测峰值统计：不计入 total_events / by_type 事件流。
+            "snet_stats": {
+                "station_count": 0,
+                "stations_with_peak": 0,
+                "global_max": None,
+                "top_peaks": [],
+                "recent_peak_updates": [],
+                "last_observation_at": None,
+            },
             # 近期事件摘要与去重辅助字段。
             "recent_pushes": [],
             "major_events": [],

@@ -1050,10 +1050,14 @@ class ConfigValidator:
         if isinstance(fan_studio_cfg, dict):
             ConfigValidator._ensure_bool(fan_studio_cfg, "china_typhoon", True)
 
-        # 校验 EQSC 台风富化数据源配置
+        # 校验 EQSC 数据源配置（组总闸 + 台风富化子开关）
         eqsc_cfg = cfg.get("eqsc")
         if isinstance(eqsc_cfg, dict):
             ConfigValidator._ensure_bool(eqsc_cfg, "enabled", False)
+            # 兼容旧配置：缺少 typhoon_enrichment 时，回退为 enabled 的值
+            if "typhoon_enrichment" not in eqsc_cfg:
+                eqsc_cfg["typhoon_enrichment"] = bool(eqsc_cfg.get("enabled", False))
+            ConfigValidator._ensure_bool(eqsc_cfg, "typhoon_enrichment", False)
 
             # Base URL 校验：确保为非空字符串且去除尾部斜杠
             base_url = eqsc_cfg.get("base_url")
@@ -1105,8 +1109,8 @@ class ConfigValidator:
                 and not str(eqsc_cfg.get("refresh_token", "")).strip()
             ):
                 logger.warning(
-                    "[灾害预警] 配置警告: EQSC 台风富化已启用但未配置 refresh_token，"
-                    "富化服务将无法正常工作，台风将回退到 FAN Studio 基础数据。"
+                    "[灾害预警] 配置警告: EQSC 数据源已启用但未配置 refresh_token，"
+                    "鉴权与台风富化将无法正常工作，台风将回退到 FAN Studio 基础数据。"
                 )
 
         return cfg

@@ -384,6 +384,21 @@ function HorizontalTimeline({ style }) {
      * 核心预警等级着色评级：根据地震震级、海啸警报级别或气象级别生成危险配色样式类
      */
     const getEventToneClass = (event) => {
+        // S-Net 测站峰值：按震度阶级着色（>=5弱 才进入重大事件）
+        if (event.type === 'snet_peak') {
+            const shindo = Number(event.shindo);
+            if (Number.isFinite(shindo)) {
+                if (shindo >= 6.5) return 'is-purple';
+                if (shindo >= 6.0) return 'is-red';
+                if (shindo >= 5.5) return 'is-orange';
+                if (shindo >= 4.5) return 'is-yellow';
+            }
+            const level = String(event.level || '');
+            if (level.includes('7') || level.includes('6強') || level.includes('6+')) return 'is-red';
+            if (level.includes('6弱') || level.includes('6-') || level.includes('5強') || level.includes('5+')) return 'is-orange';
+            return 'is-yellow';
+        }
+
         // A. 地震：根据震级进行判色
         if (event.type === 'earthquake' || event.type === 'earthquake_warning') {
             const sourceText = String(event?.source_id || event?.source || '').toLowerCase();
@@ -561,6 +576,15 @@ function HorizontalTimeline({ style }) {
                                             {/* A. 结构化大标题 */}
                                             <Typography variant="body2" className={`horizontal-timeline-node-title ${toneClass}`}>
                                                 {(() => {
+                                                    if (item.type === 'snet_peak') {
+                                                        const level = String(item.level || '').trim();
+                                                        if (level) return `震度${level}`;
+                                                        const shindo = Number(item.shindo);
+                                                        if (Number.isFinite(shindo)) {
+                                                            return `震度${shindo.toFixed(1)}`;
+                                                        }
+                                                        return 'S-Net';
+                                                    }
                                                     if (item.type === 'earthquake') {
                                                         const mag = Number(item.magnitude);
                                                         if (Number.isFinite(mag)) {
@@ -589,6 +613,10 @@ function HorizontalTimeline({ style }) {
                                             <Typography variant="caption" className="horizontal-timeline-node-subtitle">
                                                 {(() => {
                                                     const desc = String(item.description || '').trim();
+                                                    if (item.type === 'snet_peak') {
+                                                        const station = String(item.place_name || item.place || '').trim();
+                                                        return station || 'S-Net 测站';
+                                                    }
                                                     if (item.type === 'earthquake') {
                                                         const structuredPlace = String(item.place_name || item.place || '').trim();
                                                         if (structuredPlace) {

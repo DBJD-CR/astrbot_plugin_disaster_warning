@@ -159,6 +159,19 @@ def build_typhoon_display_context(projection: dict, options: dict | None = None)
         typhoon_config = {}
     show_local_estimation = bool(typhoon_config.get("show_local_estimation", False))
 
+    # 会话级 typhoon_enrichment：关闭时展示层回退 Fan 字段，不暴露 EQSC 轨迹/四象限风圈。
+    data_sources = display_options.get("data_sources", {})
+    if not isinstance(data_sources, dict):
+        data_sources = {}
+    eqsc_cfg = data_sources.get("eqsc", {})
+    if not isinstance(eqsc_cfg, dict):
+        eqsc_cfg = {}
+    if "typhoon_enrichment" in eqsc_cfg:
+        allow_eqsc_enrichment = bool(eqsc_cfg.get("typhoon_enrichment"))
+    else:
+        # 兼容旧配置：缺省时跟随通道 enabled
+        allow_eqsc_enrichment = bool(eqsc_cfg.get("enabled", True))
+
     # 领域事件优先提供规范化台风状态，投影视图只承担旧数据回退。
     payload_details = _extract_typhoon_projection_details(
         metadata,
@@ -183,6 +196,20 @@ def build_typhoon_display_context(projection: dict, options: dict | None = None)
             display_metadata.pop("typhoon_local_estimation", None)
     else:
         display_metadata.pop("typhoon_local_estimation", None)
+
+    wind_circle = dict(payload_details["wind_circle"] or {})
+    history_track = list(payload_details["history_track"] or [])
+    future_track = list(payload_details["future_track"] or [])
+    data_source = str(payload_details["data_source"] or "fan_studio").strip()
+    if not allow_eqsc_enrichment:
+        # 会话关闭台风富化：仅保留 Fan 单值风圈语义，去掉 EQSC 富化痕迹。
+        wind_circle = {}
+        history_track = []
+        future_track = []
+        data_source = "fan_studio"
+        display_metadata["data_source"] = "fan_studio"
+        display_metadata["info_type"] = "fan"
+        display_metadata["typhoon_data_mode"] = "fan"
 
     return TyphoonDisplayContext(
         event_id=envelope.id,
@@ -252,10 +279,10 @@ def build_typhoon_display_context(projection: dict, options: dict | None = None)
             if hasattr(domain_event, "radius10")
             else payload_details["radius10"]
         ),
-        wind_circle=dict(payload_details["wind_circle"]),
-        history_track=list(payload_details["history_track"]),
-        future_track=list(payload_details["future_track"]),
-        data_source=str(payload_details["data_source"] or "fan_studio").strip(),
+        wind_circle=wind_circle,
+        history_track=history_track,
+        future_track=future_track,
+        data_source=data_source,
         updated_at=(
             getattr(domain_event, "updated_at", None) or payload_details["updated_at"]
         ),

@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
+from ....app.services.typhoon_enrichment_service import TyphoonEnrichmentService
 from ....services.query.source_runtime_query_service import SourceRuntimeQueryService
 
 
@@ -69,7 +70,10 @@ class ConnectionsPayloadBuilder:
             if isinstance(raw, dict):
                 eqsc_cfg = raw
 
-        config_enabled = bool(eqsc_cfg.get("enabled", False))
+        channel_enabled, typhoon_enrichment = (
+            TyphoonEnrichmentService.resolve_eqsc_flags(eqsc_cfg)
+        )
+        config_enabled = channel_enabled
         token_configured = bool(str(eqsc_cfg.get("refresh_token", "") or "").strip())
         latency = self.latency_cache.get("eqsc")
 
@@ -89,23 +93,27 @@ class ConnectionsPayloadBuilder:
                 except Exception:
                     health = {}
 
-        # enabled：配置启用且 refresh_token 已配置（服务可工作）
+        # enabled：组总闸开启且 refresh_token 已配置（通道可工作）
         enabled = (
             bool(health.get("enabled"))
             if health
             else (config_enabled and token_configured)
         )
-        # 子数据源启用仅跟随「启用EQSC台风富化」配置开关
         effective_config_enabled = bool(
             health.get("config_enabled", config_enabled) if health else config_enabled
+        )
+        # 子数据源展示只看子开关本身，不与总闸/服务状态做 AND
+        effective_typhoon_enrichment = bool(
+            health.get("typhoon_enrichment", typhoon_enrichment)
+            if health
+            else typhoon_enrichment
         )
         circuit_open = bool(health.get("circuit_open", False))
         access_token_valid = bool(health.get("access_token_valid", False))
         sub_sources = health.get("sub_sources")
         if not isinstance(sub_sources, dict):
-            # 与 FAN 台风开关对齐的展示键；仅一个子数据源
             sub_sources = {
-                "china_typhoon": effective_config_enabled,
+                "china_typhoon": effective_typhoon_enrichment,
             }
 
         # HTTP 通道无 WS 重试语义。
@@ -149,6 +157,7 @@ class ConnectionsPayloadBuilder:
             "circuit_open": circuit_open,
             "token_configured": bool(health.get("token_configured", token_configured)),
             "config_enabled": effective_config_enabled,
+            "typhoon_enrichment": effective_typhoon_enrichment,
             "access_token_valid": access_token_valid,
         }
 

@@ -35,6 +35,8 @@ class SnetPollService:
     SOURCE_ID = "snet_msil"
     DEFAULT_INTERVAL_SECONDS = 60
     TILE_NAMES = (("y11", "11"), ("y12", "12"))
+    # 推送去重：仅比较震度最高的前 N 个触发测站（名称 + 震度）
+    PUSH_DEDUP_TOP_N = 5
     # 瓦片快照最短/最长 TTL（秒）；实际 TTL 会结合 poll_interval 收敛
     MIN_TILE_CACHE_TTL = 30.0
     MAX_TILE_CACHE_TTL = 600.0
@@ -175,19 +177,53 @@ class SnetPollService:
             "min_shindo": threshold,
         }
 
-        stations: list[dict[str, Any]] | None = None
-        if parse_stations or emit_event:
-            stations = self._get_or_decode_stations(tiles_payload)
-            if stations is not None:
-                raw_dict["stations"] = stations
-                raw_dict["triggered"] = [
-                    s for s in stations if float(s.get("shindo", -999.0)) >= threshold
-                ]
+        # 峰值归档与推送解耦：只要拿到瓦片就解码并写入峰值档案，
+        # 不依赖 emit_event / parse_stations，保证无推送时历史最大震度仍可更新。
+        stations = self._get_or_decode_stations(tiles_payload)
+        if stations is not None:
+            raw_dict["stations"] = stations
+            raw_dict["triggered"] = [
+                s for s in stations if float(s.get("shindo", -999.0)) >= threshold
+            ]
+            await self._observe_station_peaks(
+                stations,
+                timestamp=str(tiles_payload.get("timestamp") or ""),
+                hit_threshold=threshold,
+            )
 
         if emit_event:
             await self._emit_event(raw_dict)
 
         return raw_dict
+
+    async def _observe_station_peaks(
+        self,
+        stations: list[dict[str, Any]],
+        *,
+        timestamp: str,
+        hit_threshold: float | None = None,
+    ) -> None:
+        """将本轮测站观测写入峰值档案（不依赖是否触发推送）。"""
+        stats_manager = getattr(self.service, "statistics_manager", None)
+        peak_service = (
+            getattr(stats_manager, "snet_peak_service", None) if stats_manager else None
+        )
+        if peak_service is None:
+            return
+        try:
+            if stats_manager is not None and not getattr(
+                stats_manager, "_db_initialized", False
+            ):
+                await stats_manager.initialize()
+            await peak_service.observe_stations(
+                stations,
+                observed_at=timestamp,
+                hit_threshold=hit_threshold,
+            )
+            if stats_manager is not None and hasattr(stats_manager, "save_stats"):
+                stats_manager.save_stats()
+        except Exception as exc:
+            logger.debug(f"[灾害预警] S-Net 峰值观测旁路写入失败: {exc}")
 
     async def fetch_for_query(
         self,
@@ -378,9 +414,40 @@ class SnetPollService:
             )
         return normalized
 
+    @classmethod
+    def _build_push_fingerprint(cls, triggered: list[dict[str, Any]]) -> str:
+        """构建推送去重指纹：仅看震度最高的前 N 个测站（名称 + 震度）。
+
+        不含瓦片时间戳，避免“每分钟时间变了但 Top-N 未变”仍刷屏。
+        """
+        ranked: list[tuple[str, float]] = []
+        for item in triggered or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            try:
+                shindo = round(float(item.get("shindo", -999.0)), 3)
+            except (TypeError, ValueError):
+                continue
+            ranked.append((name, shindo))
+
+        # 先按震度降序，同震度按名称稳定排序，再截取 Top-N
+        ranked.sort(key=lambda row: (-row[1], row[0]))
+        top_n = ranked[: cls.PUSH_DEDUP_TOP_N]
+        return json.dumps(
+            {
+                "top": [{"name": name, "shindo": shindo} for name, shindo in top_n],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
     async def _emit_event(self, raw_dict: dict[str, Any]) -> None:
         """解析并送入统一事件流水线。"""
-        # 指纹：同一分钟 + 触发测站集合 + 最大震度，避免无变化重复推送
+        # 指纹：仅比较触发测站中震度最高的前 5 个（名称+震度），无变化则不推送
         triggered = (
             raw_dict.get("triggered")
             if isinstance(raw_dict.get("triggered"), list)
@@ -393,19 +460,9 @@ class SnetPollService:
             )
             return
 
-        top = max(triggered, key=lambda s: float(s.get("shindo", -999.0)))
-        fingerprint = json.dumps(
-            {
-                "ts": raw_dict.get("timestamp"),
-                "max": round(float(top.get("shindo", 0.0)), 3),
-                "count": len(triggered),
-                "names": sorted(str(s.get("name") or "") for s in triggered[:20]),
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+        fingerprint = self._build_push_fingerprint(triggered)
         if fingerprint == self._last_payload_fingerprint:
-            logger.debug("[灾害预警] S-Net 载荷未变化，跳过推送")
+            logger.debug("[灾害预警] S-Net Top-5 测站未变化，跳过推送")
             return
 
         message = json.dumps(raw_dict, ensure_ascii=False)
@@ -414,12 +471,10 @@ class SnetPollService:
             return
 
         event_id = getattr(event, "id", None)
-        if (
-            event_id
-            and event_id == self._last_event_id
-            and fingerprint == self._last_payload_fingerprint
-        ):
-            return
+        if event_id and event_id == self._last_event_id:
+            # 同 event_id 且指纹已在上方判等；此处兜底防止重复投递
+            if fingerprint == self._last_payload_fingerprint:
+                return
 
         self._last_payload_fingerprint = fingerprint
         self._last_event_id = event_id

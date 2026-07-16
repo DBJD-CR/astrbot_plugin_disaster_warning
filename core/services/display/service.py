@@ -168,10 +168,11 @@ def build_admin_statistics_projection(
     if not isinstance(stats, dict):
         stats = {}
 
-    # 从原始统计中分离出地震、气象、台风专项统计子节点
+    # 从原始统计中分离出地震、气象、台风、S-Net 专项统计子节点
     earthquake_stats = dict(stats.get("earthquake_stats", {}))
     weather_stats = dict(stats.get("weather_stats", {}))
     typhoon_stats = dict(stats.get("typhoon_stats", {}))
+    snet_stats = dict(stats.get("snet_stats", {}))
     # 取最近250条推送记录用于管理端面板渲染，多余的予以截断以减轻前台压力
     recent_push_records = list(stats.get("recent_pushes", [])[:250])
     # 解析用于地图渲染的地震位置标记列表
@@ -213,6 +214,20 @@ def build_admin_statistics_projection(
             "min_pressure_typhoons": dict(
                 typhoon_stats.get("min_pressure_typhoons", {})
             ),
+        },
+        "snet_stats": {
+            # 已记录峰值的测站数量
+            "station_count": int(snet_stats.get("station_count") or 0),
+            "stations_with_peak": int(snet_stats.get("stations_with_peak") or 0),
+            # 全网历史最大震度测站摘要
+            "global_max": snet_stats.get("global_max"),
+            # 历史最大震度 Top3（按 max_shindo 降序）
+            "top_peaks": list(snet_stats.get("top_peaks") or [])[:3],
+            # 最近峰值刷新列表（截断）
+            "recent_peak_updates": list(snet_stats.get("recent_peak_updates") or [])[
+                :20
+            ],
+            "last_observation_at": snet_stats.get("last_observation_at"),
         },
         # 原始推送历史缓存
         "recent_pushes": recent_push_records,

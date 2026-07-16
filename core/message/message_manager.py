@@ -217,10 +217,17 @@ class MessagePushManager:
         """基于运行时配置构建推送规则决策所需状态上下文。"""
         # 规则状态对象按会话维度按需构建，
         # 这样既能复用公共规则组件，又能保留会话级差异化配置。
-        return self._runtime_component_factory.build(
+        policy_state = self._runtime_component_factory.build(
             runtime_config,
             session_id=session_id,
         )
+        # 注入全局 data_sources，供 SourceEnabledRule 做“全局总闸 AND 会话开关”
+        global_config = self.config if isinstance(self.config, dict) else {}
+        global_data_sources = global_config.get("data_sources", {})
+        policy_state["global_data_sources"] = (
+            global_data_sources if isinstance(global_data_sources, dict) else {}
+        )
+        return policy_state
 
     async def _render_with_cache(
         self,
