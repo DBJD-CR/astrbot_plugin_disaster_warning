@@ -656,6 +656,7 @@
     --card-shadow: 0 4px 20px 0 color-mix(in srgb, var(--md-sys-color-error) 10%, transparent);
     --card-hover-shadow: 0 12px 30px 0 color-mix(in srgb, var(--md-sys-color-error) 16%, transparent);
     --hover-lift: 4px;
+
     position: relative;
     overflow: visible;
     display: flex;
@@ -678,6 +679,7 @@
     --card-shadow: 0 4px 20px 0 color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
     --card-hover-shadow: 0 12px 30px 0 color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent);
     --hover-lift: 4px;
+
     position: relative;
     overflow: visible;
     display: flex;
@@ -827,7 +829,7 @@
     color: var(--md-sys-color-on-primary-container) !important;
 }
 
-/* Top3 单行列表*/
+/* Top3 单行列表 */
 .snet-max-card-list {
     display: flex;
     flex-direction: column;
@@ -928,6 +930,7 @@
     --card-shadow: var(--glass-shadow);
     --card-hover-shadow: 0 12px 30px 0 rgba(103, 80, 164, 0.12);
     --hover-lift: 4px;
+
     height: var(--stats-bottom-card-height, 200px);
     min-height: var(--stats-bottom-card-height, 200px);
     max-height: var(--stats-bottom-card-height, 200px);
@@ -1293,15 +1296,16 @@ html.theme-dark .snet-max-card {
         grid-template-columns: 1fr;
     }
 
+    /* 单列后允许高度随内容展开，避免第二张卡被固定 180px 裁切/覆盖 */
     .stats-peak-pair,
     .stats-note-slot,
     .max-mag-card,
     .snet-max-card,
     .stats-note-card {
         --stats-bottom-card-height: 180px;
-        height: var(--stats-bottom-card-height);
+        height: auto;
         min-height: var(--stats-bottom-card-height);
-        max-height: var(--stats-bottom-card-height);
+        max-height: none;
     }
 
     .max-mag-card-mag-value {
