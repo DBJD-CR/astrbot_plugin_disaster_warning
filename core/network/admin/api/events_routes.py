@@ -246,11 +246,11 @@ def register_events_routes(app, *, disaster_service):
 
             stats_manager = disaster_service.statistics_manager
             db = stats_manager.db
-            # 负数或零表示“不限制”，但这里仍显式映射为数据库可接受的大整数上限。
+            # 统一钳制查询上限，避免 limit<=0 绕过 500 条保护导致全表扫描。
             if limit <= 0:
-                safe_limit = 9223372036854775807
+                safe_limit = 50
             else:
-                safe_limit = min(max(1, limit), 500)
+                safe_limit = min(max(1, int(limit)), 500)
 
             events = await db.get_major_events(safe_limit)
 
