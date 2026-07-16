@@ -97,9 +97,9 @@ class StatisticsManager:
             if not self._db_initialized:
                 await self.initialize()
 
-            # S-Net 是连续观测网：只更新测站峰值档案，不进入通用事件计数/列表/热力图。
+            # S-Net 是连续观测网：峰值已在轮询侧归档，这里只记会话推送统计，
+            # 避免与 snet_poll_service._observe_station_peaks 双写 hit_count。
             if self.snet_peak_service.is_snet_event(event):
-                await self.snet_peak_service.observe_event(event)
                 pushed_sessions = pushed_sessions or []
                 current_time = datetime.now(timezone.utc).isoformat()
                 if pushed_sessions:

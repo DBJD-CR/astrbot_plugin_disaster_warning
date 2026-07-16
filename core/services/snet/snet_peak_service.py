@@ -132,8 +132,13 @@ class SnetPeakService:
         return result
 
     async def clear_peaks(self) -> bool:
-        """清空峰值表并重置内存统计。"""
+        """清空峰值表并重置内存统计。
+
+        仅在数据库清空成功后才重置内存，避免前端显示已清空但旧峰值仍可恢复。
+        """
         ok = await self.repository.clear_all()
+        if not ok:
+            return False
         snet_stats = self.manager.stats.setdefault("snet_stats", {})
         snet_stats["station_count"] = 0
         snet_stats["stations_with_peak"] = 0
@@ -141,7 +146,7 @@ class SnetPeakService:
         snet_stats["top_peaks"] = []
         snet_stats["recent_peak_updates"] = []
         snet_stats["last_observation_at"] = None
-        return ok
+        return True
 
     async def list_major_peak_events(self, *, limit: int = 100) -> list[dict[str, Any]]:
         """重大事件回溯用：震度 >= 5弱 的测站峰值投影。"""
