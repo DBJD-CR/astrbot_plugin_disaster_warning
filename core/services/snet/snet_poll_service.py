@@ -177,20 +177,19 @@ class SnetPollService:
             "min_shindo": threshold,
         }
 
-        stations: list[dict[str, Any]] | None = None
-        # 峰值归档与推送解耦：轮询时始终解码测站，保证历史最大震度可更新
-        if parse_stations or emit_event:
-            stations = self._get_or_decode_stations(tiles_payload)
-            if stations is not None:
-                raw_dict["stations"] = stations
-                raw_dict["triggered"] = [
-                    s for s in stations if float(s.get("shindo", -999.0)) >= threshold
-                ]
-                await self._observe_station_peaks(
-                    stations,
-                    timestamp=str(tiles_payload.get("timestamp") or ""),
-                    hit_threshold=threshold,
-                )
+        # 峰值归档与推送解耦：只要拿到瓦片就解码并写入峰值档案，
+        # 不依赖 emit_event / parse_stations，保证无推送时历史最大震度仍可更新。
+        stations = self._get_or_decode_stations(tiles_payload)
+        if stations is not None:
+            raw_dict["stations"] = stations
+            raw_dict["triggered"] = [
+                s for s in stations if float(s.get("shindo", -999.0)) >= threshold
+            ]
+            await self._observe_station_peaks(
+                stations,
+                timestamp=str(tiles_payload.get("timestamp") or ""),
+                hit_threshold=threshold,
+            )
 
         if emit_event:
             await self._emit_event(raw_dict)
