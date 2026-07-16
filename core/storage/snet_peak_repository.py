@@ -30,6 +30,171 @@ class SnetPeakRepository:
     async def _connection(self):
         return await self.db._ensure_connection()
 
+    @staticmethod
+    def _normalize_station_observation(
+        station: dict[str, Any],
+        *,
+        observed_at: str,
+        hit_threshold: float | None = None,
+    ) -> dict[str, Any] | None:
+        """规范化单站观测字段；非法数据返回 None。"""
+        station_id = str(
+            station.get("station_id")
+            or station.get("name")
+            or station.get("station_name")
+            or ""
+        ).strip()
+        if not station_id:
+            return None
+
+        try:
+            shindo = float(station.get("shindo"))
+        except (TypeError, ValueError):
+            return None
+
+        observed_at_text = str(observed_at or "").strip()
+        if not observed_at_text:
+            return None
+
+        station_name = (
+            str(
+                station.get("station_name") or station.get("name") or station_id
+            ).strip()
+            or station_id
+        )
+        try:
+            lat = float(station.get("lat")) if station.get("lat") is not None else None
+        except (TypeError, ValueError):
+            lat = None
+        try:
+            lon = float(station.get("lon")) if station.get("lon") is not None else None
+        except (TypeError, ValueError):
+            lon = None
+
+        hit_increment = 0
+        if hit_threshold is not None:
+            try:
+                if shindo >= float(hit_threshold):
+                    hit_increment = 1
+            except (TypeError, ValueError):
+                hit_increment = 0
+
+        return {
+            "station_id": station_id,
+            "station_name": station_name,
+            "lat": lat,
+            "lon": lon,
+            "shindo": shindo,
+            "observed_at": observed_at_text,
+            "hit_increment": hit_increment,
+        }
+
+    async def _upsert_station_peak_on_cursor(
+        self,
+        cursor,
+        station: dict[str, Any],
+        *,
+        observed_at: str,
+        hit_threshold: float | None = None,
+    ) -> dict[str, Any] | None:
+        """在已有 cursor 上执行单站原子 upsert（不单独 commit）。"""
+        normalized = self._normalize_station_observation(
+            station,
+            observed_at=observed_at,
+            hit_threshold=hit_threshold,
+        )
+        if normalized is None:
+            return None
+
+        station_id = normalized["station_id"]
+        station_name = normalized["station_name"]
+        lat = normalized["lat"]
+        lon = normalized["lon"]
+        shindo = float(normalized["shindo"])
+        observed_at_text = str(normalized["observed_at"])
+        hit_increment = int(normalized["hit_increment"])
+
+        await cursor.execute(
+            """
+            SELECT station_id, max_shindo, max_shindo_at, hit_count
+            FROM snet_station_peaks
+            WHERE station_id = ?
+            LIMIT 1
+            """,
+            (station_id,),
+        )
+        existing = await cursor.fetchone()
+        created = existing is None
+        if existing is None:
+            old_max = None
+            old_max_at = observed_at_text
+            old_hit = 0
+        else:
+            old_max = float(existing["max_shindo"] or 0.0)
+            old_max_at = str(existing["max_shindo_at"] or observed_at_text)
+            old_hit = int(existing["hit_count"] or 0)
+
+        peak_updated = created or (old_max is None) or (shindo > float(old_max))
+        new_max = shindo if peak_updated else float(old_max or 0.0)
+        new_max_at = observed_at_text if peak_updated else old_max_at
+        new_hit = old_hit + hit_increment
+
+        # 单条原子 upsert：避免 SELECT 与 UPDATE 之间被并发写穿。
+        await cursor.execute(
+            """
+            INSERT INTO snet_station_peaks (
+                station_id, station_name, lat, lon,
+                max_shindo, max_shindo_at,
+                last_shindo, last_seen_at,
+                first_seen_at, hit_count, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(station_id) DO UPDATE SET
+                station_name = excluded.station_name,
+                lat = COALESCE(excluded.lat, snet_station_peaks.lat),
+                lon = COALESCE(excluded.lon, snet_station_peaks.lon),
+                max_shindo = CASE
+                    WHEN excluded.max_shindo > snet_station_peaks.max_shindo
+                    THEN excluded.max_shindo
+                    ELSE snet_station_peaks.max_shindo
+                END,
+                max_shindo_at = CASE
+                    WHEN excluded.max_shindo > snet_station_peaks.max_shindo
+                    THEN excluded.max_shindo_at
+                    ELSE snet_station_peaks.max_shindo_at
+                END,
+                last_shindo = excluded.last_shindo,
+                last_seen_at = excluded.last_seen_at,
+                hit_count = snet_station_peaks.hit_count + excluded.hit_count,
+                updated_at = excluded.updated_at
+            """,
+            (
+                station_id,
+                station_name,
+                lat,
+                lon,
+                shindo,
+                observed_at_text,
+                shindo,
+                observed_at_text,
+                observed_at_text,
+                hit_increment,
+                observed_at_text,
+            ),
+        )
+        return {
+            "station_id": station_id,
+            "station_name": station_name,
+            "lat": lat,
+            "lon": lon,
+            "created": created,
+            "peak_updated": peak_updated,
+            "max_shindo": new_max,
+            "max_shindo_at": new_max_at,
+            "last_shindo": shindo,
+            "last_seen_at": observed_at_text,
+            "hit_count": new_hit,
+        }
+
     async def upsert_station_peak(
         self,
         station: dict[str, Any],
@@ -45,156 +210,18 @@ class SnetPeakRepository:
         - hit_count：当 shindo >= hit_threshold 时累加（可选）
         """
         try:
-            station_id = str(
-                station.get("station_id")
-                or station.get("name")
-                or station.get("station_name")
-                or ""
-            ).strip()
-            if not station_id:
-                return None
-
-            try:
-                shindo = float(station.get("shindo"))
-            except (TypeError, ValueError):
-                return None
-
-            observed_at_text = str(observed_at or "").strip()
-            if not observed_at_text:
-                return None
-
-            station_name = (
-                str(
-                    station.get("station_name") or station.get("name") or station_id
-                ).strip()
-                or station_id
-            )
-            try:
-                lat = (
-                    float(station.get("lat"))
-                    if station.get("lat") is not None
-                    else None
-                )
-            except (TypeError, ValueError):
-                lat = None
-            try:
-                lon = (
-                    float(station.get("lon"))
-                    if station.get("lon") is not None
-                    else None
-                )
-            except (TypeError, ValueError):
-                lon = None
-
-            hit_increment = 0
-            if hit_threshold is not None:
-                try:
-                    if shindo >= float(hit_threshold):
-                        hit_increment = 1
-                except (TypeError, ValueError):
-                    hit_increment = 0
-
             connection = await self._connection()
             cursor = await connection.cursor()
-            await cursor.execute(
-                """
-                SELECT station_id, max_shindo, max_shindo_at, hit_count, first_seen_at
-                FROM snet_station_peaks
-                WHERE station_id = ?
-                LIMIT 1
-                """,
-                (station_id,),
+            row = await self._upsert_station_peak_on_cursor(
+                cursor,
+                station,
+                observed_at=observed_at,
+                hit_threshold=hit_threshold,
             )
-            existing = await cursor.fetchone()
-
-            if existing is None:
-                await cursor.execute(
-                    """
-                    INSERT INTO snet_station_peaks (
-                        station_id, station_name, lat, lon,
-                        max_shindo, max_shindo_at,
-                        last_shindo, last_seen_at,
-                        first_seen_at, hit_count, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        station_id,
-                        station_name,
-                        lat,
-                        lon,
-                        shindo,
-                        observed_at_text,
-                        shindo,
-                        observed_at_text,
-                        observed_at_text,
-                        hit_increment,
-                        observed_at_text,
-                    ),
-                )
-                await connection.commit()
-                return {
-                    "station_id": station_id,
-                    "station_name": station_name,
-                    "lat": lat,
-                    "lon": lon,
-                    "created": True,
-                    "peak_updated": True,
-                    "max_shindo": shindo,
-                    "max_shindo_at": observed_at_text,
-                    "last_shindo": shindo,
-                    "last_seen_at": observed_at_text,
-                    "hit_count": hit_increment,
-                }
-
-            old_max = float(existing["max_shindo"] or 0.0)
-            old_max_at = str(existing["max_shindo_at"] or observed_at_text)
-            old_hit = int(existing["hit_count"] or 0)
-            peak_updated = shindo > old_max
-            new_max = shindo if peak_updated else old_max
-            new_max_at = observed_at_text if peak_updated else old_max_at
-            new_hit = old_hit + hit_increment
-
-            await cursor.execute(
-                """
-                UPDATE snet_station_peaks
-                SET station_name = ?,
-                    lat = COALESCE(?, lat),
-                    lon = COALESCE(?, lon),
-                    max_shindo = ?,
-                    max_shindo_at = ?,
-                    last_shindo = ?,
-                    last_seen_at = ?,
-                    hit_count = ?,
-                    updated_at = ?
-                WHERE station_id = ?
-                """,
-                (
-                    station_name,
-                    lat,
-                    lon,
-                    new_max,
-                    new_max_at,
-                    shindo,
-                    observed_at_text,
-                    new_hit,
-                    observed_at_text,
-                    station_id,
-                ),
-            )
+            if row is None:
+                return None
             await connection.commit()
-            return {
-                "station_id": station_id,
-                "station_name": station_name,
-                "lat": lat,
-                "lon": lon,
-                "created": False,
-                "peak_updated": peak_updated,
-                "max_shindo": new_max,
-                "max_shindo_at": new_max_at,
-                "last_shindo": shindo,
-                "last_seen_at": observed_at_text,
-                "hit_count": new_hit,
-            }
+            return row
         except Exception as e:
             logger.error(f"[灾害预警] S-Net 测站峰值写入失败: {e}")
             try:
@@ -211,19 +238,36 @@ class SnetPeakRepository:
         observed_at: str,
         hit_threshold: float | None = None,
     ) -> list[dict[str, Any]]:
-        """批量 upsert 测站峰值。"""
+        """批量 upsert 测站峰值（单事务，减少往返与半批提交）。"""
         results: list[dict[str, Any]] = []
-        for station in stations or []:
-            if not isinstance(station, dict):
-                continue
-            row = await self.upsert_station_peak(
-                station,
-                observed_at=observed_at,
-                hit_threshold=hit_threshold,
-            )
-            if row is not None:
-                results.append(row)
-        return results
+        prepared = [
+            station for station in (stations or []) if isinstance(station, dict)
+        ]
+        if not prepared:
+            return results
+
+        try:
+            connection = await self._connection()
+            cursor = await connection.cursor()
+            for station in prepared:
+                row = await self._upsert_station_peak_on_cursor(
+                    cursor,
+                    station,
+                    observed_at=observed_at,
+                    hit_threshold=hit_threshold,
+                )
+                if row is not None:
+                    results.append(row)
+            await connection.commit()
+            return results
+        except Exception as e:
+            logger.error(f"[灾害预警] S-Net 测站峰值批量写入失败: {e}")
+            try:
+                if getattr(self.db, "connection", None) is not None:
+                    await self.db.connection.rollback()
+            except Exception:
+                pass
+            return []
 
     async def list_peaks(
         self,
