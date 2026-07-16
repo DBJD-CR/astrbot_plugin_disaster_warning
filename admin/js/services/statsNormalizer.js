@@ -28,6 +28,7 @@
         const earthquakeStats = stats.earthquake_stats || {};
         const weatherStats = stats.weather_stats || {};
         const typhoonStats = stats.typhoon_stats || {};
+        const snetStats = stats.snet_stats || {};
         const byType = stats.by_type || {};
 
         // 会话推送统计：从 session_stats.top_sessions 提取并排序
@@ -111,6 +112,12 @@
                 weatherCount: byType.weather_alarm || 0,                     // 气象灾害总数
                 typhoonCount: byType.typhoon || 0,                           // 台风事件总数
                 maxMagnitude: earthquakeStats.max_magnitude || null,         // 周期内全球最大震级极值
+                snetGlobalMax: snetStats.global_max || null,                 // S-Net 全网历史最大震度
+                snetTopPeaks: Array.isArray(snetStats.top_peaks)
+                    ? snetStats.top_peaks.slice(0, 3)
+                    : [],                                                    // S-Net 历史最大震度 Top3
+                snetStationCount: Number(snetStats.station_count) || 0,      // S-Net 已归档测站数
+                snetLastObservationAt: snetStats.last_observation_at || null,
                 earthquakeRegions: entriesToSortedList(earthquakeStats.by_region, 'region'), // 地震多发地 Top10 排行数据
                 weatherRegions: entriesToSortedList(weatherStats.by_region, 'region'),       // 气象多发地 Top10 排行数据
                 weatherTypes: entriesToSortedList(weatherStats.by_type, 'type'),             // 气象细分类别分布

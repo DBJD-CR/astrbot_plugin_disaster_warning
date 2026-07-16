@@ -289,12 +289,18 @@ class DisasterWarningService:
             self.http_fetcher = HTTPDataFetcher(self.config)  # 初始化 HTTP 轮询拉取组件
             self._register_handlers()
             self._configure_connections()
-            # 台风富化服务在 EQSC 启用时输出就绪日志
-            if self.typhoon_enrichment_service.is_enabled:
+            # EQSC 通道 / 台风富化就绪日志（组总闸与子开关已解耦）
+            enrichment = self.typhoon_enrichment_service
+            if enrichment.is_enabled:
                 logger.info("[灾害预警] EQSC 台风富化服务已就绪")
+            elif getattr(enrichment, "is_channel_enabled", False):
+                logger.info(
+                    "[灾害预警] EQSC 通道已启用，但台风富化子开关关闭；"
+                    "台风将使用 FAN Studio 基础数据"
+                )
             else:
                 logger.info(
-                    "[灾害预警] EQSC 台风富化服务未启用，台风将使用 FAN Studio 基础数据"
+                    "[灾害预警] EQSC 数据源未启用，台风将使用 FAN Studio 基础数据"
                 )
             logger.info("[灾害预警] 灾害预警服务初始化完成")
 
@@ -312,10 +318,12 @@ class DisasterWarningService:
 
     def schedule_eqsc_token_warmup(self) -> None:
         """启动后第一时间后台预热 EQSC AccessToken，避免状态长期显示鉴权失效。"""
-        if not self.typhoon_enrichment_service.is_enabled:
+        # 通道级预热：只要组总闸开启且 token 已配置即可，不依赖台风富化子开关
+        enrichment = self.typhoon_enrichment_service
+        if not getattr(enrichment, "is_channel_enabled", enrichment.is_enabled):
             return
         warmup_task = asyncio.create_task(
-            self.typhoon_enrichment_service.warm_up_access_token(),
+            enrichment.warm_up_access_token(),
             name="dw_eqsc_token_warmup",
         )
         self.register_background_task(warmup_task)
