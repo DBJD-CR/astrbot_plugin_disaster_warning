@@ -556,6 +556,7 @@ class SnetParser(BaseParser):
         }
 
         scale_label = ScaleConverter.format_measured_intensity_display(max_shindo)
+        top_station_name = str(top.get("name") or "未知测站")
         domain_event = EarthquakeEvent(
             occurred_at=occurred_at,
             latitude=float(top.get("lat") or 0.0),
@@ -582,7 +583,7 @@ class SnetParser(BaseParser):
             attributes={"timestamp": timestamp, "max_shindo": max_shindo},
         )
 
-        return EventEnvelope(
+        envelope = EventEnvelope(
             identity=identity,
             event=domain_event,
             payload=SourcePayload(
@@ -600,6 +601,18 @@ class SnetParser(BaseParser):
             ),
             metadata=metadata,
         )
+
+        # 默认 DEBUG；达到震度 1（計測震度 >= 0.5）或本轮推送阈值时升为 INFO
+        log_message = (
+            f"[灾害预警] NIED S-Net 海底震度解析成功: {top_station_name}, "
+            f"震度: {scale_label or max_shindo}, 时间: {occurred_at}"
+        )
+        if max_shindo >= 0.5 or max_shindo >= min_shindo:
+            plugin_logger.info(log_message, is_event_linked=True)
+        else:
+            plugin_logger.debug(log_message)
+
+        return envelope
 
 
 # 便于服务层复用
