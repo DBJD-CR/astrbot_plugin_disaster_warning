@@ -602,12 +602,13 @@ class SnetParser(BaseParser):
             metadata=metadata,
         )
 
-        # 默认 DEBUG；达到震度 1（計測震度 >= 0.5）或本轮推送阈值时升为 INFO
+        # 默认 DEBUG；达到震度 1（計測震度 >= 0.5）时升为 INFO。
+        # 推送路径仅在有 triggered 时进入，不再用 min_shindo 判定（否则几乎恒为 INFO）。
         log_message = (
             f"[灾害预警] NIED S-Net 海底震度解析成功: {top_station_name}, "
             f"震度: {scale_label or max_shindo}, 时间: {occurred_at}"
         )
-        if max_shindo >= 0.5 or max_shindo >= min_shindo:
+        if max_shindo >= 0.5:
             plugin_logger.info(log_message, is_event_linked=True)
         else:
             plugin_logger.debug(log_message)
