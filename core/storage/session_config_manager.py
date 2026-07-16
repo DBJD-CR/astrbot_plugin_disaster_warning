@@ -49,9 +49,14 @@ class SessionConfigManager:
     }
 
     # 仅允许全局配置修改的嵌套路径（会话 override 写入时强制剥离）。
-    # 例如 S-Net 轮询间隔影响全局采集节奏，不允许按会话分叉。
+    # S-Net 轮询间隔、EQSC 通道鉴权参数影响全局运行态；
+    # typhoon_enrichment 允许会话差异（部分会话只要 Fan，部分要 EQSC 富化）。
     GLOBAL_ONLY_NESTED_PATHS: tuple[tuple[str, ...], ...] = (
         ("data_sources", "snet", "poll_interval_seconds"),
+        ("data_sources", "eqsc", "enabled"),
+        ("data_sources", "eqsc", "base_url"),
+        ("data_sources", "eqsc", "refresh_token"),
+        ("data_sources", "eqsc", "cache_ttl"),
     )
 
     def __init__(self, default_config_ref: dict[str, Any]):
@@ -449,7 +454,11 @@ class SessionConfigManager:
     def update_session_from_effective(
         self, umo: str, effective_config: dict[str, Any]
     ) -> None:
-        """根据提交的生效配置反推并保存差异补丁。"""
+        """根据提交的生效配置反推并保存差异补丁。
+
+        effective 全量回写以 compute_diff 结果为权威：与全局默认相同的字段
+        必须从 override 中消失，不能再通过 preserve_legacy 把旧差异补回。
+        """
         if not isinstance(effective_config, dict):
             raise ValueError("effective_config 必须是对象")
 
@@ -457,10 +466,15 @@ class SessionConfigManager:
         session_effective = self._sanitize_patch(copy.deepcopy(effective_config)) or {}
 
         patch = self.compute_diff(default_conf, session_effective)
-        patch = self._sanitize_patch(
-            patch, preserve_legacy=self._overrides.get(umo, {})
-        )
-        self.set_override(umo, patch)
+        if not isinstance(patch, dict):
+            patch = {}
+        # 不传 preserve_legacy：用户把某字段改回全局默认时，应真正清除该 override 键
+        patch = self._sanitize_patch(patch, preserve_legacy=None)
+        if patch:
+            self._overrides[umo] = patch
+        else:
+            self._overrides.pop(umo, None)
+        self._save()
 
     @classmethod
     def deep_merge(cls, base: Any, patch: Any) -> Any:
