@@ -174,6 +174,9 @@ class PushExecutionService:
                         "jma_region_intensity": message_format_config.get(
                             "jma_region_intensity", True
                         ),
+                        "emoji_filter_mode": message_format_config.get(
+                            "emoji_filter_mode", "默认"
+                        ),
                     },
                     "weather": {
                         "enable_weather_icon": weather_config.get(
