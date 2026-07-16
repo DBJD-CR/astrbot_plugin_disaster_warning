@@ -212,6 +212,25 @@ class DatabaseManager:
             )
             """
         )
+        # S-Net 测站峰值状态表：每个测站一行，持续 upsert，不进入通用 events 事件流
+        await cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snet_station_peaks (
+                station_id      TEXT PRIMARY KEY,
+                station_name    TEXT NOT NULL,
+                lat             REAL,
+                lon             REAL,
+                max_shindo      REAL NOT NULL,
+                max_shindo_at   TEXT NOT NULL,
+                last_shindo     REAL,
+                last_seen_at    TEXT,
+                first_seen_at   TEXT,
+                hit_count       INTEGER DEFAULT 0,
+                updated_at      TEXT NOT NULL
+            )
+            """
+        )
+
         # 索引集中覆盖事件标识、来源、类型、时间等高频检索维度，加速分页与汇总查询
         for sql in (
             "CREATE INDEX IF NOT EXISTS idx_ev_real_id   ON events(real_event_id)",
@@ -223,6 +242,8 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_ev_wind_speed ON events(wind_speed)",
             "CREATE INDEX IF NOT EXISTS idx_ev_is_major  ON events(is_major)",
             "CREATE INDEX IF NOT EXISTS idx_upd_event_id ON event_updates(event_id)",
+            "CREATE INDEX IF NOT EXISTS idx_snet_peaks_shindo ON snet_station_peaks(max_shindo DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_snet_peaks_time ON snet_station_peaks(max_shindo_at DESC)",
         ):
             await cursor.execute(sql)
 
@@ -1005,7 +1026,11 @@ class DatabaseManager:
         return transitions
 
     async def get_major_events(self, limit: int = 100) -> list[dict[str, Any]]:
-        """获取重大事件，并将台风等级转折投影为独立时间轴点。"""
+        """获取重大事件，并将台风等级转折投影为独立时间轴点。
+
+        注意：S-Net 峰值重大条目不在本方法内拼接，由上层（events_routes /
+        StatisticsManager）通过 SnetPeakService 单独注入，避免仓储职责回膨胀。
+        """
         try:
             cursor = await self.connection.cursor()
             await cursor.execute(
