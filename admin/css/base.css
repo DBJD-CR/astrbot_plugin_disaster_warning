@@ -24,6 +24,12 @@
     --md-sys-color-on-surface-variant: #49454F;
     --md-sys-color-surface-variant: #E7E0EC;
 
+    /* 错误色 (Error)：危险态、最大震级等暖色强调 */
+    --md-sys-color-error: #B3261E;
+    --md-sys-color-on-error: #FFFFFF;
+    --md-sys-color-error-container: #F9DEDC;
+    --md-sys-color-on-error-container: #410E0B;
+
     /* 背景色 (Background)：应用的主背景色 */
     --md-sys-color-background: #FEF7FF;
     --md-sys-color-outline-variant: rgba(103, 80, 164, 0.1);
@@ -97,6 +103,12 @@ body.dark-theme {
     --md-sys-color-on-surface-variant: #CAC4D0;
     --md-sys-color-surface-variant: #49454F;
 
+    /* 错误色 (Error) 深色变体 */
+    --md-sys-color-error: #F2B8B5;
+    --md-sys-color-on-error: #601410;
+    --md-sys-color-error-container: #8C1D18;
+    --md-sys-color-on-error-container: #F9DEDC;
+
     --md-sys-color-background: #141218;
     --md-sys-color-outline-variant: rgba(208, 188, 255, 0.1);
 
@@ -119,6 +131,11 @@ html.theme-dark body {
     --md-sys-color-on-surface: #E6E1E5;
     --md-sys-color-on-surface-variant: #CAC4D0;
     --md-sys-color-surface-variant: #49454F;
+
+    --md-sys-color-error: #F2B8B5;
+    --md-sys-color-on-error: #601410;
+    --md-sys-color-error-container: #8C1D18;
+    --md-sys-color-on-error-container: #F9DEDC;
 
     --md-sys-color-background: #141218;
     --md-sys-color-outline-variant: rgba(208, 188, 255, 0.1);
@@ -738,7 +755,6 @@ body.dark-theme .card {
  */
 .card.notification-feed-card,
 .card.notifications-hero-card,
-.card.max-mag-card,
 .card.trend-chart-card,
 .card.config-card,
 .card.markdown-docs-sidebar-card,
