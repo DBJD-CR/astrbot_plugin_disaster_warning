@@ -51,6 +51,18 @@ class EqscTokenManager:
         """
         return bool(self._access_token and time.time() < self._access_token_expires_at)
 
+    @property
+    def access_token_expires_at(self) -> float:
+        """当前缓存 AccessToken 的过期时间戳（epoch 秒）；无缓存时为 0。"""
+        return float(self._access_token_expires_at or 0.0)
+
+    def seconds_until_expiry(self) -> float:
+        """距离 AccessToken 真正过期的剩余秒数；无缓存或已过期时返回 0。"""
+        if not self._access_token:
+            return 0.0
+        remaining = float(self._access_token_expires_at) - time.time()
+        return remaining if remaining > 0.0 else 0.0
+
     def _cached_token_if_usable(
         self, *, current_time: float | None = None, require_advance_margin: bool = True
     ) -> str | None:

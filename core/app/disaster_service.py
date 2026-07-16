@@ -317,13 +317,25 @@ class DisasterWarningService:
             raise
 
     def schedule_eqsc_token_warmup(self) -> None:
-        """启动后第一时间后台预热 EQSC AccessToken，避免状态长期显示鉴权失效。"""
+        """启动后第一时间后台预热 EQSC AccessToken，并开启保活续期。
+
+        状态面板只读内存 token 有效性；若仅启动预热、无业务请求触发续期，
+        AccessToken（约 1 小时）过期后会长期显示“鉴权失效”。
+        """
         # 通道级预热：只要组总闸开启且 token 已配置即可，不依赖台风富化子开关
         enrichment = self.typhoon_enrichment_service
         if not getattr(enrichment, "is_channel_enabled", enrichment.is_enabled):
             return
+
+        async def _warmup_and_keepalive() -> None:
+            await enrichment.warm_up_access_token()
+            # 预热成功与否都启动保活：失败时循环会按重试间隔继续尝试
+            start_keepalive = getattr(enrichment, "start_token_keepalive", None)
+            if callable(start_keepalive):
+                start_keepalive()
+
         warmup_task = asyncio.create_task(
-            enrichment.warm_up_access_token(),
+            _warmup_and_keepalive(),
             name="dw_eqsc_token_warmup",
         )
         self.register_background_task(warmup_task)

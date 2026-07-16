@@ -73,6 +73,15 @@ class TyphoonEnrichmentService:
         self._circuit_failures = 0
         self._circuit_open_until: float = 0.0
 
+        # AccessToken 后台保活：状态面板只读 has_valid_access_token，
+        # 若仅启动预热、无业务请求触发 get_access_token，约 1 小时后会误显示“鉴权失效”。
+        self._token_keepalive_task: asyncio.Task | None = None
+        self._token_keepalive_stop = asyncio.Event()
+        # 最短检查间隔，避免异常情况下 tight loop
+        self._token_keepalive_min_interval = 30.0
+        # 无有效 token 时的重试间隔
+        self._token_keepalive_retry_interval = 120.0
+
     @staticmethod
     def resolve_eqsc_flags(eqsc_config: dict[str, Any] | None) -> tuple[bool, bool]:
         """解析 EQSC 组总闸与台风富化子开关。
@@ -164,6 +173,88 @@ class TyphoonEnrichmentService:
                 f"[灾害预警] EQSC AccessToken 预热异常: {type(exc).__name__}: {exc}"
             )
             return False
+
+    def start_token_keepalive(self) -> None:
+        """启动 AccessToken 后台保活循环（幂等）。
+
+        在过期前提前调用 get_access_token 续期，保证状态面板在无台风业务时
+        也不会因内存 token 过期而长期显示“鉴权失效”。
+        """
+        if not self.is_channel_enabled:
+            return
+        if (
+            self._token_keepalive_task is not None
+            and not self._token_keepalive_task.done()
+        ):
+            return
+        self._token_keepalive_stop.clear()
+        self._token_keepalive_task = asyncio.create_task(
+            self._token_keepalive_loop(),
+            name="dw_eqsc_token_keepalive",
+        )
+
+    async def stop_token_keepalive(self) -> None:
+        """停止 AccessToken 后台保活循环。"""
+        self._token_keepalive_stop.set()
+        task = self._token_keepalive_task
+        self._token_keepalive_task = None
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+
+    async def _token_keepalive_loop(self) -> None:
+        """周期性确保内存 AccessToken 未过期。"""
+        logger.debug("[灾害预警] EQSC AccessToken 保活循环已启动")
+        try:
+            while not self._token_keepalive_stop.is_set():
+                if not self.is_channel_enabled:
+                    break
+
+                # 先尝试获取/续期（内部会在提前刷新窗口内真正打网络）
+                try:
+                    token = await self._token_manager.get_access_token()
+                except Exception as exc:
+                    logger.debug(
+                        f"[灾害预警] EQSC AccessToken 保活刷新异常: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    token = None
+
+                if not token:
+                    sleep_seconds = self._token_keepalive_retry_interval
+                else:
+                    # 在真正过期前 access_advance_seconds 触发续期；
+                    # 再留一点缓冲，避免刚好踩在边界。
+                    remaining = self._token_manager.seconds_until_expiry()
+                    advance = float(
+                        getattr(self._token_manager, "_access_advance_seconds", 60)
+                        or 60
+                    )
+                    sleep_seconds = max(
+                        self._token_keepalive_min_interval,
+                        remaining - advance,
+                    )
+                    # 上限避免极端有效期导致长时间不检查配置变更
+                    sleep_seconds = min(sleep_seconds, 1800.0)
+
+                try:
+                    await asyncio.wait_for(
+                        self._token_keepalive_stop.wait(),
+                        timeout=sleep_seconds,
+                    )
+                    break
+                except asyncio.TimeoutError:
+                    continue
+        except asyncio.CancelledError:
+            raise
+        finally:
+            logger.debug("[灾害预警] EQSC AccessToken 保活循环已停止")
 
     @staticmethod
     def resolve_connection_counts(service: Any) -> tuple[int, int]:
@@ -569,6 +660,7 @@ class TyphoonEnrichmentService:
 
     async def close(self) -> None:
         """关闭富化服务，释放资源。"""
+        await self.stop_token_keepalive()
         await self._typhoon_client.close()
 
 
