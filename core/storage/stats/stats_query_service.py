@@ -91,12 +91,47 @@ class StatsQueryService:
                 [
                     "",
                     f"🔥 最大地震: M{max_mag['value']} {max_mag['place_name']}{source_info}",
-                    "",
                 ]
             )
 
-        text.append("☁️ 气象预警分布:")
-        text.append("")
+        # S-Net 观测峰值紧跟历史最大地震，阅读顺序与管理端卡片一致。
+        snet_stats = (
+            s.get("snet_stats", {}) if isinstance(s.get("snet_stats"), dict) else {}
+        )
+        global_max = (
+            snet_stats.get("global_max") if isinstance(snet_stats, dict) else None
+        )
+        if isinstance(global_max, dict) and global_max.get("shindo") is not None:
+            try:
+                shindo_val = float(global_max.get("shindo"))
+            except (TypeError, ValueError):
+                shindo_val = None
+            if shindo_val is not None:
+                station_name = str(
+                    global_max.get("station_name")
+                    or global_max.get("station_id")
+                    or "未知测站"
+                )
+                label = str(global_max.get("shindo_label") or "").strip()
+                if label:
+                    label_part = label if label.startswith("震度") else f"震度{label}"
+                else:
+                    label_part = f"{shindo_val:.3f}"
+                at_text = str(global_max.get("at") or "").strip()
+                time_part = at_text[:19].replace("T", " ") if at_text else "未知时间"
+                text.extend(
+                    [
+                        "",
+                        "🌊 S-Net 海底震度峰值:",
+                        f"最大震度: {station_name} {label_part} ({shindo_val:.3f})",
+                        f"⏰ 时间: {time_part}",
+                    ]
+                )
+                station_count = int(snet_stats.get("station_count") or 0)
+                if station_count > 0:
+                    text.append(f"已归档测站: {station_count}")
+
+        text.extend(["", "☁️ 气象预警分布:", ""])
         weather_level = s["weather_stats"]["by_level"]
         level_order = ["🔴红色", "🟠橙色", "🟡黄色", "🔵蓝色", "⚪白色", "未知"]
         has_weather = False
