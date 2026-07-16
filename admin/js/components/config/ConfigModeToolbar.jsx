@@ -81,6 +81,8 @@ function ConfigModeToolbar({
             {mode === 'session' && selectedSessionMeta && (
                 <Typography variant="caption" color="text.secondary" className="config-mode-toolbar__meta">
                     当前会话：{selectedSessionMeta.session_name ? `${selectedSessionMeta.session} (${selectedSessionMeta.session_name})` : selectedSessionMeta.session} ｜ push_enabled：{selectedSessionMeta.push_enabled ? '开启' : '关闭'} ｜ override字段：{(selectedSessionMeta.override_keys || []).join(', ') || '无'}
+                    <br />
+                    提示：此处编辑的是“生效配置”（全局 + 会话差异）。全局关闭时任何会话都不会推送。
                 </Typography>
             )}
         </Box>
