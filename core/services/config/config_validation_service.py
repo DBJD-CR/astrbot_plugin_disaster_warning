@@ -872,6 +872,42 @@ class ConfigValidator:
                 f"[灾害预警] 配置警告: GQ模板 {gq_template} 不在标准列表中，请确认是否为自定义模板。"
             )
 
+        # 推送文本 Emoji 过滤模式校验
+        emoji_filter_mode = cfg.get("emoji_filter_mode")
+        valid_emoji_modes = ["默认", "简洁", "关闭"]
+        if emoji_filter_mode is None:
+            cfg["emoji_filter_mode"] = "默认"
+        elif not isinstance(emoji_filter_mode, str):
+            logger.warning(
+                f"[灾害预警] 配置警告: emoji 过滤模式类型错误 "
+                f"({type(emoji_filter_mode).__name__})，已重置为 默认。"
+            )
+            cfg["emoji_filter_mode"] = "默认"
+        else:
+            normalized_mode = emoji_filter_mode.strip()
+            aliases = {
+                "default": "默认",
+                "full": "默认",
+                "minimal": "简洁",
+                "simple": "简洁",
+                "compact": "简洁",
+                "off": "关闭",
+                "none": "关闭",
+                "disable": "关闭",
+                "disabled": "关闭",
+                "close": "关闭",
+            }
+            if normalized_mode in valid_emoji_modes:
+                cfg["emoji_filter_mode"] = normalized_mode
+            elif normalized_mode.lower() in aliases:
+                cfg["emoji_filter_mode"] = aliases[normalized_mode.lower()]
+            else:
+                logger.warning(
+                    f"[灾害预警] 配置警告: emoji_filter_mode={emoji_filter_mode} 无效，"
+                    "已重置为 默认。"
+                )
+                cfg["emoji_filter_mode"] = "默认"
+
         # Playwright 模式校验
         pw_mode = cfg.get("playwright_mode")
         valid_modes = ["local", "remote"]

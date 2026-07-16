@@ -548,7 +548,7 @@
     }
   },
   "message_format": {
-    "description": "🎨 地震消息格式配置",
+    "description": "🎨 预警消息格式配置",
     "type": "object",
     "hint": "自定义预警消息的视觉呈现方式",
     "items": {
@@ -638,6 +638,17 @@
           "Aurora",
           "DarkNight"
         ]
+      },
+      "emoji_filter_mode": {
+        "description": "推送文本 Emoji 过滤",
+        "type": "string",
+        "options": [
+          "默认",
+          "简洁",
+          "关闭"
+        ],
+        "default": "默认",
+        "hint": "仅作用于预警推送链路中的推送文本，不影响插件指令回复等其他场景。默认：保留全部 emoji（现有行为）；简洁：仅保留用于指示烈度/震度的方形/圆形图标，以及气象预警颜色等级等描述严重性的指示图标；关闭：不输出任何 emoji。"
       }
     }
   },
