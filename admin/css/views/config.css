@@ -17,7 +17,7 @@
     display: flex;
     flex-direction: column;
     padding: 0 !important;
-    overflow: hidden;
+    overflow: hidden; /* 约束内部滚动视窗，避免整卡高度溢出 */
 }
 
 /* 配置项头部悬浮块 */

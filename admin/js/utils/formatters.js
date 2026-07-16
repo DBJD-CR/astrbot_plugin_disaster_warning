@@ -357,6 +357,7 @@ function formatSourceName(source) {
 
         // 其他
         'global_quake': 'Global Quake',
+        'snet_msil': '日本海沟 S-Net 海底震度计',
         'sc_eew': '四川地震局',
         'fj_eew': '福建地震局',
         'kma_earthquake': '韩国气象厅 (KMA)',

@@ -70,9 +70,9 @@
    2. 统计摘要总览卡片 (Summary Header Cards)
    ========================================================================== */
 .stats-summary-card {
-    background: var(--md-sys-color-primary-container);
+    --card-bg: var(--md-sys-color-primary-container);
+    --card-border-color: transparent;
     color: var(--md-sys-color-on-primary-container);
-    border: none;
 }
 
 .stats-summary-title {
@@ -331,8 +331,9 @@
    4. 灾害发生趋势线型图 (Trend SVG Linear Chart)
    ========================================================================== */
 .trend-chart-card {
+    --hover-lift: 0px;
     position: relative;
-    overflow: hidden;
+    overflow: hidden; /* 图表内部绘制区域裁剪 */
 }
 
 .trend-chart-header {
@@ -578,9 +579,10 @@
 
 /* 本期最大地震卡片：采用特殊渐变警告红/橙色强调灾害烈度 */
 .max-mag-card {
-    background: linear-gradient(135deg, var(--md-sys-color-error-container) 0%, var(--md-sys-color-surface) 100%);
+    --card-bg: linear-gradient(135deg, var(--md-sys-color-error-container) 0%, var(--md-sys-color-surface) 100%);
+    --hover-lift: 0px;
     position: relative;
-    overflow: hidden;
+    overflow: hidden; /* 裁剪水印装饰，避免溢出圆角 */
 }
 
 .max-mag-card--empty {

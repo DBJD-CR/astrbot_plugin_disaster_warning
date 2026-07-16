@@ -23,8 +23,11 @@ class DisasterServiceStatusService:
     def __init__(self, service):
         # 主服务提供运行标志、连接任务、统计管理器等原始状态来源。
         self.service = service  # 主服务 DisasterWarningService 实例
-        # 运行时查询服务负责把配置层的数据源开关整理成管理端可消费的状态结构。
-        self._source_runtime_query = SourceRuntimeQueryService(service.config)
+        # 优先复用主服务已装配的运行时查询实例，避免重复创建；
+        # 仅在主服务尚未注入时再本地兜底构造。
+        self._source_runtime_query = getattr(
+            service, "source_runtime_query", None
+        ) or SourceRuntimeQueryService(service.config)
 
     def get_service_status(self) -> dict[str, Any]:
         """获取服务状态。"""
@@ -42,6 +45,19 @@ class DisasterServiceStatusService:
             self.service
         )
         active_websocket_connections += eqsc_active
+        # S-Net HTTP 轮询：任务在跑计入活跃，配置启用计入总连接
+        snet_poll = getattr(self.service, "snet_poll_service", None)
+        snet_total = 0
+        try:
+            snet_enabled = bool(
+                self._source_runtime_query.is_source_enabled("snet_msil")
+            )
+        except Exception:
+            snet_enabled = False
+        if snet_enabled:
+            snet_total = 1
+            if snet_poll is not None and getattr(snet_poll, "running", False):
+                active_websocket_connections += 1
         # global_quake 连接存在一定特殊性，管理端会单独关心它是否在线，
         # 这里通过任务名快速整理出一个独立布尔状态。
         global_quake_connected = any(
@@ -62,9 +78,9 @@ class DisasterServiceStatusService:
             else False,
             global_quake_connected=global_quake_connected,
         )
-        # total_connections 默认只统计 WS；补上 EQSC 后与活跃连接口径一致
+        # total_connections 默认只统计 WS；补上 EQSC / S-Net 后与活跃连接口径一致
         snapshot["total_connections"] = (
-            int(snapshot.get("total_connections", 0) or 0) + eqsc_total
+            int(snapshot.get("total_connections", 0) or 0) + eqsc_total + snet_total
         )
         return {
             **snapshot,

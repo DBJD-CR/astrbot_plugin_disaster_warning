@@ -282,6 +282,15 @@ class DisasterWarningPlugin(Star):
         ):
             yield result
 
+    @filter.command("snet", alias={"S-Net", "s-net", "Snet", "SNET"})
+    async def query_snet(self, event: AstrMessageEvent, arg: str = None):
+        """查询 NIED S-Net 海底震度分布（可调试：random/7/6+/...）"""
+        async for result in self._query_command_service.handle_query_snet(
+            event,
+            arg=arg,
+        ):
+            yield result
+
     @filter.command("灾害预警模拟")
     async def simulate_earthquake(
         self,

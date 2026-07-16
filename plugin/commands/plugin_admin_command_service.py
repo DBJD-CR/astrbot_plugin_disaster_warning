@@ -126,6 +126,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     ("wolfx", "Wolfx"),
                     ("global_quake", "Global Quake"),
                     ("eqsc", "EQSC API"),
+                    ("snet", "NIED S-Net"),
                 ]
             )
             source_label_map = {
@@ -140,6 +141,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 "earthquake_info": "地震情报",
                 "global_quake": "Global Quake",
                 "china_typhoon": "中国气象局：实时活跃台风",
+                "snet_msil": "日本海沟 S-Net 海底震度计",
             }
             scoped_sub_source_label_map = {
                 "FAN Studio": {
@@ -172,6 +174,9 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 "EQSC API": {
                     "china_typhoon": "中国气象局：实时活跃台风",
                 },
+                "NIED S-Net": {
+                    "snet_msil": "日本海沟 S-Net 海底震度计",
+                },
             }
 
             def _build_forward_nodes(blocks: list[str]) -> Comp.Nodes | None:
@@ -199,8 +204,8 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     source_label_map.get(normalized_key, normalized_key),
                 )
 
-            # EQSC 为 HTTP 辅助通道，不在 ws_manager 连接表中，单独补充
-            # 注意：get_service_status() 已把 EQSC 计入 active/total，这里只负责展示详情
+            # EQSC / S-Net 为 HTTP 通道，不在 ws_manager 连接表中，单独补充
+            # 注意：get_service_status() 已把 EQSC、S-Net 计入 active/total，这里只负责展示详情
             eqsc_health: dict = {}
             enrichment = getattr(
                 self.plugin.disaster_service, "typhoon_enrichment_service", None
@@ -254,7 +259,37 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             else:
                 eqsc_state_text = "🔴 鉴权失效"
 
-            # 1. 总体概览行（active/total 已由 status 服务计入 EQSC）
+            # S-Net 轮询状态
+            snet_poll = getattr(self.plugin.disaster_service, "snet_poll_service", None)
+            snet_cfg = (
+                (self.plugin.config.get("data_sources", {}) or {}).get("snet", {})
+                if isinstance(self.plugin.config, dict)
+                else {}
+            )
+            if not isinstance(snet_cfg, dict):
+                snet_cfg = {}
+            snet_config_enabled = bool(snet_cfg.get("enabled", False))
+            try:
+                runtime_query = getattr(
+                    self.plugin.disaster_service, "source_runtime_query", None
+                )
+                if runtime_query is not None:
+                    snet_enabled = bool(runtime_query.is_source_enabled("snet_msil"))
+                else:
+                    snet_enabled = snet_config_enabled
+            except Exception:
+                snet_enabled = snet_config_enabled
+            snet_poll_running = bool(
+                snet_poll is not None and getattr(snet_poll, "running", False)
+            )
+            if not snet_enabled:
+                snet_state_text = "⚪ 未启用"
+            elif snet_poll_running:
+                snet_state_text = "🟢 轮询中"
+            else:
+                snet_state_text = "🔴 未启动"
+
+            # 1. 总体概览行（active/total 已由 status 服务计入 EQSC + S-Net）
             overview_lines = [
                 "📊 灾害预警服务状态",
                 "",
@@ -273,6 +308,7 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 connection_lines.append(f"• {display_name}：{state_text}")
 
             connection_lines.append(f"• EQSC API：{eqsc_state_text}")
+            connection_lines.append(f"• NIED S-Net：{snet_state_text}")
 
             # 3. 各子数据源的细化开关状况行
             data_source_lines = ["📚 子数据源启用状况"]
@@ -294,6 +330,11 @@ class PluginAdminCommandService(CommandTelemetryMixin):
             if eqsc_config_enabled:
                 grouped_sources.setdefault("eqsc", ["china_typhoon"])
 
+            # 注入 S-Net：仅展示单一子源 snet_msil（与前端网格一致）
+            sub_source_status["snet"] = {"snet_msil": snet_enabled}
+            if snet_enabled:
+                grouped_sources.setdefault("snet", ["snet_msil"])
+
             for service_name, display_name in source_group_label_map.items():
                 if (
                     service_name not in grouped_sources
@@ -302,10 +343,10 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                     continue
 
                 raw_sources = grouped_sources.get(service_name, [])
+                group_status = sub_source_status.get(service_name, {})
                 if raw_sources:
                     enabled_count = len(raw_sources)
                     total_count = 0
-                    group_status = sub_source_status.get(service_name, {})
                     if isinstance(group_status, dict) and group_status:
                         total_count = len(group_status)
                     suffix = (
@@ -314,10 +355,15 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                         else f"（已启用 {enabled_count} 项）"
                     )
                     data_source_lines.append(f"• {display_name}{suffix}")
+                elif isinstance(group_status, dict) and group_status:
+                    # 组未计入 active_sources 时，仍按子源开关汇总（避免未启用却显示「已启用」）
+                    enabled_count = sum(1 for v in group_status.values() if bool(v))
+                    total_count = len(group_status)
+                    data_source_lines.append(
+                        f"• {display_name}（已启用 {enabled_count}/{total_count}）"
+                    )
                 else:
                     data_source_lines.append(f"• {display_name}：已启用")
-
-                group_status = sub_source_status.get(service_name, {})
                 if isinstance(group_status, dict) and group_status:
                     sorted_items = sorted(
                         group_status.items(),

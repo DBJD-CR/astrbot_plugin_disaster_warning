@@ -22,6 +22,8 @@ class SourceHealthMonitor:
         "global_quake": "gqm.aloys23.link",
         # EQSC 为 HTTP 辅助通道，默认探测官方主机；可被 host_overrides 覆盖
         "eqsc": "equake.top",
+        # S-Net：MSIL 瓦片源（TCP 443 探测连通性）
+        "snet_msil": "www.msil.go.jp",
     }
 
     # 静态映射：数据源标识 -> 在管理后台展示的可读中文名称
@@ -31,6 +33,7 @@ class SourceHealthMonitor:
         "wolfx_all": "Wolfx",
         "global_quake": "Global Quake",
         "eqsc": "EQSC API",
+        "snet_msil": "NIED S-Net",
     }
 
     def __init__(

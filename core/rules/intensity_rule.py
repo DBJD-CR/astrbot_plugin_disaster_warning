@@ -87,7 +87,35 @@ class EarthquakeThresholdRule(BaseRule):
                     return RuleDecision.reject(reason="震度过滤器")
             return RuleDecision.accept(reason="震度规则通过")
 
-        # 模式 4：仅依赖震级阈值的来源统一走这一分支。
+        # 模式 4：S-Net 海底震度监测（无震级，仅按最大测站震度）
+        if source_id == "snet_msil" or intensity_mode == "snet_shindo":
+            runtime_filter = policy_state.get("snet_filter") or {}
+            if runtime_filter.get("enabled", True):
+                min_shindo = runtime_filter.get("min_shindo", 0.5)
+                try:
+                    min_shindo = float(min_shindo)
+                except (TypeError, ValueError):
+                    min_shindo = 0.5
+                if min_shindo < -3.0:
+                    min_shindo = -3.0
+                if min_shindo > 7.0:
+                    min_shindo = 7.0
+                max_shindo = earthquake.scale
+                if max_shindo is None:
+                    metadata = getattr(earthquake, "metadata", {}) or {}
+                    if isinstance(metadata, dict):
+                        max_shindo = metadata.get("max_shindo")
+                try:
+                    max_shindo_val = (
+                        float(max_shindo) if max_shindo is not None else None
+                    )
+                except (TypeError, ValueError):
+                    max_shindo_val = None
+                if max_shindo_val is None or max_shindo_val < min_shindo:
+                    return RuleDecision.reject(reason="S-Net震度过滤器")
+            return RuleDecision.accept(reason="S-Net规则通过")
+
+        # 模式 5：仅依赖震级阈值的来源统一走这一分支。
         if source_id == "usgs_fanstudio" or intensity_mode == "magnitude":
             runtime_filter = policy_state.get("usgs_filter") or {}
             if runtime_filter.get("enabled", True):

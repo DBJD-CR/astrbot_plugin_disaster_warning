@@ -45,6 +45,7 @@ from ..services.notification import NotificationCenter
 from ..services.query.earthquake_list_service import EarthquakeListService
 from ..services.query.eew_query_state_service import EEWQueryStateService
 from ..services.query.source_runtime_query_service import SourceRuntimeQueryService
+from ..services.snet.snet_poll_service import SnetPollService
 from ..sources.source_catalog import SOURCE_CATALOG
 from ..sources.source_institution_catalog import get_institution_catalog
 from ..storage.session_config_manager import SessionConfigManager
@@ -61,26 +62,28 @@ from .services.typhoon_history_rebuild_service import TyphoonHistoryRebuildServi
 
 
 def _is_source_enabled_by_catalog(source_id: str, data_sources: dict[str, Any]) -> bool:
-    """根据统一的数据源目录判断某个数据源是否启用。"""
-    # 当配置结构异常或为空时，默认返回启用，
-    # 以避免查询展示链路因为局部配置缺失而整体失效。
+    """根据统一的数据源目录判断某个数据源是否启用。
+
+    与 SourceRuntimeQueryService.is_source_enabled / SourceEnabledRule 对齐：
+    缺省为 False（opt-in），避免新源（如 S-Net）在配置缺失时被误判为开启。
+    """
     if not isinstance(data_sources, dict):
-        return True
+        return False
 
     source_entry = SOURCE_CATALOG.get(source_id)
     if source_entry is None:
-        return True
+        return False
 
     # 获取数据源组配置，如果组被禁用，则该数据源禁用
     group_cfg = data_sources.get(source_entry.config_group, {})
     if not isinstance(group_cfg, dict):
-        return True
-
-    if group_cfg.get("enabled", True) is False:
         return False
 
-    # 返回具体数据源开关的布尔值
-    return bool(group_cfg.get(source_entry.config_key, True))
+    if not bool(group_cfg.get("enabled", False)):
+        return False
+
+    # 返回具体数据源开关的布尔值（缺省 False）
+    return bool(group_cfg.get(source_entry.config_key, False))
 
 
 class DisasterWarningService:
@@ -170,6 +173,8 @@ class DisasterWarningService:
             enrichment_service=self.typhoon_enrichment_service,
             statistics_manager=self.statistics_manager,
         )
+        # S-Net MSIL 瓦片轮询（直连 HTTP，不走 WebSocket）
+        self.snet_poll_service = SnetPollService(self)
         self._setup_runtime_services()
 
     def _setup_runtime_services(self) -> None:

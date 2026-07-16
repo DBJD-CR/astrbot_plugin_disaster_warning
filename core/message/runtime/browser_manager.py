@@ -22,6 +22,9 @@ from ....utils.plugin_logger import plugin_logger
 class BrowserManager:
     """浏览器管理器。"""
 
+    # 页面池默认视口；大尺寸卡片（如 S-Net 1400×1000）可在 render_card 临时覆盖
+    DEFAULT_VIEWPORT: dict[str, int] = {"width": 800, "height": 800}
+
     def __init__(
         self,
         pool_size: int = 2,
@@ -45,6 +48,22 @@ class BrowserManager:
         self._telemetry = telemetry
         self._mode = mode
         self._server_url = server_url
+
+    @staticmethod
+    def _normalize_viewport(
+        viewport: dict | None,
+    ) -> dict[str, int] | None:
+        """把可选 viewport 规整为整数宽高；非法时返回 None。"""
+        if not viewport or not isinstance(viewport, dict):
+            return None
+        try:
+            width = int(viewport.get("width", 0))
+            height = int(viewport.get("height", 0))
+        except (TypeError, ValueError):
+            return None
+        if width < 1 or height < 1:
+            return None
+        return {"width": width, "height": height}
 
     def _truncate_debug_text(self, value, limit: int = 240) -> str:
         """截断浏览器侧日志文本，避免单条日志过长。"""
@@ -150,7 +169,7 @@ class BrowserManager:
             try:
                 page = await asyncio.wait_for(
                     self._browser.new_page(
-                        viewport={"width": 800, "height": 800}, device_scale_factor=2
+                        viewport=dict(self.DEFAULT_VIEWPORT), device_scale_factor=2
                     ),
                     timeout=10.0,
                 )
@@ -183,7 +202,7 @@ class BrowserManager:
                 logger.debug("[灾害预警] 创建新 context")
                 self._context = await asyncio.wait_for(
                     self._browser.new_context(
-                        viewport={"width": 800, "height": 800},
+                        viewport=dict(self.DEFAULT_VIEWPORT),
                         device_scale_factor=2,
                     ),
                     timeout=15.0,
@@ -231,14 +250,31 @@ class BrowserManager:
         output_path: str,
         selector: str = "#card-wrapper",
         wait_until: str = "domcontentloaded",
+        viewport: dict | None = None,
     ) -> str | None:
-        """把 HTML 内容渲染为图片文件。"""
+        """把 HTML 内容渲染为图片文件。
+
+        Args:
+            html_content: 完整 HTML 字符串。
+            output_path: 输出 PNG 路径。
+            selector: 截图目标选择器。
+            wait_until: 预留参数（本地加载仍用 domcontentloaded + 地图就绪等待）。
+            viewport: 可选临时视口 {"width": int, "height": int}。
+                用于大尺寸卡片（如 S-Net 1400×1000）；截图后会恢复默认 800×800，
+                避免污染页面池中的其它渲染任务。
+        """
+        resolved_viewport = self._normalize_viewport(viewport)
         # 远程模式直接走 HTTP 渲染接口，本地模式则复用页面池执行截图。
         if self._mode == "remote":
             if not self._initialized:
                 logger.warning("[灾害预警] 浏览器未初始化，尝试初始化...")
                 await self.initialize()
-            return await self._render_card_via_http(html_content, output_path, selector)
+            return await self._render_card_via_http(
+                html_content,
+                output_path,
+                selector,
+                viewport=resolved_viewport,
+            )
 
         # 本地模式：使用 Playwright
         if not self._initialized:
@@ -314,6 +350,14 @@ class BrowserManager:
                     page.on("console", _record_console)
                     page.on("pageerror", _record_page_error)
                     page.on("requestfailed", _record_request_failed)
+
+                    # 大尺寸卡片（如 S-Net）临时放大视口，截图后在 finally 中恢复默认
+                    if resolved_viewport:
+                        await page.set_viewport_size(resolved_viewport)
+                        logger.debug(
+                            f"[灾害预警] 临时视口已设为 "
+                            f"{resolved_viewport['width']}x{resolved_viewport['height']}"
+                        )
 
                     # 本地模式：使用 file:// 协议（支持相对路径资源）
                     temp_html = None
@@ -420,8 +464,17 @@ class BrowserManager:
                         return None
 
                 finally:
-                    # 本地模式：归还页面到池
+                    # 本地模式：恢复默认视口后归还页面到池
                     if page:
+                        if resolved_viewport:
+                            try:
+                                await page.set_viewport_size(
+                                    dict(self.DEFAULT_VIEWPORT)
+                                )
+                            except Exception as restore_err:
+                                logger.debug(
+                                    f"[灾害预警] 恢复默认视口失败: {restore_err}"
+                                )
                         await self._page_pool.put(page)
             finally:
                 # 释放信号量
@@ -449,7 +502,7 @@ class BrowserManager:
                         if self._browser and not self._closed:
                             if self._page_pool.qsize() < self.pool_size:
                                 new_page = await self._browser.new_page(
-                                    viewport={"width": 800, "height": 800},
+                                    viewport=dict(self.DEFAULT_VIEWPORT),
                                     device_scale_factor=2,
                                 )
                                 await self._page_pool.put(new_page)
@@ -460,9 +513,16 @@ class BrowserManager:
             return None
 
     async def _render_card_via_http(
-        self, html_content: str, output_path: str, selector: str
+        self,
+        html_content: str,
+        output_path: str,
+        selector: str,
+        viewport: dict[str, int] | None = None,
     ) -> str | None:
-        """使用 browserless HTTP API 渲染卡片"""
+        """使用 browserless HTTP API 渲染卡片。
+
+        viewport 可选；未提供时使用默认 800×800。
+        """
         start_time = time.time()
 
         # 对注入的 selector 进行 JSON 编码，规避转义和 JS 语法截断安全风险。
@@ -546,8 +606,16 @@ class BrowserManager:
                     "timeout": 60000,
                 },
                 "viewport": {
-                    "width": 800,
-                    "height": 800,
+                    "width": (
+                        viewport["width"]
+                        if viewport
+                        else self.DEFAULT_VIEWPORT["width"]
+                    ),
+                    "height": (
+                        viewport["height"]
+                        if viewport
+                        else self.DEFAULT_VIEWPORT["height"]
+                    ),
                     "deviceScaleFactor": 2,
                 },
                 "waitForTimeout": 3000,  # 额外等待 3 秒，确保地图瓦片完全展现并让 JS 执行完锁定尺寸

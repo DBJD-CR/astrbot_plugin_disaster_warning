@@ -5,6 +5,7 @@ Web 管理端连接状态载荷构建器。
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -16,6 +17,8 @@ class ConnectionsPayloadBuilder:
     """连接状态载荷构建器。"""
 
     EQSC_DISPLAY_NAME = "EQSC API"
+    SNET_DISPLAY_NAME = "NIED S-Net"
+    SNET_GROUP_KEY = "snet_msil"
 
     def __init__(
         self,
@@ -149,14 +152,106 @@ class ConnectionsPayloadBuilder:
             "access_token_valid": access_token_valid,
         }
 
+    def _build_snet_connection_info(self) -> dict[str, Any]:
+        """构建 NIED S-Net（MSIL 瓦片 HTTP 轮询）连接状态条目。"""
+        snet_cfg: dict[str, Any] = {}
+        data_sources = (
+            self.config.get("data_sources", {}) if isinstance(self.config, dict) else {}
+        )
+        if isinstance(data_sources, dict):
+            raw = data_sources.get("snet", {})
+            if isinstance(raw, dict):
+                snet_cfg = raw
+
+        # 配置开关：data_sources.snet.enabled（schema 文案「启用 S-Net 数据源」）
+        # catalog 中 snet_msil 的 config_key 也是 enabled，与组级开关同一字段
+        config_enabled = bool(snet_cfg.get("enabled", False))
+        latency = self.latency_cache.get(self.SNET_GROUP_KEY)
+        latency_probed = self.SNET_GROUP_KEY in self.latency_cache
+        unreachable = latency_probed and latency is None
+
+        poll = None
+        if self.disaster_service is not None:
+            poll = getattr(self.disaster_service, "snet_poll_service", None)
+
+        poll_running = bool(poll and getattr(poll, "running", False))
+        # 启用判定与 SnetPollService.is_enabled / catalog is_source_enabled 一致
+        try:
+            enabled = bool(self.source_runtime_query.is_source_enabled("snet_msil"))
+        except Exception:
+            enabled = config_enabled
+        # 快照新鲜度：有最近成功抓取则视为通道可用
+        snapshot_fresh = False
+        last_ts = ""
+        if poll is not None:
+            snap = getattr(poll, "_latest_snapshot", None)
+            if isinstance(snap, dict) and snap.get("timestamp"):
+                last_ts = str(snap.get("timestamp") or "")
+                try:
+                    age = time.time() - float(snap.get("fetched_at") or 0.0)
+                    ttl = 120.0
+                    if hasattr(poll, "_resolve_tile_cache_ttl"):
+                        try:
+                            ttl = float(poll._resolve_tile_cache_ttl())
+                        except Exception:
+                            ttl = 120.0
+                    snapshot_fresh = age <= max(ttl * 2.0, 90.0)
+                except (TypeError, ValueError):
+                    snapshot_fresh = bool(last_ts)
+
+        if not enabled:
+            status_text = "未启用"
+            connected = False
+        elif poll_running and (snapshot_fresh or not latency_probed):
+            # 轮询在跑：有新鲜快照或尚未完成延迟探测 → 可用
+            status_text = "轮询中"
+            connected = True
+        elif poll_running and unreachable:
+            status_text = "离线"
+            connected = False
+        elif poll_running:
+            # 轮询在跑但快照偏旧，仍视为在线（可能处于安静间隔）
+            status_text = "轮询中"
+            connected = True
+        elif unreachable:
+            status_text = "离线"
+            connected = False
+        else:
+            status_text = "未启动"
+            connected = False
+
+        sub_sources = {
+            "snet_msil": enabled,
+        }
+
+        return {
+            "enabled": enabled,
+            "connected": connected,
+            "retry_count": 0,
+            "has_handler": False,
+            "status": status_text,
+            "latency": latency,
+            "sub_sources": sub_sources,
+            "source_ids": ["snet_msil"],
+            "connection_type": "http",
+            "provider": "snet",
+            "circuit_open": False,
+            "config_enabled": config_enabled,
+            "poll_running": poll_running,
+            "last_timestamp": last_ts,
+        }
+
     def build(
         self, expected_sources: dict[str, str] | None = None
     ) -> dict[str, dict[str, Any]]:
         """构建连接状态视图。"""
         # 若服务或连接管理器尚未就绪，则返回空视图，避免管理端接口抛错。
         if not self.disaster_service or not self.disaster_service.ws_manager:
-            # 即便 WS 管理器未就绪，也尽量返回 EQSC 占位，便于配置页预览
-            return {self.EQSC_DISPLAY_NAME: self._build_eqsc_connection_info()}
+            # 即便 WS 管理器未就绪，也尽量返回 HTTP 通道占位，便于配置页预览
+            return {
+                self.EQSC_DISPLAY_NAME: self._build_eqsc_connection_info(),
+                self.SNET_DISPLAY_NAME: self._build_snet_connection_info(),
+            }
 
         # 先读取真实运行时连接状态，再交给统一查询服务补齐展示层所需结构。
         actual_connections = (
@@ -167,8 +262,10 @@ class ConnectionsPayloadBuilder:
             latency_cache=self.latency_cache,
         )
         connections = dict(snapshot.get("connections", {}))
-        # EQSC 不是 WebSocket 连接组，单独合并进连接状态面板
+        # HTTP 通道不是 WebSocket 连接组，单独合并进连接状态面板
         connections[self.EQSC_DISPLAY_NAME] = self._build_eqsc_connection_info()
+        # 覆盖 catalog 占位条目，附带轮询运行态与 HTTP 语义
+        connections[self.SNET_DISPLAY_NAME] = self._build_snet_connection_info()
         return connections
 
     def build_api_payload(

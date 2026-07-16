@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ....domain.display_models import EarthquakeDisplayModel
 from ....domain.event_context import EarthquakeDisplayContext
 from .common import (
@@ -61,7 +63,7 @@ def _extract_earthquake_domain_details(
             projection_view.get("domestic_tsunami")
         )
         or "",
-        # 提取受影响的具体地震监测站及震度映射字典
+        # 测站数据：Global Quake 等为 dict，S-Net 为 list[dict]
         "stations": first_non_empty(projection_view.get("stations"), {}),
         "is_final": is_final,
         # 是否为作废/取消警报
@@ -158,6 +160,18 @@ def build_earthquake_display_context(projection: dict, options: dict | None = No
     jma_points = list(payload_details["jma_points"])
     jma_comment = payload_details["jma_comment"]
     # 汇总整理好的中间字段表，防止结构化复制时丢失信息
+    raw_stations = domain_details["stations"]
+    if isinstance(raw_stations, dict):
+        normalized_stations: Any = dict(raw_stations)
+    elif isinstance(raw_stations, list):
+        # S-Net 等来源使用测站对象列表，不可强转 dict（会触发
+        # "dictionary update sequence element #0 has length N"）。
+        normalized_stations = [
+            dict(item) if isinstance(item, dict) else item for item in raw_stations
+        ]
+    else:
+        normalized_stations = {}
+
     earthquake_kwargs = {
         "report_num": int(domain_details["report_num"] or 1),
         "is_final": bool(domain_details["is_final"]),
@@ -165,7 +179,7 @@ def build_earthquake_display_context(projection: dict, options: dict | None = No
         "is_training": bool(domain_details["is_training"]),
         "is_assumption": bool(domain_details["is_assumption"]),
         "max_pga": domain_details["max_pga"],
-        "stations": dict(domain_details["stations"] or {}),
+        "stations": normalized_stations,
         "image_uri": str(payload_details["image_uri"] or ""),
         "shakemap_uri": str(payload_details["shakemap_uri"] or ""),
     }

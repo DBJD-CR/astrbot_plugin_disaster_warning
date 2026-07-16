@@ -187,6 +187,67 @@ class ScaleConverter:
             return "🔵"
         return "⚪"
 
+    # 計測震度中“0以下”的阈值：与 S-Net/C0 图标区间（shindo < -0.5）对齐。
+    MEASURED_INTENSITY_BELOW_ZERO = -0.5
+
+    @staticmethod
+    def classify_measured_intensity(value: float | int | None) -> float | None:
+        """把连续計測震度归类为日本震度阶级对应的规范浮点值。
+
+        阈值与项目内既有展示逻辑一致：
+        ≥6.5→7, ≥6.0→6.0(6强), ≥5.5→5.5(6弱), ≥5.0→5.0(5强),
+        ≥4.5→4.5(5弱), ≥3.5→4, ≥2.5→3, ≥1.5→2, ≥0.5→1,
+        ≥-0.5→0, < -0.5→None（表示“0以下”）。
+        """
+        if value is None:
+            return None
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            return None
+        if num >= 6.5:
+            return 7.0
+        if num >= 6.0:
+            return 6.0
+        if num >= 5.5:
+            return 5.5
+        if num >= 5.0:
+            return 5.0
+        if num >= 4.5:
+            return 4.5
+        if num >= 3.5:
+            return 4.0
+        if num >= 2.5:
+            return 3.0
+        if num >= 1.5:
+            return 2.0
+        if num >= 0.5:
+            return 1.0
+        # 0 与轻微负值（MSIL 色阶）统一按震度 0 展示
+        if num >= ScaleConverter.MEASURED_INTENSITY_BELOW_ZERO:
+            return 0.0
+        # 更低的负值不映射到 0，交由 format_measured_intensity_display 显示“0以下”
+        return None
+
+    @staticmethod
+    def format_measured_intensity_display(value: float | int | None) -> str:
+        """连续計測震度 → 震度阶级展示文本。
+
+        复用 format_jma_cwa_scale_display；低于 -0.5 时返回“0以下”。
+        """
+        if value is None:
+            return ""
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            return ""
+        if num < ScaleConverter.MEASURED_INTENSITY_BELOW_ZERO:
+            return "0以下"
+        classified = ScaleConverter.classify_measured_intensity(num)
+        if classified is None:
+            return "0以下"
+        return ScaleConverter.format_jma_cwa_scale_display(classified)
+
     @staticmethod
     def format_jma_cwa_scale_display(scale_value: str | int | float | None) -> str:
         """

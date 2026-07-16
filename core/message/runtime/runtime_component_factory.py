@@ -78,6 +78,30 @@ class MessageRuntimeComponentFactory:
         }
 
     @staticmethod
+    def _build_snet_filter_config(
+        earthquake_filters: dict[str, Any],
+    ) -> dict[str, Any]:
+        """构建 S-Net 海底震度过滤配置。"""
+        snet_filter_config = earthquake_filters.get("snet_filter", {})
+        if not isinstance(snet_filter_config, dict):
+            snet_filter_config = {}
+        # 兼容旧字段 min_magnitude -> min_shindo
+        min_shindo = snet_filter_config.get("min_shindo")
+        if min_shindo is None and "min_magnitude" in snet_filter_config:
+            min_shindo = snet_filter_config.get("min_magnitude")
+        # 默认 0.5：日本震度 1 的計測震度起点
+        try:
+            min_shindo_val = float(0.5 if min_shindo is None else min_shindo)
+        except (TypeError, ValueError):
+            min_shindo_val = 0.5
+        if min_shindo_val < -3.0:
+            min_shindo_val = 0.5
+        return {
+            "enabled": snet_filter_config.get("enabled", True),
+            "min_shindo": min_shindo_val,
+        }
+
+    @staticmethod
     def _build_local_monitor(runtime_config: dict[str, Any]) -> LocalMonitor:
         """构建本地监控组件。"""
         return LocalMonitor(runtime_config.get("local_monitoring", {}))
@@ -185,6 +209,9 @@ class MessageRuntimeComponentFactory:
                 earthquake_filters
             ),
             "global_quake_filter": MessageRuntimeComponentFactory._build_global_quake_filter_config(
+                earthquake_filters
+            ),
+            "snet_filter": MessageRuntimeComponentFactory._build_snet_filter_config(
                 earthquake_filters
             ),
             "local_monitor": MessageRuntimeComponentFactory._build_local_monitor(

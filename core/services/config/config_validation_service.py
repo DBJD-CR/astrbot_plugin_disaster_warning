@@ -439,7 +439,28 @@ class ConfigValidator:
             ConfigValidator._ensure_bool(scale_filter, "enabled", True)
             cfg["scale_filter"] = scale_filter
 
-        # 4. 仅震级过滤器 (Magnitude Only Filter)
+        # 4 S-Net 海底震度过滤器
+        snet_filter = cfg.get("snet_filter", {})
+        if isinstance(snet_filter, dict):
+            # 兼容旧字段 min_magnitude -> min_shindo
+            if "min_shindo" not in snet_filter and "min_magnitude" in snet_filter:
+                snet_filter["min_shindo"] = snet_filter.get("min_magnitude")
+            min_shindo = snet_filter.get("min_shindo")
+            if isinstance(min_shindo, (int, float)):
+                if min_shindo < -3.0 or min_shindo > 7.0:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: S-Net 最小震度 {min_shindo} 超出范围 (-3~7)，已修正。"
+                    )
+                    snet_filter["min_shindo"] = max(-3.0, min(7.0, float(min_shindo)))
+            elif min_shindo is not None:
+                logger.warning(
+                    "[灾害预警] 配置警告: S-Net 最小震度类型错误，已重置为 0.5。"
+                )
+                snet_filter["min_shindo"] = 0.5
+            ConfigValidator._ensure_bool(snet_filter, "enabled", True)
+            cfg["snet_filter"] = snet_filter
+
+        # 5. 仅震级过滤器 (Magnitude Only Filter)
         mag_filter = cfg.get("magnitude_only_filter", {})
         if isinstance(mag_filter, dict):
             min_mag = mag_filter.get("min_magnitude")
@@ -452,7 +473,7 @@ class ConfigValidator:
             ConfigValidator._ensure_bool(mag_filter, "enabled", True)
             cfg["magnitude_only_filter"] = mag_filter
 
-        # 5. Global Quake 过滤器
+        # 6. Global Quake 过滤器
         gq_filter = cfg.get("global_quake_filter", {})
         if isinstance(gq_filter, dict):
             min_mag = gq_filter.get("min_magnitude")
@@ -992,7 +1013,7 @@ class ConfigValidator:
             return cfg
 
         # 确保主要分类存在且为字典，规避非字典类型在运行时发生键提取错误
-        for key in ["fan_studio", "p2p_earthquake", "wolfx", "global_quake"]:
+        for key in ["fan_studio", "p2p_earthquake", "wolfx", "global_quake", "snet"]:
             if key in cfg:
                 if not isinstance(cfg[key], dict):
                     logger.warning(
@@ -1002,6 +1023,27 @@ class ConfigValidator:
                 else:
                     # 仅确保 enabled 为 bool，其他字段保持原样以支持扩展（如 API Key 等字符串配置）
                     ConfigValidator._ensure_bool(cfg[key], "enabled", True)
+
+        # S-Net 轮询间隔校验
+        snet_cfg = cfg.get("snet")
+        if isinstance(snet_cfg, dict):
+            poll_interval = snet_cfg.get("poll_interval_seconds")
+            if isinstance(poll_interval, int):
+                if poll_interval < 30:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: S-Net 轮询间隔 {poll_interval} 过短，已修正为 30。"
+                    )
+                    snet_cfg["poll_interval_seconds"] = 30
+                elif poll_interval > 600:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: S-Net 轮询间隔 {poll_interval} 过长，已修正为 600。"
+                    )
+                    snet_cfg["poll_interval_seconds"] = 600
+            elif poll_interval is not None:
+                logger.warning(
+                    "[灾害预警] 配置警告: S-Net 轮询间隔类型错误，已重置为 60。"
+                )
+                snet_cfg["poll_interval_seconds"] = 60
 
         # 校验 FAN Studio 下的台风开关
         fan_studio_cfg = cfg.get("fan_studio")

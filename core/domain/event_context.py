@@ -49,8 +49,10 @@ class EarthquakeDisplayContext:
     province: str = ""
     domestic_tsunami: str = ""
     max_pga: float | None = None
-    # stations 保存测站或分点观测信息，具体结构由上游来源决定。
-    stations: dict[str, Any] = field(default_factory=dict)
+    # stations 保存测站或分点观测信息，具体结构由上游来源决定：
+    # - Global Quake 等：dict 映射
+    # - S-Net：list[dict] 测站列表
+    stations: Any = field(default_factory=dict)
     image_uri: str = ""
     shakemap_uri: str = ""
     # impact_area 与 local_estimation 常用于影响区域与本地预估展示。

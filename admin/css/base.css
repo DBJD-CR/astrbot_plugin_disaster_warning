@@ -563,19 +563,55 @@ body.dark-theme .bl-error {
     gap: 24px;
 }
 
-/* 通用基础卡片 */
+/*
+ * 通用基础卡片 —— 命中壳 / 视觉面分离
+ *
+ * 命中壳 (.card)：布局与 hit-testing 固定，永不 transform。
+ * 视觉面 (.card::before)：背景/描边/阴影，仅此层做 translateY。
+ * 内容子节点 (.card > *)：与视觉面同步上浮，避免“壳抬起、字不动”。
+ *
+ * isolation + z-index:-1 保证视觉面在内容下方，且不污染外层堆叠；
+ * 不强制改写子元素 position，避免破坏卡片内绝对定位装饰。
+ */
 .card {
-    background: var(--md-sys-color-surface);
+    --hover-lift: 4px;
+    --card-bg: var(--md-sys-color-surface);
+    --card-border-color: var(--glass-border);
+    --card-shadow: var(--glass-shadow);
+    --card-hover-border-color: rgba(103, 80, 164, 0.26);
+    --card-hover-shadow: 0 12px 30px 0 rgba(103, 80, 164, 0.12);
+    position: relative;
+    isolation: isolate;
+    background: transparent; /* 视觉交给 ::before，壳本身透明 */
     border-radius: var(--radius-lg);
     padding: 24px;
-    border: 1px solid var(--glass-border);
-    box-shadow: var(--glass-shadow);
+    border: 1px solid transparent; /* 占位描边宽度，真实描边画在视觉面 */
+    box-shadow: none;
+    color: var(--md-sys-color-on-surface);
+    transition: color 0.16s ease-out;
+}
+
+/* 视觉面：承载背景、描边、阴影，可安全位移 */
+.card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border-color);
+    box-shadow: var(--card-shadow);
+    pointer-events: none; /* 命中全部交给外壳 */
     transition:
-        background-color 0.16s ease-out,
+        transform 0.18s ease-out,
+        background 0.16s ease-out,
         border-color 0.16s ease-out,
-        color 0.16s ease-out,
-        box-shadow 0.18s ease-out,
-        transform 0.18s ease-out;
+        box-shadow 0.18s ease-out;
+}
+
+/* 内容与视觉面同步位移（不改 position，兼容绝对定位子节点） */
+.card > * {
+    transition: transform 0.18s ease-out;
 }
 
 /* 所有卡片和视图子面板的淡入上浮统一动效配置 */
@@ -679,17 +715,35 @@ body.dark-theme .bl-error {
     animation-delay: 0.14s;
 }
 
-/* 悬停卡片时的浮起与发光效果 */
-.card:hover:not(.news-ticker-card) {
-    transform: translateY(-4px);
-    border-color: rgba(103, 80, 164, 0.26);
-    box-shadow: 0 12px 30px 0 rgba(103, 80, 164, 0.12);
+/* 悬停：仅视觉面 + 内容上浮；命中壳保持不动 */
+.card:hover:not(.news-ticker-card)::before,
+.card:hover:not(.news-ticker-card) > * {
+    transform: translateY(calc(-1 * var(--hover-lift)));
 }
 
-html.theme-dark .card:hover:not(.news-ticker-card),
-body.dark-theme .card:hover:not(.news-ticker-card) {
-    border-color: rgba(208, 188, 255, 0.24);
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(208, 188, 255, 0.08);
+.card:hover:not(.news-ticker-card)::before {
+    border-color: var(--card-hover-border-color);
+    box-shadow: var(--card-hover-shadow);
+}
+
+html.theme-dark .card,
+body.dark-theme .card {
+    --card-hover-border-color: rgba(208, 188, 255, 0.24);
+    --card-hover-shadow: 0 14px 34px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(208, 188, 255, 0.08);
+}
+
+/*
+ * overflow:hidden 会裁切上浮的视觉面顶部。
+ * 这类卡片关闭位移，只保留阴影/描边反馈。
+ */
+.card.notification-feed-card,
+.card.notifications-hero-card,
+.card.max-mag-card,
+.card.trend-chart-card,
+.card.config-card,
+.card.markdown-docs-sidebar-card,
+.card.news-ticker-card {
+    --hover-lift: 0px;
 }
 
 /* 栅格占位助手类 */
@@ -1005,7 +1059,7 @@ body.dark-theme .btn-action:hover {
         gap: 12px;
     }
 
-    /* 中屏：GQ+EQSC 堆叠列仍占一格，避免变成 5 卡散落 */
+    /* 中屏：堆叠列（P2P+S-Net / GQ+EQSC）仍占一格，避免变成多卡散落 */
     .connections-grid .connection-stack {
         gap: 10px;
     }
@@ -1055,8 +1109,36 @@ body.dark-theme .btn-action:hover {
         border-radius: var(--radius-md);
     }
 
-    .card:hover {
-        transform: none; /* 禁用触屏手机的悬浮位移防抖动 */
+    /* 触屏小屏：关闭所有卡片视觉位移，仅保留命中壳静态反馈 */
+    .card,
+    .connection-item,
+    .markdown-docs-file-item,
+    .event-filters-toolbar,
+    .event-filter-field-card,
+    .event-filter-pill,
+    .event-group-expanded,
+    .event-card {
+        --hover-lift: 0px;
+        --hover-shift-x: 0px;
+    }
+
+    .card:hover::before,
+    .card:hover > *,
+    .connection-item:hover::before,
+    .connection-item:hover > *,
+    .markdown-docs-file-item:hover::before,
+    .markdown-docs-file-item:hover > *,
+    .event-filters-toolbar:hover::before,
+    .event-filters-toolbar:hover > *,
+    .event-filter-field-card:hover::before,
+    .event-filter-field-card:hover > *,
+    .event-filter-pill:hover::before,
+    .event-filter-pill:hover > *,
+    .event-group-expanded:hover::before,
+    .event-group-expanded:hover > *,
+    .event-card:hover::before,
+    .event-card:hover > * {
+        transform: none;
     }
 
     .mag-row {
@@ -1095,10 +1177,6 @@ body.dark-theme .btn-action:hover {
 
     .connection-item {
         padding: 16px;
-    }
-
-    .connection-item:hover {
-        transform: none;
     }
 }
 
@@ -1197,8 +1275,10 @@ body.dark-theme .btn-action:hover {
 /* 打印机/纸质打印样式重置 */
 @media print {
     .card {
+        --card-shadow: none !important;
+        --card-border-color: #ddd !important;
         box-shadow: none !important;
-        border: 1px solid #ddd !important;
+        border: 1px solid transparent !important;
         break-inside: avoid; /* 避免卡片在打印分页时断开 */
     }
 }
@@ -1300,9 +1380,15 @@ html.theme-dark .skeleton {
     }
 
     .event-card,
-    .event-card:hover,
+    .event-card::before,
+    .event-card > *,
+    .event-card:hover::before,
+    .event-card:hover > *,
     .event-group-expanded,
-    .event-group-expanded:hover,
+    .event-group-expanded::before,
+    .event-group-expanded > *,
+    .event-group-expanded:hover::before,
+    .event-group-expanded:hover > *,
     .event-group .MuiCollapse-root {
         transition: none !important;
         transform: none !important;
