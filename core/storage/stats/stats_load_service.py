@@ -91,6 +91,9 @@ class StatsLoadService:
             elif json_has_events:
                 logger.info("[灾害预警] 检测到 JSON 历史记录，开始迁移到数据库...")
                 await self.migrate_json_from_file()
+
+            # S-Net 峰值档案独立于 events 表，始终尝试从专用表恢复。
+            await self._restore_snet_stats()
         except Exception as e:
             logger.error(f"[灾害预警] 从数据库加载失败: {e}")
 
@@ -179,6 +182,17 @@ class StatsLoadService:
             rebuild_events,
             allow_weather_fallback=False,
         )
+        await self._restore_snet_stats()
+
+    async def _restore_snet_stats(self) -> None:
+        """从 snet_station_peaks 恢复内存 snet_stats。"""
+        peak_service = getattr(self.manager, "snet_peak_service", None)
+        if peak_service is None:
+            return
+        try:
+            await peak_service.refresh_stats_from_database()
+        except Exception as e:
+            logger.warning(f"[灾害预警] 恢复 S-Net 峰值统计失败: {e}")
 
     def _restore_time_series_counts(self, counts: dict[str, Any] | None) -> None:
         """恢复数据库全量聚合得到的时间序列桶。"""
