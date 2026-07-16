@@ -13,6 +13,7 @@ import astrbot.api.message_components as Comp
 from astrbot.api import logger
 
 from ...core.app.services import quoted_plain_result
+from ...core.app.services.typhoon_enrichment_service import TyphoonEnrichmentService
 from ...utils.version import get_plugin_version
 from .telemetry_mixin import CommandTelemetryMixin
 
@@ -229,19 +230,22 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 )
                 if not isinstance(eqsc_cfg, dict):
                     eqsc_cfg = {}
-                config_enabled = bool(eqsc_cfg.get("enabled", False))
+                config_enabled, typhoon_enrichment = (
+                    TyphoonEnrichmentService.resolve_eqsc_flags(eqsc_cfg)
+                )
                 token_configured = bool(
                     str(eqsc_cfg.get("refresh_token", "") or "").strip()
                 )
                 eqsc_health = {
                     "enabled": config_enabled and token_configured,
                     "config_enabled": config_enabled,
+                    "typhoon_enrichment": typhoon_enrichment,
                     "token_configured": token_configured,
                     "access_token_valid": False,
                     "circuit_open": False,
-                    # 子数据源启用仅跟随台风富化开关
+                    # 子数据源展示只看子开关本身
                     "sub_sources": {
-                        "china_typhoon": config_enabled,
+                        "china_typhoon": typhoon_enrichment,
                     },
                 }
 
@@ -322,10 +326,13 @@ class PluginAdminCommandService(CommandTelemetryMixin):
 
             sub_source_status = dict(status.get("sub_source_status", {}) or {})
             # 注入 EQSC 子源（不在 SOURCE_CATALOG 的 WebSocket 分组内）
-            # 子数据源启用仅跟随「启用EQSC台风富化」配置开关
+            # 子数据源展示只看 typhoon_enrichment 子开关本身
             eqsc_sub_sources = eqsc_health.get("sub_sources")
+            eqsc_typhoon_enrichment = bool(
+                eqsc_health.get("typhoon_enrichment", eqsc_config_enabled)
+            )
             if not isinstance(eqsc_sub_sources, dict):
-                eqsc_sub_sources = {"china_typhoon": eqsc_config_enabled}
+                eqsc_sub_sources = {"china_typhoon": eqsc_typhoon_enrichment}
             sub_source_status["eqsc"] = dict(eqsc_sub_sources)
             if eqsc_config_enabled:
                 grouped_sources.setdefault("eqsc", ["china_typhoon"])
