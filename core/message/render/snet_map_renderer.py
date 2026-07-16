@@ -138,8 +138,13 @@ def _decode_topojson_rings(topo_path: str) -> list[list[tuple[float, float]]]:
 # ── SVG 图标加载（Base64 缓存） ──
 
 
-def _load_icons_base64(icon_dir: str) -> dict[float, str]:
-    result = {}
+def _load_icons_base64(icon_dir: str) -> dict[str, str]:
+    """加载震度 SVG 为 Base64 映射。
+
+    返回 dict 的 key 使用字符串（如 \"6.5\"），与前端
+    th.toFixed(1) 对齐，避免 float 键在 JSON 往返后匹配失败。
+    """
+    result: dict[str, str] = {}
     if not os.path.isdir(icon_dir):
         logger.warning(f"[灾害预警] 震度 SVG 图标目录不存在: {icon_dir}")
         return result
@@ -246,7 +251,8 @@ class SnetMapRenderer:
         self.plugin_root = plugin_root
         self._template_cache: str | None = None
         self._japan_rings: list[list[tuple[float, float]]] | None = None
-        self._icon_cache: dict[float, str] | None = None
+        # key 为字符串阈值（如 "6.5"），与前端 toFixed(1) 对齐
+        self._icon_cache: dict[str, str] | None = None
 
     def _get_template(self) -> str:
         if self._template_cache is not None:
@@ -282,7 +288,7 @@ class SnetMapRenderer:
             self._japan_rings = []
         return self._japan_rings
 
-    def _get_icons(self) -> dict[float, str]:
+    def _get_icons(self) -> dict[str, str]:
         """加载并缓存 SVG 图标。"""
         if self._icon_cache is not None:
             return self._icon_cache
