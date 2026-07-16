@@ -17,13 +17,15 @@ function SnetMaxCard({ style, className = '' }) {
 
     const topPeaks = useMemo(() => {
         const raw = Array.isArray(stats?.snetTopPeaks) ? stats.snetTopPeaks : [];
-        if (raw.length > 0) {
-            return raw.slice(0, 3).map((item) => ({
-                stationName: String(item.station_name || item.stationName || item.station_id || item.stationId || '').trim(),
-                shindo: Number(item.shindo),
-                shindoLabel: String(item.shindo_label || item.shindoLabel || '').trim(),
-                at: item.at || '',
-            })).filter((item) => item.stationName && Number.isFinite(item.shindo));
+        // 先过滤再取 Top3；过滤后为空才降级到 snetGlobalMax，避免脏数据导致空态。
+        const filtered = raw.map((item) => ({
+            stationName: String(item.station_name || item.stationName || item.station_id || item.stationId || '').trim(),
+            shindo: Number(item.shindo),
+            shindoLabel: String(item.shindo_label || item.shindoLabel || '').trim(),
+            at: item.at || '',
+        })).filter((item) => item.stationName && Number.isFinite(item.shindo));
+        if (filtered.length > 0) {
+            return filtered.slice(0, 3);
         }
 
         // 兼容仅有 global_max 的旧载荷
