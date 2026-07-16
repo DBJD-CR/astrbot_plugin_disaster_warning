@@ -289,11 +289,9 @@ class SnetPollService:
 
             now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
             timeout = aiohttp.ClientTimeout(total=12)
-            connector = aiohttp.TCPConnector(ssl=False)
 
-            async with aiohttp.ClientSession(
-                connector=connector, timeout=timeout
-            ) as session:
+            # MSIL 为公网 HTTPS，保持默认证书校验，避免中间人风险。
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 for offset_min in range(3):
                     try_ts = now - timedelta(minutes=offset_min)
                     ts = try_ts.strftime("%Y%m%d%H%M00")
