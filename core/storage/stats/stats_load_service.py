@@ -91,11 +91,11 @@ class StatsLoadService:
             elif json_has_events:
                 logger.info("[灾害预警] 检测到 JSON 历史记录，开始迁移到数据库...")
                 await self.migrate_json_from_file()
-
-            # S-Net 峰值档案独立于 events 表，始终尝试从专用表恢复。
-            await self._restore_snet_stats()
         except Exception as e:
             logger.error(f"[灾害预警] 从数据库加载失败: {e}")
+
+        # S-Net 峰值档案独立于 events 表：即使通用事件恢复失败也要尝试恢复。
+        await self._restore_snet_stats()
 
     async def migrate_json_from_file(self) -> None:
         """将 JSON 文件中的历史记录一次性迁移到数据库。"""
