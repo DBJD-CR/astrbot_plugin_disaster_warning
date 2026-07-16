@@ -48,6 +48,12 @@ class SessionConfigManager:
         "session_name",
     }
 
+    # 仅允许全局配置修改的嵌套路径（会话 override 写入时强制剥离）。
+    # 例如 S-Net 轮询间隔影响全局采集节奏，不允许按会话分叉。
+    GLOBAL_ONLY_NESTED_PATHS: tuple[tuple[str, ...], ...] = (
+        ("data_sources", "snet", "poll_interval_seconds"),
+    )
+
     def __init__(self, default_config_ref: dict[str, Any]):
         """初始化会话差异配置管理器并加载已保存的差异补丁。"""
         self.default_config_ref = default_config_ref
@@ -224,6 +230,40 @@ class SessionConfigManager:
         if key == "province" and isinstance(value, str):
             return True
         return False
+
+    @classmethod
+    def _strip_global_only_fields(cls, value: Any) -> Any:
+        """从会话 patch / effective 中剥离仅全局可改的嵌套字段。"""
+        if not isinstance(value, dict):
+            return value
+
+        result = copy.deepcopy(value)
+        for path in cls.GLOBAL_ONLY_NESTED_PATHS:
+            cursor: Any = result
+            parents: list[tuple[dict[str, Any], str]] = []
+            valid = True
+            for key in path:
+                if not isinstance(cursor, dict) or key not in cursor:
+                    valid = False
+                    break
+                parents.append((cursor, key))
+                cursor = cursor[key]
+            if not valid or not parents:
+                continue
+
+            # 删除叶子字段
+            leaf_parent, leaf_key = parents[-1]
+            leaf_parent.pop(leaf_key, None)
+
+            # 自底向上清理因剥离产生的空 dict
+            for parent, key in reversed(parents[:-1]):
+                child = parent.get(key)
+                if isinstance(child, dict) and not child:
+                    parent.pop(key, None)
+                else:
+                    break
+
+        return result
 
     def _prune_to_schema(self, value: Any, schema_node: dict[str, Any] | None) -> Any:
         """按 schema 递归裁剪新提交的配置，仅阻止未来污染，不清理已存旧字段。"""
@@ -472,6 +512,7 @@ class SessionConfigManager:
         - 顶层仅保留会话白名单键
         - 对 schema 内对象块递归裁剪新写入字段
         - 若旧 override 中已存在历史兼容字段，则原样保留，不做清空/重置
+        - 剥离仅全局可改字段（如 S-Net 轮询间隔）
         - 递归移除空 dict
         """
         if patch is None:
@@ -480,7 +521,17 @@ class SessionConfigManager:
         if not isinstance(patch, dict):
             return patch
 
+        if depth == 0:
+            patch = self._strip_global_only_fields(patch)
+            if not isinstance(patch, dict):
+                return patch
+
         legacy_patch = preserve_legacy if isinstance(preserve_legacy, dict) else {}
+        if depth == 0 and isinstance(legacy_patch, dict):
+            legacy_patch = self._strip_global_only_fields(legacy_patch)
+            if not isinstance(legacy_patch, dict):
+                legacy_patch = {}
+
         sanitized: dict[str, Any] = {}
         active_schema = self.schema if isinstance(self.schema, dict) else {}
 
@@ -501,23 +552,52 @@ class SessionConfigManager:
                     merged_child = copy.deepcopy(legacy_child)
                     merged_child.update(child)
                     child = merged_child
+                if isinstance(child, dict):
+                    stripped = self._strip_global_only_fields({key: child})
+                    if isinstance(stripped, dict):
+                        child = stripped.get(key, child)
             else:
                 child = self._sanitize_patch(val, depth + 1, legacy_child)
 
             if isinstance(child, dict) and not child:
                 if isinstance(legacy_child, dict) and legacy_child:
-                    sanitized[key] = copy.deepcopy(legacy_child)
+                    cleaned_legacy = self._strip_global_only_fields({key: legacy_child})
+                    legacy_value = (
+                        cleaned_legacy.get(key)
+                        if isinstance(cleaned_legacy, dict)
+                        else None
+                    )
+                    if isinstance(legacy_value, dict) and legacy_value:
+                        sanitized[key] = legacy_value
                 continue
             if child is not None:
                 sanitized[key] = child
             elif legacy_child is not None:
-                sanitized[key] = copy.deepcopy(legacy_child)
+                cleaned_legacy = self._strip_global_only_fields({key: legacy_child})
+                legacy_value = (
+                    cleaned_legacy.get(key)
+                    if isinstance(cleaned_legacy, dict)
+                    else None
+                )
+                if legacy_value is not None:
+                    sanitized[key] = legacy_value
 
         if depth == 0:
             for key, legacy_value in legacy_patch.items():
                 if key in sanitized:
                     continue
                 if key in self.ALLOWED_ROOT_KEYS:
-                    sanitized[key] = copy.deepcopy(legacy_value)
+                    cleaned_legacy = self._strip_global_only_fields({key: legacy_value})
+                    value = (
+                        cleaned_legacy.get(key)
+                        if isinstance(cleaned_legacy, dict)
+                        else None
+                    )
+                    if value is not None:
+                        sanitized[key] = value
+
+            sanitized = self._strip_global_only_fields(sanitized)
+            if not isinstance(sanitized, dict):
+                return {}
 
         return sanitized
