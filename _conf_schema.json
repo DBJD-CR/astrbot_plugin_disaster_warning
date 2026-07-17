@@ -187,6 +187,52 @@
       }
     }
   },
+  "weather_alarm_fallback": {
+    "description": "可选的全国 China Weather 气象预警校准源",
+    "type": "object",
+    "hint": "可选的全国 China Weather 校准源；首次成功快照仅建立基线，不发送通知；后续事件复用现有气象预警规则。默认关闭。",
+    "items": {
+      "enabled": {
+        "description": "启用 China Weather 全国气象预警校准",
+        "type": "bool",
+        "hint": "仅在 FAN Studio 中国气象局气象预警源已启用时运行；首次成功快照仅建立基线。",
+        "default": false
+      },
+      "poll_interval_seconds": {
+        "description": "校准轮询间隔",
+        "type": "int",
+        "hint": "单位：秒；范围 60 至 3600。",
+        "default": 180,
+        "slider": {
+          "min": 60,
+          "max": 3600,
+          "step": 10
+        }
+      },
+      "request_timeout_seconds": {
+        "description": "单次请求超时",
+        "type": "int",
+        "hint": "单位：秒；范围 3 至 30。",
+        "default": 15,
+        "slider": {
+          "min": 3,
+          "max": 30,
+          "step": 1
+        }
+      },
+      "detail_concurrency": {
+        "description": "详情请求并发数",
+        "type": "int",
+        "hint": "每轮新增预警详情的最大并发请求数；范围 1 至 8。后续事件复用现有气象预警规则。",
+        "default": 4,
+        "slider": {
+          "min": 1,
+          "max": 8,
+          "step": 1
+        }
+      }
+    }
+  },
   "local_monitoring": {
     "description": "📍 本地烈度监控配置",
     "type": "object",
