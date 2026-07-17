@@ -12,6 +12,10 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Plain
 
+from ....utils.emoji_filter import (
+    EMOJI_FILTER_MODE_DEFAULT,
+    filter_push_text_emoji,
+)
 from ...domain.event_models import EventEnvelope
 from ..presenters.presenter_registry import present_message
 
@@ -37,6 +41,8 @@ class TextMessageBuilder:
         detailed_jma = config.get("detailed_jma_intensity", False)
         # 日本震度是否按地域汇总展示，默认开启。
         jma_region = config.get("jma_region_intensity", True)
+        # 推送文本 emoji 过滤仅在此出口生效，指令回复不经过本构建器。
+        emoji_filter_mode = config.get("emoji_filter_mode", EMOJI_FILTER_MODE_DEFAULT)
 
         options = {
             "timezone": display_timezone,
@@ -67,4 +73,6 @@ class TextMessageBuilder:
             logger.warning(f"[灾害预警] 未知事件类型: {type(data)}")
             message_text = f"🚨[未知事件]\n📋事件ID：{event.id}\n⏰时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
+        # 仅过滤推送链路文本；Presenter 本身仍按完整样式生成，便于其他场景复用。
+        message_text = filter_push_text_emoji(message_text, emoji_filter_mode)
         return MessageChain([Plain(message_text)])

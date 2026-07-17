@@ -14,6 +14,7 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Plain
 
+from ....utils.emoji_filter import EMOJI_FILTER_MODE_DEFAULT
 from ...domain.event_models import EventEnvelope
 
 
@@ -184,6 +185,9 @@ class PushExecutionService:
                         ),
                         "jma_region_intensity": message_format_config.get(
                             "jma_region_intensity", True
+                        ),
+                        "emoji_filter_mode": message_format_config.get(
+                            "emoji_filter_mode", EMOJI_FILTER_MODE_DEFAULT
                         ),
                     },
                     "weather": {
