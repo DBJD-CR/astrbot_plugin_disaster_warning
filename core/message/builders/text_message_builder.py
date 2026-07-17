@@ -12,7 +12,10 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Plain
 
-from ....utils.emoji_filter import filter_push_text_emoji
+from ....utils.emoji_filter import (
+    EMOJI_FILTER_MODE_DEFAULT,
+    filter_push_text_emoji,
+)
 from ...domain.event_models import EventEnvelope
 from ..presenters.presenter_registry import present_message
 
@@ -39,7 +42,7 @@ class TextMessageBuilder:
         # 日本震度是否按地域汇总展示，默认开启。
         jma_region = config.get("jma_region_intensity", True)
         # 推送文本 emoji 过滤仅在此出口生效，指令回复不经过本构建器。
-        emoji_filter_mode = config.get("emoji_filter_mode", "默认")
+        emoji_filter_mode = config.get("emoji_filter_mode", EMOJI_FILTER_MODE_DEFAULT)
 
         options = {
             "timezone": display_timezone,

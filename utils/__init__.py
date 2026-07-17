@@ -9,6 +9,7 @@ from .emoji_filter import (
     EMOJI_FILTER_MODE_MINIMAL,
     EMOJI_FILTER_MODE_OFF,
     filter_push_text_emoji,
+    is_known_emoji_filter_mode,
     normalize_emoji_filter_mode,
 )
 from .geolocation import close_geoip_session, fetch_location_from_ip, get_geoip_session
@@ -22,6 +23,7 @@ __all__ = [
     "EMOJI_FILTER_MODE_MINIMAL",
     "EMOJI_FILTER_MODE_OFF",
     "filter_push_text_emoji",
+    "is_known_emoji_filter_mode",
     "normalize_emoji_filter_mode",
     "close_geoip_session",
     "fetch_location_from_ip",
