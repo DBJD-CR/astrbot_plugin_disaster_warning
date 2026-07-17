@@ -220,36 +220,9 @@ class DisasterServiceRuntimeService:
 
             while self.service.running:
                 try:
-                    index_script = await fetch_text(_CHINA_WEATHER_INDEX_URL)
-                    result = await reconciler.reconcile(
-                        index_script,
-                        fetch_detail,
-                        self._dispatch_china_weather_payload,
+                    await self._reconcile_china_weather_cycle(
+                        reconciler, fetch_text, fetch_detail
                     )
-                    if not result.index_valid:
-                        logger.warning(
-                            "[灾害预警] China Weather 校准索引无效，保留上次有效快照"
-                        )
-                    elif (
-                        result.new_count
-                        or result.failed_identifiers
-                        or result.consumed_error_identifiers
-                    ):
-                        logger.debug(
-                            "[灾害预警] China Weather 校准完成: "
-                            f"索引 {result.reference_count}, 新增 {result.new_count}, "
-                            f"已处理 {result.consumed_count}, 失败 {len(result.failed_identifiers)}"
-                        )
-                    for identifier in result.failed_identifiers:
-                        logger.warning(
-                            "[灾害预警] China Weather 详情处理失败，保留重试资格: "
-                            f"{identifier}"
-                        )
-                    for identifier in result.consumed_error_identifiers:
-                        logger.warning(
-                            "[灾害预警] China Weather 已进入发送链但调用异常，"
-                            f"按最多一次策略不自动重试: {identifier}"
-                        )
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
@@ -259,6 +232,38 @@ class DisasterServiceRuntimeService:
                     )
 
                 await sleep(fallback_config.poll_interval_seconds)
+
+    async def _reconcile_china_weather_cycle(
+        self, reconciler, fetch_text, fetch_detail
+    ) -> None:
+        """Fetch and process one China Weather reconciliation snapshot."""
+        index_script = await fetch_text(_CHINA_WEATHER_INDEX_URL)
+        result = await reconciler.reconcile(
+            index_script,
+            fetch_detail,
+            self._dispatch_china_weather_payload,
+        )
+        if not result.index_valid:
+            logger.warning("[灾害预警] China Weather 校准索引无效，保留上次有效快照")
+        elif (
+            result.new_count
+            or result.failed_identifiers
+            or result.consumed_error_identifiers
+        ):
+            logger.debug(
+                "[灾害预警] China Weather 校准完成: "
+                f"索引 {result.reference_count}, 新增 {result.new_count}, "
+                f"已处理 {result.consumed_count}, 失败 {len(result.failed_identifiers)}"
+            )
+        for identifier in result.failed_identifiers:
+            logger.warning(
+                f"[灾害预警] China Weather 详情处理失败，保留重试资格: {identifier}"
+            )
+        for identifier in result.consumed_error_identifiers:
+            logger.warning(
+                "[灾害预警] China Weather 已进入发送链但调用异常，"
+                f"按最多一次策略不自动重试: {identifier}"
+            )
 
     async def _dispatch_china_weather_payload(self, payload: dict[str, object]) -> None:
         """Hand one payload to the authoritative existing event pipeline once."""

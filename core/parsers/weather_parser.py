@@ -17,6 +17,29 @@ from ..sources.source_catalog import get_source_entry
 from .base_parser import BaseParser
 
 
+def _extract_issue_time(
+    event_id: object, effective_time: datetime | None
+) -> datetime | None:
+    """Extract the encoded issue timestamp, falling back to effective time."""
+    event_id_text = str(event_id or "")
+    if "_" not in event_id_text:
+        return effective_time
+
+    time_part = event_id_text.rsplit("_", 1)[-1]
+    if len(time_part) < 12:
+        return effective_time
+    try:
+        year = int(time_part[0:4])
+        month = int(time_part[4:6])
+        day = int(time_part[6:8])
+        hour = int(time_part[8:10])
+        minute = int(time_part[10:12])
+        second = int(time_part[12:14]) if len(time_part) >= 14 else 0
+        return datetime(year, month, day, hour, minute, second)
+    except (ValueError, IndexError):
+        return effective_time
+
+
 class WeatherAlarmParser(BaseParser):
     """中国气象局气象预警解析器。"""
 
@@ -66,25 +89,7 @@ class WeatherAlarmParser(BaseParser):
             effective_time = self._parse_datetime(msg_data.get("effective", ""))
 
             # 预警发布时间优先尝试从标识尾部编码中提取，失败时回退到生效时间。
-            issue_time = None
-            id_str = msg_data.get("id", "")
-            if "_" in id_str:
-                time_part = id_str.split("_")[-1]
-                if len(time_part) >= 12:
-                    try:
-                        year = int(time_part[0:4])
-                        month = int(time_part[4:6])
-                        day = int(time_part[6:8])
-                        hour = int(time_part[8:10])
-                        minute = int(time_part[10:12])
-                        second = int(time_part[12:14]) if len(time_part) >= 14 else 0
-                        issue_time = datetime(year, month, day, hour, minute, second)
-                    except (ValueError, IndexError):
-                        issue_time = effective_time
-                else:
-                    issue_time = effective_time
-            else:
-                issue_time = effective_time
+            issue_time = _extract_issue_time(msg_data.get("id"), effective_time)
 
             headline = msg_data.get("headline", "")
             title = msg_data.get("title", "") or headline
@@ -187,8 +192,8 @@ class WeatherAlarmParser(BaseParser):
             )
 
             # 加入防重去噪缓存中
-            if envelope.id:
-                self._processed_weather_ids.add(envelope.id)
+            if event_id:
+                self._processed_weather_ids.add(event_id)
 
             plugin_logger.info(
                 f"[灾害预警] 气象预警解析成功: {domain_event.title or domain_event.headline}, 生效时间: {issue_time}",

@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 
-_INDEX_PREFIX = "var alarminfo="
+_ALARMININFO_ASSIGNMENT_PATTERN = re.compile(r"^var\s+alarminfo\s*=\s*")
 _DETAIL_FILE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _WARNING_IDENTIFIER_PATTERN = re.compile(r"^(?P<prefix>\d{14})_(?P<issued_at>\d{14})$")
 _WARNING_LEVEL_COLORS = {
@@ -374,9 +374,10 @@ def _parse_alarminfo_payload(script: str) -> dict[str, Any] | None:
     if not isinstance(script, str):
         return None
     stripped = script.strip()
-    if not stripped.startswith(_INDEX_PREFIX):
+    assignment = _ALARMININFO_ASSIGNMENT_PATTERN.match(stripped)
+    if assignment is None:
         return None
-    payload_text = stripped[len(_INDEX_PREFIX) :]
+    payload_text = stripped[assignment.end() :]
     if payload_text.endswith(";"):
         payload_text = payload_text[:-1]
     try:
