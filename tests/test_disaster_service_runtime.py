@@ -17,7 +17,6 @@ from test_china_weather_reconciliation import (
     _detail_script,
     _index_script,
     _install_test_package,
-    _require_feature,
     resolve_fallback_config,
 )
 
@@ -96,11 +95,7 @@ class DisasterServiceRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
         )
 
     def _weather_loop(self, runtime: DisasterServiceRuntimeService):
-        return _require_feature(
-            self,
-            getattr(runtime, "_run_china_weather_loop", None),
-            "DisasterServiceRuntimeService._run_china_weather_loop",
-        )
+        return runtime._run_china_weather_loop
 
     @staticmethod
     def _session_factory(events: list[object], response_provider):
@@ -163,10 +158,7 @@ class DisasterServiceRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
         runtime = DisasterServiceRuntimeService(service)
         events: list[object] = []
         factory = self._session_factory(events, lambda url: _index_script())
-        resolver = _require_feature(
-            self, resolve_fallback_config, "resolve_fallback_config"
-        )
-        fallback = resolver(
+        fallback = resolve_fallback_config(
             {"weather_alarm_fallback": {"request_timeout_seconds": 999}}
         )
 
@@ -198,16 +190,13 @@ class DisasterServiceRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
         runtime = DisasterServiceRuntimeService(service)
         events: list[object] = []
         factory = self._session_factory(events, lambda url: asyncio.CancelledError())
-        resolver = _require_feature(
-            self, resolve_fallback_config, "resolve_fallback_config"
-        )
 
         async def unexpected_sleep(seconds: float) -> None:
             self.fail("cancelled index fetch must not sleep")
 
         with self.assertRaises(asyncio.CancelledError):
             await self._weather_loop(runtime)(
-                resolver({}),
+                resolve_fallback_config({}),
                 session_factory=factory,
                 sleep=unexpected_sleep,
             )
@@ -255,11 +244,8 @@ class DisasterServiceRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
             if cycle_count == 3:
                 service.running = False
 
-        resolver = _require_feature(
-            self, resolve_fallback_config, "resolve_fallback_config"
-        )
         await self._weather_loop(runtime)(
-            resolver({}),
+            resolve_fallback_config({}),
             session_factory=factory,
             sleep=stop_after_three_cycles,
         )
