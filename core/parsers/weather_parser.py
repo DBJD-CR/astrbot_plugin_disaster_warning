@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any
 
 from ...utils.plugin_logger import plugin_logger
@@ -17,27 +18,28 @@ from ..sources.source_catalog import get_source_entry
 from .base_parser import BaseParser
 
 
+_WEATHER_ISSUE_TIME_PATTERNS = (
+    re.compile(r"^\d{14}_(?P<issued_at>\d{12}(?:\d{2})?)$"),
+    re.compile(r"^\d{6}-(?P<issued_at>\d{14})-11B\d{4}$"),
+)
+
+
 def _extract_issue_time(
     event_id: object, effective_time: datetime | None
 ) -> datetime | None:
     """Extract the encoded issue timestamp, falling back to effective time."""
     event_id_text = str(event_id or "")
-    if "_" not in event_id_text:
-        return effective_time
-
-    time_part = event_id_text.rsplit("_", 1)[-1]
-    if len(time_part) < 12:
-        return effective_time
-    try:
-        year = int(time_part[0:4])
-        month = int(time_part[4:6])
-        day = int(time_part[6:8])
-        hour = int(time_part[8:10])
-        minute = int(time_part[10:12])
-        second = int(time_part[12:14]) if len(time_part) >= 14 else 0
-        return datetime(year, month, day, hour, minute, second)
-    except (ValueError, IndexError):
-        return effective_time
+    for pattern in _WEATHER_ISSUE_TIME_PATTERNS:
+        match = pattern.fullmatch(event_id_text)
+        if match is None:
+            continue
+        issued_at = match.group("issued_at")
+        timestamp_format = "%Y%m%d%H%M%S" if len(issued_at) == 14 else "%Y%m%d%H%M"
+        try:
+            return datetime.strptime(issued_at, timestamp_format)
+        except ValueError:
+            break
+    return effective_time
 
 
 class WeatherAlarmParser(BaseParser):

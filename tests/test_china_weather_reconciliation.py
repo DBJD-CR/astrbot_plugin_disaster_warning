@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from datetime import datetime
 import importlib.util
 import json
 from pathlib import Path
@@ -346,6 +347,21 @@ class ChinaWeatherReconciliationTests(unittest.TestCase):
         self.assertIn(first_id, parser._processed_weather_ids)
         self.assertIsNone(parser._parse_data(self._weather_payload(first_id)))
 
+    def test_weather_parser_reads_issue_time_from_supported_event_ids(self) -> None:
+        cases = (
+            ("310000-20260713100000-11B0102", datetime(2026, 7, 13, 10, 0)),
+            ("31000041600000_20260713100500", datetime(2026, 7, 13, 10, 5)),
+        )
+
+        for event_id, expected in cases:
+            with self.subTest(event_id=event_id):
+                payload = self._weather_payload(event_id)
+                payload["effective"] = ""
+                event = WeatherAlarmParser()._parse_data(payload)
+
+                self.assertIsNotNone(event)
+                self.assertEqual(event.identity.published_at, expected)
+
     @staticmethod
     def _weather_payload(event_id: str) -> dict[str, str]:
         return {
@@ -450,12 +466,17 @@ class ChinaWeatherReconciliationTests(unittest.TestCase):
             parse_warning_detail(script, REF_A)
 
     def test_parse_warning_detail_rejects_missing_or_unsupported_codes(self) -> None:
-        missing_type_code = 'var alarminfo={"LEVELCODE":"02"};'
-        unsupported_level_code = 'var alarminfo={"TYPECODE":"01","LEVELCODE":"06"};'
+        missing_type_code = (
+            f'var alarminfo={{"LEVELCODE":"02","identifier":"{WARNING_ID_A}"}};'
+        )
+        unsupported_level_code = (
+            f'var alarminfo={{"TYPECODE":"01","LEVELCODE":"06",'
+            f'"identifier":"{WARNING_ID_A}"}};'
+        )
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "missing a required code"):
             parse_warning_detail(missing_type_code, REF_A)
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "level code is not supported"):
             parse_warning_detail(unsupported_level_code, REF_A)
 
     def test_parse_warning_detail_rejects_mismatched_identifier(self) -> None:

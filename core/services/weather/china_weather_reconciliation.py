@@ -267,6 +267,7 @@ class ChinaWeatherReconciler:
         if not 1 <= detail_concurrency <= 8:
             raise ValueError("detail_concurrency must be between 1 and 8")
         self._tracker = WarningSnapshotTracker(max_entries=max_entries)
+        self._detail_concurrency = detail_concurrency
         self._detail_semaphore = asyncio.Semaphore(detail_concurrency)
 
     async def reconcile(
@@ -287,12 +288,17 @@ class ChinaWeatherReconciler:
                 reference_count=len(references),
             )
 
-        outcomes = await asyncio.gather(
-            *(
-                self._process_reference(reference, fetch_detail, dispatch)
-                for reference in new_references
+        outcomes: list[tuple[str | None, str | None]] = []
+        for offset in range(0, len(new_references), self._detail_concurrency):
+            batch = new_references[offset : offset + self._detail_concurrency]
+            outcomes.extend(
+                await asyncio.gather(
+                    *(
+                        self._process_reference(reference, fetch_detail, dispatch)
+                        for reference in batch
+                    )
+                )
             )
-        )
         failed_identifiers = tuple(
             outcome[0] for outcome in outcomes if outcome[0] is not None
         )

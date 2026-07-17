@@ -555,11 +555,13 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 - **去重**: FAN 与 HTTP 对账使用相同逻辑事件 ID，并通过 24 小时、最多 4096 条的有界缓存抑制重复推送。
 
 ```json
-"weather_alarm_fallback": {
-  "enabled": false,
-  "poll_interval_seconds": 180,
-  "request_timeout_seconds": 15,
-  "detail_concurrency": 4
+{
+  "weather_alarm_fallback": {
+    "enabled": false,
+    "poll_interval_seconds": 180,
+    "request_timeout_seconds": 15,
+    "detail_concurrency": 4
+  }
 }
 ```
 

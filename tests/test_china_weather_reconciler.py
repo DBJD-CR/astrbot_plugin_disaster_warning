@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 
 from test_china_weather_reconciliation import (
@@ -80,6 +81,43 @@ class ChinaWeatherReconcilerAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(retry_cycle.dispatched_count, 1)
         self.assertEqual(attempts, {"b.html": 2, "c.html": 1})
         self.assertEqual(dispatched_ids.count("320000-20260713100500-11B0102"), 1)
+
+    async def test_large_snapshot_creates_only_bounded_reference_batches(self) -> None:
+        reconciler = self._reconciler(detail_concurrency=3)
+        active_fetches = 0
+        peak_fetches = 0
+        dispatched_ids: list[str] = []
+        references = tuple(
+            WarningReference(
+                identifier=f"{34000000000000 + offset:014d}_2026071311{offset:02d}00",
+                detail_path=f"warning-{offset}.html",
+                longitude="116.40",
+                latitude="39.90",
+                title=f"Warning {offset}",
+            )
+            for offset in range(12)
+        )
+
+        async def fetch_detail(path: str) -> str:
+            nonlocal active_fetches, peak_fetches
+            active_fetches += 1
+            peak_fetches = max(peak_fetches, active_fetches)
+            await asyncio.sleep(0)
+            active_fetches -= 1
+            offset = int(path.removeprefix("warning-").removesuffix(".html"))
+            return _detail_script(references[offset])
+
+        async def dispatch(payload: dict[str, object]) -> None:
+            dispatched_ids.append(str(payload["id"]))
+
+        await reconciler.reconcile(_index_script(), fetch_detail, dispatch)
+        result = await reconciler.reconcile(
+            _index_script(*references), fetch_detail, dispatch
+        )
+
+        self.assertEqual(result.dispatched_count, len(references))
+        self.assertEqual(len(dispatched_ids), len(references))
+        self.assertLessEqual(peak_fetches, 3)
 
     async def _run_dispatch_consumption_case(self, *, fail_dispatch: bool):
         reconciler = self._reconciler()
