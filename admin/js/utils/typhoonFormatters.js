@@ -42,28 +42,30 @@
         { min: 17.2, color: 'var(--typhoon-wind-color-ts, #43A047)', label: '热带风暴' },
         { min: 10.8, color: 'var(--typhoon-wind-color-td, #00ACC1)', label: '热带低压' },
     ];
-    // 事件列表筛选用最小风速选项（含“全部”）
+    // 事件列表筛选用历史峰值风速选项（含“全部”）
+    // 注意：筛的是主表历史最大风速，不是卡片当前观测风速。
     const WIND_SPEED_FILTER_OPTIONS = [
-        { value: 'all', label: '全部风速' },
+        { value: 'all', label: '全部峰值风速' },
         ...WIND_SPEED_THRESHOLDS
             .slice()
             .reverse()
             .map((item) => ({
                 value: String(item.min),
-                label: `≥ ${Number(item.min).toFixed(1)} m/s`,
+                label: `峰值 ≥ ${Number(item.min).toFixed(1)} m/s`,
             })),
     ];
-    // 事件列表筛选用最大中心气压选项（气压越低通常越强）
+    // 事件列表筛选用历史最低中心气压选项（气压越低通常越强）
+    // 注意：筛的是主表历史最低气压，不是卡片当前观测气压。
     const PRESSURE_FILTER_OPTIONS = [
-        { value: 'all', label: '全部气压' },
-        { value: '1000', label: '≤ 1000 hPa' },
-        { value: '990', label: '≤ 990 hPa' },
-        { value: '980', label: '≤ 980 hPa' },
-        { value: '970', label: '≤ 970 hPa' },
-        { value: '960', label: '≤ 960 hPa' },
-        { value: '950', label: '≤ 950 hPa' },
-        { value: '940', label: '≤ 940 hPa' },
-        { value: '920', label: '≤ 920 hPa' },
+        { value: 'all', label: '全部峰值气压' },
+        { value: '1000', label: '历史最低 ≤ 1000 hPa' },
+        { value: '990', label: '历史最低 ≤ 990 hPa' },
+        { value: '980', label: '历史最低 ≤ 980 hPa' },
+        { value: '970', label: '历史最低 ≤ 970 hPa' },
+        { value: '960', label: '历史最低 ≤ 960 hPa' },
+        { value: '950', label: '历史最低 ≤ 950 hPa' },
+        { value: '940', label: '历史最低 ≤ 940 hPa' },
+        { value: '920', label: '历史最低 ≤ 920 hPa' },
     ];
     const WIND_SPEED_DEFAULT_COLOR = 'var(--typhoon-wind-color-default, #78909C)';
 

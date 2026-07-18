@@ -1261,9 +1261,19 @@ class DatabaseManager:
             text = f"{text}:00"
         if text.endswith("Z"):
             text = text[:-1]
-        if "+" in text[10:]:
-            text = text.split("+", 1)[0]
-        return text
+        # 仅剥离时间部分后的时区偏移（含负偏移），避免破坏日期中的 '-'。
+        # 例：2026-07-18T12:00:00+08:00 / 2026-07-18T12:00:00-05:00
+        body = text
+        if len(text) > 10 and text[10] == "T":
+            date_part = text[:10]
+            time_part = text[11:]
+            for marker in ("+", "-"):
+                idx = time_part.find(marker)
+                if idx > 0:
+                    time_part = time_part[:idx]
+                    break
+            body = f"{date_part}T{time_part}"
+        return body
 
     def _append_common_event_filters(
         self,

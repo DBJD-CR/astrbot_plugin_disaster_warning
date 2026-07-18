@@ -158,6 +158,15 @@ def register_events_routes(app, *, disaster_service):
             normalized_intensity_system = str(intensity_system or "").strip().lower()
             if normalized_intensity_system not in {"", "cn", "jma"}:
                 normalized_intensity_system = ""
+            # 烈度/震度阈值必须绑定体系，避免 CN 与 JMA 混比。
+            if min_intensity is not None and normalized_intensity_system not in {
+                "cn",
+                "jma",
+            }:
+                return ApiResponse.error(
+                    "使用 min_intensity 时必须提供 intensity_system（cn 或 jma）",
+                    status_code=400,
+                )
 
             # 利用 asyncio.gather 并发查询总数与分页数据，最大化 SQLite I/O 效率
             total, events = await asyncio.gather(

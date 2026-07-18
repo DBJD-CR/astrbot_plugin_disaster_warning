@@ -170,10 +170,10 @@ function EventFilters({
         ];
 
     const windOptions = (window.DisasterTyphoonFormatters && window.DisasterTyphoonFormatters.WIND_SPEED_FILTER_OPTIONS) || [
-        { value: 'all', label: '全部风速' },
+        { value: 'all', label: '全部峰值风速' },
     ];
     const pressureOptions = (window.DisasterTyphoonFormatters && window.DisasterTyphoonFormatters.PRESSURE_FILTER_OPTIONS) || [
-        { value: 'all', label: '全部气压' },
+        { value: 'all', label: '全部峰值气压' },
     ];
 
     const handleTypeChange = (nextType) => {
@@ -236,12 +236,12 @@ function EventFilters({
 
         if (isTyphoon && windSpeedFilter !== 'all') {
             const windLabel = windOptions.find((item) => item.value === windSpeedFilter)?.label || windSpeedFilter;
-            chips.push({ key: 'wind', label: `风速：${windLabel}` });
+            chips.push({ key: 'wind', label: `峰值风速：${windLabel}` });
         }
 
         if (isTyphoon && maxPressureFilter !== 'all') {
             const pressureLabel = pressureOptions.find((item) => item.value === maxPressureFilter)?.label || maxPressureFilter;
-            chips.push({ key: 'pressure', label: `气压：${pressureLabel}` });
+            chips.push({ key: 'pressure', label: `峰值气压：${pressureLabel}` });
         }
 
         if (isTyphoon && activeOnly) {
@@ -358,7 +358,7 @@ function EventFilters({
                 </div>
 
                 {/* 3. 细粒度过滤与搜索排 */}
-                <div className={`event-filters-secondary-row ${isTyphoon ? 'is-typhoon' : ''} ${isEarthquakeLike ? 'is-earthquake' : ''}`}>
+                <div className="event-filters-secondary-row">
                     {/* A. 震级限制与排序 / 颜色预警过滤选择器 */}
                     <div className="filter-group event-filter-group-nowrap event-filter-field-group event-filter-field-card event-filter-field-card-magnitude">
                         <Typography variant="body2" className="event-filter-label">{magnitudeFilterLabel}</Typography>
@@ -428,10 +428,10 @@ function EventFilters({
                         </div>
                     )}
 
-                    {/* B3. 台风最小风速 */}
+                    {/* B3. 台风历史峰值风速（主表 wind_speed） */}
                     {isTyphoon && (
                         <div className="filter-group event-filter-group-nowrap event-filter-field-group event-filter-field-card event-filter-field-card-wind-speed">
-                            <Typography variant="body2" className="event-filter-label">最小风速</Typography>
+                            <Typography variant="body2" className="event-filter-label">历史峰值风速</Typography>
                             <div className="event-filter-inline-controls">
                                 <select value={windSpeedFilter} onChange={(e) => setWindSpeedFilter(e.target.value)} className="event-filter-select event-filter-select-md">
                                     {windOptions.map((option) => (
@@ -442,10 +442,10 @@ function EventFilters({
                         </div>
                     )}
 
-                    {/* B4. 台风最大中心气压 */}
+                    {/* B4. 台风历史最低中心气压（主表 pressure） */}
                     {isTyphoon && (
                         <div className="filter-group event-filter-group-nowrap event-filter-field-group event-filter-field-card event-filter-field-card-pressure">
-                            <Typography variant="body2" className="event-filter-label">最大气压</Typography>
+                            <Typography variant="body2" className="event-filter-label">历史最低气压</Typography>
                             <div className="event-filter-inline-controls">
                                 <select value={maxPressureFilter} onChange={(e) => setMaxPressureFilter(e.target.value)} className="event-filter-select event-filter-select-md">
                                     {pressureOptions.map((option) => (
