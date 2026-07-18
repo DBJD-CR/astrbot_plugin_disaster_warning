@@ -15,6 +15,17 @@ from ...domain.event_models import (
     WeatherEvent,
 )
 from ...domain.event_payload import SourcePayload
+from ...domain.tsunami.tsunami_levels import (
+    build_tsunami_weather_detail,
+    normalize_cn_tsunami_level,
+    normalize_jp_tsunami_level,
+    resolve_tsunami_region,
+    to_optional_float,
+)
+from ...domain.tsunami.tsunami_title import (
+    build_tsunami_list_title,
+    is_generic_tsunami_title,
+)
 from ...domain.typhoon import (
     format_display_name,
     merge_peak_metrics,
@@ -219,23 +230,444 @@ class EventRecordFactory:
         return record
 
     @staticmethod
+    def _build_tsunami_forecast_highlights(
+        forecasts: list[Any],
+        *,
+        region: str,
+        limit: int = 6,
+    ) -> list[str]:
+        """从预报区列表提炼列表用亮点（对齐推送展示器语义）。"""
+        highlights: list[str] = []
+        ordered: list[dict[str, Any]] = []
+        normal: list[dict[str, Any]] = []
+        for item in forecasts or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(
+                item.get("name")
+                or item.get("forecastArea")
+                or item.get("forecastPoint")
+                or ""
+            ).strip()
+            if not name:
+                continue
+            if item.get("immediate"):
+                ordered.append(item)
+            else:
+                normal.append(item)
+
+        def grade_rank(item: dict[str, Any]) -> int:
+            grade = str(item.get("grade") or item.get("warningLevel") or "").strip()
+            order_map = {
+                "MajorWarning": 5,
+                "红色": 5,
+                "Warning": 4,
+                "橙色": 4,
+                "Watch": 3,
+                "黄色": 3,
+                "蓝色": 2,
+                "Minor": 1,
+                "信息": 0,
+            }
+            return order_map.get(grade, 0)
+
+        ordered.extend(sorted(normal, key=grade_rank, reverse=True))
+
+        # 日本等级展示用中文，避免列表亮点出现裸 Warning/Watch
+        jp_grade_labels = {
+            "MajorWarning": "大海啸警报",
+            "Warning": "海啸警报",
+            "Watch": "海啸注意报",
+            "Minor": "若干海面变动",
+            "None": "无",
+            "Unknown": "不明",
+            "解除": "解除",
+        }
+
+        for item in ordered:
+            if len(highlights) >= limit:
+                break
+            name = str(
+                item.get("name")
+                or item.get("forecastArea")
+                or item.get("forecastPoint")
+                or ""
+            ).strip()
+            grade = str(item.get("grade") or item.get("warningLevel") or "").strip()
+            if region == "japan":
+                grade_label = jp_grade_labels.get(grade, grade)
+            else:
+                grade_label = grade
+            arrival = str(
+                item.get("estimatedArrivalTime") or item.get("condition") or ""
+            ).strip()
+            wave = str(
+                item.get("maxWaveHeight") or item.get("maxHeightDescription") or ""
+            ).strip()
+            bits: list[str] = [name]
+            if grade_label:
+                bits.append(f"[{grade_label}]")
+            if item.get("immediate"):
+                bits.append("立即")
+            if arrival:
+                bits.append(arrival)
+            if wave:
+                if region == "china" and not any(
+                    token in wave for token in ("cm", "CM", "米", "m", "ｍ")
+                ):
+                    bits.append(f"波高{wave}cm")
+                else:
+                    bits.append(f"🌊{wave}")
+            highlights.append(" ".join(bits))
+        return highlights
+
+    @staticmethod
+    def _build_tsunami_station_highlights(
+        stations: list[Any],
+        *,
+        limit: int = 4,
+    ) -> list[str]:
+        """从监测站列表提炼亮点。"""
+        scored: list[tuple[float, str]] = []
+        for item in stations or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("stationName") or item.get("name") or "监测站").strip()
+            location = str(item.get("location") or "").strip()
+            wave = str(
+                item.get("maxWaveHeight") or item.get("max_wave_height") or ""
+            ).strip()
+            label = name
+            if location:
+                label = f"{name}({location})"
+            if wave:
+                if any(token in wave for token in ("cm", "CM", "米", "m", "ｍ")):
+                    label = f"{label} 最大波幅 {wave}"
+                else:
+                    label = f"{label} 最大波幅 {wave}cm"
+            value = to_optional_float(wave) or 0.0
+            scored.append((value, label))
+        scored.sort(key=lambda row: row[0], reverse=True)
+        return [label for _, label in scored[:limit]]
+
+    @staticmethod
+    def _merge_tsunami_payload_context(
+        envelope: EventEnvelope, data: TsunamiEvent
+    ) -> dict[str, Any]:
+        """合并 payload.attributes / raw / 领域 metadata / envelope.metadata。"""
+        metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
+        event_metadata = data.metadata if isinstance(data.metadata, dict) else {}
+        # SourcePayload.to_dict() 只返回 raw，真正的 attributes 是 dataclass 字段。
+        merged: dict[str, Any] = {}
+        if isinstance(envelope.payload, SourcePayload):
+            payload_attrs = getattr(envelope.payload, "attributes", None)
+            if isinstance(payload_attrs, dict):
+                merged.update(payload_attrs)
+            raw_payload = envelope.payload.to_dict()
+            if isinstance(raw_payload, dict):
+                nested_attrs = raw_payload.get("attributes")
+                if isinstance(nested_attrs, dict):
+                    merged.update(nested_attrs)
+                merged.update(raw_payload)
+        elif isinstance(envelope.payload, dict):
+            nested_attrs = envelope.payload.get("attributes")
+            if isinstance(nested_attrs, dict):
+                merged.update(nested_attrs)
+            merged.update(envelope.payload)
+        merged.update(event_metadata)
+        merged.update(metadata)
+        return merged
+
+    @staticmethod
+    def _absorb_tsunami_hypocenter(merged: dict[str, Any]) -> None:
+        """把 issue_hypocenter 中的震中字段回填到 merged。"""
+        hypocenter = merged.get("issue_hypocenter")
+        if not isinstance(hypocenter, dict):
+            return
+        for key in ("latitude", "longitude", "magnitude", "place_name", "depth"):
+            if merged.get(key) in (None, "") and hypocenter.get(key) not in (None, ""):
+                merged[key] = hypocenter.get(key)
+        if merged.get("place_name") in (None, ""):
+            hypo_name = hypocenter.get("hypoCenterName") or hypocenter.get("place_name")
+            if hypo_name not in (None, ""):
+                merged["place_name"] = hypo_name
+        if merged.get("magnitude") in (None, ""):
+            mag = hypocenter.get("magnitude")
+            if mag not in (None, ""):
+                merged["magnitude"] = mag
+
+    @staticmethod
+    def _resolve_tsunami_place_fields(merged: dict[str, Any]) -> tuple[str, str]:
+        """解析海啸 place_name / subtitle，过滤泛化标题。"""
+        place_name = str(
+            merged.get("place_name") or merged.get("subtitle") or ""
+        ).strip()
+        subtitle_raw = str(merged.get("subtitle") or "").strip()
+        if subtitle_raw and not is_generic_tsunami_title(subtitle_raw):
+            subtitle = subtitle_raw
+        elif place_name and not is_generic_tsunami_title(place_name):
+            subtitle = place_name
+        else:
+            subtitle = (
+                place_name
+                if place_name and not is_generic_tsunami_title(place_name)
+                else ""
+            )
+            if is_generic_tsunami_title(place_name):
+                place_name = ""
+        if is_generic_tsunami_title(place_name):
+            place_name = ""
+        if not subtitle and place_name:
+            subtitle = place_name
+        return place_name, subtitle
+
+    @staticmethod
     def apply_tsunami_fields(
         record: dict[str, Any],
         event: EventEnvelope,
     ) -> dict[str, Any]:
-        """填充海啸事件专有字段。"""
+        """填充海啸事件专有字段。
+
+        优先吸收 EQSC 丰富字段（震中、震级、区域摘要、最大波高、训练/解除标记），
+        并兼容中国海啸与 P2P 结构。
+        使用海啸专用列：max_wave_height / area_count / immediate_area_count /
+        is_cancelled / is_training，不复用台风 wind_speed。
+        """
         envelope = _adapt_event_envelope(event)
         data = envelope.event
         if not isinstance(data, TsunamiEvent):
             return record
 
-        # 海啸记录当前主要补齐发布时间与预警级别，结构保持尽量精简。
+        merged = EventRecordFactory._merge_tsunami_payload_context(envelope, data)
+        EventRecordFactory._absorb_tsunami_hypocenter(merged)
+
+        source_id = str(envelope.source_id or record.get("source_id") or "")
+        region = resolve_tsunami_region(source_id, merged)
+        raw_level = str(
+            data.level or merged.get("level") or merged.get("max_grade") or ""
+        ).strip()
+        cancelled = bool(
+            merged.get("cancelled")
+            or raw_level in {"解除", "取消"}
+            or "解除" in str(data.title or "")
+        )
+        is_training = bool(merged.get("is_training") or merged.get("isTraining"))
+
+        if region == "japan":
+            level = normalize_jp_tsunami_level(raw_level, cancelled=cancelled)
+        elif region == "china":
+            level = normalize_cn_tsunami_level(raw_level)
+        else:
+            level = raw_level
+
+        place_name, subtitle = EventRecordFactory._resolve_tsunami_place_fields(merged)
+
+        latitude = to_optional_float(merged.get("latitude"))
+        longitude = to_optional_float(merged.get("longitude"))
+        magnitude = to_optional_float(merged.get("magnitude"))
+        depth = to_optional_float(merged.get("depth"))
+
+        max_wave_height_value = to_optional_float(
+            merged.get("max_wave_height_value")
+            or merged.get("maxHeightValue")
+            or merged.get("max_wave_height")
+            or merged.get("maxWaveHeight")
+        )
+        max_wave_height_text = str(
+            merged.get("max_wave_height") or merged.get("maxWaveHeight") or ""
+        ).strip()
+        if not max_wave_height_text and max_wave_height_value is not None:
+            max_wave_height_text = f"{max_wave_height_value}m"
+        max_wave_height_area = str(
+            merged.get("max_wave_height_area") or merged.get("maxWaveHeightArea") or ""
+        ).strip()
+
+        forecasts_raw = merged.get("forecasts")
+        forecasts = forecasts_raw if isinstance(forecasts_raw, list) else []
+
+        area_count = merged.get("area_count")
+        if area_count is None and forecasts:
+            area_count = len(forecasts)
+        try:
+            area_count_int = int(area_count) if area_count is not None else None
+        except (TypeError, ValueError):
+            area_count_int = None
+
+        immediate_area_count = merged.get("immediate_area_count")
+        try:
+            immediate_count_int = (
+                int(immediate_area_count) if immediate_area_count is not None else None
+            )
+        except (TypeError, ValueError):
+            immediate_count_int = None
+
+        # 监测站：优先显式计数，再回退列表
+        stations_raw = (
+            merged.get("monitoring_stations")
+            or merged.get("waterLevelMonitoring")
+            or []
+        )
+        stations = stations_raw if isinstance(stations_raw, list) else []
+        station_count = merged.get("station_count") or merged.get(
+            "monitoring_station_count"
+        )
+        if station_count is None and stations:
+            station_count = len(stations)
+        try:
+            station_count_int = (
+                int(station_count) if station_count is not None else None
+            )
+        except (TypeError, ValueError):
+            station_count_int = None
+
+        # 级别分布（JP EQSC）
+        grade_counts = merged.get("grade_counts")
+        if not isinstance(grade_counts, dict):
+            grade_counts = {}
+            for item in forecasts:
+                if not isinstance(item, dict):
+                    continue
+                grade_key = str(
+                    item.get("grade") or item.get("warningLevel") or ""
+                ).strip()
+                if not grade_key:
+                    continue
+                grade_counts[grade_key] = grade_counts.get(grade_key, 0) + 1
+
+        # 从 forecasts / stations 提炼亮点，写入 weather_detail 供列表解析
+        # （列表 API 不回传完整 forecasts，靠摘要文本对齐 presenter 语义）
+        forecast_highlights = EventRecordFactory._build_tsunami_forecast_highlights(
+            forecasts,
+            region=region,
+            limit=6,
+        )
+        station_highlights = EventRecordFactory._build_tsunami_station_highlights(
+            stations,
+            limit=4,
+        )
+
+        # 若波高区缺失，从 forecasts 推断最高波高区
+        if not max_wave_height_area and forecasts:
+            best_area = ""
+            best_value: float | None = None
+            for item in forecasts:
+                if not isinstance(item, dict):
+                    continue
+                name = str(
+                    item.get("name")
+                    or item.get("forecastArea")
+                    or item.get("forecastPoint")
+                    or ""
+                ).strip()
+                value = to_optional_float(
+                    item.get("maxHeightValue")
+                    or item.get("max_wave_height")
+                    or item.get("maxWaveHeight")
+                )
+                if value is None:
+                    continue
+                if best_value is None or value > best_value:
+                    best_value = value
+                    best_area = name
+                    if not max_wave_height_text:
+                        desc = str(
+                            item.get("maxHeightDescription")
+                            or item.get("maxWaveHeight")
+                            or ""
+                        ).strip()
+                        max_wave_height_text = desc or f"{value}m"
+                        max_wave_height_value = value
+            if best_area:
+                max_wave_height_area = best_area
+
+        if immediate_count_int is None and forecasts:
+            immediate_count_int = (
+                sum(
+                    1
+                    for item in forecasts
+                    if isinstance(item, dict) and bool(item.get("immediate"))
+                )
+                or None
+            )
+
+        real_event_id = (
+            str(
+                merged.get("event_id") or merged.get("code") or envelope.id or ""
+            ).strip()
+            or None
+        )
+
+        info_parts: list[str] = []
+        if region == "japan":
+            info_parts.append("jma")
+        elif region == "china":
+            info_parts.append("cn")
+        if cancelled or level == "解除":
+            info_parts.append("cancelled")
+        if is_training:
+            info_parts.append("training")
+        source_family = str(merged.get("source_family") or "").strip()
+        if source_family:
+            info_parts.append(source_family)
+        info_type = "|".join(info_parts) if info_parts else None
+
+        weather_detail = build_tsunami_weather_detail(
+            region=region,
+            level=level,
+            area_count=area_count_int,
+            immediate_area_count=immediate_count_int,
+            max_wave_height=max_wave_height_text or None,
+            max_wave_height_value=max_wave_height_value,
+            max_wave_height_area=max_wave_height_area or None,
+            station_count=station_count_int,
+            cancelled=cancelled,
+            is_training=is_training,
+            batch=merged.get("batch"),
+            magnitude=magnitude,
+            depth=depth,
+            place_name=place_name or None,
+            grade_counts=grade_counts or None,
+            forecast_highlights=forecast_highlights or None,
+            station_highlights=station_highlights or None,
+        )
+
+        # 列表标题始终用结构化字段重建，覆盖旧的「标题 (等级)」模板
+        record["description"] = build_tsunami_list_title(
+            region=region,
+            level=level or raw_level,
+            title=str(data.title or "").strip(),
+            place_name=place_name,
+            magnitude=magnitude,
+            batch=merged.get("batch"),
+            cancelled=cancelled or level == "解除",
+            is_training=is_training,
+            max_wave_height=max_wave_height_text or None,
+            area_count=area_count_int,
+        )
+
         record.update(
             {
                 "time": data.issued_at.isoformat() if data.issued_at else None,
-                "level": data.level,
+                "level": level or raw_level or None,
+                "subtitle": subtitle,
+                "place_name": place_name or None,
+                "weather_detail": weather_detail,
+                "info_type": info_type,
+                "real_event_id": real_event_id,
+                "latitude": latitude,
+                "longitude": longitude,
+                "magnitude": magnitude,
+                "depth": depth,
+                "max_wave_height": max_wave_height_value,
+                "area_count": area_count_int,
+                "immediate_area_count": immediate_count_int,
+                "is_cancelled": bool(cancelled or level == "解除"),
+                "is_training": bool(is_training),
             }
         )
+        # 首报默认 report_num=1；后续合并会在 merger 中递增
+        if record.get("report_num") in (None, "", 0):
+            record["report_num"] = 1
         return record
 
     @staticmethod
@@ -405,7 +837,7 @@ class EventRecordFactory:
             # 气象事件重点补充副标题、详细说明、颜色级别和类型编码。
             EventRecordFactory.apply_weather_fields(record, event)
         elif isinstance(envelope.event, TsunamiEvent):
-            # 海啸事件则补充发布时间与等级字段即可。
+            # 海啸事件补充发布时间、等级、震中与区域摘要（优先 EQSC 字段）。
             EventRecordFactory.apply_tsunami_fields(record, event)
         elif isinstance(envelope.event, TyphoonEvent):
             # 台风事件补充中心位置、强度参数与更新时间。

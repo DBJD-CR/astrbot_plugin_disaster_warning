@@ -21,13 +21,16 @@ function EventCard({
     isExpanded = false, 
     reportIndex = null 
 }) {
+    const formatters = window.EventFormatSerialization || window.EventFormatters || {};
     const {
         buildEarthquakeTitle,
         getEarthquakeBadgeContent,
         buildWeatherIconFallbackHandler: _rawBuildHandler,
         resolveWeatherColor = () => null,
         resolveWeatherFallbackUrl = () => null,
-    } = window.EventFormatSerialization || window.EventFormatters || {};
+        buildTsunamiTitle = null,
+        buildTsunamiMeta = null,
+    } = formatters;
     const buildWeatherIconFallbackHandler = _rawBuildHandler || ((_, cb) => (e) => typeof cb === 'function' && cb(e));
     const evt = event || {};
     const eventType = evt.type || evt._groupType || '';
@@ -38,7 +41,7 @@ function EventCard({
     const isWeather = eventType === 'weather_alarm';
     const isTyphoon = eventType === 'typhoon';
     
-    // 生成动态标题文本：地震调用特定算法，气象与台风优先展示 subtitle，其他事件展示 description
+    // 生成动态标题文本：地震调用特定算法，气象与台风优先展示 subtitle，海啸走专用构建器
     const normalizeTyphoonTitle = (value) => {
         const text = String(value || '').trim();
         if (!text) return '';
@@ -47,6 +50,13 @@ function EventCard({
             .replace(/\s*\(\s*/g, '（')
             .replace(/\s*\)\s*/g, '）')
             .replace(/TD\s*No\.?\s*/gi, 'TD');
+    };
+    // 海啸：专用标题构建（兼容旧库「海啸信息 (信息)」与新结构化字段）
+    const resolveTsunamiDisplayTitle = () => {
+        if (typeof buildTsunamiTitle === 'function') {
+            return buildTsunamiTitle(evt) || '海啸情报';
+        }
+        return evt.description || evt.subtitle || evt.place_name || '海啸情报';
     };
     const displayTitle = isEarthquake
         ? buildEarthquakeTitle(evt)
@@ -58,9 +68,30 @@ function EventCard({
                 || normalizeTyphoonTitle(evt.real_event_id)
                 || '未知台风'
             )
-            : ((isWeather)
-                ? (evt.subtitle || evt.description || '未知位置')
-                : (evt.description || '未知位置')));
+            : (isTsunami
+                ? resolveTsunamiDisplayTitle()
+                : ((isWeather)
+                    ? (evt.subtitle || evt.description || '未知位置')
+                    : (evt.description || '未知位置'))));
+    const tsunamiMetaModel = isTsunami && typeof buildTsunamiMeta === 'function'
+        ? buildTsunamiMeta(evt)
+        : null;
+    const tsunamiMeta = (() => {
+        if (!tsunamiMetaModel) return null;
+        // 兼容旧版返回字符串
+        if (typeof tsunamiMetaModel === 'string') {
+            return tsunamiMetaModel
+                ? { chips: [], sections: [], text: tsunamiMetaModel, tone: 'default' }
+                : null;
+        }
+        const chips = Array.isArray(tsunamiMetaModel.chips) ? tsunamiMetaModel.chips : [];
+        const sections = Array.isArray(tsunamiMetaModel.sections) ? tsunamiMetaModel.sections : [];
+        if (!chips.length && !sections.length && !tsunamiMetaModel.text) return null;
+        return tsunamiMetaModel;
+    })();
+    const tsunamiToneClass = tsunamiMeta?.tone
+        ? `is-tone-${tsunamiMeta.tone}`
+        : '';
 
     // 初始化徽标内容与对应 CSS 类名
     let badgeContent = '❓';
@@ -269,6 +300,56 @@ function EventCard({
                 {typhoonMeta && (
                     <div className="event-meta event-meta-typhoon">
                         <span className="event-meta-item">{typhoonMeta}</span>
+                    </div>
+                )}
+                {tsunamiMeta && (
+                    <div className={`event-tsunami-panel ${tsunamiToneClass} ${isHistory ? 'is-history' : ''}`.trim()}>
+                        {Array.isArray(tsunamiMeta.chips) && tsunamiMeta.chips.length > 0 && (
+                            <div className="event-tsunami-chips">
+                                {tsunamiMeta.chips.map((chip) => (
+                                    <span
+                                        key={chip.key || chip.label}
+                                        className={`event-tsunami-chip is-${chip.tone || 'default'}`}
+                                    >
+                                        {chip.icon ? <span className="event-tsunami-chip-icon">{chip.icon}</span> : null}
+                                        <span className="event-tsunami-chip-label">{chip.label}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {Array.isArray(tsunamiMeta.sections) && tsunamiMeta.sections.length > 0 && (
+                            <div className="event-tsunami-sections">
+                                {tsunamiMeta.sections.map((section) => (
+                                    <div
+                                        key={section.key || section.title}
+                                        className={`event-tsunami-section is-${section.tone || 'default'}`}
+                                    >
+                                        <div className="event-tsunami-section-head">
+                                            {section.icon ? <span className="event-tsunami-section-icon">{section.icon}</span> : null}
+                                            <span className="event-tsunami-section-title">{section.title}</span>
+                                        </div>
+                                        {Array.isArray(section.items) && section.items.length > 0 ? (
+                                            <ul className="event-tsunami-section-list">
+                                                {section.items.map((item, idx) => (
+                                                    <li key={`${section.key || 'sec'}-${idx}`}>{item}</li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            section.body ? (
+                                                <div className="event-tsunami-section-body">{section.body}</div>
+                                            ) : null
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {(!Array.isArray(tsunamiMeta.chips) || !tsunamiMeta.chips.length)
+                            && (!Array.isArray(tsunamiMeta.sections) || !tsunamiMeta.sections.length)
+                            && tsunamiMeta.text ? (
+                            <div className="event-meta event-meta-tsunami">
+                                <span className="event-meta-item">{tsunamiMeta.text}</span>
+                            </div>
+                        ) : null}
                     </div>
                 )}
             </div>

@@ -10,7 +10,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ....utils.plugin_logger import plugin_logger
-from ...domain.event_models import EarthquakeEvent, EventEnvelope, TyphoonEvent
+from ...domain.event_models import (
+    EarthquakeEvent,
+    EventEnvelope,
+    TsunamiEvent,
+    TyphoonEvent,
+)
+from ...domain.tsunami.jma_tsunami_normalize import (
+    build_jma_tsunami_content_fingerprint,
+    coerce_bool,
+)
 from ...domain.typhoon.typhoon_ids import normalize_typhoon_id
 from ...sources.source_catalog import get_source_entry
 from .event_identity import EventIdentityService
@@ -38,6 +47,13 @@ class EventDeduplicationService:
         # 当同一台风的核心参数（等级、位置、风速、气压、移向移速、风圈半径）
         # 与上次推送完全一致时直接过滤，避免数据源刷屏。
         self._typhoon_cache: dict[str, str] = {}
+        # JMA 海啸跨源去重缓存：
+        # key = content_fingerprint
+        # value = {"source_id", "priority", "event_id", "ts"}
+        # EQSC 优先级更高：同内容后到的低优先级源会被吞掉。
+        # 带容量上限，防止长跑进程内存无限增长。
+        self._tsunami_cache: dict[str, dict[str, Any]] = {}
+        self._tsunami_cache_max_size = 512
 
     @staticmethod
     def _extract_issue_type_from_earthquake(
@@ -203,12 +219,147 @@ class EventDeduplicationService:
         )
         return True
 
+    @staticmethod
+    def _resolve_source_priority(source_id: str) -> int:
+        """读取 catalog 优先级；缺失时回退 0。"""
+        entry = get_source_entry(source_id)
+        if entry is None:
+            return 0
+        try:
+            return int(entry.priority)
+        except (TypeError, ValueError):
+            return 0
+
+    def _extract_tsunami_fingerprint(self, event: EventEnvelope) -> str:
+        """提取海啸内容指纹；优先用解析器写入的 content_fingerprint。"""
+        metadata = event.metadata if isinstance(event.metadata, dict) else {}
+        cached = str(metadata.get("content_fingerprint") or "").strip()
+        if cached:
+            return cached
+
+        domain = event.event
+        if not isinstance(domain, TsunamiEvent):
+            return ""
+        domain_meta = domain.metadata if isinstance(domain.metadata, dict) else {}
+        forecasts = metadata.get("forecasts") or domain_meta.get("forecasts") or []
+        if not isinstance(forecasts, list):
+            forecasts = []
+        cancelled = coerce_bool(
+            metadata.get("cancelled"),
+            default=str(domain.level or "") == "解除",
+        )
+        return build_jma_tsunami_content_fingerprint(
+            event_id=str(
+                event.id or metadata.get("event_id") or metadata.get("code") or ""
+            ),
+            cancelled=cancelled,
+            max_grade=str(domain.level or metadata.get("level") or ""),
+            areas=forecasts,
+            is_training=coerce_bool(metadata.get("is_training"), default=False),
+        )
+
+    def _remember_tsunami_fingerprint(
+        self,
+        fingerprint: str,
+        *,
+        source_id: str,
+        priority: int,
+        event_id: str,
+    ) -> None:
+        """写入海啸指纹缓存，并在超限时淘汰最旧条目。"""
+        self._tsunami_cache[fingerprint] = {
+            "source_id": source_id,
+            "priority": priority,
+            "event_id": event_id,
+            "ts": datetime.now(timezone.utc).timestamp(),
+        }
+        overflow = len(self._tsunami_cache) - int(self._tsunami_cache_max_size)
+        if overflow <= 0:
+            return
+        # 按时间戳升序淘汰最旧项
+        ordered = sorted(
+            self._tsunami_cache.items(),
+            key=lambda item: float((item[1] or {}).get("ts") or 0.0),
+        )
+        for key, _ in ordered[:overflow]:
+            self._tsunami_cache.pop(key, None)
+
+    def _should_push_tsunami(self, event: EventEnvelope) -> bool:
+        """JMA 海啸跨源去重：同内容指纹只推一次，EQSC 优先。
+
+        规则：
+        1. 指纹未见过 → 放行并记录
+        2. 指纹相同且来源优先级 <= 已记录 → 过滤
+        3. 指纹相同但来源优先级更高（如 EQSC 后到）→ 放行并升级缓存
+           （用于 P2P 先到简报、EQSC 后到完整报的升级场景；
+            若内容完全一致，EQSC 后到仍会因指纹相同且 priority 更高而放行一次，
+            但解析器指纹已含区域细节，EQSC 通常会因更丰富字段产生不同指纹从而放行更新）
+        """
+        if not isinstance(event.event, TsunamiEvent):
+            return True
+
+        source_id = self._get_source_id(event)
+        # 仅对日本海啸双源做跨源去重；中国海啸等保持放行
+        if source_id not in {"jma_tsunami_p2p", "jma_tsunami_eqsc"}:
+            return True
+
+        fingerprint = self._extract_tsunami_fingerprint(event)
+        if not fingerprint:
+            return True
+
+        priority = self._resolve_source_priority(source_id)
+        existing = self._tsunami_cache.get(fingerprint)
+        if existing is None:
+            self._remember_tsunami_fingerprint(
+                fingerprint,
+                source_id=source_id,
+                priority=priority,
+                event_id=str(event.id or ""),
+            )
+            return True
+
+        existing_priority = int(existing.get("priority") or 0)
+        existing_source = str(existing.get("source_id") or "")
+        if priority < existing_priority:
+            plugin_logger.info(
+                f"[灾害预警] 海啸内容与 {existing_source} 重复且优先级更低，"
+                f"过滤 {source_id} 推送 (event={event.id})",
+                is_event_linked=True,
+            )
+            return False
+        if priority == existing_priority and existing_source == source_id:
+            plugin_logger.info(
+                f"[灾害预警] 海啸内容未变化，过滤重复推送: {source_id} (event={event.id})",
+                is_event_linked=True,
+            )
+            return False
+        if priority == existing_priority and existing_source != source_id:
+            # 同优先级不同源：先到先得
+            plugin_logger.info(
+                f"[灾害预警] 海啸内容与 {existing_source} 重复，过滤 {source_id} 推送",
+                is_event_linked=True,
+            )
+            return False
+
+        # 更高优先级源后到：放行并升级缓存（例如 EQSC 覆盖 P2P）
+        self._remember_tsunami_fingerprint(
+            fingerprint,
+            source_id=source_id,
+            priority=priority,
+            event_id=str(event.id or ""),
+        )
+        plugin_logger.debug(
+            f"[灾害预警] 海啸高优先级源 {source_id} 覆盖 {existing_source}，允许推送"
+        )
+        return True
+
     def should_push_event(self, event: EventEnvelope) -> bool:
         """判断是否应该推送事件。
 
         台风事件走专用核心参数指纹去重链路，
+        海啸事件走 JMA 跨源内容指纹去重（EQSC 优先），
         地震事件进入指纹与报次更新判定链路，
-        其余非地震事件（海啸/气象预警等）直接放行。
+        其余非地震事件直接放行。
         """
         envelope = event
         domain_eq = self._get_domain_earthquake(event)
@@ -217,7 +368,11 @@ class EventDeduplicationService:
         if isinstance(envelope.event, TyphoonEvent):
             return self._should_push_typhoon(envelope)
 
-        # 非地震事件（海啸/气象预警等）直接放行，无需在此进行滑动时间窗口位置碰撞去重
+        # 海啸事件：P2P / EQSC 跨源内容去重
+        if isinstance(envelope.event, TsunamiEvent):
+            return self._should_push_tsunami(envelope)
+
+        # 非地震事件（气象预警等）直接放行，无需在此进行滑动时间窗口位置碰撞去重
         if domain_eq is None:
             return True
 

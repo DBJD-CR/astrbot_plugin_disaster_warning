@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from astrbot.api import logger
 
-from ...domain.event_models import EarthquakeEvent, EventEnvelope, TyphoonEvent
+from ...domain.event_models import (
+    EarthquakeEvent,
+    EventEnvelope,
+    TsunamiEvent,
+)
 from .event_record_factory import EventRecordFactory
 from .event_record_merger import EventRecordMerger
 
@@ -77,28 +81,95 @@ class StatsRecordService:
                 try:
                     if is_major:
                         push_record["is_major"] = True
-                    # 台风事件可能已通过 EQSC 历史重建写入数据库但不在内存列表中，
-                    # 此时走 insert_event 会创建重复主表记录。
-                    # 先检查数据库是否已有该台风，若有则走 update_event 追加新报次。
-                    if isinstance(event.event, TyphoonEvent):
-                        existing = await self.manager.db.find_event_by_real_id(
-                            push_record.get("real_event_id"),
-                            push_record.get("source"),
+                    # 内存列表可能在重启/裁剪后丢失已有记录；写库前再查一次数据库，
+                    # 避免海啸/台风等被反复 insert 成多行。
+                    existing = await self._find_existing_db_record(push_record, event)
+                    if existing:
+                        next_count = int(existing.get("update_count", 1) or 1) + 1
+                        push_record["update_count"] = next_count
+                        # 以数据库已有行的定位键为准，避免 source/unique_id 别名导致 update 未命中。
+                        existing_source = str(
+                            existing.get("source")
+                            or existing.get("source_id")
+                            or push_record.get("source")
+                            or source_id
+                            or ""
+                        ).strip()
+                        if existing_source:
+                            push_record["source"] = existing_source
+                            push_record.setdefault("source_id", existing_source)
+                        existing_unique = str(existing.get("unique_id") or "").strip()
+                        if existing_unique:
+                            push_record["unique_id"] = existing_unique
+                        existing_real = str(existing.get("real_event_id") or "").strip()
+                        if existing_real:
+                            push_record["real_event_id"] = existing_real
+                        # 海啸多报：用 update_count 作为报次，便于前端时间线展示
+                        if isinstance(event.event, TsunamiEvent):
+                            push_record["report_num"] = next_count
+                            if not push_record.get("real_event_id"):
+                                push_record["real_event_id"] = (
+                                    existing_real or push_record.get("event_id")
+                                )
+                        await self.manager.db.update_event(
+                            existing_source or source_id,
+                            push_record,
                         )
-                        if existing:
-                            # 数据库已有记录（来自 EQSC 重建），走更新而非插入
-                            push_record["update_count"] = (
-                                int(existing.get("update_count", 1) or 1) + 1
-                            )
-                            await self.manager.db.update_event(
-                                push_record.get("source"), push_record
-                            )
-                        else:
-                            await self.manager.db.insert_event(push_record)
                     else:
+                        if isinstance(event.event, TsunamiEvent):
+                            push_record.setdefault("report_num", 1)
                         await self.manager.db.insert_event(push_record)
                 except Exception as e:
                     logger.debug(f"[灾害预警] 保存到数据库失败（可能已存在）: {e}")
 
         if len(target_list) > max_len:
             del target_list[max_len:]
+
+    async def _find_existing_db_record(
+        self,
+        push_record: dict,
+        event: EventEnvelope,
+    ) -> dict | None:
+        """按 real_event_id / unique_id 查找数据库中已有记录。"""
+        source = str(push_record.get("source") or event.source_id or "").strip()
+        real_event_id = str(push_record.get("real_event_id") or "").strip()
+        unique_id = str(push_record.get("unique_id") or "").strip()
+        db = self.manager.db
+
+        if real_event_id and source:
+            existing = await db.find_event_by_real_id(real_event_id, source)
+            if existing:
+                return existing
+
+        if unique_id and source:
+            finder = getattr(db, "find_event_by_unique_id", None)
+            if callable(finder):
+                existing = await finder(unique_id, source)
+                if existing:
+                    return existing
+
+        # 海啸历史数据常见：real_event_id 为空、unique_id 仅为裸 id
+        if isinstance(event.event, TsunamiEvent) and unique_id:
+            finder = getattr(db, "find_event_by_unique_id", None)
+            if callable(finder):
+                bare = unique_id.split("|", 1)[-1]
+                for candidate in dict.fromkeys(
+                    [
+                        unique_id,
+                        bare,
+                        f"{source}|{bare}" if source and bare else "",
+                        f"china_tsunami_fanstudio|{bare}" if bare else "",
+                        f"fan_studio_tsunami|{bare}" if bare else "",
+                    ]
+                ):
+                    if not candidate:
+                        continue
+                    for src in dict.fromkeys(
+                        [source, "china_tsunami_fanstudio", "fan_studio_tsunami"]
+                    ):
+                        if not src:
+                            continue
+                        existing = await finder(candidate, src)
+                        if existing:
+                            return existing
+        return None

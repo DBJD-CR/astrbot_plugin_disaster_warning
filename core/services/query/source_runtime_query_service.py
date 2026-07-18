@@ -28,6 +28,9 @@ _CONNECTION_DISPLAY_NAME: dict[str, str] = {
     "wolfx_all": "Wolfx",
     "global_quake": "Global Quake",
     "snet_msil": "NIED S-Net",
+    # EQSC 为 HTTP 通道；展示名必须与 ConnectionsPayloadBuilder.EQSC_DISPLAY_NAME
+    # 完全一致，否则 catalog 占位会以原始键 "eqsc" 残留，前端误显示“未连接”。
+    "eqsc": "EQSC API",
 }
 
 

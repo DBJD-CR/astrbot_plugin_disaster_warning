@@ -214,6 +214,500 @@
         return `M ${magText} ${normalizedTitle}`;
     }
 
+    // ---- 海啸列表标题 / 元信息（兼容升级前旧记录）----
+
+    const JP_TSUNAMI_LEVEL_DISPLAY = {
+        Minor: '若干海面变动',
+        Watch: '海啸注意报',
+        Warning: '海啸警报',
+        MajorWarning: '大海啸警报',
+        None: '海啸预报',
+        Unknown: '海啸预报',
+        解除: '海啸解除',
+    };
+
+    const CN_TSUNAMI_COLORS = ['红色', '橙色', '黄色', '蓝色'];
+
+    function cleanTsunamiText(value) {
+        const text = String(value ?? '').trim();
+        if (!text) return '';
+        const lowered = text.toLowerCase();
+        if (['null', 'none', 'unknown', '未知', '未知地点', '未知位置'].includes(lowered)) {
+            return '';
+        }
+        return text;
+    }
+
+    function isGenericTsunamiTitle(text) {
+        const cleaned = cleanTsunamiText(text);
+        if (!cleaned) return true;
+        const generics = new Set([
+            '海啸信息', '海啸情报', '海啸预警', '海啸警报', '海啸解除', '海啸解除通告',
+            '津波予報', '津波注意報', '津波警報', '大津波警報', '津波予報（解除）',
+            '若干の海面変動', '若干海面变动', '海啸注意报', '大海啸警报',
+        ]);
+        if (generics.has(cleaned)) return true;
+        if (
+            cleaned.startsWith('海啸')
+            && /信息|警报|预警|解除|注意报/.test(cleaned)
+            && !cleaned.includes('·')
+            && !/[Mm]j?\s*[\d.]/.test(cleaned)
+            && cleaned.length <= 12
+        ) {
+            return true;
+        }
+        return false;
+    }
+
+    function isLegacyTsunamiDescription(description, level) {
+        const text = cleanTsunamiText(description);
+        if (!text) return true;
+        if (text.includes(' (') && text.endsWith(')')) {
+            const idx = text.lastIndexOf(' (');
+            const head = text.slice(0, idx).trim();
+            const levelPart = text.slice(idx + 2, -1).trim();
+            if (head && levelPart) {
+                if (levelPart && head.includes(levelPart)) return true;
+                if (
+                    head === '海啸信息'
+                    || head === `海啸${levelPart}`
+                    || head === `海啸${levelPart}警报`
+                ) {
+                    return true;
+                }
+                const levelText = cleanTsunamiText(level);
+                if (levelText && levelPart === levelText) return true;
+            }
+        }
+        return isGenericTsunamiTitle(text);
+    }
+
+    function resolveTsunamiRegion(evt) {
+        const source = String(evt?.source_id || evt?.source || '').toLowerCase();
+        const infoType = String(evt?.info_type || '').toLowerCase();
+        if (
+            infoType.includes('jma')
+            || source.includes('jma')
+            || source.includes('p2p')
+            || source.includes('eqsc')
+            || source.includes('japan')
+        ) {
+            return 'japan';
+        }
+        if (
+            infoType.includes('cn')
+            || source.includes('fan')
+            || source.includes('china')
+            || source.includes('tsunami_fan')
+        ) {
+            return 'china';
+        }
+        const level = cleanTsunamiText(evt?.level);
+        if (['Minor', 'Watch', 'Warning', 'MajorWarning', 'None', 'Unknown'].includes(level)) {
+            return 'japan';
+        }
+        if (level === '信息' || CN_TSUNAMI_COLORS.includes(level) || level === '解除') {
+            return 'china';
+        }
+        return 'unknown';
+    }
+
+    function formatTsunamiLevelLabel(evt) {
+        const cancelled = Boolean(
+            evt?.is_cancelled
+            || evt?.cancelled
+            || cleanTsunamiText(evt?.level) === '解除'
+            || String(evt?.description || '').includes('解除')
+        );
+        if (cancelled) return '海啸解除';
+
+        const region = resolveTsunamiRegion(evt);
+        const level = cleanTsunamiText(evt?.level);
+
+        if (region === 'japan') {
+            if (JP_TSUNAMI_LEVEL_DISPLAY[level]) return JP_TSUNAMI_LEVEL_DISPLAY[level];
+            const lower = level.toLowerCase();
+            const map = {
+                minor: '若干海面变动',
+                watch: '海啸注意报',
+                warning: '海啸警报',
+                majorwarning: '大海啸警报',
+            };
+            if (map[lower]) return map[lower];
+            return level || '海啸预报';
+        }
+
+        if (level === '信息') return '海啸信息';
+        if (CN_TSUNAMI_COLORS.includes(level)) return `海啸${level}警报`;
+        if (level === '解除') return '海啸解除';
+
+        // 从 description / title 提取颜色
+        const haystack = `${evt?.description || ''} ${evt?.subtitle || ''}`;
+        for (const color of CN_TSUNAMI_COLORS) {
+            if (haystack.includes(color)) return `海啸${color}警报`;
+        }
+        if (haystack.includes('信息')) return '海啸信息';
+        if (level) return level.startsWith('海啸') ? level : `海啸${level}`;
+        return '海啸情报';
+    }
+
+    function formatTsunamiMagnitudeToken(evt) {
+        const raw = evt?.magnitude;
+        if (raw === null || raw === undefined || raw === '') return '';
+        const num = Number(raw);
+        if (!Number.isFinite(num)) return '';
+        const magText = Number.isInteger(num) ? `${num}.0` : String(Number(num.toFixed(1)));
+        const region = resolveTsunamiRegion(evt);
+        return region === 'japan' ? `Mj${magText}` : `M${magText}`;
+    }
+
+    function resolveTsunamiPlaceName(evt) {
+        const candidates = [
+            evt?.place_name,
+            evt?.placeName,
+            evt?.subtitle,
+        ];
+        for (const item of candidates) {
+            const text = cleanTsunamiText(item);
+            if (text && !isGenericTsunamiTitle(text)) return text;
+        }
+        // 旧 description 若已是「级别 · 地点 Mxx」可截取地点
+        const desc = cleanTsunamiText(evt?.description);
+        if (desc && desc.includes('·')) {
+            const parts = desc.split('·').map((p) => p.trim()).filter(Boolean);
+            if (parts.length >= 2) {
+                // 去掉末尾震级
+                let place = parts[1].replace(/\s*M[jJ]?\s*[\d.]+$/, '').trim();
+                place = place.replace(/（第.+?）$/, '').trim();
+                if (place && !isGenericTsunamiTitle(place)) return place;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * 构建海啸列表主标题。
+     * 优先用后端新 description；若是旧「海啸信息 (信息)」则用结构化字段重拼。
+     */
+    function buildTsunamiTitle(evt) {
+        if (!evt || typeof evt !== 'object') return '海啸情报';
+
+        const description = cleanTsunamiText(evt.description);
+        const level = cleanTsunamiText(evt.level);
+        const place = resolveTsunamiPlaceName(evt);
+        const magToken = formatTsunamiMagnitudeToken(evt);
+        const isTraining = Boolean(evt.is_training || evt.isTraining);
+
+        // 新 description 已经可读：直接用
+        if (description && !isLegacyTsunamiDescription(description, level)) {
+            // 训练标记兜底
+            if (isTraining && !description.includes('[训练]') && !description.includes('训练')) {
+                return `[训练] ${description}`;
+            }
+            return description;
+        }
+
+        const levelLabel = formatTsunamiLevelLabel(evt);
+        let head = levelLabel;
+        if (isTraining && !head.startsWith('[训练]')) {
+            head = `[训练] ${head}`;
+        }
+
+        const body = [];
+        if (place) {
+            body.push(magToken ? `${place} ${magToken}` : place);
+        } else if (magToken) {
+            body.push(magToken);
+        }
+
+        // 无地点/震级时补波高或预报区（新字段；旧数据可能为空）
+        if (!body.length) {
+            const waveRaw = evt.max_wave_height;
+            if (waveRaw !== null && waveRaw !== undefined && waveRaw !== '') {
+                const waveNum = Number(waveRaw);
+                if (Number.isFinite(waveNum) && waveNum > 0) {
+                    body.push(`最大波高 ${waveNum}m`);
+                } else {
+                    const waveText = cleanTsunamiText(waveRaw);
+                    if (waveText) body.push(`最大波高 ${waveText}`);
+                }
+            }
+            const areaCount = Number(evt.area_count);
+            if (!body.length && Number.isFinite(areaCount) && areaCount > 0) {
+                body.push(`预报区 ${areaCount}`);
+            }
+        }
+
+        if (body.length) {
+            return `${head} · ${body.join(' · ')}`;
+        }
+        return head || '海啸情报';
+    }
+
+    /**
+     * 解析 weather_detail 中的结构化片段（新入库摘要）。
+     * 例：预报区 8，立即到达 2，最大波高 3m（福島県），监测站 4，
+     *     级别分布 海啸警报 3 / 海啸注意报 5，重点预报 ...，监测实况 ...
+     */
+    function parseTsunamiWeatherDetail(detailText) {
+        const detail = cleanTsunamiText(detailText);
+        const result = {
+            regionLabel: '',
+            areaCount: null,
+            immediateCount: null,
+            stationCount: null,
+            maxWaveText: '',
+            maxWaveArea: '',
+            gradeDistribution: '',
+            forecastHighlights: [],
+            stationHighlights: [],
+            depthText: '',
+            batchText: '',
+            raw: detail,
+        };
+        if (!detail) return result;
+
+        if (detail.includes('日本海啸')) result.regionLabel = '日本';
+        else if (detail.includes('中国海啸')) result.regionLabel = '中国';
+
+        const areaMatch = detail.match(/预报区\s*(\d+)/);
+        if (areaMatch) result.areaCount = Number(areaMatch[1]);
+
+        const immediateMatch = detail.match(/立即到达\s*(\d+)/);
+        if (immediateMatch) result.immediateCount = Number(immediateMatch[1]);
+
+        const stationMatch = detail.match(/监测站\s*(\d+)/);
+        if (stationMatch) result.stationCount = Number(stationMatch[1]);
+
+        const waveMatch = detail.match(/最大波高\s*([^，,]+)/);
+        if (waveMatch) {
+            const waveChunk = waveMatch[1].trim();
+            const areaInParen = waveChunk.match(/（([^）]+)）|\(([^)]+)\)/);
+            if (areaInParen) {
+                result.maxWaveArea = (areaInParen[1] || areaInParen[2] || '').trim();
+                result.maxWaveText = waveChunk.replace(/（[^）]+）|\([^)]+\)/g, '').trim();
+            } else {
+                result.maxWaveText = waveChunk;
+            }
+        }
+
+        const gradeMatch = detail.match(/级别分布\s*([^，,]+)/);
+        if (gradeMatch) result.gradeDistribution = gradeMatch[1].trim();
+
+        const forecastMatch = detail.match(/重点预报\s*([^，,]+)/);
+        if (forecastMatch) {
+            result.forecastHighlights = forecastMatch[1]
+                .split(/[；;]/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+
+        const stationHighlightMatch = detail.match(/监测实况\s*([^，,]+)/);
+        if (stationHighlightMatch) {
+            result.stationHighlights = stationHighlightMatch[1]
+                .split(/[；;]/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+
+        const depthMatch = detail.match(/深度\s*([\d.]+)\s*km/i);
+        if (depthMatch) result.depthText = `${depthMatch[1]}km`;
+
+        const batchMatch = detail.match(/批次\s*([^\s，,]+)/);
+        if (batchMatch) result.batchText = batchMatch[1];
+
+        return result;
+    }
+
+    function resolveTsunamiLevelTone(evt) {
+        const cancelled = Boolean(
+            evt?.is_cancelled
+            || evt?.cancelled
+            || cleanTsunamiText(evt?.level) === '解除'
+            || String(evt?.description || '').includes('解除')
+        );
+        if (cancelled) return 'cancel';
+        const level = cleanTsunamiText(evt?.level);
+        const haystack = `${level} ${evt?.description || ''} ${evt?.weather_detail || ''}`;
+        if (/MajorWarning|大海啸|红色/.test(haystack)) return 'major';
+        if (/Warning|海啸警报|橙色/.test(haystack) && !/注意/.test(haystack)) return 'warning';
+        if (/Watch|注意报|黄色/.test(haystack)) return 'watch';
+        if (/蓝色/.test(haystack)) return 'blue';
+        if (/Minor|若干|信息|预报/.test(haystack)) return 'info';
+        return 'default';
+    }
+
+    /**
+     * 海啸卡片结构化元信息（对齐推送展示器语义）。
+     * 返回 chips + 重点预报/监测摘要；旧数据字段缺失时自动降级。
+     */
+    function buildTsunamiMeta(evt) {
+        if (!evt || typeof evt !== 'object') {
+            return { chips: [], sections: [], text: '' };
+        }
+
+        const parsed = parseTsunamiWeatherDetail(evt.weather_detail);
+        const chips = [];
+        const sections = [];
+        const levelLabel = formatTsunamiLevelLabel(evt);
+        const tone = resolveTsunamiLevelTone(evt);
+        const place = resolveTsunamiPlaceName(evt);
+        const magToken = formatTsunamiMagnitudeToken(evt);
+        const region = resolveTsunamiRegion(evt);
+
+        const pushChip = (key, icon, label, chipTone = 'default') => {
+            if (!label) return;
+            chips.push({ key, icon, label, tone: chipTone });
+        };
+
+        if (levelLabel) pushChip('level', '📋', levelLabel, tone);
+        if (parsed.regionLabel) pushChip('region', '🌏', parsed.regionLabel, 'default');
+        else if (region === 'japan') pushChip('region', '🌏', '日本', 'default');
+        else if (region === 'china') pushChip('region', '🌏', '中国', 'default');
+
+        if (place) pushChip('place', '🌍', place, 'place');
+        if (magToken) pushChip('mag', '🧭', magToken, 'mag');
+
+        const depthRaw = evt.depth;
+        if (depthRaw !== null && depthRaw !== undefined && depthRaw !== '') {
+            const depthNum = Number(depthRaw);
+            if (Number.isFinite(depthNum)) {
+                const depthText = Number.isInteger(depthNum) ? `${depthNum}` : String(depthNum);
+                pushChip('depth', '⬇️', `深度 ${depthText}km`, 'default');
+            }
+        } else if (parsed.depthText) {
+            pushChip('depth', '⬇️', `深度 ${parsed.depthText}`, 'default');
+        }
+
+        // 波高：结构化字段优先，再回退 weather_detail
+        let waveLabel = '';
+        const waveRaw = evt.max_wave_height;
+        if (waveRaw !== null && waveRaw !== undefined && waveRaw !== '') {
+            const waveNum = Number(waveRaw);
+            if (Number.isFinite(waveNum) && waveNum > 0) {
+                waveLabel = `最大波高 ${waveNum}m`;
+            } else {
+                const waveText = cleanTsunamiText(waveRaw);
+                if (waveText) waveLabel = `最大波高 ${waveText}`;
+            }
+        }
+        if (!waveLabel && parsed.maxWaveText) {
+            waveLabel = `最大波高 ${parsed.maxWaveText}`;
+        }
+        if (waveLabel && parsed.maxWaveArea) {
+            waveLabel = `${waveLabel}（${parsed.maxWaveArea}）`;
+        }
+        if (waveLabel) pushChip('wave', '🌊', waveLabel, 'wave');
+
+        const areaCount = Number(evt.area_count);
+        if (Number.isFinite(areaCount) && areaCount > 0) {
+            pushChip('areas', '📍', `预报区 ${areaCount}`, 'area');
+        } else if (parsed.areaCount) {
+            pushChip('areas', '📍', `预报区 ${parsed.areaCount}`, 'area');
+        }
+
+        const immediate = Number(evt.immediate_area_count);
+        if (Number.isFinite(immediate) && immediate > 0) {
+            pushChip('immediate', '🚨', `立即到达 ${immediate}`, 'danger');
+        } else if (parsed.immediateCount) {
+            pushChip('immediate', '🚨', `立即到达 ${parsed.immediateCount}`, 'danger');
+        }
+
+        if (parsed.stationCount) {
+            pushChip('stations', '📡', `监测站 ${parsed.stationCount}`, 'station');
+        }
+
+        if (parsed.batchText) {
+            pushChip('batch', '#️⃣', `第${parsed.batchText}报`.replace(/^第第/, '第'), 'default');
+        }
+
+        if (evt.is_cancelled || evt.cancelled || cleanTsunamiText(evt.level) === '解除') {
+            pushChip('cancelled', '✅', '已解除', 'cancel');
+        }
+        if (evt.is_training || evt.isTraining) {
+            pushChip('training', '🧪', '训练报', 'training');
+        }
+
+        if (parsed.gradeDistribution) {
+            sections.push({
+                key: 'grade',
+                icon: '📊',
+                title: '级别分布',
+                body: parsed.gradeDistribution,
+                tone: 'grade',
+            });
+        }
+
+        if (parsed.forecastHighlights.length) {
+            // 日本：津波予報区域；中国：沿海预报
+            const forecastTitle = region === 'japan'
+                ? `津波予報区域（${parsed.forecastHighlights.length}）`
+                : `沿海预报（${parsed.forecastHighlights.length}）`;
+            sections.push({
+                key: 'forecasts',
+                icon: region === 'japan' ? '📍' : '',
+                title: forecastTitle,
+                items: parsed.forecastHighlights,
+                tone: 'forecast',
+            });
+        }
+
+        // 监测实况：中国源常见；日本通常无监测站列表，有才展示
+        if (parsed.stationHighlights.length) {
+            sections.push({
+                key: 'stations',
+                icon: '📡',
+                title: `监测实况（${parsed.stationHighlights.length}）`,
+                items: parsed.stationHighlights,
+                tone: 'station',
+            });
+        }
+
+        // 旧数据几乎无结构化字段时，展示原始 weather_detail 兜底
+        if (!chips.length && !sections.length) {
+            const detail = cleanTsunamiText(evt.weather_detail);
+            if (detail) {
+                sections.push({
+                    key: 'fallback',
+                    icon: '📝',
+                    title: '摘要',
+                    body: detail,
+                    tone: 'default',
+                });
+            }
+        }
+
+        const text = [
+            ...chips.map((chip) => chip.label),
+            ...sections.map((section) => {
+                if (section.items && section.items.length) {
+                    return `${section.title}：${section.items.join('；')}`;
+                }
+                return section.body ? `${section.title}：${section.body}` : section.title;
+            }),
+        ].filter(Boolean).join(' · ');
+
+        return { chips, sections, text, tone };
+    }
+
+    /**
+     * 时间轴节点短标题（等级）
+     */
+    function buildTsunamiTimelineTitle(evt) {
+        return formatTsunamiLevelLabel(evt) || '海啸预警';
+    }
+
+    /**
+     * 时间轴副标题（地点优先）
+     */
+    function buildTsunamiTimelineSubtitle(evt) {
+        const place = resolveTsunamiPlaceName(evt);
+        if (place) return place;
+        const title = buildTsunamiTitle(evt);
+        if (title.length > 14) return `${title.slice(0, 14)}…`;
+        return title || '海啸';
+    }
+
     /**
      * 格式化并友好汉化下拉框中的数据源选项
      */
@@ -343,6 +837,16 @@
         normalizeBadgeToneToken,
         getEarthquakeBadgeContent,
         buildEarthquakeTitle,
+        isGenericTsunamiTitle,
+        isLegacyTsunamiDescription,
+        resolveTsunamiRegion,
+        formatTsunamiLevelLabel,
+        buildTsunamiTitle,
+        buildTsunamiMeta,
+        parseTsunamiWeatherDetail,
+        resolveTsunamiLevelTone,
+        buildTsunamiTimelineTitle,
+        buildTsunamiTimelineSubtitle,
         normalizeSourceOption,
         normalizeSourceOptions,
         resolveWeatherColor,

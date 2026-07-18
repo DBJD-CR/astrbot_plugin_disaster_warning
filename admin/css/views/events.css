@@ -903,6 +903,261 @@ html.theme-dark .event-filter-source-menu {
     opacity: 0.5;
 }
 
+/* 台风 / 海啸卡片第二行参数摘要 */
+.event-meta-typhoon,
+.event-meta-tsunami {
+    opacity: 0.72;
+    margin-top: 2px;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+}
+
+/* ---- 海啸结构化面板（对齐推送展示器信息密度） ---- */
+.event-tsunami-panel {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.event-tsunami-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.event-tsunami-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    border: 1px solid transparent;
+    background: color-mix(in srgb, var(--md-sys-color-surface-variant) 82%, transparent);
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+.event-tsunami-chip-icon {
+    flex-shrink: 0;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.event-tsunami-chip-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.event-tsunami-chip.is-info,
+.event-tsunami-chip.is-default {
+    background: color-mix(in srgb, #0288D1 12%, var(--md-sys-color-surface));
+    color: #0277BD;
+    border-color: color-mix(in srgb, #0288D1 22%, transparent);
+}
+
+.event-tsunami-chip.is-blue {
+    background: color-mix(in srgb, #1E88E5 14%, var(--md-sys-color-surface));
+    color: #1565C0;
+    border-color: color-mix(in srgb, #1E88E5 24%, transparent);
+}
+
+.event-tsunami-chip.is-watch {
+    background: color-mix(in srgb, #F9A825 16%, var(--md-sys-color-surface));
+    color: #F57F17;
+    border-color: color-mix(in srgb, #F9A825 28%, transparent);
+}
+
+.event-tsunami-chip.is-warning {
+    background: color-mix(in srgb, #FB8C00 16%, var(--md-sys-color-surface));
+    color: #EF6C00;
+    border-color: color-mix(in srgb, #FB8C00 28%, transparent);
+}
+
+.event-tsunami-chip.is-major,
+.event-tsunami-chip.is-danger {
+    background: color-mix(in srgb, #E53935 14%, var(--md-sys-color-surface));
+    color: #C62828;
+    border-color: color-mix(in srgb, #E53935 26%, transparent);
+}
+
+.event-tsunami-chip.is-wave,
+.event-tsunami-chip.is-area,
+.event-tsunami-chip.is-station {
+    background: color-mix(in srgb, #00ACC1 12%, var(--md-sys-color-surface));
+    color: #00838F;
+    border-color: color-mix(in srgb, #00ACC1 24%, transparent);
+}
+
+.event-tsunami-chip.is-place,
+.event-tsunami-chip.is-mag {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
+    color: var(--md-sys-color-primary);
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+}
+
+.event-tsunami-chip.is-cancel {
+    background: color-mix(in srgb, #43A047 14%, var(--md-sys-color-surface));
+    color: #2E7D32;
+    border-color: color-mix(in srgb, #43A047 24%, transparent);
+}
+
+.event-tsunami-chip.is-training {
+    background: color-mix(in srgb, #8E24AA 12%, var(--md-sys-color-surface));
+    color: #6A1B9A;
+    border-color: color-mix(in srgb, #8E24AA 24%, transparent);
+}
+
+.event-tsunami-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.event-tsunami-section {
+    border-radius: 10px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, #0288D1 7%, var(--md-sys-color-surface));
+    border: 1px solid color-mix(in srgb, #0288D1 14%, transparent);
+}
+
+.event-tsunami-section.is-forecast {
+    background: color-mix(in srgb, #0288D1 8%, var(--md-sys-color-surface));
+}
+
+.event-tsunami-section.is-station {
+    background: color-mix(in srgb, #00838F 8%, var(--md-sys-color-surface));
+    border-color: color-mix(in srgb, #00838F 16%, transparent);
+}
+
+.event-tsunami-section.is-grade {
+    background: color-mix(in srgb, #5E35B1 8%, var(--md-sys-color-surface));
+    border-color: color-mix(in srgb, #5E35B1 16%, transparent);
+}
+
+.event-tsunami-section-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface);
+}
+
+.event-tsunami-section-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+.event-tsunami-section-title {
+    letter-spacing: 0.01em;
+}
+
+.event-tsunami-section-list {
+    margin: 0;
+    padding-left: 1.1em;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--md-sys-color-on-surface) 82%, transparent);
+}
+
+.event-tsunami-section-list li {
+    word-break: break-word;
+}
+
+.event-tsunami-section-body {
+    font-size: 12px;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--md-sys-color-on-surface) 82%, transparent);
+    word-break: break-word;
+}
+
+.event-tsunami-panel.is-history .event-tsunami-chip {
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+.event-tsunami-panel.is-history .event-tsunami-section {
+    padding: 6px 8px;
+}
+
+.event-tsunami-panel.is-history .event-tsunami-section-list,
+.event-tsunami-panel.is-history .event-tsunami-section-body,
+.event-tsunami-panel.is-history .event-tsunami-section-head {
+    font-size: 11px;
+}
+
+body.dark-theme .event-tsunami-chip.is-info,
+body.dark-theme .event-tsunami-chip.is-default {
+    background: rgba(3, 169, 244, 0.16);
+    color: #81D4FA;
+    border-color: rgba(3, 169, 244, 0.28);
+}
+
+body.dark-theme .event-tsunami-chip.is-watch {
+    background: rgba(255, 193, 7, 0.16);
+    color: #FFE082;
+    border-color: rgba(255, 193, 7, 0.28);
+}
+
+body.dark-theme .event-tsunami-chip.is-warning {
+    background: rgba(255, 152, 0, 0.16);
+    color: #FFCC80;
+    border-color: rgba(255, 152, 0, 0.28);
+}
+
+body.dark-theme .event-tsunami-chip.is-major,
+body.dark-theme .event-tsunami-chip.is-danger {
+    background: rgba(244, 67, 54, 0.16);
+    color: #EF9A9A;
+    border-color: rgba(244, 67, 54, 0.28);
+}
+
+body.dark-theme .event-tsunami-chip.is-wave,
+body.dark-theme .event-tsunami-chip.is-area,
+body.dark-theme .event-tsunami-chip.is-station {
+    background: rgba(0, 188, 212, 0.14);
+    color: #80DEEA;
+    border-color: rgba(0, 188, 212, 0.26);
+}
+
+body.dark-theme .event-tsunami-chip.is-cancel {
+    background: rgba(76, 175, 80, 0.16);
+    color: #A5D6A7;
+    border-color: rgba(76, 175, 80, 0.28);
+}
+
+body.dark-theme .event-tsunami-chip.is-training {
+    background: rgba(171, 71, 188, 0.16);
+    color: #CE93D8;
+    border-color: rgba(171, 71, 188, 0.28);
+}
+
+body.dark-theme .event-tsunami-section {
+    background: rgba(3, 169, 244, 0.08);
+    border-color: rgba(3, 169, 244, 0.18);
+}
+
+body.dark-theme .event-tsunami-section.is-station {
+    background: rgba(0, 188, 212, 0.08);
+    border-color: rgba(0, 188, 212, 0.18);
+}
+
+body.dark-theme .event-tsunami-section.is-grade {
+    background: rgba(126, 87, 194, 0.12);
+    border-color: rgba(126, 87, 194, 0.22);
+}
+
 /* 标示地震速报已升级或有新的警报更新徽标 */
 .update-badge {
     display: inline-flex;

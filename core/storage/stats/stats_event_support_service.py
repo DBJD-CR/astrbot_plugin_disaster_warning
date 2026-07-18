@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ....utils.converters import ScaleConverter
 from ...domain.event_models import (
     EarthquakeEvent,
@@ -14,6 +16,12 @@ from ...domain.event_models import (
     TyphoonEvent,
     WeatherEvent,
 )
+from ...domain.event_payload import SourcePayload
+from ...domain.tsunami.tsunami_levels import (
+    resolve_tsunami_region,
+    to_optional_float,
+)
+from ...domain.tsunami.tsunami_title import build_tsunami_list_title
 
 CHINA_PROVINCES = [
     "北京",
@@ -90,6 +98,53 @@ class StatsEventSupportService:
                 return parsed
         return None
 
+    @staticmethod
+    def _merge_tsunami_context(envelope: EventEnvelope) -> dict[str, Any]:
+        """合并海啸 envelope 各层元数据，供列表标题构建。"""
+        domain_event = envelope.event
+        metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
+        event_metadata = (
+            domain_event.metadata
+            if isinstance(getattr(domain_event, "metadata", None), dict)
+            else {}
+        )
+        merged: dict[str, Any] = {}
+        payload = envelope.payload
+        if isinstance(payload, SourcePayload):
+            payload_dict = payload.to_dict()
+            attributes = payload_dict.get("attributes")
+            if isinstance(attributes, dict):
+                merged.update(attributes)
+            merged.update(payload_dict)
+        elif isinstance(payload, dict):
+            attributes = payload.get("attributes")
+            if isinstance(attributes, dict):
+                merged.update(attributes)
+            merged.update(payload)
+        merged.update(event_metadata)
+        merged.update(metadata)
+
+        hypocenter = merged.get("issue_hypocenter")
+        if isinstance(hypocenter, dict):
+            for key in ("place_name", "magnitude", "latitude", "longitude", "depth"):
+                if merged.get(key) in (None, "") and hypocenter.get(key) not in (
+                    None,
+                    "",
+                ):
+                    merged[key] = hypocenter.get(key)
+            # EQSC 原始键名兼容
+            if merged.get("place_name") in (None, ""):
+                hypo_name = hypocenter.get("hypoCenterName") or hypocenter.get(
+                    "place_name"
+                )
+                if hypo_name not in (None, ""):
+                    merged["place_name"] = hypo_name
+            if merged.get("magnitude") in (None, ""):
+                mag = hypocenter.get("magnitude")
+                if mag not in (None, ""):
+                    merged["magnitude"] = mag
+        return merged
+
     def get_event_description_from_envelope(self, envelope: EventEnvelope) -> str:
         """基于新领域包络生成简短事件描述。"""
         domain_event = envelope.event
@@ -104,7 +159,44 @@ class StatsEventSupportService:
             return f"M{domain_event.magnitude:.1f} {place_name}"
 
         if isinstance(domain_event, TsunamiEvent):
-            return f"{domain_event.title} ({domain_event.level})"
+            # 列表标题：级别 · 震中 震级（字段缺失时优雅降级）
+            merged = self._merge_tsunami_context(envelope)
+            region = resolve_tsunami_region(envelope.source_id, merged)
+            place_name = str(
+                merged.get("place_name") or merged.get("subtitle") or ""
+            ).strip()
+            magnitude = to_optional_float(merged.get("magnitude"))
+            cancelled = bool(
+                merged.get("cancelled")
+                or merged.get("is_cancelled")
+                or domain_event.level == "解除"
+                or "解除" in str(domain_event.title or "")
+            )
+            is_training = bool(merged.get("is_training") or merged.get("isTraining"))
+            max_wave = str(
+                merged.get("max_wave_height") or merged.get("maxWaveHeight") or ""
+            ).strip()
+            area_count = merged.get("area_count")
+            if area_count is None:
+                forecasts = merged.get("forecasts")
+                if isinstance(forecasts, list):
+                    area_count = len(forecasts)
+            try:
+                area_count_int = int(area_count) if area_count is not None else None
+            except (TypeError, ValueError):
+                area_count_int = None
+            return build_tsunami_list_title(
+                region=region,
+                level=str(domain_event.level or merged.get("level") or "").strip(),
+                title=str(domain_event.title or "").strip(),
+                place_name=place_name,
+                magnitude=magnitude,
+                batch=merged.get("batch"),
+                cancelled=cancelled,
+                is_training=is_training,
+                max_wave_height=max_wave or None,
+                area_count=area_count_int,
+            )
 
         if isinstance(domain_event, TyphoonEvent):
             # 台风描述包含名称与当前等级，便于在统计列表中快速识别。

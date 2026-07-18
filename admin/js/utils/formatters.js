@@ -219,6 +219,7 @@ function normalizeSourceName(source) {
         'p2p_eew': 'jma_p2p',
         'p2p_earthquake': 'jma_p2p_info',
         'p2p_tsunami': 'jma_tsunami_p2p',
+        'eqsc_tsunami': 'jma_tsunami_eqsc',
         'wolfx_jma_eew': 'jma_wolfx',
         'wolfx_cenc_eew': 'cea_wolfx',
         'wolfx_cwa_eew': 'cwa_wolfx',
@@ -259,8 +260,17 @@ function normalizeSourceName(source) {
         '日本气象厅: 紧急地震速报': 'jma_fanstudio',
         '日本气象厅：地震情报': 'jma_p2p_info',
         '日本气象厅: 地震情报': 'jma_p2p_info',
+        // 中文冒号全角/半角 + 预报/予报 历史写法都兼容
         '日本气象厅：海啸预报': 'jma_tsunami_p2p',
-        '日本气象厅: 海啸预报': 'jma_tsunami_p2p'
+        '日本气象厅: 海啸预报': 'jma_tsunami_p2p',
+        '日本气象厅：海啸予报': 'jma_tsunami_p2p',
+        '日本气象厅: 海啸予报': 'jma_tsunami_p2p',
+        '日本气象厅：海啸予报 - P2P': 'jma_tsunami_p2p',
+        '日本气象厅: 海啸予报 - P2P': 'jma_tsunami_p2p',
+        '日本气象厅：海啸予报 - EQSC': 'jma_tsunami_eqsc',
+        '日本气象厅: 海啸予报 - EQSC': 'jma_tsunami_eqsc',
+        '日本气象厅：海啸预报 - EQSC': 'jma_tsunami_eqsc',
+        '日本气象厅: 海啸预报 - EQSC': 'jma_tsunami_eqsc',
     };
 
     return aliasMap[rawSource] || aliasMap[lowerSource] || lowerSource;
@@ -346,7 +356,10 @@ function formatSourceName(source) {
         // P2P (新规范)
         'jma_p2p': '日本气象厅: 紧急地震速报 - P2P',
         'jma_p2p_info': '日本气象厅: 地震情报 - P2P',
-        'jma_tsunami_p2p': '日本气象厅: 海啸予报',
+        'jma_tsunami_p2p': '日本气象厅: 海啸予报 - P2P',
+
+        // EQSC (HTTP 海啸补充源)
+        'jma_tsunami_eqsc': '日本气象厅: 海啸予报 - EQSC',
 
         // Wolfx (新规范)
         'jma_wolfx': '日本气象厅: 紧急地震速报 - Wolfx',

@@ -62,6 +62,12 @@ class DisasterServiceLifecycleService:
                 snet_poll = getattr(self.service, "snet_poll_service", None)
                 if snet_poll is not None:
                     await snet_poll.start()
+                # EQSC 海啸 HTTP 轮询（依赖 AccessToken，可与 token 预热并行）
+                eqsc_tsunami_poll = getattr(
+                    self.service, "eqsc_tsunami_poll_service", None
+                )
+                if eqsc_tsunami_poll is not None:
+                    await eqsc_tsunami_poll.start()
                 if getattr(self.service, "notification_center", None):
                     await (
                         self.service.notification_center.start()
@@ -164,6 +170,13 @@ class DisasterServiceLifecycleService:
                     await (
                         self.service.http_fetcher.close()
                     )  # 关闭 HTTP 客户端 Session 连接池
+
+                # 先停 EQSC 海啸轮询客户端（共享 token 时不会关闭 token_manager）
+                eqsc_tsunami_poll = getattr(
+                    self.service, "eqsc_tsunami_poll_service", None
+                )
+                if eqsc_tsunami_poll is not None:
+                    await eqsc_tsunami_poll.stop()
 
                 # 关闭台风 EQSC 富化服务的 HTTP 会话与令牌管理器资源
                 typhoon_enrichment = getattr(

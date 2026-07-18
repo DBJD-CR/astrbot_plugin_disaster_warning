@@ -174,6 +174,8 @@ class PluginAdminCommandService(CommandTelemetryMixin):
                 },
                 "EQSC API": {
                     "china_typhoon": "中国气象局：实时活跃台风",
+                    # 与 P2P 子源名称一致，仅展示一个海啸
+                    "jma_tsunami": "日本气象厅: 海啸予报",
                 },
                 "NIED S-Net": {
                     "snet_msil": "日本海沟 S-Net 海底震度计",
@@ -326,16 +328,20 @@ class PluginAdminCommandService(CommandTelemetryMixin):
 
             sub_source_status = dict(status.get("sub_source_status", {}) or {})
             # 注入 EQSC 子源（不在 SOURCE_CATALOG 的 WebSocket 分组内）
-            # 子数据源展示只看 typhoon_enrichment 子开关本身
+            # 子数据源展示只看各自子开关本身
             eqsc_sub_sources = eqsc_health.get("sub_sources")
             eqsc_typhoon_enrichment = bool(
                 eqsc_health.get("typhoon_enrichment", eqsc_config_enabled)
             )
-            if not isinstance(eqsc_sub_sources, dict):
-                eqsc_sub_sources = {"china_typhoon": eqsc_typhoon_enrichment}
+            eqsc_jma_tsunami = bool(eqsc_health.get("jma_tsunami", eqsc_config_enabled))
+            # 固定顺序：台风 → 海啸（仅一个海啸入口，名称与 P2P 一致）
+            eqsc_sub_sources = {
+                "china_typhoon": eqsc_typhoon_enrichment,
+                "jma_tsunami": eqsc_jma_tsunami,
+            }
             sub_source_status["eqsc"] = dict(eqsc_sub_sources)
             if eqsc_config_enabled:
-                grouped_sources.setdefault("eqsc", ["china_typhoon"])
+                grouped_sources.setdefault("eqsc", ["china_typhoon", "jma_tsunami"])
 
             # 注入 S-Net：仅展示单一子源 snet_msil（与前端网格一致）
             sub_source_status["snet"] = {"snet_msil": snet_enabled}

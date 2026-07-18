@@ -83,19 +83,25 @@ class ConfigValidator:
                 config["typhoon_config"]
             )
 
-        # 8. 调试配置校验
+        # 8 海啸配置校验
+        if "tsunami_config" in config:
+            config["tsunami_config"] = ConfigValidator._validate_tsunami_config(
+                config["tsunami_config"]
+            )
+
+        # 9. 调试配置校验
         if "debug_config" in config:
             config["debug_config"] = ConfigValidator._validate_debug_config(
                 config["debug_config"]
             )
 
-        # 9. 推送列表校验
+        # 10. 推送列表校验
         if "target_sessions" in config:
             config["target_sessions"] = ConfigValidator._validate_target_sessions(
                 config["target_sessions"], key_name="target_sessions"
             )
 
-        # 10. 离线通知会话列表校验
+        # 11. 离线通知会话列表校验
         if "offline_notification_sessions" in config:
             config["offline_notification_sessions"] = (
                 ConfigValidator._validate_target_sessions(
@@ -104,43 +110,43 @@ class ConfigValidator:
                 )
             )
 
-        # 11. 管理员列表校验
+        # 12. 管理员列表校验
         if "admin_users" in config:
             config["admin_users"] = ConfigValidator._validate_admin_users(
                 config["admin_users"]
             )
 
-        # 12. 消息格式配置校验
+        # 13. 消息格式配置校验
         if "message_format" in config:
             config["message_format"] = ConfigValidator._validate_message_format(
                 config["message_format"]
             )
 
-        # 13. 推送频率控制校验
+        # 14. 推送频率控制校验
         if "push_frequency_control" in config:
             config["push_frequency_control"] = ConfigValidator._validate_push_frequency(
                 config["push_frequency_control"]
             )
 
-        # 14. 时区配置校验
+        # 15. 时区配置校验
         if "display_timezone" in config:
             config["display_timezone"] = ConfigValidator._validate_timezone(
                 config["display_timezone"]
             )
 
-        # 15. 遥测配置校验
+        # 16. 遥测配置校验
         if "telemetry_config" in config:
             config["telemetry_config"] = ConfigValidator._validate_telemetry(
                 config["telemetry_config"]
             )
 
-        # 16. 数据源配置结构校验
+        # 17. 数据源配置结构校验
         if "data_sources" in config:
             config["data_sources"] = ConfigValidator._validate_data_sources(
                 config["data_sources"]
             )
 
-        # 17. 通知中心配置校验
+        # 18. 通知中心配置校验
         if "notification_settings" in config:
             config["notification_settings"] = (
                 ConfigValidator._validate_notification_settings(
@@ -148,7 +154,7 @@ class ConfigValidator:
                 )
             )
 
-        # 18. 顶层开关校验
+        # 19. 顶层开关校验
         if "enabled" in config and not isinstance(config["enabled"], bool):
             config["enabled"] = True
 
@@ -563,6 +569,61 @@ class ConfigValidator:
             )
             return max(minimum, min(maximum, number))
         return number
+
+    @staticmethod
+    def _validate_tsunami_config(cfg: dict[str, Any]) -> dict[str, Any]:
+        """校验海啸配置（中国/日本独立阈值）。"""
+        if not isinstance(cfg, dict):
+            return {}
+
+        china_filter = cfg.get("china_filter", {})
+        if not isinstance(china_filter, dict):
+            china_filter = {}
+        ConfigValidator._ensure_bool(china_filter, "enabled", False)
+        cn_valid = ["信息", "蓝色", "黄色", "橙色", "红色"]
+        cn_min = str(china_filter.get("min_level") or "信息").strip() or "信息"
+        if cn_min not in cn_valid:
+            logger.warning(
+                f"[灾害预警] 配置警告: 中国海啸最低级别 {cn_min} 无效，已修正为 信息。"
+            )
+            cn_min = "信息"
+        china_filter["min_level"] = cn_min
+        cfg["china_filter"] = china_filter
+
+        japan_filter = cfg.get("japan_filter", {})
+        if not isinstance(japan_filter, dict):
+            japan_filter = {}
+        ConfigValidator._ensure_bool(japan_filter, "enabled", False)
+        # 配置侧使用中文描述；兼容历史英文枚举
+        jp_valid = ["若干海面变动", "海啸注意报", "海啸警报", "大海啸警报"]
+        jp_alias = {
+            "minor": "若干海面变动",
+            "watch": "海啸注意报",
+            "warning": "海啸警报",
+            "majorwarning": "大海啸警报",
+            "若干の海面変動": "若干海面变动",
+            "若干的海面变动": "若干海面变动",
+            "若干海面变动": "若干海面变动",
+            "津波注意報": "海啸注意报",
+            "海啸注意报": "海啸注意报",
+            "津波警報": "海啸警报",
+            "海啸警报": "海啸警报",
+            "大津波警報": "大海啸警报",
+            "大海啸警报": "大海啸警报",
+        }
+        jp_raw = (
+            str(japan_filter.get("min_level") or "若干海面变动").strip()
+            or "若干海面变动"
+        )
+        jp_min = jp_alias.get(jp_raw, jp_alias.get(jp_raw.lower(), jp_raw))
+        if jp_min not in jp_valid:
+            logger.warning(
+                f"[灾害预警] 配置警告: 日本海啸最低级别 {jp_raw} 无效，已修正为 若干海面变动。"
+            )
+            jp_min = "若干海面变动"
+        japan_filter["min_level"] = jp_min
+        cfg["japan_filter"] = japan_filter
+        return cfg
 
     @staticmethod
     def _validate_typhoon_config(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -1074,7 +1135,7 @@ class ConfigValidator:
         if isinstance(fan_studio_cfg, dict):
             ConfigValidator._ensure_bool(fan_studio_cfg, "china_typhoon", True)
 
-        # 校验 EQSC 数据源配置（组总闸 + 台风富化子开关）
+        # 校验 EQSC 数据源配置（组总闸 + 台风富化 + 海啸轮询子开关）
         eqsc_cfg = cfg.get("eqsc")
         if isinstance(eqsc_cfg, dict):
             ConfigValidator._ensure_bool(eqsc_cfg, "enabled", False)
@@ -1082,6 +1143,13 @@ class ConfigValidator:
             if "typhoon_enrichment" not in eqsc_cfg:
                 eqsc_cfg["typhoon_enrichment"] = bool(eqsc_cfg.get("enabled", False))
             ConfigValidator._ensure_bool(eqsc_cfg, "typhoon_enrichment", False)
+            # 海啸子开关：缺省时跟随通道总闸，便于旧配置平滑启用
+            if "jma_tsunami" not in eqsc_cfg:
+                eqsc_cfg["jma_tsunami"] = bool(eqsc_cfg.get("enabled", False))
+            ConfigValidator._ensure_bool(eqsc_cfg, "jma_tsunami", False)
+            ConfigValidator._ensure_bool(
+                eqsc_cfg, "jma_tsunami_include_training", False
+            )
 
             # Base URL 校验：确保为非空字符串且去除尾部斜杠
             base_url = eqsc_cfg.get("base_url")
@@ -1127,6 +1195,44 @@ class ConfigValidator:
                 )
                 eqsc_cfg["cache_ttl"] = 300
 
+            # 海啸轮询间隔
+            poll_interval = eqsc_cfg.get("jma_tsunami_poll_interval_seconds")
+            if isinstance(poll_interval, int):
+                if poll_interval < 15:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 海啸轮询间隔 {poll_interval} 过短，已修正为 15。"
+                    )
+                    eqsc_cfg["jma_tsunami_poll_interval_seconds"] = 15
+                elif poll_interval > 300:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 海啸轮询间隔 {poll_interval} 过长，已修正为 300。"
+                    )
+                    eqsc_cfg["jma_tsunami_poll_interval_seconds"] = 300
+            elif poll_interval is not None:
+                logger.warning(
+                    "[灾害预警] 配置警告: EQSC 海啸轮询间隔类型错误，已重置为 60。"
+                )
+                eqsc_cfg["jma_tsunami_poll_interval_seconds"] = 60
+
+            # 海啸快照缓存 TTL
+            tsunami_cache_ttl = eqsc_cfg.get("tsunami_cache_ttl")
+            if isinstance(tsunami_cache_ttl, int):
+                if tsunami_cache_ttl < 15:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 海啸缓存 TTL {tsunami_cache_ttl} 过小，已修正为 15。"
+                    )
+                    eqsc_cfg["tsunami_cache_ttl"] = 15
+                elif tsunami_cache_ttl > 300:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 海啸缓存 TTL {tsunami_cache_ttl} 过大，已修正为 300。"
+                    )
+                    eqsc_cfg["tsunami_cache_ttl"] = 300
+            elif tsunami_cache_ttl is not None:
+                logger.warning(
+                    "[灾害预警] 配置警告: EQSC 海啸缓存 TTL 类型错误，已重置为 60。"
+                )
+                eqsc_cfg["tsunami_cache_ttl"] = 60
+
             # EQSC 启用但缺少 RefreshToken 时输出警告
             if (
                 eqsc_cfg.get("enabled")
@@ -1134,7 +1240,7 @@ class ConfigValidator:
             ):
                 logger.warning(
                     "[灾害预警] 配置警告: EQSC 数据源已启用但未配置 refresh_token，"
-                    "鉴权与台风富化将无法正常工作，台风将回退到 FAN Studio 基础数据。"
+                    "鉴权、台风富化与海啸轮询将无法正常工作。"
                 )
 
         return cfg

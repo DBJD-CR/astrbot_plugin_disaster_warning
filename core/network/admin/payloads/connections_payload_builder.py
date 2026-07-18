@@ -108,13 +108,20 @@ class ConnectionsPayloadBuilder:
             if health
             else typhoon_enrichment
         )
+        if "jma_tsunami" in eqsc_cfg:
+            jma_tsunami_cfg = bool(eqsc_cfg.get("jma_tsunami"))
+        else:
+            jma_tsunami_cfg = config_enabled
+        effective_jma_tsunami = bool(
+            health.get("jma_tsunami", jma_tsunami_cfg) if health else jma_tsunami_cfg
+        )
         circuit_open = bool(health.get("circuit_open", False))
         access_token_valid = bool(health.get("access_token_valid", False))
-        sub_sources = health.get("sub_sources")
-        if not isinstance(sub_sources, dict):
-            sub_sources = {
-                "china_typhoon": effective_typhoon_enrichment,
-            }
+        # 子源展示固定顺序：台风 → 海啸（仅一个海啸入口）
+        sub_sources = {
+            "china_typhoon": effective_typhoon_enrichment,
+            "jma_tsunami": effective_jma_tsunami,
+        }
 
         # HTTP 通道无 WS 重试语义。
         # 活跃连接判定：AccessToken 当前有效即视为 connected。
@@ -151,7 +158,7 @@ class ConnectionsPayloadBuilder:
             "status": status_text,
             "latency": latency,
             "sub_sources": dict(sub_sources),
-            "source_ids": ["eqsc"],
+            "source_ids": ["jma_tsunami_eqsc"],
             "connection_type": "http",
             "provider": "eqsc",
             "circuit_open": circuit_open,
@@ -271,7 +278,22 @@ class ConnectionsPayloadBuilder:
             latency_cache=self.latency_cache,
         )
         connections = dict(snapshot.get("connections", {}))
-        # HTTP 通道不是 WebSocket 连接组，单独合并进连接状态面板
+        # HTTP 通道不是 WebSocket 连接组，单独合并进连接状态面板。
+        # catalog 里 jma_tsunami_eqsc 的 connection_group="eqsc" 会生成占位条目：
+        # - 旧逻辑展示键为原始 "eqsc"，status 默认 “未连接”
+        # - 新逻辑展示键为 "EQSC API"
+        # 两种都要先剔除，再写入正式 HTTP 通道状态，避免前端读到占位“未连接”。
+        for stale_key, info in list(connections.items()):
+            key_lower = str(stale_key or "").strip().lower()
+            provider = ""
+            if isinstance(info, dict):
+                provider = str(info.get("provider") or "").strip().lower()
+            if (
+                key_lower in {"eqsc", "eqsc api"}
+                or key_lower.startswith("eqsc")
+                or provider == "eqsc"
+            ):
+                connections.pop(stale_key, None)
         connections[self.EQSC_DISPLAY_NAME] = self._build_eqsc_connection_info()
         # 覆盖 catalog 占位条目，附带轮询运行态与 HTTP 语义
         connections[self.SNET_DISPLAY_NAME] = self._build_snet_connection_info()
