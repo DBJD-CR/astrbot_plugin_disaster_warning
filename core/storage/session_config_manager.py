@@ -49,14 +49,16 @@ class SessionConfigManager:
     }
 
     # 仅允许全局配置修改的嵌套路径（会话 override 写入时强制剥离）。
-    # S-Net 轮询间隔、EQSC 通道鉴权参数影响全局运行态；
-    # typhoon_enrichment 允许会话差异（部分会话只要 Fan，部分要 EQSC 富化）。
+    # S-Net 轮询间隔、EQSC 通道鉴权/轮询参数影响全局运行态；
+    # typhoon_enrichment / jma_tsunami 允许会话差异（部分会话可单独关闭推送）。
     GLOBAL_ONLY_NESTED_PATHS: tuple[tuple[str, ...], ...] = (
         ("data_sources", "snet", "poll_interval_seconds"),
         ("data_sources", "eqsc", "enabled"),
         ("data_sources", "eqsc", "base_url"),
         ("data_sources", "eqsc", "refresh_token"),
         ("data_sources", "eqsc", "cache_ttl"),
+        ("data_sources", "eqsc", "tsunami_cache_ttl"),
+        ("data_sources", "eqsc", "jma_tsunami_poll_interval_seconds"),
     )
 
     def __init__(self, default_config_ref: dict[str, Any]):
