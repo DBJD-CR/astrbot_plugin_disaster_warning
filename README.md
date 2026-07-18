@@ -683,10 +683,10 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 - **JMA 每收到 N 报推送一次**:
   - 适用于日本气象厅。设置 `jma_report_n = 3` 意味着第 1、3、6、9... 报会被推送。
 - **Global Quake 每收到 N 报推送一次**:
-  - 适用于 GQ。
+  - 适用于 GQ。GQ 在协议升级后会通过 `ARCHIVED` 动作发出归档/最终报。
 - **首报推送保证**: **（插件核心逻辑）** 无论 N 设置为多少，事件的第一报总是会第一时间送达。（固定配置）
-- **最终报总是推送 (`final_report_always_push`)**: 确保用户能看到修正后的最终震级和烈度。
-- **忽略非最终报 (`ignore_non_final_reports`)**: 极致精简配置，只发送第一报和最终报，仅适用于 JMA 相关数据源。
+- **最终报总是推送 (`final_report_always_push`)**: 确保用户能看到修正后的最终震级和烈度。适用于 JMA 与 Global Quake 等支持最终报标记的数据源。
+- **忽略非最终报 (`ignore_non_final_reports`)**: 极致精简配置，只发送第一报和最终报，适用于支持最终报的数据源（如 JMA、Global Quake）。
 
 ```json
 "push_frequency_control": {
@@ -2179,7 +2179,7 @@ graph TB
 >**A**: 这是由于地震预警（EEW）具有随震情演进而不断更新报数的特性（数据会随时间推移变得更精准）。
 >
 > 1. **调大间隔**：您可以在 **推送频率控制 (`push_frequency_control`)** 中调大 `每收到N报推送一次` 的参数。
-> 2. **极简模式**：开启 **是否忽略非最终报 (`ignore_non_final_reports`)**，这样插件只会推送事件的第一报和最后一报。仅适用于 JMA 相关数据源。
+> 2. **极简模式**：开启 **是否忽略非最终报 (`ignore_non_final_reports`)**，这样插件只会推送事件的第一报和最后一报。适用于支持最终报的数据源（如 JMA、Global Quake）。
 
 **Q: 为什么插件预警推送了很多我不关心的地区？**
 
