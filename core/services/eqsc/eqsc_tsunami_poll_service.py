@@ -208,12 +208,15 @@ class EqscTsunamiPollService:
         self._consecutive_failures = 0
         self._last_success_at = time.time()
 
+        fingerprint = self._build_snapshot_fingerprint(raw)
+
         is_training = coerce_bool(raw.get("isTraining"), default=False)
         if is_training and not self._resolve_include_training():
+            # 主动忽略训练报时仍提交指纹，避免每轮重复解析同一训练快照。
+            self._last_payload_fingerprint = fingerprint
             logger.debug("[灾害预警] EQSC 海啸训练报已忽略")
             return raw
 
-        fingerprint = self._build_snapshot_fingerprint(raw)
         if fingerprint == self._last_payload_fingerprint:
             logger.debug("[灾害预警] EQSC 海啸快照内容未变化，跳过推送")
             return raw
@@ -225,6 +228,7 @@ class EqscTsunamiPollService:
         message = json.dumps(raw, ensure_ascii=False)
         event = self.service.parse_event(self.SOURCE_ID, message)
         if event is None:
+            # 解析失败不提交指纹，下一轮可重试（例如短暂脏数据）。
             return raw
 
         event_id = getattr(event, "id", None)
