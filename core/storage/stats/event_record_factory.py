@@ -767,7 +767,9 @@ class EventRecordFactory:
             }
         )
         # weather_detail 仅用于详情展示；统计峰值以独立列 level/wind_speed/pressure 为准。
+        # 同时写入活跃态标记，供事件列表“仅活跃台风”筛选复用。
         detail_parts: list[str] = []
+        detail_parts.append("状态 活跃" if bool(data.is_active) else "状态 停编")
         if min_pressure is not None:
             pressure_text = (
                 int(min_pressure) if float(min_pressure).is_integer() else min_pressure

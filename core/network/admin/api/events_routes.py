@@ -110,6 +110,14 @@ def register_events_routes(app, *, disaster_service):
         keyword: str = "",
         level_filter: str = "",
         min_wind_speed: float | None = None,
+        time_from: str = "",
+        time_to: str = "",
+        min_depth: float | None = None,
+        max_depth: float | None = None,
+        min_intensity: float | None = None,
+        intensity_system: str = "",
+        max_pressure: float | None = None,
+        active_only: bool = False,
     ):
         """分页获取历史事件记录。"""
         try:
@@ -145,6 +153,11 @@ def register_events_routes(app, *, disaster_service):
 
             normalized_keyword = keyword.strip()
             normalized_level_filter = level_filter.strip()
+            normalized_time_from = str(time_from or "").strip()
+            normalized_time_to = str(time_to or "").strip()
+            normalized_intensity_system = str(intensity_system or "").strip().lower()
+            if normalized_intensity_system not in {"", "cn", "jma"}:
+                normalized_intensity_system = ""
 
             # 利用 asyncio.gather 并发查询总数与分页数据，最大化 SQLite I/O 效率
             total, events = await asyncio.gather(
@@ -155,6 +168,14 @@ def register_events_routes(app, *, disaster_service):
                     keyword=normalized_keyword or None,
                     level_filter=normalized_level_filter or None,
                     min_wind_speed=min_wind_speed,
+                    time_from=normalized_time_from or None,
+                    time_to=normalized_time_to or None,
+                    min_depth=min_depth,
+                    max_depth=max_depth,
+                    min_intensity=min_intensity,
+                    intensity_system=normalized_intensity_system or None,
+                    max_pressure=max_pressure,
+                    active_only=bool(active_only),
                 ),
                 db.get_events_paginated(
                     page,
@@ -166,6 +187,14 @@ def register_events_routes(app, *, disaster_service):
                     keyword=normalized_keyword or None,
                     level_filter=normalized_level_filter or None,
                     min_wind_speed=min_wind_speed,
+                    time_from=normalized_time_from or None,
+                    time_to=normalized_time_to or None,
+                    min_depth=min_depth,
+                    max_depth=max_depth,
+                    min_intensity=min_intensity,
+                    intensity_system=normalized_intensity_system or None,
+                    max_pressure=max_pressure,
+                    active_only=bool(active_only),
                 ),
             )
 
