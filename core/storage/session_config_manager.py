@@ -42,6 +42,8 @@ class SessionConfigManager:
         "strategies",
         "weather_config",
         "typhoon_config",
+        # 与 typhoon_config / weather_config 一致：允许会话级阈值过滤覆盖
+        "tsunami_config",
         # 会话级额外控制字段（插件自定义）
         "push_enabled",
         # 会话备注名（仅用于日志与前端展示，不参与业务逻辑）
