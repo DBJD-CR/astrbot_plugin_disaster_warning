@@ -190,7 +190,13 @@ def build_jma_tsunami_content_fingerprint(
     areas: list[dict[str, Any]] | None = None,
     is_training: bool = False,
 ) -> str:
-    """构建跨源内容指纹（event + 等级 + 区域核心字段）。"""
+    """构建跨源内容指纹（等级 + 区域核心字段）。
+
+    注意：P2P 与 EQSC 的 event_id 生成策略不同（回退组合键 vs 官方 eventID），
+    因此跨源去重指纹**故意不纳入 event_id**，避免同内容被拆成两条独立事件。
+    event_id 参数保留仅为兼容旧调用方，不参与哈希。
+    """
+    del event_id  # 跨源一致性：不参与指纹
     area_rows: list[dict[str, Any]] = []
     for area in areas or []:
         if not isinstance(area, dict):
@@ -211,7 +217,6 @@ def build_jma_tsunami_content_fingerprint(
         key=lambda row: (row["name"], row["grade"], row["condition"], row["height"])
     )
     payload = {
-        "event_id": _clean_text(event_id),
         "cancelled": bool(cancelled),
         "max_grade": _normalize_grade(max_grade, cancelled=cancelled),
         "is_training": bool(is_training),
