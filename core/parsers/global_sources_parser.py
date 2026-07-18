@@ -315,6 +315,7 @@ class GlobalQuakeParser(BaseParser):
                 source_enum=source_entry.source_enum if source_entry else "",
                 report_num=report_num,
                 published_at=shock_time,
+                is_final=is_archived,
                 aliases=tuple(
                     item for item in (str(eq_data.id or "").strip(),) if item
                 ),
@@ -445,6 +446,7 @@ class GlobalQuakeParser(BaseParser):
                 source_enum=source_entry.source_enum if source_entry else "",
                 report_num=report_num,
                 published_at=shock_time,
+                is_final=is_archived,
                 aliases=tuple(
                     item for item in (str(eq_data.get("id", "") or "").strip(),) if item
                 ),
