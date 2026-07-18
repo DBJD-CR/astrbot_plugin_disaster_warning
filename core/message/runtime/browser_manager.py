@@ -169,13 +169,38 @@ class BrowserManager:
             device_scale_factor=2,
         )
 
+    async def _put_page_into_pool(self, page: Page) -> bool:
+        """非阻塞入池；池满时关闭多余页面，避免 put 永久阻塞。"""
+        try:
+            self._page_pool.put_nowait(page)
+            return True
+        except asyncio.QueueFull:
+            logger.debug("[灾害预警] 页面池已满，关闭多余页面")
+            try:
+                if not page.is_closed():
+                    await page.close()
+            except Exception:
+                pass
+            return False
+        except Exception as put_err:
+            logger.debug(f"[灾害预警] 页面入池失败: {put_err}")
+            try:
+                if not page.is_closed():
+                    await page.close()
+            except Exception:
+                pass
+            return False
+
     async def _return_page_to_pool(self, page: Page | None) -> None:
         """仅在页面仍可用时归还页面池，避免把坏页重新投入复用。"""
         if page is None:
             return
         try:
             if await self._is_page_usable(page):
-                await self._page_pool.put(page)
+                if await self._put_page_into_pool(page):
+                    return
+                # 入池失败（满/异常）时页面已关闭，仍尝试补齐容量
+                await self._replenish_page_pool()
                 return
         except Exception as return_err:
             logger.debug(f"[灾害预警] 归还页面到池失败: {return_err}")
@@ -245,7 +270,9 @@ class BrowserManager:
             while self._page_pool.qsize() < self.pool_size:
                 try:
                     new_page = await self._create_local_page()
-                    await self._page_pool.put(new_page)
+                    if not await self._put_page_into_pool(new_page):
+                        # 池已满：停止补充
+                        break
                     logger.debug(
                         f"[灾害预警] 已补充页面，当前池大小: {self._page_pool.qsize()}/{self.pool_size}"
                     )
@@ -255,23 +282,28 @@ class BrowserManager:
 
     async def _wait_for_fonts_ready(self, page: Page, timeout_ms: int = 1500) -> None:
         """等待网页字体就绪，超时后继续截图，避免卡死在 fonts.ready。"""
+        # JS 侧有 timeoutMs 竞速；Python 侧再加 wait_for，防止连接挂死时永久占用页面。
+        python_timeout = max(1.0, (timeout_ms / 1000.0) + 1.0)
         try:
-            await page.evaluate(
-                """
-                async (timeoutMs) => {
-                    if (!document.fonts || !document.fonts.ready) {
-                        return "unsupported";
+            await asyncio.wait_for(
+                page.evaluate(
+                    """
+                    async (timeoutMs) => {
+                        if (!document.fonts || !document.fonts.ready) {
+                            return "unsupported";
+                        }
+                        const timeoutPromise = new Promise((resolve) => {
+                            setTimeout(() => resolve("timeout"), timeoutMs);
+                        });
+                        const readyPromise = document.fonts.ready
+                            .then(() => "ready")
+                            .catch(() => "error");
+                        return await Promise.race([readyPromise, timeoutPromise]);
                     }
-                    const timeoutPromise = new Promise((resolve) => {
-                        setTimeout(() => resolve("timeout"), timeoutMs);
-                    });
-                    const readyPromise = document.fonts.ready
-                        .then(() => "ready")
-                        .catch(() => "error");
-                    return await Promise.race([readyPromise, timeoutPromise]);
-                }
-                """,
-                timeout_ms,
+                    """,
+                    timeout_ms,
+                ),
+                timeout=python_timeout,
             )
         except Exception as font_err:
             # 字体等待失败不应阻断截图；Playwright 截图本身仍会再做一次字体检查。
@@ -431,7 +463,8 @@ class BrowserManager:
                     ),
                     timeout=10.0,
                 )
-                await self._page_pool.put(page)
+                if not await self._put_page_into_pool(page):
+                    break
                 logger.debug(f"[灾害预警] 页面 {i + 1}/{self.pool_size} 已创建")
             except asyncio.TimeoutError:
                 logger.error(f"[灾害预警] 创建页面 {i + 1} 超时")
@@ -472,7 +505,8 @@ class BrowserManager:
                     page = await asyncio.wait_for(
                         self._context.new_page(), timeout=10.0
                     )
-                    await self._page_pool.put(page)
+                    if not await self._put_page_into_pool(page):
+                        break
                     logger.debug(f"[灾害预警] 页面 {i + 1}/{self.pool_size} 已创建")
                 except asyncio.TimeoutError:
                     logger.error(f"[灾害预警] 创建页面 {i + 1} 超时")
@@ -970,17 +1004,20 @@ class BrowserManager:
             return None
 
     async def close(self):
-        """关闭浏览器管理器"""
-        if self._closed:
-            logger.debug("[灾害预警] 浏览器已关闭，跳过")
-            return
+        """关闭浏览器管理器。
 
-        logger.info("[灾害预警] 正在关闭浏览器...")
-        self._closed = True
+        与 _ensure_local_browser_ready 的重建路径共用 init_lock，
+        避免 close 与 auto-recover 并发导致状态撕裂。
+        """
+        async with self._init_lock:
+            if self._closed:
+                logger.debug("[灾害预警] 浏览器已关闭，跳过")
+                return
 
-        await self._cleanup()
-
-        logger.info("[灾害预警] 浏览器已关闭")
+            logger.info("[灾害预警] 正在关闭浏览器...")
+            self._closed = True
+            await self._cleanup()
+            logger.info("[灾害预警] 浏览器已关闭")
 
     async def _cleanup(self):
         """清理资源，确保前一步失败也不影响后续步骤继续执行。"""
