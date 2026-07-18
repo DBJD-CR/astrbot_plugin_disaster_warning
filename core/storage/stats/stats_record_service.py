@@ -109,8 +109,7 @@ class StatsRecordService:
                             push_record["report_num"] = next_count
                             if not push_record.get("real_event_id"):
                                 push_record["real_event_id"] = (
-                                    existing_real
-                                    or push_record.get("event_id")
+                                    existing_real or push_record.get("event_id")
                                 )
                         await self.manager.db.update_event(
                             existing_source or source_id,

@@ -109,9 +109,7 @@ class TsunamiAlertPresenter(BasePresenter):
         target_timezone = cls._resolve_timezone(display_context, options)
 
         normalized_level = normalize_cn_tsunami_level(display_context.level)
-        is_info = (
-            display_context.message_type == "info" or normalized_level == "信息"
-        )
+        is_info = display_context.message_type == "info" or normalized_level == "信息"
         org_unit = str(display_context.org_unit or "自然资源部海啸预警中心").strip()
         header_tag = "海啸信息" if is_info else "海啸预警"
         lines = [f"🌊[{header_tag}] {org_unit}"]

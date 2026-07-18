@@ -351,7 +351,9 @@ class EventRecordFactory:
         return [label for _, label in scored[:limit]]
 
     @staticmethod
-    def _merge_tsunami_payload_context(envelope: EventEnvelope, data: TsunamiEvent) -> dict[str, Any]:
+    def _merge_tsunami_payload_context(
+        envelope: EventEnvelope, data: TsunamiEvent
+    ) -> dict[str, Any]:
         """合并 payload.attributes / raw / 领域 metadata / envelope.metadata。"""
         metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
         event_metadata = data.metadata if isinstance(data.metadata, dict) else {}
@@ -397,7 +399,9 @@ class EventRecordFactory:
     @staticmethod
     def _resolve_tsunami_place_fields(merged: dict[str, Any]) -> tuple[str, str]:
         """解析海啸 place_name / subtitle，过滤泛化标题。"""
-        place_name = str(merged.get("place_name") or merged.get("subtitle") or "").strip()
+        place_name = str(
+            merged.get("place_name") or merged.get("subtitle") or ""
+        ).strip()
         subtitle_raw = str(merged.get("subtitle") or "").strip()
         if subtitle_raw and not is_generic_tsunami_title(subtitle_raw):
             subtitle = subtitle_raw

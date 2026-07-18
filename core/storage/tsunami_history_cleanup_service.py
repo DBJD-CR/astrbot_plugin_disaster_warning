@@ -176,9 +176,7 @@ class TsunamiHistoryCleanupService:
                     f"保留 {kept}, 删除 {len(delete_ids)}, 多报折叠 {len(multi_groups)}"
                 )
             else:
-                logger.info(
-                    f"[灾害预警] 海啸历史清理：无重复组，已规范化 {kept} 行"
-                )
+                logger.info(f"[灾害预警] 海啸历史清理：无重复组，已规范化 {kept} 行")
             return result
         except Exception as exc:
             logger.error(f"[灾害预警] 海啸历史清理失败: {exc}")
