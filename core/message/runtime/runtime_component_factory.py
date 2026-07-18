@@ -188,6 +188,28 @@ class MessageRuntimeComponentFactory:
         return typhoon_filter_config
 
     @staticmethod
+    def _build_tsunami_config(runtime_config: dict[str, Any]) -> dict[str, Any]:
+        """构建海啸过滤配置，供 TsunamiRule 读取。"""
+        tsunami_config = runtime_config.get("tsunami_config", {})
+        if not isinstance(tsunami_config, dict):
+            tsunami_config = {}
+
+        result: dict[str, Any] = {}
+        for key, default_min in (
+            ("china_filter", "信息"),
+            ("japan_filter", "若干海面变动"),
+        ):
+            block = tsunami_config.get(key)
+            if not isinstance(block, dict):
+                block = {}
+            result[key] = {
+                "enabled": bool(block.get("enabled", False)),
+                "min_level": str(block.get("min_level") or default_min).strip()
+                or default_min,
+            }
+        return result
+
+    @staticmethod
     def build_shared_components(
         runtime_config: dict[str, Any],
         *,
@@ -222,6 +244,9 @@ class MessageRuntimeComponentFactory:
                 emit_enable_log=emit_weather_enable_log,
             ),
             "typhoon_filter": MessageRuntimeComponentFactory._build_typhoon_filter_config(
+                runtime_config
+            ),
+            "tsunami_config": MessageRuntimeComponentFactory._build_tsunami_config(
                 runtime_config
             ),
         }
