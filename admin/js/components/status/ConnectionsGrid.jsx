@@ -31,18 +31,59 @@ function ConnectionsGrid() {
         let connectionType = target.connectionType || 'websocket';
 
         if (matchedEntries.length > 0) {
-            const primary = matchedEntries[0][1] || {};
+            // 多条命中时优先选“更像真实运行态”的条目，避免 catalog 占位
+            // （status=未连接 / 无 connection_type）盖过 HTTP 通道的正式状态。
+            const rankedEntries = matchedEntries.slice().sort((a, b) => {
+                const infoA = a[1] || {};
+                const infoB = b[1] || {};
+                const score = (info) => {
+                    let value = 0;
+                    const statusText = String(info.status || '');
+                    if (info.connection_type === 'http') value += 8;
+                    if (statusText && statusText !== '未连接') value += 4;
+                    if (Object.prototype.hasOwnProperty.call(info, 'access_token_valid')) value += 2;
+                    if (info.connected) value += 1;
+                    // 明确降权“未连接”占位，防止它抢到 primary
+                    if (statusText === '未连接') value -= 10;
+                    return value;
+                };
+                return score(infoB) - score(infoA);
+            });
+
+            const primary = rankedEntries[0][1] || {};
             connectionType = primary.connection_type || connectionType;
             circuitOpen = !!primary.circuit_open;
             if (primary.status) {
                 statusLabel = String(primary.status);
             }
 
-            const isEnabled = matchedEntries.some(([, info]) => !!info.enabled);
+            // EQSC：若正式条目里带有 access_token_valid，强制用鉴权语义覆盖“未连接”占位
+            if (target.id === 'eqsc') {
+                const authEntry = rankedEntries.find(([, info]) =>
+                    info && Object.prototype.hasOwnProperty.call(info, 'access_token_valid')
+                );
+                if (authEntry) {
+                    const authInfo = authEntry[1] || {};
+                    connectionType = authInfo.connection_type || 'http';
+                    circuitOpen = !!authInfo.circuit_open;
+                    if (authInfo.status) {
+                        statusLabel = String(authInfo.status);
+                    } else if (authInfo.access_token_valid) {
+                        statusLabel = '可用';
+                    } else if (authInfo.enabled) {
+                        statusLabel = circuitOpen ? '熔断中' : '鉴权失效';
+                    }
+                }
+            }
+
+            const isEnabled = rankedEntries.some(([, info]) => !!info.enabled);
             if (isEnabled) {
-                const isConnected = matchedEntries.some(([, info]) => !!info.connected);
+                const isConnected = rankedEntries.some(([, info]) => !!info.connected);
                 status = isConnected ? 'online' : 'offline';
             }
+
+            // 后续 sub_sources / latency 也基于排序后的结果合并，避免脏占位优先。
+            matchedEntries = rankedEntries;
         }
 
         const retryCount = matchedEntries.reduce(
@@ -56,6 +97,21 @@ function ConnectionsGrid() {
                 Object.assign(allSubSources, info.sub_sources);
             }
         });
+
+        // EQSC 只展示业务子开关：台风富化 + 海啸轮询。
+        // catalog 占位可能带上 jma_tsunami_eqsc（source_id），需要过滤掉，避免出现第三条重复海啸。
+        if (target.id === 'eqsc') {
+            const eqscAllowedKeys = new Set([
+                'china_typhoon',
+                'jma_tsunami',
+                'japan_jma_tsunami',
+            ]);
+            Object.keys(allSubSources).forEach((key) => {
+                if (!eqscAllowedKeys.has(key)) {
+                    delete allSubSources[key];
+                }
+            });
+        }
 
         const rawLatency = matchedEntries.length > 0
             ? (matchedEntries[0][1].latency
@@ -144,8 +200,9 @@ function ConnectionsGrid() {
                 displayName: 'EQSC API',
                 connectionType: 'http',
                 matcher: (key) => {
-                    const k = String(key || '').toLowerCase();
-                    return k === 'eqsc' || k.includes('eqsc');
+                    const k = String(key || '').toLowerCase().trim();
+                    // 优先匹配展示名；兼容历史原始键 eqsc，但排除其它误匹配。
+                    return k === 'eqsc api' || k === 'eqsc';
                 },
                 compact: true,
             },
@@ -217,6 +274,9 @@ function ConnectionsGrid() {
             },
             'EQSC API': {
                 china_typhoon: '中国气象局：实时活跃台风',
+                // 与 P2P 子源展示名一致，仅展示一个海啸入口
+                jma_tsunami: '日本气象厅: 海啸予报',
+                japan_jma_tsunami: '日本气象厅: 海啸予报',
             },
         };
 
@@ -299,7 +359,22 @@ function ConnectionsGrid() {
                         </Box>
                         <Box className="connection-sub-source-list">
                             {Object.entries(conn.sub_sources)
-                                .sort(([, a], [, b]) => (a === b ? 0 : a ? -1 : 1))
+                                .sort(([keyA, enabledA], [keyB, enabledB]) => {
+                                    // EQSC：台风在上、海啸在下；其余仍优先展示已启用项
+                                    if (conn.name === 'EQSC API') {
+                                        const eqscOrder = {
+                                            china_typhoon: 0,
+                                            jma_tsunami: 1,
+                                            japan_jma_tsunami: 1,
+                                        };
+                                        const orderA = eqscOrder[keyA];
+                                        const orderB = eqscOrder[keyB];
+                                        if (orderA !== undefined || orderB !== undefined) {
+                                            return (orderA ?? 99) - (orderB ?? 99);
+                                        }
+                                    }
+                                    return enabledA === enabledB ? 0 : enabledA ? -1 : 1;
+                                })
                                 .map(([key, enabled]) => {
                                     const friendlyName = getScopedSourceName(key, conn.name);
                                     return (
