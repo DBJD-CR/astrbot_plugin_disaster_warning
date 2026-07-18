@@ -53,6 +53,18 @@
                 label: `≥ ${Number(item.min).toFixed(1)} m/s`,
             })),
     ];
+    // 事件列表筛选用最大中心气压选项（气压越低通常越强）
+    const PRESSURE_FILTER_OPTIONS = [
+        { value: 'all', label: '全部气压' },
+        { value: '1000', label: '≤ 1000 hPa' },
+        { value: '990', label: '≤ 990 hPa' },
+        { value: '980', label: '≤ 980 hPa' },
+        { value: '970', label: '≤ 970 hPa' },
+        { value: '960', label: '≤ 960 hPa' },
+        { value: '950', label: '≤ 950 hPa' },
+        { value: '940', label: '≤ 940 hPa' },
+        { value: '920', label: '≤ 920 hPa' },
+    ];
     const WIND_SPEED_DEFAULT_COLOR = 'var(--typhoon-wind-color-default, #78909C)';
 
     // 台风强度等级筛选选项（与后端 DatabaseManager._append_level_filter_clause 对齐）
@@ -144,6 +156,7 @@
         TYPHOON_LEVEL_FILTER_OPTIONS,
         WIND_SPEED_THRESHOLDS,
         WIND_SPEED_FILTER_OPTIONS,
+        PRESSURE_FILTER_OPTIONS,
         getTyphoonLevelEmoji,
         getTyphoonLevelColor,
         getTyphoonWindColor,
