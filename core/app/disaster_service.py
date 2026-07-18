@@ -37,6 +37,7 @@ from ..parsers.parser_registry import (
 )
 from ..services.config.config_service import ConfigAccessor
 from ..services.config.connection_plan_builder import ConnectionPlanBuilder
+from ..services.eqsc.eqsc_tsunami_poll_service import EqscTsunamiPollService
 from ..services.geo.cn_seis_int_loc_loader import get_district_points
 from ..services.geo.jma_seis_int_loc_loader import get_sect_map
 from ..services.geo.region_service import region_service
@@ -175,6 +176,8 @@ class DisasterWarningService:
         )
         # S-Net MSIL 瓦片轮询（直连 HTTP，不走 WebSocket）
         self.snet_poll_service = SnetPollService(self)
+        # EQSC JMA 海啸 HTTP 轮询（复用 EQSC 令牌，作为 P2P 高优先级补充）
+        self.eqsc_tsunami_poll_service = EqscTsunamiPollService(self)
         self._setup_runtime_services()
 
     def _setup_runtime_services(self) -> None:
@@ -332,7 +335,7 @@ class DisasterWarningService:
             # 预热成功与否都启动保活：失败时循环会按重试间隔继续尝试
             start_keepalive = getattr(enrichment, "start_token_keepalive", None)
             if callable(start_keepalive):
-                start_keepalive()
+                start_keepalive(register_task=self.register_background_task)
 
         warmup_task = asyncio.create_task(
             _warmup_and_keepalive(),

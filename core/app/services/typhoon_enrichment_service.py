@@ -46,6 +46,8 @@ class TyphoonEnrichmentService:
         eqsc_config = config.get("data_sources", {}).get("eqsc", {})
         if not isinstance(eqsc_config, dict):
             eqsc_config = {}
+        # 保留原始 EQSC 配置，供健康面板读取海啸等子开关
+        self._eqsc_config = eqsc_config
         channel_enabled, typhoon_enrichment = self.resolve_eqsc_flags(eqsc_config)
         # 组总闸：控制 EQSC 通道（鉴权/连通/后续子能力入口）
         self._channel_enabled = channel_enabled
@@ -123,6 +125,12 @@ class TyphoonEnrichmentService:
         config_enabled = bool(self._channel_enabled)
         typhoon_enrichment = bool(self._typhoon_enrichment_enabled)
         access_token_valid = bool(self._token_manager.has_valid_access_token)
+        # 海啸子开关：缺省跟随通道总闸（与配置校验语义一致）
+        raw_eqsc = self._eqsc_config if isinstance(self._eqsc_config, dict) else {}
+        if "jma_tsunami" in raw_eqsc:
+            jma_tsunami = bool(raw_eqsc.get("jma_tsunami"))
+        else:
+            jma_tsunami = config_enabled
         return {
             # enabled：通道可工作（组总闸 + token 已配置）
             "enabled": self.is_channel_enabled,
@@ -130,15 +138,17 @@ class TyphoonEnrichmentService:
             "typhoon_enrichment": typhoon_enrichment,
             # 台风富化实际可工作
             "typhoon_enrichment_active": self.is_enabled,
+            "jma_tsunami": jma_tsunami,
             "token_configured": bool(self._token_manager.is_configured),
             "access_token_valid": access_token_valid,
             "circuit_open": circuit_open,
             "circuit_failures": int(self._circuit_failures),
             "connection_type": "http",
             "provider": "eqsc",
-            # 当前 EQSC 仅展示一个子数据源：中国气象局实时活跃台风
+            # EQSC 子数据源：台风富化在上，海啸仅保留一个入口（与 P2P 同名展示）
             "sub_sources": {
                 "china_typhoon": typhoon_enrichment,
+                "jma_tsunami": jma_tsunami,
             },
         }
 
@@ -174,11 +184,15 @@ class TyphoonEnrichmentService:
             )
             return False
 
-    def start_token_keepalive(self) -> None:
+    def start_token_keepalive(self, *, register_task=None) -> None:
         """启动 AccessToken 后台保活循环（幂等）。
 
         在过期前提前调用 get_access_token 续期，保证状态面板在无台风业务时
         也不会因内存 token 过期而长期显示“鉴权失效”。
+
+        Args:
+            register_task: 可选回调，用于把保活任务登记到服务级后台任务集合，
+                便于停机时统一回收（例如 DisasterService.register_background_task）。
         """
         if not self.is_channel_enabled:
             return
@@ -192,6 +206,13 @@ class TyphoonEnrichmentService:
             self._token_keepalive_loop(),
             name="dw_eqsc_token_keepalive",
         )
+        if callable(register_task):
+            try:
+                register_task(self._token_keepalive_task)
+            except Exception as exc:
+                logger.debug(
+                    f"[灾害预警] 注册 EQSC token 保活任务失败: {type(exc).__name__}: {exc}"
+                )
 
     async def stop_token_keepalive(self) -> None:
         """停止 AccessToken 后台保活循环。"""
