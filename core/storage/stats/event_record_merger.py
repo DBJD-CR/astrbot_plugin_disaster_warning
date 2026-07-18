@@ -54,8 +54,19 @@ class EventRecordMerger:
                 description=description,
             )
 
-        if isinstance(event.event, (WeatherEvent, TsunamiEvent)):
-            # 气象与海啸事件通常按唯一标识覆盖最新摘要，不维护报次历史。
+        if isinstance(event.event, TsunamiEvent):
+            # 海啸按事件 ID 折叠多报，维护 history + update_count。
+            return EventRecordMerger._merge_tsunami_record(
+                target_list,
+                event,
+                source_id=source_id,
+                event_unique_id=event_unique_id,
+                current_time=current_time,
+                description=description,
+            )
+
+        if isinstance(event.event, WeatherEvent):
+            # 气象事件通常按唯一标识覆盖最新摘要，不维护报次历史。
             return EventRecordMerger._merge_non_earthquake_record(
                 target_list,
                 event,
@@ -64,6 +75,126 @@ class EventRecordMerger:
                 current_time=current_time,
                 description=description,
             )
+
+        return None
+
+    @staticmethod
+    def _normalize_tsunami_event_key(value: Any) -> str:
+        """规范化海啸事件键：支持 source|id / 裸 id。"""
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if "|" in text:
+            return text.split("|", 1)[-1].strip()
+        return text
+
+    @staticmethod
+    def _resolve_tsunami_event_keys(
+        event: EventEnvelope,
+        *,
+        event_unique_id: str,
+    ) -> tuple[str, str]:
+        """返回 (real_event_id, bare_unique_id)。"""
+        domain_event = event.event
+        metadata = event.metadata if isinstance(event.metadata, dict) else {}
+        event_meta = (
+            domain_event.metadata
+            if isinstance(domain_event, TsunamiEvent)
+            and isinstance(domain_event.metadata, dict)
+            else {}
+        )
+        real_event_id = str(
+            event.id
+            or metadata.get("event_id")
+            or metadata.get("code")
+            or event_meta.get("event_id")
+            or event_meta.get("code")
+            or ""
+        ).strip()
+        bare_unique = EventRecordMerger._normalize_tsunami_event_key(event_unique_id)
+        if not bare_unique:
+            bare_unique = EventRecordMerger._normalize_tsunami_event_key(real_event_id)
+        if not real_event_id:
+            real_event_id = bare_unique
+        return real_event_id, bare_unique
+
+    @staticmethod
+    def _merge_tsunami_record(
+        target_list: list[dict[str, Any]],
+        event: EventEnvelope,
+        *,
+        source_id: str,
+        event_unique_id: str,
+        current_time: str,
+        description: str,
+    ) -> dict[str, Any] | None:
+        """海啸多报合并：同事件 ID 折叠，保留更新历史。"""
+        if not isinstance(event.event, TsunamiEvent):
+            return None
+
+        real_event_id, bare_unique = EventRecordMerger._resolve_tsunami_event_keys(
+            event, event_unique_id=event_unique_id
+        )
+        if not real_event_id and not bare_unique:
+            return None
+
+        cn_aliases = {"fan_studio_tsunami", "china_tsunami_fanstudio"}
+        for i, record in enumerate(target_list):
+            rec_source = str(
+                record.get("source") or record.get("source_id") or ""
+            ).strip()
+            if rec_source and source_id and rec_source != source_id:
+                if not (rec_source in cn_aliases and source_id in cn_aliases):
+                    continue
+
+            rec_real = str(record.get("real_event_id") or "").strip()
+            rec_unique_bare = EventRecordMerger._normalize_tsunami_event_key(
+                record.get("unique_id")
+            )
+            rec_event_id = str(record.get("event_id") or "").strip()
+
+            is_match = False
+            if real_event_id and rec_real and real_event_id == rec_real:
+                is_match = True
+            elif bare_unique and rec_unique_bare and bare_unique == rec_unique_bare:
+                is_match = True
+            elif real_event_id and rec_event_id and real_event_id == rec_event_id:
+                is_match = True
+            elif bare_unique and rec_event_id:
+                if bare_unique == EventRecordMerger._normalize_tsunami_event_key(
+                    rec_event_id
+                ):
+                    is_match = True
+
+            if not is_match:
+                continue
+
+            old_record = record.copy()
+            old_record.pop("history", None)
+            if "history" not in record:
+                record["history"] = []
+            record["history"].insert(0, old_record)
+            if len(record["history"]) > 50:
+                record["history"] = record["history"][:50]
+
+            next_count = int(record.get("update_count", 1) or 1) + 1
+            EventRecordFactory.apply_common_fields(
+                record,
+                event,
+                current_time=current_time,
+                event_unique_id=event_unique_id,
+                description=description,
+                source_id=source_id,
+                update_count=next_count,
+            )
+            EventRecordFactory.apply_tsunami_fields(record, event)
+            if real_event_id:
+                record["real_event_id"] = real_event_id
+            record["report_num"] = next_count
+
+            updated_record = target_list.pop(i)
+            target_list.insert(0, updated_record)
+            return updated_record
 
         return None
 
