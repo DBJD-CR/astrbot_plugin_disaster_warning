@@ -30,6 +30,7 @@ _ALIAS_MAP: dict[str, str] = {
     "p2p_eew": "jma_p2p",
     "p2p_earthquake": "jma_p2p_info",
     "p2p_tsunami": "jma_tsunami_p2p",
+    "eqsc_tsunami": "jma_tsunami_eqsc",
     "wolfx_jma_eew": "jma_wolfx",
     "wolfx_cenc_eew": "cea_wolfx",
     "wolfx_cwa_eew": "cwa_wolfx",
@@ -66,8 +67,17 @@ _ALIAS_MAP: dict[str, str] = {
     "日本气象厅: 紧急地震速报": "jma_fanstudio",
     "日本气象厅：地震情报": "jma_p2p_info",
     "日本气象厅: 地震情报": "jma_p2p_info",
+    # 中文冒号全角/半角 + 预报/予报 历史写法都兼容
     "日本气象厅：海啸预报": "jma_tsunami_p2p",
     "日本气象厅: 海啸预报": "jma_tsunami_p2p",
+    "日本气象厅：海啸予报": "jma_tsunami_p2p",
+    "日本气象厅: 海啸予报": "jma_tsunami_p2p",
+    "日本气象厅：海啸予报 - P2P": "jma_tsunami_p2p",
+    "日本气象厅: 海啸予报 - P2P": "jma_tsunami_p2p",
+    "日本气象厅：海啸予报 - EQSC": "jma_tsunami_eqsc",
+    "日本气象厅: 海啸予报 - EQSC": "jma_tsunami_eqsc",
+    "日本气象厅：海啸预报 - EQSC": "jma_tsunami_eqsc",
+    "日本气象厅: 海啸预报 - EQSC": "jma_tsunami_eqsc",
 }
 
 # 展示名称映射表：用于把内部规范 key 转回更友好的前端展示标签。
@@ -87,7 +97,8 @@ _DISPLAY_MAP: dict[str, str] = {
     "typhoon_eqsc_rebuild": "中国气象局：台风历史 - EQSC",
     "jma_p2p": "日本气象厅: 紧急地震速报 - P2P",
     "jma_p2p_info": "日本气象厅: 地震情报 - P2P",
-    "jma_tsunami_p2p": "日本气象厅: 海啸予报",
+    "jma_tsunami_p2p": "日本气象厅: 海啸予报 - P2P",
+    "jma_tsunami_eqsc": "日本气象厅: 海啸予报 - EQSC",
     "jma_wolfx": "日本气象厅: 紧急地震速报 - Wolfx",
     "cea_wolfx": "中国地震预警网 (CEA) - Wolfx",
     "cwa_wolfx": "台湾中央气象署: 强震即时警报 - Wolfx",

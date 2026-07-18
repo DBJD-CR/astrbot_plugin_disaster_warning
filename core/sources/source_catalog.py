@@ -549,6 +549,7 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         text_presenter_key="tsunami_jma",
         report_policy="none",
         intensity_mode="none",
+        # EQSC 字段更完整，优先级低于 EQSC（数值越大越优先）
         priority=1,
         display_name="日本气象厅",
         description="日本气象厅：津波予報 - P2P地震情报 WebSocket",
@@ -563,6 +564,38 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         provider_message_types=("552",),
         provider_aliases=("p2p_tsunami",),
         routing_tags=("p2p", "japan", "tsunami"),
+    ),
+    # jma_tsunami_eqsc: 日本气象厅海啸情报 - 来自 EQSC HTTP 轮询（高优先级补充源）
+    # 不挂 WebSocket 连接计划：connection_url 留空，由 EqscTsunamiPollService 独立轮询
+    "jma_tsunami_eqsc": SourceEntry(
+        source_id="jma_tsunami_eqsc",
+        source_enum="eqsc_tsunami",
+        source_type=SourceType.TSUNAMI,
+        provider_family=ProviderFamily.EQSC,
+        config_group="eqsc",
+        config_key="jma_tsunami",
+        parser_name="japan_tsunami_eqsc_parser",
+        presentation_type="tsunami",
+        text_presenter_key="tsunami_jma",
+        report_policy="none",
+        intensity_mode="none",
+        # 高于 P2P：字段更完整，跨源去重时优先保留 EQSC
+        priority=3,
+        display_name="日本气象厅",
+        description="日本气象厅：津波予報 - EQSC HTTP 轮询（P2P 高优先级补充）",
+        default_timezone="Asia/Tokyo",
+        publish_time_field="time",
+        fingerprint_prefix="jma_tsunami",
+        connection_group="eqsc",
+        connection_handler="",
+        connection_data_source="jma_tsunami_eqsc",
+        connection_url="",
+        institution_key="japan",
+        institution_display_name="日本気象庁 津波",
+        institution_active_name="日本気象庁",
+        dispatch_family="eqsc_tsunami",
+        provider_aliases=("eqsc_tsunami", "jma_tsunami_eqsc"),
+        routing_tags=("eqsc", "japan", "tsunami", "http"),
     ),
     # china_weather_fanstudio: 中国气象局发布的气象预警
     "china_weather_fanstudio": SourceEntry(
