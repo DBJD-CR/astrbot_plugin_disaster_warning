@@ -126,6 +126,31 @@ class EqscHttpClient:
         separator = "&" if "?" in url else "?"
         return f"{url}{separator}{query}"
 
+    @staticmethod
+    def _sanitize_log_payload(response_data: Any, *, max_chars: int = 8000) -> Any:
+        """截断过大响应，降低原始日志意外膨胀/敏感字段风险。"""
+        if response_data is None:
+            return None
+        if isinstance(response_data, str):
+            text = response_data
+            if len(text) <= max_chars:
+                return text
+            return f"{text[:max_chars]}...[truncated len={len(text)}]"
+        try:
+            encoded = json.dumps(response_data, ensure_ascii=False)
+        except Exception:
+            text = str(response_data)
+            if len(text) <= max_chars:
+                return text
+            return f"{text[:max_chars]}...[truncated]"
+        if len(encoded) <= max_chars:
+            return response_data
+        return {
+            "_truncated": True,
+            "_original_chars": len(encoded),
+            "preview": encoded[:max_chars],
+        }
+
     def _log_http_response(
         self,
         *,
@@ -139,6 +164,7 @@ class EqscHttpClient:
             return
         try:
             log_url = self._build_request_url(url, params)
+            safe_payload = self._sanitize_log_payload(response_data)
             connection_info = {
                 "url": log_url,
                 "status_code": status_code,
@@ -149,13 +175,13 @@ class EqscHttpClient:
                 self._message_logger.log_raw_message(
                     source="http_eqsc",
                     message_type="http_response",
-                    payload_data=response_data,
+                    payload_data=safe_payload,
                     connection_info=connection_info,
                 )
             else:
                 self._message_logger.log_http_response(
                     url=log_url,
-                    response_data=response_data,
+                    response_data=safe_payload,
                     status_code=status_code,
                 )
         except Exception as e:
