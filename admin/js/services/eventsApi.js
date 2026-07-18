@@ -21,9 +21,10 @@
     };
 
     function normalizeOptionalNumber(value) {
-        if (value === null || value === undefined || value === '') return '';
+        // 无值时返回 undefined，配合 apiClient 省略该 query 键，避免传空串。
+        if (value === null || value === undefined || value === '') return undefined;
         const num = Number(value);
-        return Number.isFinite(num) ? num : '';
+        return Number.isFinite(num) ? num : undefined;
     }
 
     /**

@@ -464,14 +464,6 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     align-items: stretch;
 }
 
-.event-filters-secondary-row.is-earthquake {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.event-filters-secondary-row.is-typhoon {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
 .event-filters-time-row {
     display: block;
 }
@@ -2643,9 +2635,7 @@ body.dark-theme .weather-query-error {
 
 /* 宽屏平板设备适配（最大宽 1280px） */
 @media (max-width: 1280px) {
-    .event-filters-secondary-row,
-    .event-filters-secondary-row.is-earthquake,
-    .event-filters-secondary-row.is-typhoon {
+    .event-filters-secondary-row {
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
 

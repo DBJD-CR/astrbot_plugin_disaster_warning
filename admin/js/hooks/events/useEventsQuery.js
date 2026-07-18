@@ -313,6 +313,82 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
             });
     }, [eventsApi, preserveScrollPosition]);
 
+    /**
+     * 统一构造查询快照并触发拉取，避免 useEffect / goToPage / WS 三处重复。
+     * @param {number} page 目标页码
+     * @param {object} [options]
+     * @param {boolean} [options.preserveScroll]
+     * @param {object} [options.snapshot] 显式传入筛选快照；缺省时读取当前 state
+     * @param {boolean} [options.useRefs] 使用 ref 快照（WS 静默刷新场景）
+     */
+    const executeQuery = React.useCallback((page, options = {}) => {
+        const useRefs = Boolean(options.useRefs);
+        const snapshot = options.snapshot || (useRefs
+            ? {
+                filterType: filterTypeRef.current,
+                magnitudeFilter: magnitudeFilterRef.current,
+                magnitudeOrder: magnitudeOrderRef.current,
+                windSpeedFilter: windSpeedFilterRef.current,
+                depthFilter: depthFilterRef.current,
+                intensityFilter: intensityFilterRef.current,
+                maxPressureFilter: maxPressureFilterRef.current,
+                activeOnly: activeOnlyRef.current,
+                timePreset: timePresetRef.current,
+                timeFrom: timeFromRef.current,
+                timeTo: timeToRef.current,
+                searchKeyword: keywordRef.current,
+                pageSize: pageSizeRef.current,
+                selectedSources: selectedSourcesRef.current,
+            }
+            : {
+                filterType,
+                magnitudeFilter,
+                magnitudeOrder,
+                windSpeedFilter,
+                depthFilter,
+                intensityFilter,
+                maxPressureFilter,
+                activeOnly,
+                timePreset,
+                timeFrom,
+                timeTo,
+                searchKeyword: debouncedKeyword,
+                pageSize,
+                selectedSources,
+            });
+
+        const queryFilters = {
+            ...buildEventQueryFilters(snapshot),
+            searchKeyword: snapshot.searchKeyword,
+        };
+
+        fetchEvents(
+            page,
+            snapshot.filterType,
+            snapshot.pageSize,
+            snapshot.selectedSources,
+            queryFilters,
+            { preserveScroll: Boolean(options.preserveScroll) },
+        );
+    }, [
+        buildEventQueryFilters,
+        fetchEvents,
+        filterType,
+        magnitudeFilter,
+        magnitudeOrder,
+        windSpeedFilter,
+        depthFilter,
+        intensityFilter,
+        maxPressureFilter,
+        activeOnly,
+        timePreset,
+        timeFrom,
+        timeTo,
+        debouncedKeyword,
+        pageSize,
+        selectedSources,
+    ]);
+
     // 异步加载所有可用数据源以作下拉筛选
     React.useEffect(() => {
         eventsApi.getEvents({ page: 1, limit: 1 })
@@ -328,25 +404,7 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
     React.useEffect(() => {
         setCurrentPage(1);
         setPageInput('');
-
-        const queryFilters = {
-            ...buildEventQueryFilters({
-                filterType,
-                magnitudeFilter,
-                magnitudeOrder,
-                windSpeedFilter,
-                depthFilter,
-                intensityFilter,
-                maxPressureFilter,
-                activeOnly,
-                timePreset,
-                timeFrom,
-                timeTo,
-            }),
-            searchKeyword: debouncedKeyword,
-        };
-
-        fetchEvents(1, filterType, pageSize, selectedSources, queryFilters);
+        executeQuery(1);
     }, [
         filterType,
         pageSize,
@@ -362,8 +420,7 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
         timePreset,
         timeFrom,
         timeTo,
-        fetchEvents,
-        buildEventQueryFilters,
+        executeQuery,
     ]);
 
     // 限制单页显示数不超出接口允许的最大上限
@@ -393,33 +450,11 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
     // 响应长连接的实时事件推送
     React.useEffect(() => {
         if (!wsConnected) return;
-        const currentFilterType = filterTypeRef.current;
-        const queryFilters = {
-            ...buildEventQueryFilters({
-                filterType: currentFilterType,
-                magnitudeFilter: magnitudeFilterRef.current,
-                magnitudeOrder: magnitudeOrderRef.current,
-                windSpeedFilter: windSpeedFilterRef.current,
-                depthFilter: depthFilterRef.current,
-                intensityFilter: intensityFilterRef.current,
-                maxPressureFilter: maxPressureFilterRef.current,
-                activeOnly: activeOnlyRef.current,
-                timePreset: timePresetRef.current,
-                timeFrom: timeFromRef.current,
-                timeTo: timeToRef.current,
-            }),
-            searchKeyword: keywordRef.current,
-        };
-
-        fetchEvents(
-            currentPageRef.current,
-            currentFilterType,
-            pageSizeRef.current,
-            selectedSourcesRef.current,
-            queryFilters,
-            { preserveScroll: true },
-        );
-    }, [wsEvents, wsConnected, fetchEvents, buildEventQueryFilters]);
+        executeQuery(currentPageRef.current, {
+            preserveScroll: true,
+            useRefs: true,
+        });
+    }, [wsEvents, wsConnected, executeQuery]);
 
     // 组件卸载时自动终止未完成的网络请求
     React.useEffect(() => {
@@ -440,44 +475,8 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
 
         setCurrentPage(safePage);
         setPageInput('');
-        const queryFilters = {
-            ...buildEventQueryFilters({
-                filterType,
-                magnitudeFilter,
-                magnitudeOrder,
-                windSpeedFilter,
-                depthFilter,
-                intensityFilter,
-                maxPressureFilter,
-                activeOnly,
-                timePreset,
-                timeFrom,
-                timeTo,
-            }),
-            searchKeyword: debouncedKeyword,
-        };
-
-        fetchEvents(safePage, filterType, pageSize, selectedSources, queryFilters);
-    }, [
-        currentPage,
-        totalPages,
-        fetchEvents,
-        filterType,
-        pageSize,
-        selectedSources,
-        magnitudeFilter,
-        magnitudeOrder,
-        debouncedKeyword,
-        windSpeedFilter,
-        depthFilter,
-        intensityFilter,
-        maxPressureFilter,
-        activeOnly,
-        timePreset,
-        timeFrom,
-        timeTo,
-        buildEventQueryFilters,
-    ]);
+        executeQuery(safePage);
+    }, [currentPage, totalPages, executeQuery]);
 
     /**
      * 一键重置全部筛选条件
