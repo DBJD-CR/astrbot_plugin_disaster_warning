@@ -202,12 +202,6 @@
             "default": true,
             "hint": "控制 EQSC 通道是否启用（鉴权、连通性、后续子能力入口）。关闭后所有 EQSC 子能力均不可用。"
           },
-          "typhoon_enrichment": {
-            "description": "启用台风富化",
-            "type": "bool",
-            "default": true,
-            "hint": "启用后，收到 FAN Studio 台风推送时将自动向 EQSC 拉取详细轨迹与风圈。未启用时台风仅使用 FAN Studio 基础数据展示。"
-          },
           "base_url": {
             "description": "EQSC API 基础地址",
             "type": "string",
@@ -221,6 +215,12 @@
             "hint": "从 EQuake 设置界面获取的访问令牌（以 ARh. 开头），用于创建 AccessToken。请妥善保管，不要泄露。",
             "hidden": true
           },
+          "typhoon_enrichment": {
+            "description": "启用台风富化",
+            "type": "bool",
+            "default": true,
+            "hint": "启用后，收到 FAN Studio 台风推送时将自动向 EQSC 拉取详细轨迹与风圈。未启用时台风仅使用 FAN Studio 基础数据展示。"
+          },
           "cache_ttl": {
             "description": "台风数据缓存时间",
             "type": "int",
@@ -230,6 +230,40 @@
               "min": 60,
               "max": 3600,
               "step": 30
+            }
+          },
+          "jma_tsunami": {
+            "description": "日本气象厅：津波予報（EQSC）",
+            "type": "bool",
+            "default": true,
+            "hint": "通过 EQSC HTTP 轮询获取日本气象厅海啸情报，作为 P2P 津波予報的高优先级补充。字段更完整（eventID、震中、区域波高/初波状态等）。"
+          },
+          "jma_tsunami_poll_interval_seconds": {
+            "description": "海啸轮询间隔（秒）",
+            "type": "int",
+            "default": 60,
+            "hint": "单位：秒。EQSC 海啸快照轮询间隔。海啸更新不频繁，建议 30~120 秒。",
+            "slider": {
+              "min": 15,
+              "max": 300,
+              "step": 10
+            }
+          },
+          "jma_tsunami_include_training": {
+            "description": "接收海啸训练报",
+            "type": "bool",
+            "default": false,
+            "hint": "是否推送 EQSC 标记为训练报（isTraining）的海啸情报。默认忽略。"
+          },
+          "tsunami_cache_ttl": {
+            "description": "海啸数据缓存时间",
+            "type": "int",
+            "hint": "单位：秒。EQSC 海啸快照内存缓存有效期，用于短时并发复用；轮询本身会绕过缓存强制刷新。",
+            "default": 60,
+            "slider": {
+              "min": 15,
+              "max": 300,
+              "step": 15
             }
           }
         }
@@ -595,7 +629,7 @@
       "ignore_non_final_reports": {
         "description": "是否忽略非最终报",
         "type": "bool",
-        "hint": "只推送最终报（以及第1报），仅适用于 JMA 相关数据源",
+        "hint": "只推送最终报（以及第1报），适用于支持最终报的数据源（如 JMA、Global Quake）",
         "default": false
       }
     }
@@ -758,6 +792,64 @@
         "type": "bool",
         "hint": "启用后将根据预警类型自动在消息末尾附加中国气象局官方图标。",
         "default": true
+      }
+    }
+  },
+  "tsunami_config": {
+    "description": "🌊 海啸信息配置",
+    "type": "object",
+    "hint": "配置中国/日本海啸推送的最低警报级别阈值过滤。",
+    "items": {
+      "china_filter": {
+        "description": "中国海啸过滤器",
+        "type": "object",
+        "hint": "针对自然资源部海啸预警中心（Fan Studio）推送。解除通告始终放行。",
+        "items": {
+          "enabled": {
+            "description": "启用中国海啸过滤",
+            "type": "bool",
+            "hint": "关闭时只要数据源开启且通过去重即推送。",
+            "default": false
+          },
+          "min_level": {
+            "description": "最低警报级别",
+            "type": "string",
+            "options": [
+              "信息",
+              "蓝色",
+              "黄色",
+              "橙色",
+              "红色"
+            ],
+            "default": "信息",
+            "hint": "只推送等于或高于此级别的海啸。级别排序：信息 < 蓝色 < 黄色 < 橙色 < 红色"
+          }
+        }
+      },
+      "japan_filter": {
+        "description": "日本海啸过滤器",
+        "type": "object",
+        "hint": "针对日本气象厅海啸情报（P2P / EQSC）。解除通告始终放行。",
+        "items": {
+          "enabled": {
+            "description": "启用日本海啸过滤",
+            "type": "bool",
+            "hint": "关闭时只要数据源开启且通过去重即推送。",
+            "default": false
+          },
+          "min_level": {
+            "description": "最低警报级别",
+            "type": "string",
+            "options": [
+              "若干海面变动",
+              "海啸注意报",
+              "海啸警报",
+              "大海啸警报"
+            ],
+            "default": "若干海面变动",
+            "hint": "只推送等于或高于此级别的海啸。级别排序：若干海面变动 < 海啸注意报 < 海啸警报 < 大海啸警报"
+          }
+        }
       }
     }
   },
