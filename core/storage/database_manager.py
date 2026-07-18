@@ -125,6 +125,25 @@ class DatabaseManager:
             if "pressure" not in columns:
                 # 台风主表 pressure 语义为历史最低中心气压，供气压榜/风王榜重建。
                 await cursor.execute("ALTER TABLE events ADD COLUMN pressure REAL")
+            # 海啸专用摘要列：避免复用台风 wind_speed 等语义冲突字段
+            if "max_wave_height" not in columns:
+                await cursor.execute(
+                    "ALTER TABLE events ADD COLUMN max_wave_height REAL"
+                )
+            if "area_count" not in columns:
+                await cursor.execute("ALTER TABLE events ADD COLUMN area_count INTEGER")
+            if "immediate_area_count" not in columns:
+                await cursor.execute(
+                    "ALTER TABLE events ADD COLUMN immediate_area_count INTEGER"
+                )
+            if "is_cancelled" not in columns:
+                await cursor.execute(
+                    "ALTER TABLE events ADD COLUMN is_cancelled INTEGER DEFAULT 0"
+                )
+            if "is_training" not in columns:
+                await cursor.execute(
+                    "ALTER TABLE events ADD COLUMN is_training INTEGER DEFAULT 0"
+                )
 
         # 检查 event_updates 报次更新表是否存在
         await cursor.execute(
@@ -183,6 +202,11 @@ class DatabaseManager:
                 level           TEXT,
                 wind_speed      REAL,
                 pressure        REAL,
+                max_wave_height REAL,
+                area_count      INTEGER,
+                immediate_area_count INTEGER,
+                is_cancelled    INTEGER DEFAULT 0,
+                is_training     INTEGER DEFAULT 0,
                 time            TEXT,
                 is_major        INTEGER DEFAULT 0,
                 update_count    INTEGER DEFAULT 1,
@@ -284,9 +308,10 @@ class DatabaseManager:
                     real_event_id, unique_id, type, source, source_id,
                     description, subtitle, weather_detail, info_type, place_name, latitude, longitude,
                     magnitude, depth, report_num,
-                    weather_type_code, level, wind_speed, pressure, time,
-                    is_major, update_count, created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    weather_type_code, level, wind_speed, pressure,
+                    max_wave_height, area_count, immediate_area_count, is_cancelled, is_training,
+                    time, is_major, update_count, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     event_data.get("real_event_id"),
@@ -308,6 +333,11 @@ class DatabaseManager:
                     event_data.get("level"),
                     event_data.get("wind_speed"),
                     event_data.get("pressure"),
+                    event_data.get("max_wave_height"),
+                    event_data.get("area_count"),
+                    event_data.get("immediate_area_count"),
+                    1 if event_data.get("is_cancelled") else 0,
+                    1 if event_data.get("is_training") else 0,
                     event_time,
                     1 if is_major else 0,
                     event_data.get("update_count", 1),
@@ -519,6 +549,11 @@ class DatabaseManager:
                     level             = ?,
                     wind_speed        = ?,
                     pressure          = ?,
+                    max_wave_height   = ?,
+                    area_count        = ?,
+                    immediate_area_count = ?,
+                    is_cancelled      = ?,
+                    is_training       = ?,
                     is_major          = ?,
                     updated_at        = CURRENT_TIMESTAMP
                 WHERE id = ?
@@ -542,6 +577,11 @@ class DatabaseManager:
                     level_to_store,
                     wind_speed_to_store,
                     pressure_to_store,
+                    event_data.get("max_wave_height"),
+                    event_data.get("area_count"),
+                    event_data.get("immediate_area_count"),
+                    1 if event_data.get("is_cancelled") else 0,
+                    1 if event_data.get("is_training") else 0,
                     1 if is_major else 0,
                     db_id,
                 ),
@@ -815,6 +855,26 @@ class DatabaseManager:
             return events[0]
         except Exception as e:
             logger.error(f"[灾害预警] 查找事件失败: {e}")
+            return None
+
+    async def find_event_by_unique_id(
+        self, unique_id: str, source: str
+    ) -> dict[str, Any] | None:
+        """按 unique_id + source 查找事件。"""
+        try:
+            connection = await self._ensure_connection()
+            cursor = await connection.cursor()
+            await cursor.execute(
+                "SELECT * FROM events WHERE unique_id=? AND source=? LIMIT 1",
+                (unique_id, source),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            events = await self._attach_history([dict(row)])
+            return events[0]
+        except Exception as e:
+            logger.error(f"[灾害预警] 按 unique_id 查找事件失败: {e}")
             return None
 
     async def find_weather_event_by_alarm_id(
@@ -1246,8 +1306,10 @@ class DatabaseManager:
                 params.extend([keyword_like] * 7)
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+            # 前端列表按稳定事件键去重计数，避免海啸等同 unique_id 多行被重复统计
+            dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
             await cursor.execute(
-                f"SELECT COUNT(*) FROM events{where_sql}",
+                f"SELECT COUNT(DISTINCT {dedup_group_expr}) FROM events{where_sql}",
                 tuple(params),
             )
             row = await cursor.fetchone()
@@ -1330,19 +1392,38 @@ class DatabaseManager:
             normalized_order = (magnitude_order or "").lower().strip()
             if normalized_order in {"asc", "desc"}:
                 order_sql = (
-                    " ORDER BY "
                     "CASE WHEN magnitude IS NULL THEN 1 ELSE 0 END ASC, "
                     f"magnitude {normalized_order.upper()}, "
                     f"{timeline_order}"
                 )
             else:
-                order_sql = f" ORDER BY {timeline_order}"
+                order_sql = timeline_order
 
-            sql = f"SELECT * FROM events{where_sql}{order_sql} LIMIT ? OFFSET ?"
+            # 按稳定事件键去重后再分页，避免同 unique_id 海啸多行刷屏
+            dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
+            sql = f"""
+                WITH ranked AS (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY {dedup_group_expr}
+                            ORDER BY {order_sql}
+                        ) AS rn
+                    FROM events
+                    {where_sql}
+                )
+                SELECT * FROM ranked
+                WHERE rn = 1
+                ORDER BY {order_sql}
+                LIMIT ? OFFSET ?
+            """
             params.extend([limit, offset])
             await cursor.execute(sql, tuple(params))
 
             events = [dict(row) for row in await cursor.fetchall()]
+            # 去掉窗口函数辅助列
+            for event in events:
+                event.pop("rn", None)
             return await self._attach_history(events)
         except Exception as e:
             logger.error(f"[灾害预警] 分页查询失败: {e}")
