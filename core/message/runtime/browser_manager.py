@@ -65,12 +65,270 @@ class BrowserManager:
             return None
         return {"width": width, "height": height}
 
+    @staticmethod
+    def _is_target_closed_error(error: Exception | str | None) -> bool:
+        """判断是否为 Playwright 目标/浏览器已关闭类错误。"""
+        message = str(error or "").lower()
+        return any(
+            marker in message
+            for marker in (
+                "target page, context or browser has been closed",
+                "browser has been closed",
+                "target closed",
+                "page has been closed",
+                "context has been closed",
+            )
+        )
+
     def _truncate_debug_text(self, value, limit: int = 240) -> str:
         """截断浏览器侧日志文本，避免单条日志过长。"""
         text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
         if len(text) <= limit:
             return text
         return f"{text[:limit]}..."
+
+    async def _is_page_usable(self, page: Page | None) -> bool:
+        """检查页面是否仍可用于渲染。"""
+        if page is None:
+            return False
+        try:
+            if page.is_closed():
+                return False
+            # 轻量探测：页面所属浏览器/上下文若已失效，这里会抛出。
+            _ = page.context
+            # 给探测加超时，避免页面卡死时把归还/取用流程一起拖死。
+            await asyncio.wait_for(page.evaluate("() => true"), timeout=1.0)
+            return True
+        except Exception:
+            return False
+
+    async def _is_browser_alive(self) -> bool:
+        """检查本地浏览器进程是否仍可用。"""
+        if self._closed or self._browser is None:
+            return False
+        try:
+            # Playwright Browser.is_connected() 在进程崩溃后会返回 False。
+            is_connected = getattr(self._browser, "is_connected", None)
+            if callable(is_connected):
+                return bool(is_connected())
+            return True
+        except Exception:
+            return False
+
+    async def _ensure_local_browser_ready(self) -> bool:
+        """确保本地浏览器与页面池可用；必要时自动重建。"""
+        if self._mode != "local":
+            return self._initialized and not self._closed
+
+        if self._closed:
+            return False
+
+        # 快路径：已初始化且浏览器仍连接时直接复用。
+        if self._initialized and await self._is_browser_alive():
+            return True
+
+        # 慢路径：加初始化锁，避免并发渲染同时触发多次重建。
+        async with self._init_lock:
+            if self._closed:
+                return False
+            if self._initialized and await self._is_browser_alive():
+                return True
+
+            logger.warning("[灾害预警] 检测到浏览器不可用，尝试重新初始化...")
+            try:
+                # 注意：这里不能调用 initialize() 内部的 _init_lock（同协程重入会卡死），
+                # 因此在已持有锁的情况下直接执行重建步骤。
+                await self._cleanup()
+                self._closed = False
+
+                logger.info(f"[灾害预警] 正在启动浏览器（模式：{self._mode}）...")
+                start_time = time.time()
+                self._playwright = await async_playwright().start()
+                self._browser = await self._playwright.chromium.launch(
+                    args=["--no-sandbox", "--disable-setuid-sandbox"]
+                )
+                logger.info("[灾害预警] 本地浏览器启动成功")
+                await self._initialize_local_page_pool()
+                elapsed = time.time() - start_time
+                self._initialized = True
+                logger.info(
+                    f"[灾害预警] 浏览器重建完成，耗时 {elapsed:.2f}秒，页面池大小: {self.pool_size}"
+                )
+                return await self._is_browser_alive()
+            except Exception as reinit_err:
+                logger.error(f"[灾害预警] 浏览器重新初始化失败: {reinit_err}")
+                await self._cleanup()
+                return False
+
+    async def _create_local_page(self) -> Page:
+        """创建本地页面池中的新页面。"""
+        if not self._browser:
+            raise RuntimeError("浏览器未就绪，无法创建页面")
+        return await self._browser.new_page(
+            viewport=dict(self.DEFAULT_VIEWPORT),
+            device_scale_factor=2,
+        )
+
+    async def _return_page_to_pool(self, page: Page | None) -> None:
+        """仅在页面仍可用时归还页面池，避免把坏页重新投入复用。"""
+        if page is None:
+            return
+        try:
+            if await self._is_page_usable(page):
+                await self._page_pool.put(page)
+                return
+        except Exception as return_err:
+            logger.debug(f"[灾害预警] 归还页面到池失败: {return_err}")
+
+        # 页面已不可用：尽量关闭，并补一个新页面维持池容量。
+        try:
+            if not page.is_closed():
+                await page.close()
+        except Exception:
+            pass
+        await self._replenish_page_pool()
+
+    async def _acquire_usable_page(self, timeout: float = 5.0) -> Page | None:
+        """从页面池获取可用页面；遇到坏页时丢弃并补充，必要时直接新建。"""
+        if not await self._ensure_local_browser_ready():
+            return None
+
+        deadline = time.time() + max(timeout, 0.1)
+        discarded = 0
+
+        while time.time() < deadline:
+            remaining = max(0.05, deadline - time.time())
+            page: Page | None = None
+            try:
+                page = await asyncio.wait_for(self._page_pool.get(), timeout=remaining)
+            except asyncio.TimeoutError:
+                break
+
+            if await self._is_page_usable(page):
+                return page
+
+            discarded += 1
+            try:
+                if page and not page.is_closed():
+                    await page.close()
+            except Exception:
+                pass
+
+            # 坏页不回池，异步补齐容量后继续取下一个。
+            await self._replenish_page_pool()
+
+        if discarded:
+            logger.warning(
+                f"[灾害预警] 页面池中发现 {discarded} 个不可用页面，已丢弃并尝试补充"
+            )
+
+        # 池中暂时没有可用页时，直接新建一个应急页面。
+        try:
+            if await self._ensure_local_browser_ready():
+                page = await self._create_local_page()
+                logger.debug("[灾害预警] 页面池暂无可用页，已直接创建应急页面")
+                return page
+        except Exception as create_err:
+            logger.error(f"[灾害预警] 创建应急页面失败: {create_err}")
+
+        return None
+
+    async def _replenish_page_pool(self) -> None:
+        """在页面损坏或关闭后，尽量把页面池补回到目标容量。"""
+        if self._mode != "local" or self._closed:
+            return
+
+        async with self._page_creation_lock:
+            if not await self._ensure_local_browser_ready():
+                return
+
+            while self._page_pool.qsize() < self.pool_size:
+                try:
+                    new_page = await self._create_local_page()
+                    await self._page_pool.put(new_page)
+                    logger.debug(
+                        f"[灾害预警] 已补充页面，当前池大小: {self._page_pool.qsize()}/{self.pool_size}"
+                    )
+                except Exception as recover_err:
+                    logger.error(f"[灾害预警] 页面恢复失败: {recover_err}")
+                    break
+
+    async def _wait_for_fonts_ready(self, page: Page, timeout_ms: int = 1500) -> None:
+        """等待网页字体就绪，超时后继续截图，避免卡死在 fonts.ready。"""
+        try:
+            await page.evaluate(
+                """
+                async (timeoutMs) => {
+                    if (!document.fonts || !document.fonts.ready) {
+                        return "unsupported";
+                    }
+                    const timeoutPromise = new Promise((resolve) => {
+                        setTimeout(() => resolve("timeout"), timeoutMs);
+                    });
+                    const readyPromise = document.fonts.ready
+                        .then(() => "ready")
+                        .catch(() => "error");
+                    return await Promise.race([readyPromise, timeoutPromise]);
+                }
+                """,
+                timeout_ms,
+            )
+        except Exception as font_err:
+            # 字体等待失败不应阻断截图；Playwright 截图本身仍会再做一次字体检查。
+            logger.debug(f"[灾害预警] 等待字体就绪失败，继续截图: {font_err}")
+
+    async def _screenshot_card(
+        self,
+        page: Page,
+        selector: str,
+        output_path: str,
+        *,
+        timeout_ms: int = 10000,
+    ) -> None:
+        """对卡片元素截图，并在字体等待超时场景下做一次降级重试。"""
+        await self._wait_for_fonts_ready(page, timeout_ms=1500)
+        card = page.locator(selector)
+        try:
+            await card.screenshot(
+                path=output_path,
+                omit_background=True,
+                timeout=timeout_ms,
+            )
+            return
+        except Exception as first_err:
+            # Playwright 默认截图会等待字体加载；若仍超时，强制结束字体加载后重试一次。
+            message = str(first_err).lower()
+            if "font" not in message and "timeout" not in message:
+                raise
+
+            logger.warning(
+                f"[灾害预警] 卡片截图超时，尝试强制结束字体加载后重试: {first_err}"
+            )
+            try:
+                await page.evaluate(
+                    """
+                    async () => {
+                        try {
+                            if (document.fonts && document.fonts.ready) {
+                                // 主动触发一次 ready 竞争，尽量让后续截图不再长时间阻塞。
+                                await Promise.race([
+                                    document.fonts.ready,
+                                    new Promise((resolve) => setTimeout(resolve, 50)),
+                                ]);
+                            }
+                        } catch (e) {}
+                        return true;
+                    }
+                    """
+                )
+            except Exception:
+                pass
+
+            await card.screenshot(
+                path=output_path,
+                omit_background=True,
+                timeout=min(timeout_ms, 5000),
+            )
 
     async def _log_page_diagnostics(self, page: Page, *, reason: str) -> None:
         """输出页面级诊断信息，辅助定位资源加载、脚本执行与选择器状态问题。"""
@@ -277,15 +535,13 @@ class BrowserManager:
             )
 
         # 本地模式：使用 Playwright
-        if not self._initialized:
-            logger.warning("[灾害预警] 浏览器未初始化，尝试初始化...")
-            await self.initialize()
-
-        if self._closed:
-            logger.error("[灾害预警] 浏览器已关闭，无法渲染")
+        if not await self._ensure_local_browser_ready():
+            logger.error("[灾害预警] 浏览器不可用，无法渲染")
             return None
 
         page: Page | None = None
+        page_returned = False
+        render_succeeded = False
         start_time = time.time()
 
         acquired_semaphore = False
@@ -302,11 +558,10 @@ class BrowserManager:
                 return None
 
             try:
-                # 本地模式：从池中获取页面
-                try:
-                    page = await asyncio.wait_for(self._page_pool.get(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    logger.error("[灾害预警] 从池中获取页面对象超时")
+                # 本地模式：从池中获取可用页面；坏页直接丢弃并补充。
+                page = await self._acquire_usable_page()
+                if page is None:
+                    logger.error("[灾害预警] 无法获取可用页面对象")
                     return None
 
                 try:
@@ -371,7 +626,11 @@ class BrowserManager:
 
                         # 使用 file:// 协议加载，支持相对路径
                         file_url = f"file://{temp_html}"
-                        await page.goto(file_url, wait_until="domcontentloaded")
+                        await page.goto(
+                            file_url,
+                            wait_until="domcontentloaded",
+                            timeout=30000,
+                        )
                     finally:
                         # 清理临时 HTML 文件
                         if temp_html and os.path.exists(temp_html):
@@ -434,11 +693,13 @@ class BrowserManager:
                             selector, state="visible", timeout=1000
                         )
 
-                    # 定位卡片元素
-                    card = page.locator(selector)
-
-                    # 截图：只截取元素，背景透明
-                    await card.screenshot(path=output_path, omit_background=True)
+                    # 截图：只截取元素，背景透明；字体等待超时会自动降级重试。
+                    await self._screenshot_card(
+                        page,
+                        selector,
+                        output_path,
+                        timeout_ms=10000,
+                    )
 
                     elapsed = time.time() - start_time
 
@@ -455,6 +716,7 @@ class BrowserManager:
                             f"[灾害预警] 卡片渲染成功，耗时 {elapsed:.3f}秒",
                             is_event_linked=True,
                         )
+                        render_succeeded = True
                         return output_path
                     else:
                         logger.warning("[灾害预警] 截图未生成文件")
@@ -464,18 +726,29 @@ class BrowserManager:
                         return None
 
                 finally:
-                    # 本地模式：恢复默认视口后归还页面到池
-                    if page:
-                        if resolved_viewport:
+                    # 成功：恢复视口后归还；失败：直接丢弃坏页并补池，避免污染后续渲染。
+                    if page and not page_returned:
+                        if render_succeeded:
+                            if resolved_viewport:
+                                try:
+                                    if await self._is_page_usable(page):
+                                        await page.set_viewport_size(
+                                            dict(self.DEFAULT_VIEWPORT)
+                                        )
+                                except Exception as restore_err:
+                                    logger.debug(
+                                        f"[灾害预警] 恢复默认视口失败: {restore_err}"
+                                    )
+                            await self._return_page_to_pool(page)
+                        else:
                             try:
-                                await page.set_viewport_size(
-                                    dict(self.DEFAULT_VIEWPORT)
-                                )
-                            except Exception as restore_err:
-                                logger.debug(
-                                    f"[灾害预警] 恢复默认视口失败: {restore_err}"
-                                )
-                        await self._page_pool.put(page)
+                                if not page.is_closed():
+                                    await page.close()
+                                    logger.debug("[灾害预警] 已关闭损坏的页面")
+                            except Exception:
+                                pass
+                            await self._replenish_page_pool()
+                        page_returned = True
             finally:
                 # 释放信号量
                 if acquired_semaphore:
@@ -488,27 +761,21 @@ class BrowserManager:
                 await self._telemetry.track_error(
                     e, module="core.browser_manager.render_card"
                 )
-            # 如果页面损坏，关闭它并恢复页面池（仅本地模式）
-            if page:
+
+            # 内层 finally 通常已处理页面回收；这里再兜底一次，避免异常路径泄漏坏页。
+            if page and not page_returned:
                 try:
-                    await page.close()
-                    logger.debug("[灾害预警] 已关闭损坏的页面")
+                    if not page.is_closed():
+                        await page.close()
+                        logger.debug("[灾害预警] 已关闭损坏的页面")
                 except Exception:
                     pass
+                page_returned = True
+                await self._replenish_page_pool()
 
-                # 恢复页面池
-                async with self._page_creation_lock:
-                    try:
-                        if self._browser and not self._closed:
-                            if self._page_pool.qsize() < self.pool_size:
-                                new_page = await self._browser.new_page(
-                                    viewport=dict(self.DEFAULT_VIEWPORT),
-                                    device_scale_factor=2,
-                                )
-                                await self._page_pool.put(new_page)
-                                logger.debug("[灾害预警] 已重新创建页面")
-                    except Exception as recover_err:
-                        logger.error(f"[灾害预警] 页面恢复失败: {recover_err}")
+            # 目标关闭类错误即使页面已回收，也主动确认浏览器可恢复。
+            if self._is_target_closed_error(e):
+                await self._ensure_local_browser_ready()
 
             return None
 
