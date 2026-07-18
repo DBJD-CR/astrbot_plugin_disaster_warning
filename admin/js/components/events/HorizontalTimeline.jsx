@@ -597,7 +597,11 @@ function HorizontalTimeline({ style }) {
                                                         }
                                                         return '地震';
                                                     } else if (item.type === 'tsunami') {
-                                                        return item.title || '海啸预警';
+                                                        const fmt = window.EventFormatters || {};
+                                                        if (typeof fmt.buildTsunamiTimelineTitle === 'function') {
+                                                            return fmt.buildTsunamiTimelineTitle(item);
+                                                        }
+                                                        return item.level || item.title || item.description || '海啸预警';
                                                     } else {
                                                         // 气象预警正则压缩标题：提取“发布...信号”中的具体核心词
                                                         const match = item.description ? item.description.match(/发布(.*?)信号/) : null;
@@ -624,6 +628,15 @@ function HorizontalTimeline({ style }) {
                                                         }
                                                         const normalizedDesc = desc.replace(/^M\s*[\d.]+\s*/i, '').trim();
                                                         return normalizedDesc || '未知地点';
+                                                    }
+                                                    if (item.type === 'tsunami') {
+                                                        const fmt = window.EventFormatters || {};
+                                                        if (typeof fmt.buildTsunamiTimelineSubtitle === 'function') {
+                                                            return fmt.buildTsunamiTimelineSubtitle(item);
+                                                        }
+                                                        const place = String(item.place_name || item.subtitle || '').trim();
+                                                        if (place) return place;
+                                                        return desc.length > 12 ? `${desc.substring(0, 12)}...` : (desc || '海啸');
                                                     }
                                                     return desc.length > 12 ? desc.substring(0, 12) + '...' : desc;
                                                 })()}
