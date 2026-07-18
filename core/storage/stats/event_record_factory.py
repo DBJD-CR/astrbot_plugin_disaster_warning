@@ -351,6 +351,73 @@ class EventRecordFactory:
         return [label for _, label in scored[:limit]]
 
     @staticmethod
+    def _merge_tsunami_payload_context(envelope: EventEnvelope, data: TsunamiEvent) -> dict[str, Any]:
+        """合并 payload.attributes / raw / 领域 metadata / envelope.metadata。"""
+        metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
+        event_metadata = data.metadata if isinstance(data.metadata, dict) else {}
+        # SourcePayload.to_dict() 只返回 raw，真正的 attributes 是 dataclass 字段。
+        merged: dict[str, Any] = {}
+        if isinstance(envelope.payload, SourcePayload):
+            payload_attrs = getattr(envelope.payload, "attributes", None)
+            if isinstance(payload_attrs, dict):
+                merged.update(payload_attrs)
+            raw_payload = envelope.payload.to_dict()
+            if isinstance(raw_payload, dict):
+                nested_attrs = raw_payload.get("attributes")
+                if isinstance(nested_attrs, dict):
+                    merged.update(nested_attrs)
+                merged.update(raw_payload)
+        elif isinstance(envelope.payload, dict):
+            nested_attrs = envelope.payload.get("attributes")
+            if isinstance(nested_attrs, dict):
+                merged.update(nested_attrs)
+            merged.update(envelope.payload)
+        merged.update(event_metadata)
+        merged.update(metadata)
+        return merged
+
+    @staticmethod
+    def _absorb_tsunami_hypocenter(merged: dict[str, Any]) -> None:
+        """把 issue_hypocenter 中的震中字段回填到 merged。"""
+        hypocenter = merged.get("issue_hypocenter")
+        if not isinstance(hypocenter, dict):
+            return
+        for key in ("latitude", "longitude", "magnitude", "place_name", "depth"):
+            if merged.get(key) in (None, "") and hypocenter.get(key) not in (None, ""):
+                merged[key] = hypocenter.get(key)
+        if merged.get("place_name") in (None, ""):
+            hypo_name = hypocenter.get("hypoCenterName") or hypocenter.get("place_name")
+            if hypo_name not in (None, ""):
+                merged["place_name"] = hypo_name
+        if merged.get("magnitude") in (None, ""):
+            mag = hypocenter.get("magnitude")
+            if mag not in (None, ""):
+                merged["magnitude"] = mag
+
+    @staticmethod
+    def _resolve_tsunami_place_fields(merged: dict[str, Any]) -> tuple[str, str]:
+        """解析海啸 place_name / subtitle，过滤泛化标题。"""
+        place_name = str(merged.get("place_name") or merged.get("subtitle") or "").strip()
+        subtitle_raw = str(merged.get("subtitle") or "").strip()
+        if subtitle_raw and not is_generic_tsunami_title(subtitle_raw):
+            subtitle = subtitle_raw
+        elif place_name and not is_generic_tsunami_title(place_name):
+            subtitle = place_name
+        else:
+            subtitle = (
+                place_name
+                if place_name and not is_generic_tsunami_title(place_name)
+                else ""
+            )
+            if is_generic_tsunami_title(place_name):
+                place_name = ""
+        if is_generic_tsunami_title(place_name):
+            place_name = ""
+        if not subtitle and place_name:
+            subtitle = place_name
+        return place_name, subtitle
+
+    @staticmethod
     def apply_tsunami_fields(
         record: dict[str, Any],
         event: EventEnvelope,
@@ -367,43 +434,8 @@ class EventRecordFactory:
         if not isinstance(data, TsunamiEvent):
             return record
 
-        metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
-        event_metadata = data.metadata if isinstance(data.metadata, dict) else {}
-        payload = (
-            envelope.payload.to_dict()
-            if isinstance(envelope.payload, SourcePayload)
-            else {}
-        )
-        merged: dict[str, Any] = {}
-        if isinstance(payload, dict):
-            # SourcePayload.to_dict 可能嵌套 attributes
-            attributes = payload.get("attributes")
-            if isinstance(attributes, dict):
-                merged.update(attributes)
-            merged.update(payload)
-        merged.update(event_metadata)
-        merged.update(metadata)
-
-        # 关联地震可能嵌在 issue_hypocenter
-        hypocenter = merged.get("issue_hypocenter")
-        if isinstance(hypocenter, dict):
-            for key in ("latitude", "longitude", "magnitude", "place_name", "depth"):
-                if merged.get(key) in (None, "") and hypocenter.get(key) not in (
-                    None,
-                    "",
-                ):
-                    merged[key] = hypocenter.get(key)
-            # EQSC 原始键名兼容
-            if merged.get("place_name") in (None, ""):
-                hypo_name = hypocenter.get("hypoCenterName") or hypocenter.get(
-                    "place_name"
-                )
-                if hypo_name not in (None, ""):
-                    merged["place_name"] = hypo_name
-            if merged.get("magnitude") in (None, ""):
-                mag = hypocenter.get("magnitude")
-                if mag not in (None, ""):
-                    merged["magnitude"] = mag
+        merged = EventRecordFactory._merge_tsunami_payload_context(envelope, data)
+        EventRecordFactory._absorb_tsunami_hypocenter(merged)
 
         source_id = str(envelope.source_id or record.get("source_id") or "")
         region = resolve_tsunami_region(source_id, merged)
@@ -424,28 +456,7 @@ class EventRecordFactory:
         else:
             level = raw_level
 
-        place_name = str(
-            merged.get("place_name") or merged.get("subtitle") or ""
-        ).strip()
-        # subtitle 固定为震中地名；泛化 title 不当作副标题
-        subtitle_raw = str(merged.get("subtitle") or "").strip()
-        if subtitle_raw and not is_generic_tsunami_title(subtitle_raw):
-            subtitle = subtitle_raw
-        elif place_name and not is_generic_tsunami_title(place_name):
-            subtitle = place_name
-        else:
-            subtitle = (
-                place_name
-                if place_name and not is_generic_tsunami_title(place_name)
-                else ""
-            )
-            if is_generic_tsunami_title(place_name):
-                place_name = ""
-
-        if is_generic_tsunami_title(place_name):
-            place_name = ""
-        if not subtitle and place_name:
-            subtitle = place_name
+        place_name, subtitle = EventRecordFactory._resolve_tsunami_place_fields(merged)
 
         latitude = to_optional_float(merged.get("latitude"))
         longitude = to_optional_float(merged.get("longitude"))

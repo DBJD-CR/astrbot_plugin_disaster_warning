@@ -87,17 +87,33 @@ class StatsRecordService:
                     if existing:
                         next_count = int(existing.get("update_count", 1) or 1) + 1
                         push_record["update_count"] = next_count
+                        # 以数据库已有行的定位键为准，避免 source/unique_id 别名导致 update 未命中。
+                        existing_source = str(
+                            existing.get("source")
+                            or existing.get("source_id")
+                            or push_record.get("source")
+                            or source_id
+                            or ""
+                        ).strip()
+                        if existing_source:
+                            push_record["source"] = existing_source
+                            push_record.setdefault("source_id", existing_source)
+                        existing_unique = str(existing.get("unique_id") or "").strip()
+                        if existing_unique:
+                            push_record["unique_id"] = existing_unique
+                        existing_real = str(existing.get("real_event_id") or "").strip()
+                        if existing_real:
+                            push_record["real_event_id"] = existing_real
                         # 海啸多报：用 update_count 作为报次，便于前端时间线展示
                         if isinstance(event.event, TsunamiEvent):
                             push_record["report_num"] = next_count
                             if not push_record.get("real_event_id"):
-                                push_record["real_event_id"] = existing.get(
-                                    "real_event_id"
-                                ) or push_record.get("event_id")
+                                push_record["real_event_id"] = (
+                                    existing_real
+                                    or push_record.get("event_id")
+                                )
                         await self.manager.db.update_event(
-                            push_record.get("source")
-                            or existing.get("source")
-                            or source_id,
+                            existing_source or source_id,
                             push_record,
                         )
                     else:
