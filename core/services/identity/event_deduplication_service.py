@@ -49,9 +49,11 @@ class EventDeduplicationService:
         self._typhoon_cache: dict[str, str] = {}
         # JMA 海啸跨源去重缓存：
         # key = content_fingerprint
-        # value = {"source_id", "priority", "event_id"}
+        # value = {"source_id", "priority", "event_id", "ts"}
         # EQSC 优先级更高：同内容后到的低优先级源会被吞掉。
+        # 带容量上限，防止长跑进程内存无限增长。
         self._tsunami_cache: dict[str, dict[str, Any]] = {}
+        self._tsunami_cache_max_size = 512
 
     @staticmethod
     def _extract_issue_type_from_earthquake(
@@ -256,6 +258,32 @@ class EventDeduplicationService:
             is_training=coerce_bool(metadata.get("is_training"), default=False),
         )
 
+    def _remember_tsunami_fingerprint(
+        self,
+        fingerprint: str,
+        *,
+        source_id: str,
+        priority: int,
+        event_id: str,
+    ) -> None:
+        """写入海啸指纹缓存，并在超限时淘汰最旧条目。"""
+        self._tsunami_cache[fingerprint] = {
+            "source_id": source_id,
+            "priority": priority,
+            "event_id": event_id,
+            "ts": datetime.now(timezone.utc).timestamp(),
+        }
+        overflow = len(self._tsunami_cache) - int(self._tsunami_cache_max_size)
+        if overflow <= 0:
+            return
+        # 按时间戳升序淘汰最旧项
+        ordered = sorted(
+            self._tsunami_cache.items(),
+            key=lambda item: float((item[1] or {}).get("ts") or 0.0),
+        )
+        for key, _ in ordered[:overflow]:
+            self._tsunami_cache.pop(key, None)
+
     def _should_push_tsunami(self, event: EventEnvelope) -> bool:
         """JMA 海啸跨源去重：同内容指纹只推一次，EQSC 优先。
 
@@ -282,11 +310,12 @@ class EventDeduplicationService:
         priority = self._resolve_source_priority(source_id)
         existing = self._tsunami_cache.get(fingerprint)
         if existing is None:
-            self._tsunami_cache[fingerprint] = {
-                "source_id": source_id,
-                "priority": priority,
-                "event_id": str(event.id or ""),
-            }
+            self._remember_tsunami_fingerprint(
+                fingerprint,
+                source_id=source_id,
+                priority=priority,
+                event_id=str(event.id or ""),
+            )
             return True
 
         existing_priority = int(existing.get("priority") or 0)
@@ -313,11 +342,12 @@ class EventDeduplicationService:
             return False
 
         # 更高优先级源后到：放行并升级缓存（例如 EQSC 覆盖 P2P）
-        self._tsunami_cache[fingerprint] = {
-            "source_id": source_id,
-            "priority": priority,
-            "event_id": str(event.id or ""),
-        }
+        self._remember_tsunami_fingerprint(
+            fingerprint,
+            source_id=source_id,
+            priority=priority,
+            event_id=str(event.id or ""),
+        )
         plugin_logger.debug(
             f"[灾害预警] 海啸高优先级源 {source_id} 覆盖 {existing_source}，允许推送"
         )

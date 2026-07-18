@@ -124,21 +124,12 @@ class TsunamiHistoryCleanupService:
                 groups.setdefault(self._group_key(row), []).append(row)
 
             multi_groups = [items for items in groups.values() if len(items) > 1]
-            if not multi_groups:
-                self._done = True
-                logger.debug("[灾害预警] 海啸历史清理：未发现重复组，跳过")
-                return {
-                    "kept": len(groups),
-                    "deleted": 0,
-                    "groups": 0,
-                    "skipped": 0,
-                }
 
             delete_ids: list[int] = []
             kept = 0
+            # 无论是否存在重复组，都规范化单行（补齐 source_id / unique_id）。
             for items in groups.values():
                 if len(items) == 1:
-                    # 单行也尽量补齐 real_event_id / source_id
                     only = items[0]
                     await self._normalize_keep_row(cursor, [only], keep=only)
                     kept += 1
@@ -170,8 +161,8 @@ class TsunamiHistoryCleanupService:
                 from ..network.admin.api.events_routes import invalidate_sources_cache
 
                 invalidate_sources_cache()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"[灾害预警] 无法失效源缓存: {exc}")
 
             result = {
                 "kept": kept,
@@ -179,10 +170,15 @@ class TsunamiHistoryCleanupService:
                 "groups": len(multi_groups),
                 "skipped": 0,
             }
-            logger.info(
-                "[灾害预警] 海啸历史重复清理完成: "
-                f"保留 {kept}, 删除 {len(delete_ids)}, 多报折叠 {len(multi_groups)}"
-            )
+            if multi_groups or delete_ids:
+                logger.info(
+                    "[灾害预警] 海啸历史重复清理完成: "
+                    f"保留 {kept}, 删除 {len(delete_ids)}, 多报折叠 {len(multi_groups)}"
+                )
+            else:
+                logger.info(
+                    f"[灾害预警] 海啸历史清理：无重复组，已规范化 {kept} 行"
+                )
             return result
         except Exception as exc:
             logger.error(f"[灾害预警] 海啸历史清理失败: {exc}")
