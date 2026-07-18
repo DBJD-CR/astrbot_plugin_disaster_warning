@@ -85,6 +85,26 @@
             if (evtType === 'typhoon' && evt.real_event_id) {
                 // 台风用 real_event_id + source 组合，避免不同源同编号误合并
                 groupKey = `typhoon:${evt.real_event_id}:${evt.source || evt.source_id || ''}`;
+            } else if (evtType === 'tsunami') {
+                // 海啸按稳定事件 ID 折叠多报：
+                // unique_id 可能是 "source|uuid" 或裸 uuid；real_event_id / event_id 也可能是业务编号
+                const rawUnique = String(evt.unique_id || '').trim();
+                const bareUnique = rawUnique.includes('|')
+                    ? rawUnique.split('|').pop().trim()
+                    : rawUnique;
+                const stableId = String(
+                    evt.real_event_id
+                    || bareUnique
+                    || evt.event_id
+                    || evt.code
+                    || ''
+                ).trim();
+                const sourceKey = String(evt.source || evt.source_id || '').trim();
+                if (stableId) {
+                    groupKey = `tsunami:${stableId}:${sourceKey || 'unknown'}`;
+                } else {
+                    groupKey = evt.event_id || evt.id || `${evt.time}-${evt.description}`;
+                }
             } else {
                 groupKey = evt.event_id || evt.id || `${evt.time}-${evt.description}`;
             }
