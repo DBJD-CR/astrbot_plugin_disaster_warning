@@ -396,7 +396,6 @@
         const level = cleanTsunamiText(evt.level);
         const place = resolveTsunamiPlaceName(evt);
         const magToken = formatTsunamiMagnitudeToken(evt);
-        const cancelled = Boolean(evt.is_cancelled || evt.cancelled || level === '解除');
         const isTraining = Boolean(evt.is_training || evt.isTraining);
 
         // 新 description 已经可读：直接用

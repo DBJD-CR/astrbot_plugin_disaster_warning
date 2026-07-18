@@ -99,9 +99,36 @@
                     || evt.code
                     || ''
                 ).trim();
-                const sourceKey = String(evt.source || evt.source_id || '').trim();
+                // 规范化中国海啸历史别名，避免 fan_studio_tsunami 与
+                // china_tsunami_fanstudio 被拆成两个分组。
+                const rawSource = String(evt.source || evt.source_id || '').trim();
+                const sourceKey = (() => {
+                    const lower = rawSource.toLowerCase();
+                    if (
+                        lower === 'fan_studio_tsunami'
+                        || lower === 'china_tsunami'
+                        || lower === 'china_tsunami_fanstudio'
+                    ) {
+                        return 'china_tsunami_fanstudio';
+                    }
+                    if (
+                        lower === 'jma_tsunami_p2p'
+                        || lower === 'jma_tsunami'
+                        || lower === 'japan_jma_tsunami'
+                        || lower === 'p2p_tsunami'
+                    ) {
+                        return 'jma_tsunami_p2p';
+                    }
+                    if (
+                        lower === 'jma_tsunami_eqsc'
+                        || lower === 'eqsc_tsunami'
+                    ) {
+                        return 'jma_tsunami_eqsc';
+                    }
+                    return rawSource || 'unknown';
+                })();
                 if (stableId) {
-                    groupKey = `tsunami:${stableId}:${sourceKey || 'unknown'}`;
+                    groupKey = `tsunami:${stableId}:${sourceKey}`;
                 } else {
                     groupKey = evt.event_id || evt.id || `${evt.time}-${evt.description}`;
                 }

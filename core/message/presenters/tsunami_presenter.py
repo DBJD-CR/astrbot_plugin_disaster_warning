@@ -108,8 +108,9 @@ class TsunamiAlertPresenter(BasePresenter):
         options = options or {}
         target_timezone = cls._resolve_timezone(display_context, options)
 
+        normalized_level = normalize_cn_tsunami_level(display_context.level)
         is_info = (
-            display_context.message_type == "info" or display_context.level == "信息"
+            display_context.message_type == "info" or normalized_level == "信息"
         )
         org_unit = str(display_context.org_unit or "自然资源部海啸预警中心").strip()
         header_tag = "海啸信息" if is_info else "海啸预警"
@@ -122,10 +123,16 @@ class TsunamiAlertPresenter(BasePresenter):
                 title_line += level_emoji
             lines.append(title_line)
         elif display_context.level:
-            level_text = str(display_context.level)
-            title_line = (
-                f"📋海啸{level_text}警报" if level_text != "信息" else "📋海啸信息"
-            )
+            # 使用归一化等级，避免「海啸信息/info」等变体被拼成“海啸xxx警报”
+            if normalized_level == "信息":
+                title_line = "📋海啸信息"
+            elif normalized_level in {"蓝色", "黄色", "橙色", "红色"}:
+                title_line = f"📋海啸{normalized_level}警报"
+            elif normalized_level == "解除":
+                title_line = "📋海啸解除"
+            else:
+                level_text = str(display_context.level)
+                title_line = f"📋海啸{level_text}警报"
             if level_emoji:
                 title_line += level_emoji
             lines.append(title_line)
@@ -380,10 +387,10 @@ class JmaTsunamiPresenter(BasePresenter):
         *,
         cancelled: bool,
     ) -> None:
-        """追加区域预报详情（默认全部展示，不折叠）。"""
-        if not forecasts:
-            return
+        """追加区域预报详情（默认全部展示，不折叠）。
 
+        即使 forecasts 为空，仍输出 grade_counts / max_wave_height 等摘要字段。
+        """
         grade_counts = metadata.get("grade_counts")
         if isinstance(grade_counts, dict) and grade_counts:
             summary_parts = []
@@ -402,6 +409,9 @@ class JmaTsunamiPresenter(BasePresenter):
                 lines.append(f"🌊全域最大预估波高：{max_wave}（{max_wave_area}）")
             else:
                 lines.append(f"🌊全域最大预估波高：{max_wave}")
+
+        if not forecasts:
+            return
 
         immediate_areas: list[dict[str, Any]] = []
         normal_areas: list[dict[str, Any]] = []
