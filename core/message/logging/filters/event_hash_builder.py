@@ -122,10 +122,18 @@ class EventHashBuilder:
 
     def generate_tsunami_hash(self, data: dict[str, Any], hash_parts: list[str]) -> str:
         """生成海啸类消息的去重哈希。"""
-        event_id = data.get("id") or data.get("code")
+        # EQSC 使用 eventID；中国海啸常用 id/code；一并兼容
+        event_id = (
+            data.get("id")
+            or data.get("code")
+            or data.get("eventID")
+            or data.get("eventId")
+        )
         if event_id:
             hash_parts.append(f"tid:{event_id}")
-            time_info = data.get("issue_time") or data.get("time")
+            time_info = (
+                data.get("issue_time") or data.get("time") or data.get("register")
+            )
             if time_info:
                 hash_parts.append(f"tt:{str(time_info)[:16]}")
             return "|".join(hash_parts)
