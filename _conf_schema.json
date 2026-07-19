@@ -436,12 +436,22 @@
     "intensity_filter": {
         "description": "基于震级和烈度的地震过滤器",
         "type": "object",
-        "hint": "使用OR逻辑：满足 震级要求 或 满足烈度要求 即可推送",
+        "hint": "启用后按震级与烈度筛选推送。可选择组合方式为 AND (全部满足) 或 OR (任一满足，默认)",
         "items": {
           "enabled": {
             "description": "启用烈度过滤器",
             "type": "bool",
             "default": true
+          },
+          "combine_mode": {
+            "description": "条件组合方式",
+            "type": "string",
+            "options": [
+              "all",
+              "any"
+            ],
+            "default": "any",
+            "hint": "any：满足任一条件即推送（OR）；all：全部条件都满足才推送（AND）"
           },
           "min_magnitude": {
             "description": "最小震级",
@@ -470,12 +480,22 @@
       "scale_filter": {
         "description": "基于震级和震度的地震过滤器",
         "type": "object",
-        "hint": "使用OR逻辑：满足 震级要求 或 满足震度要求 即可推送",
+        "hint": "启用后按震级与震度筛选推送。可选择组合方式为 AND (全部满足) 或 OR (任一满足，默认)",
         "items": {
           "enabled": {
             "description": "启用震度过滤器",
             "type": "bool",
             "default": true
+          },
+          "combine_mode": {
+            "description": "条件组合方式",
+            "type": "string",
+            "options": [
+              "all",
+              "any"
+            ],
+            "default": "any",
+            "hint": "any：满足任一条件即推送（OR）；all：全部条件都满足才推送（AND）"
           },
           "min_magnitude": {
             "description": "最小震级",
@@ -527,22 +547,54 @@
       "snet_filter": {
         "description": "S-Net 海底震度专用过滤器",
         "type": "object",
-        "hint": "基于 S-Net 海底测站实测震度过滤（日本震度标准，0-7级）。无震级字段，仅按最大测站震度判断。",
+        "hint": "基于 S-Net 海底测站实测震度与触发测站数过滤。",
         "items": {
           "enabled": {
             "description": "启用 S-Net 过滤器",
             "type": "bool",
             "default": true
           },
+          "combine_mode": {
+            "description": "条件组合方式",
+            "type": "string",
+            "options": [
+              "all",
+              "any"
+            ],
+            "default": "any",
+            "hint": "any：最大震度达标 或 达到站数阈值即推送（OR，支持震度低但站数多也推送）；all：两者均需满足才推送（AND）"
+          },
           "min_shindo": {
             "description": "最小震度",
             "type": "float",
             "hint": "任一测站震度大于等于该阈值才推送",
+            "default": 1.5,
+            "slider": {
+              "min": -3.0,
+              "max": 7,
+              "step": 0.1
+            }
+          },
+          "station_min_shindo": {
+            "description": "最小触发测站数的震度",
+            "type": "float",
+            "hint": "判断触发测站数时所依据的单个测站最小震度阈值。",
             "default": 0.5,
             "slider": {
               "min": -3.0,
               "max": 7,
               "step": 0.1
+            }
+          },
+          "min_triggered_stations": {
+            "description": "最小触发测站数数量",
+            "type": "int",
+            "hint": "达到最小触发测站数的震度阈值的测站数量。设为 0 表示不限制。",
+            "default": 0,
+            "slider": {
+              "min": 0,
+              "max": 156,
+              "step": 2
             }
           }
         }
@@ -550,12 +602,22 @@
       "global_quake_filter": {
         "description": "Global Quake专用过滤器",
         "type": "object",
-        "hint": "使用OR逻辑：满足震级要求 或 满足烈度要求 即可推送",
+        "hint": "启用后按震级与烈度筛选推送。可选择组合方式为 AND (全部满足) 或 OR (任一满足，默认)",
         "items": {
           "enabled": {
             "description": "启用Global Quake过滤器",
             "type": "bool",
             "default": true
+          },
+          "combine_mode": {
+            "description": "条件组合方式",
+            "type": "string",
+            "options": [
+              "all",
+              "any"
+            ],
+            "default": "any",
+            "hint": "any：满足任一条件即推送（OR）；all：全部条件都满足才推送（AND）"
           },
           "min_magnitude": {
             "description": "最小震级",
