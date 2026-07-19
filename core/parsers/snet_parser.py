@@ -457,9 +457,7 @@ class SnetParser(BaseParser):
             return None
 
         timestamp = str(data.get("timestamp") or "").strip()
-        min_shindo = normalize_min_shindo(
-            data.get("min_shindo", DEFAULT_MIN_SHINDO)
-        )
+        min_shindo = normalize_min_shindo(data.get("min_shindo", DEFAULT_MIN_SHINDO))
         station_min_shindo = normalize_station_min_shindo(
             data.get("station_min_shindo", DEFAULT_STATION_MIN_SHINDO)
         )

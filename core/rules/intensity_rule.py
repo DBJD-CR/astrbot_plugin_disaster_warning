@@ -143,7 +143,9 @@ class EarthquakeThresholdRule(BaseRule):
         if source_id == "global_quake":
             runtime_filter = policy_state.get("global_quake_filter") or {}
             return self._evaluate_dual_threshold_filter(
-                runtime_filter=runtime_filter if isinstance(runtime_filter, dict) else {},
+                runtime_filter=runtime_filter
+                if isinstance(runtime_filter, dict)
+                else {},
                 primary=(
                     "magnitude",
                     "震级",
@@ -169,7 +171,9 @@ class EarthquakeThresholdRule(BaseRule):
         if intensity_mode == "intensity":
             runtime_filter = policy_state.get("intensity_filter") or {}
             return self._evaluate_dual_threshold_filter(
-                runtime_filter=runtime_filter if isinstance(runtime_filter, dict) else {},
+                runtime_filter=runtime_filter
+                if isinstance(runtime_filter, dict)
+                else {},
                 primary=(
                     "magnitude",
                     "震级",
@@ -195,7 +199,9 @@ class EarthquakeThresholdRule(BaseRule):
         if intensity_mode == "scale":
             runtime_filter = policy_state.get("scale_filter") or {}
             return self._evaluate_dual_threshold_filter(
-                runtime_filter=runtime_filter if isinstance(runtime_filter, dict) else {},
+                runtime_filter=runtime_filter
+                if isinstance(runtime_filter, dict)
+                else {},
                 primary=(
                     "magnitude",
                     "震级",
