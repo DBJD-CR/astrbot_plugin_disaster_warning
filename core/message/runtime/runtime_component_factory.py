@@ -38,6 +38,7 @@ class MessageRuntimeComponentFactory:
         intensity_filter_config = earthquake_filters.get("intensity_filter", {})
         return {
             "enabled": intensity_filter_config.get("enabled", True),
+            "combine_mode": intensity_filter_config.get("combine_mode", "any"),
             "min_magnitude": intensity_filter_config.get("min_magnitude", 2.0),
             "min_intensity": intensity_filter_config.get("min_intensity", 4.0),
         }
@@ -50,6 +51,7 @@ class MessageRuntimeComponentFactory:
         scale_filter_config = earthquake_filters.get("scale_filter", {})
         return {
             "enabled": scale_filter_config.get("enabled", True),
+            "combine_mode": scale_filter_config.get("combine_mode", "any"),
             "min_magnitude": scale_filter_config.get("min_magnitude", 2.0),
             "min_scale": scale_filter_config.get("min_scale", 1.0),
         }
@@ -73,6 +75,7 @@ class MessageRuntimeComponentFactory:
         global_quake_filter_config = earthquake_filters.get("global_quake_filter", {})
         return {
             "enabled": global_quake_filter_config.get("enabled", True),
+            "combine_mode": global_quake_filter_config.get("combine_mode", "any"),
             "min_magnitude": global_quake_filter_config.get("min_magnitude", 4.5),
             "min_intensity": global_quake_filter_config.get("min_intensity", 5.0),
         }
@@ -89,16 +92,37 @@ class MessageRuntimeComponentFactory:
         min_shindo = snet_filter_config.get("min_shindo")
         if min_shindo is None and "min_magnitude" in snet_filter_config:
             min_shindo = snet_filter_config.get("min_magnitude")
-        # 默认 0.5：日本震度 1 的計測震度起点
+        # 默认从 0.5 提升到 1.5
         try:
-            min_shindo_val = float(0.5 if min_shindo is None else min_shindo)
+            min_shindo_val = float(1.5 if min_shindo is None else min_shindo)
         except (TypeError, ValueError):
-            min_shindo_val = 0.5
+            min_shindo_val = 1.5
         if min_shindo_val < -3.0:
-            min_shindo_val = 0.5
+            min_shindo_val = 1.5
+
+        # 测站数量判定依据震度阈值：默认 0.5
+        station_min_shindo = snet_filter_config.get("station_min_shindo")
+        try:
+            st_shindo_val = float(
+                0.5 if station_min_shindo is None else station_min_shindo
+            )
+        except (TypeError, ValueError):
+            st_shindo_val = 0.5
+        if st_shindo_val < -3.0:
+            st_shindo_val = 0.5
+
+        # 最小触发测站数，默认 0 表示不限制
+        try:
+            min_st_val = int(snet_filter_config.get("min_triggered_stations", 0))
+        except (TypeError, ValueError):
+            min_st_val = 0
+
         return {
             "enabled": snet_filter_config.get("enabled", True),
+            "combine_mode": snet_filter_config.get("combine_mode", "any"),
             "min_shindo": min_shindo_val,
+            "station_min_shindo": st_shindo_val,
+            "min_triggered_stations": min_st_val,
         }
 
     @staticmethod
