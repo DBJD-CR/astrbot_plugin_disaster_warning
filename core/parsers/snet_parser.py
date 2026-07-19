@@ -25,6 +25,13 @@ from ...utils.plugin_logger import plugin_logger
 from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
+from ..services.snet.snet_filter_constants import (
+    DEFAULT_MIN_SHINDO,
+    DEFAULT_STATION_MIN_SHINDO,
+    count_triggered_stations,
+    normalize_min_shindo,
+    normalize_station_min_shindo,
+)
 from ..sources.source_catalog import get_source_entry
 from .base_parser import BaseParser
 
@@ -450,14 +457,13 @@ class SnetParser(BaseParser):
             return None
 
         timestamp = str(data.get("timestamp") or "").strip()
-        try:
-            min_shindo = float(data.get("min_shindo", 0.5))
-        except (TypeError, ValueError):
-            min_shindo = 0.5
-        if min_shindo < -3.0:
-            min_shindo = -3.0
-        if min_shindo > 7.0:
-            min_shindo = 7.0
+        min_shindo = normalize_min_shindo(data.get("min_shindo", DEFAULT_MIN_SHINDO))
+        station_min_shindo = normalize_station_min_shindo(
+            data.get("station_min_shindo", DEFAULT_STATION_MIN_SHINDO)
+        )
+
+        # 取两者中较小者作为解析阶段的触发测站过滤门槛
+        fetch_min_shindo = min(min_shindo, station_min_shindo)
 
         all_stations = data.get("stations")
         if not isinstance(all_stations, list) or not all_stations:
@@ -512,11 +518,13 @@ class SnetParser(BaseParser):
             reverse=True,
         )
         triggered = [
-            s for s in sorted_stations if float(s.get("shindo", -999.0)) >= min_shindo
+            s
+            for s in sorted_stations
+            if float(s.get("shindo", -999.0)) >= fetch_min_shindo
         ]
         if not triggered:
             plugin_logger.debug(
-                f"[灾害预警] {self.source_id} 无测站达到阈值 min_shindo={min_shindo}"
+                f"[灾害预警] {self.source_id} 无测站达到阈值 ({fetch_min_shindo})"
             )
             return None
 
@@ -539,13 +547,22 @@ class SnetParser(BaseParser):
             f"snet_{timestamp}" if timestamp else f"snet_{int(occurred_at.timestamp())}"
         )
 
+        # 重新为 metadata 包含正确的 triggered_count，以便 intensity_rule.py 过滤
+        # 基于 min_shindo / station_min_shindo 分别统计
+        triggered_count = count_triggered_stations(sorted_stations, min_shindo)
+        triggered_station_count = count_triggered_stations(
+            sorted_stations, station_min_shindo
+        )
+
         metadata = {
             "stations": normalized_stations,
             "triggered": triggered,
             "timestamp": timestamp,
             "min_shindo": min_shindo,
+            "station_min_shindo": station_min_shindo,
             "max_shindo": max_shindo,
-            "triggered_count": len(triggered),
+            "triggered_count": triggered_count,
+            "triggered_station_count": triggered_station_count,
             "total_stations": len(normalized_stations),
             "top_station": top.get("name"),
             "source_family": "direct_http",
@@ -593,7 +610,9 @@ class SnetParser(BaseParser):
                 raw={
                     "timestamp": timestamp,
                     "min_shindo": min_shindo,
-                    "triggered_count": len(triggered),
+                    "station_min_shindo": station_min_shindo,
+                    "triggered_count": triggered_count,
+                    "triggered_station_count": triggered_station_count,
                     "total_stations": len(normalized_stations),
                     # tiles 体积大，仅在上游未预解析时保留
                     "tiles": data.get("tiles") if not data.get("stations") else {},

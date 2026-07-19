@@ -17,6 +17,19 @@ from ....utils.map_tile_sources import (
     MAP_TILE_SOURCES,
     normalize_map_source,
 )
+from ..snet.snet_filter_constants import (
+    DEFAULT_MIN_SHINDO,
+    DEFAULT_MIN_TRIGGERED_STATIONS,
+    DEFAULT_STATION_MIN_SHINDO,
+    MIN_TRIGGERED_STATIONS_MAX,
+    MIN_TRIGGERED_STATIONS_MIN,
+    SHINDO_MAX,
+    SHINDO_MIN,
+    normalize_combine_mode,
+    normalize_min_shindo,
+    normalize_min_triggered_stations,
+    normalize_station_min_shindo,
+)
 
 
 class ConfigValidator:
@@ -410,6 +423,16 @@ class ConfigValidator:
             ConfigValidator._ensure_bool(keyword_filter, "enabled", False)
             cfg["keyword_filter"] = keyword_filter
 
+        # 助手方法：校验 combine_mode
+        def _validate_combine_mode(filter_dict: dict, name: str) -> None:
+            raw_mode = filter_dict.get("combine_mode")
+            mode = normalize_combine_mode(raw_mode)
+            if raw_mode is not None and str(raw_mode).strip().lower() != mode:
+                logger.warning(
+                    f"[灾害预警] 配置警告: {name} 组合方式 {raw_mode} 无效，已重置为 {mode}。"
+                )
+            filter_dict["combine_mode"] = mode
+
         # 2. 烈度过滤器
         intensity_filter = cfg.get("intensity_filter", {})
         if isinstance(intensity_filter, dict):
@@ -427,6 +450,7 @@ class ConfigValidator:
                 )
                 intensity_filter["min_intensity"] = max(0.0, min(12.0, float(min_int)))
 
+            _validate_combine_mode(intensity_filter, "烈度过滤器")
             ConfigValidator._ensure_bool(intensity_filter, "enabled", True)
             cfg["intensity_filter"] = intensity_filter
 
@@ -447,6 +471,7 @@ class ConfigValidator:
                 )
                 scale_filter["min_scale"] = max(0.0, min(7.0, float(min_scale)))
 
+            _validate_combine_mode(scale_filter, "震度过滤器")
             ConfigValidator._ensure_bool(scale_filter, "enabled", True)
             cfg["scale_filter"] = scale_filter
 
@@ -456,18 +481,59 @@ class ConfigValidator:
             # 兼容旧字段 min_magnitude -> min_shindo
             if "min_shindo" not in snet_filter and "min_magnitude" in snet_filter:
                 snet_filter["min_shindo"] = snet_filter.get("min_magnitude")
+
             min_shindo = snet_filter.get("min_shindo")
             if isinstance(min_shindo, (int, float)):
-                if min_shindo < -3.0 or min_shindo > 7.0:
+                if min_shindo < SHINDO_MIN or min_shindo > SHINDO_MAX:
                     logger.warning(
-                        f"[灾害预警] 配置警告: S-Net 最小震度 {min_shindo} 超出范围 (-3~7)，已修正。"
+                        f"[灾害预警] 配置警告: S-Net 最小震度 {min_shindo} 超出范围 "
+                        f"({SHINDO_MIN:g}~{SHINDO_MAX:g})，已修正。"
                     )
-                    snet_filter["min_shindo"] = max(-3.0, min(7.0, float(min_shindo)))
+                snet_filter["min_shindo"] = normalize_min_shindo(min_shindo)
             elif min_shindo is not None:
                 logger.warning(
-                    "[灾害预警] 配置警告: S-Net 最小震度类型错误，已重置为 0.5。"
+                    f"[灾害预警] 配置警告: S-Net 最小震度类型错误，已重置为 {DEFAULT_MIN_SHINDO}。"
                 )
-                snet_filter["min_shindo"] = 0.5
+                snet_filter["min_shindo"] = DEFAULT_MIN_SHINDO
+
+            # 站数测站震度阈值
+            st_shindo = snet_filter.get("station_min_shindo")
+            if isinstance(st_shindo, (int, float)):
+                if st_shindo < SHINDO_MIN or st_shindo > SHINDO_MAX:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: S-Net 测站最小震度 {st_shindo} 超出范围 "
+                        f"({SHINDO_MIN:g}~{SHINDO_MAX:g})，已修正。"
+                    )
+                snet_filter["station_min_shindo"] = normalize_station_min_shindo(
+                    st_shindo
+                )
+            elif st_shindo is not None:
+                logger.warning(
+                    f"[灾害预警] 配置警告: S-Net 测站最小震度类型错误，已重置为 {DEFAULT_STATION_MIN_SHINDO}。"
+                )
+                snet_filter["station_min_shindo"] = DEFAULT_STATION_MIN_SHINDO
+
+            # 最小触发测站数（上限与 schema 统一为 156）
+            min_st = snet_filter.get("min_triggered_stations")
+            if isinstance(min_st, int):
+                if (
+                    min_st < MIN_TRIGGERED_STATIONS_MIN
+                    or min_st > MIN_TRIGGERED_STATIONS_MAX
+                ):
+                    logger.warning(
+                        f"[灾害预警] 配置警告: S-Net 最小触发测站数 {min_st} 超出范围 "
+                        f"({MIN_TRIGGERED_STATIONS_MIN}-{MIN_TRIGGERED_STATIONS_MAX})，已修正。"
+                    )
+                snet_filter["min_triggered_stations"] = (
+                    normalize_min_triggered_stations(min_st)
+                )
+            elif min_st is not None:
+                logger.warning(
+                    f"[灾害预警] 配置警告: S-Net 最小触发测站数类型错误，已重置为 {DEFAULT_MIN_TRIGGERED_STATIONS}。"
+                )
+                snet_filter["min_triggered_stations"] = DEFAULT_MIN_TRIGGERED_STATIONS
+
+            _validate_combine_mode(snet_filter, "S-Net过滤器")
             ConfigValidator._ensure_bool(snet_filter, "enabled", True)
             cfg["snet_filter"] = snet_filter
 
@@ -501,6 +567,7 @@ class ConfigValidator:
                 )
                 gq_filter["min_intensity"] = max(0.0, min(12.0, float(min_int)))
 
+            _validate_combine_mode(gq_filter, "Global Quake过滤器")
             ConfigValidator._ensure_bool(gq_filter, "enabled", True)
             cfg["global_quake_filter"] = gq_filter
 

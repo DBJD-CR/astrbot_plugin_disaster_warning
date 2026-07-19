@@ -5,7 +5,16 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..domain.event_models import EarthquakeEvent
+from ..services.snet.snet_filter_constants import (
+    count_triggered_stations,
+    normalize_combine_mode,
+    normalize_min_shindo,
+    normalize_min_triggered_stations,
+    normalize_station_min_shindo,
+)
 from ..sources.source_catalog import get_source_entry
 from .base_rule import BaseRule, RuleContext
 from .rule_result import RuleDecision
@@ -15,6 +24,98 @@ class EarthquakeThresholdRule(BaseRule):
     """按数据源强度模式选择过滤策略。"""
 
     rule_name = "intensity_rule"
+
+    @staticmethod
+    def _combine_checks(
+        combine_mode: str, checks: list[tuple[str, bool, str]]
+    ) -> RuleDecision | None:
+        """基于 combine_mode 组合多个条件判断结果。
+
+        返回 None 表示通过；返回 RuleDecision 表示拒绝。
+        """
+        if not checks:
+            return None
+        mode = normalize_combine_mode(combine_mode)
+        if mode == "any":
+            if any(passed for _, passed, _ in checks):
+                return None
+            detail = "；".join(desc for _, _, desc in checks)
+            return RuleDecision.reject(
+                reason="强度过滤器不满足(any)",
+                detail=f"满足任一条件组合失败：{detail}",
+            )
+
+        failed = [desc for _, passed, desc in checks if not passed]
+        if failed:
+            return RuleDecision.reject(
+                reason="强度过滤器不满足(all)",
+                detail=f"满足全部条件失败：{'；'.join(failed)}",
+            )
+        return None
+
+    @staticmethod
+    def _build_threshold_check(
+        *,
+        key: str,
+        label: str,
+        current: Any,
+        threshold: Any,
+        extra_pass: bool = True,
+        missing_text: str = "无",
+    ) -> tuple[str, bool, str]:
+        """构建单条阈值比较检查项。"""
+        try:
+            current_val = float(current) if current is not None else None
+        except (TypeError, ValueError):
+            current_val = None
+        try:
+            threshold_val = float(threshold)
+        except (TypeError, ValueError):
+            threshold_val = None
+
+        passed = (
+            extra_pass
+            and current_val is not None
+            and threshold_val is not None
+            and current_val >= threshold_val
+        )
+        current_text = missing_text if current_val is None else current_val
+        threshold_text = missing_text if threshold_val is None else threshold_val
+        return (key, passed, f"{label} {current_text} ≥ {threshold_text}")
+
+    def _evaluate_dual_threshold_filter(
+        self,
+        *,
+        runtime_filter: dict[str, Any],
+        primary: tuple[str, str, Any, Any, bool],
+        secondary: tuple[str, str, Any, Any, bool],
+        accept_reason: str,
+    ) -> RuleDecision:
+        """评估双阈值过滤器（震级 + 烈度/震度）。"""
+        if not runtime_filter.get("enabled", True):
+            return RuleDecision.accept(reason=accept_reason)
+
+        combine_mode = normalize_combine_mode(runtime_filter.get("combine_mode"))
+        checks = [
+            self._build_threshold_check(
+                key=primary[0],
+                label=primary[1],
+                current=primary[2],
+                threshold=primary[3],
+                extra_pass=primary[4],
+            ),
+            self._build_threshold_check(
+                key=secondary[0],
+                label=secondary[1],
+                current=secondary[2],
+                threshold=secondary[3],
+                extra_pass=secondary[4],
+            ),
+        ]
+        decision = self._combine_checks(combine_mode, checks)
+        if decision is not None:
+            return decision
+        return RuleDecision.accept(reason=accept_reason)
 
     def evaluate(self, context: RuleContext) -> RuleDecision:
         """根据事件来源和强度模式执行地震过滤。"""
@@ -38,81 +139,173 @@ class EarthquakeThresholdRule(BaseRule):
         if context.runtime_config.get("__simulation_bypass_regular_filters", False):
             return RuleDecision.accept(reason="模拟模式跳过强度过滤")
 
-        # 模式 1：Global Quake，由于涉及罗马数字，较高的推送频率等，需要专门定制过滤条件
+        # 模式 1：Global Quake
         if source_id == "global_quake":
             runtime_filter = policy_state.get("global_quake_filter") or {}
-            if runtime_filter.get("enabled", True):
-                # 震级或最大烈度满足其一即可放行
-                magnitude_pass = (
-                    earthquake.magnitude is not None
-                    and earthquake.magnitude >= runtime_filter.get("min_magnitude", 4.5)
-                )
-                intensity_pass = isinstance(
-                    earthquake.intensity, (int, float)
-                ) and earthquake.intensity >= runtime_filter.get("min_intensity", 5.0)
-                if not (magnitude_pass or intensity_pass):
-                    return RuleDecision.reject(reason="Global Quake过滤器")
-            return RuleDecision.accept(reason="Global Quake规则通过")
+            return self._evaluate_dual_threshold_filter(
+                runtime_filter=runtime_filter
+                if isinstance(runtime_filter, dict)
+                else {},
+                primary=(
+                    "magnitude",
+                    "震级",
+                    earthquake.magnitude,
+                    runtime_filter.get("min_magnitude", 4.5)
+                    if isinstance(runtime_filter, dict)
+                    else 4.5,
+                    True,
+                ),
+                secondary=(
+                    "intensity",
+                    "最大烈度",
+                    earthquake.intensity,
+                    runtime_filter.get("min_intensity", 5.0)
+                    if isinstance(runtime_filter, dict)
+                    else 5.0,
+                    True,
+                ),
+                accept_reason="Global Quake规则通过",
+            )
 
-        # 模式 2：烈度过滤器（通常为中国地震预警），同样为震级与烈度或的双通道达标放行
+        # 模式 2：烈度过滤器（通常为中国地震预警）
         if intensity_mode == "intensity":
             runtime_filter = policy_state.get("intensity_filter") or {}
-            if runtime_filter.get("enabled", True):
-                magnitude_pass = (
-                    earthquake.magnitude is not None
-                    and earthquake.magnitude >= runtime_filter.get("min_magnitude", 2.0)
-                )
-                intensity_pass = (
-                    earthquake.intensity is not None
-                    and earthquake.intensity >= runtime_filter.get("min_intensity", 4.0)
-                )
-                if not (magnitude_pass or intensity_pass):
-                    return RuleDecision.reject(reason="烈度过滤器")
-            return RuleDecision.accept(reason="烈度规则通过")
+            return self._evaluate_dual_threshold_filter(
+                runtime_filter=runtime_filter
+                if isinstance(runtime_filter, dict)
+                else {},
+                primary=(
+                    "magnitude",
+                    "震级",
+                    earthquake.magnitude,
+                    runtime_filter.get("min_magnitude", 2.0)
+                    if isinstance(runtime_filter, dict)
+                    else 2.0,
+                    True,
+                ),
+                secondary=(
+                    "intensity",
+                    "最大烈度",
+                    earthquake.intensity,
+                    runtime_filter.get("min_intensity", 4.0)
+                    if isinstance(runtime_filter, dict)
+                    else 4.0,
+                    True,
+                ),
+                accept_reason="烈度规则通过",
+            )
 
-        # 模式 3：震度过滤器（日本、台湾），同样为震级达标或震度达标其一通过
+        # 模式 3：震度过滤器（日本、台湾）
         if intensity_mode == "scale":
             runtime_filter = policy_state.get("scale_filter") or {}
-            if runtime_filter.get("enabled", True):
-                magnitude_pass = (
-                    earthquake.magnitude is not None
-                    and earthquake.magnitude != -1.0
-                    and earthquake.magnitude >= runtime_filter.get("min_magnitude", 2.0)
-                )
-                scale_pass = (
-                    earthquake.scale is not None
-                    and earthquake.scale >= runtime_filter.get("min_scale", 1.0)
-                )
-                if not (magnitude_pass or scale_pass):
-                    return RuleDecision.reject(reason="震度过滤器")
-            return RuleDecision.accept(reason="震度规则通过")
+            return self._evaluate_dual_threshold_filter(
+                runtime_filter=runtime_filter
+                if isinstance(runtime_filter, dict)
+                else {},
+                primary=(
+                    "magnitude",
+                    "震级",
+                    earthquake.magnitude,
+                    runtime_filter.get("min_magnitude", 2.0)
+                    if isinstance(runtime_filter, dict)
+                    else 2.0,
+                    earthquake.magnitude != -1.0,
+                ),
+                secondary=(
+                    "scale",
+                    "最大震度",
+                    earthquake.scale,
+                    runtime_filter.get("min_scale", 1.0)
+                    if isinstance(runtime_filter, dict)
+                    else 1.0,
+                    True,
+                ),
+                accept_reason="震度规则通过",
+            )
 
-        # 模式 4：S-Net 海底震度监测（无震级，仅按最大测站震度）
+        # 模式 4：S-Net 海底震度监测（包含最大震度过滤与触发测站数过滤）
         if source_id == "snet_msil" or intensity_mode == "snet_shindo":
             runtime_filter = policy_state.get("snet_filter") or {}
+            if not isinstance(runtime_filter, dict):
+                runtime_filter = {}
             if runtime_filter.get("enabled", True):
-                min_shindo = runtime_filter.get("min_shindo", 0.5)
-                try:
-                    min_shindo = float(min_shindo)
-                except (TypeError, ValueError):
-                    min_shindo = 0.5
-                if min_shindo < -3.0:
-                    min_shindo = -3.0
-                if min_shindo > 7.0:
-                    min_shindo = 7.0
+                combine_mode = normalize_combine_mode(
+                    runtime_filter.get("combine_mode")
+                )
+
+                # 条件一：最大震度过滤
+                min_shindo = normalize_min_shindo(runtime_filter.get("min_shindo"))
+
+                metadata = getattr(earthquake, "metadata", {}) or {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+
                 max_shindo = earthquake.scale
                 if max_shindo is None:
-                    metadata = getattr(earthquake, "metadata", {}) or {}
-                    if isinstance(metadata, dict):
-                        max_shindo = metadata.get("max_shindo")
+                    max_shindo = metadata.get("max_shindo")
                 try:
                     max_shindo_val = (
                         float(max_shindo) if max_shindo is not None else None
                     )
                 except (TypeError, ValueError):
                     max_shindo_val = None
-                if max_shindo_val is None or max_shindo_val < min_shindo:
-                    return RuleDecision.reject(reason="S-Net震度过滤器")
+
+                shindo_passed = (
+                    max_shindo_val is not None and max_shindo_val >= min_shindo
+                )
+
+                # 条件二：触发测站数量过滤
+                # 必须按“当前会话”的 station_min_shindo 重新统计，
+                # 不能直接复用解析阶段写入的全局 triggered_station_count。
+                min_triggered_stations = normalize_min_triggered_stations(
+                    runtime_filter.get("min_triggered_stations")
+                )
+                station_min_shindo = normalize_station_min_shindo(
+                    runtime_filter.get("station_min_shindo")
+                )
+                triggered_station_count = count_triggered_stations(
+                    metadata.get("stations"), station_min_shindo
+                )
+
+                station_limit_enabled = min_triggered_stations > 0
+                station_passed = (
+                    triggered_station_count >= min_triggered_stations
+                    if station_limit_enabled
+                    else True
+                )
+
+                # S-Net 语义：
+                # 1) 未配置测站数（=0）：仅按最大震度过滤
+                # 2) 配置了测站数：测站数始终是硬门槛（避免 any 模式下被最大震度单独放行）
+                #    - any：测站数达标即可（支持震度偏低但站数多）
+                #    - all：测站数与最大震度都要达标
+                if station_limit_enabled:
+                    if not station_passed:
+                        return RuleDecision.reject(
+                            reason="S-Net测站数过滤器",
+                            detail=(
+                                f"测站震度≥{station_min_shindo} 的触发测站数 "
+                                f"{triggered_station_count} < {min_triggered_stations}"
+                            ),
+                        )
+                    if combine_mode == "all" and not shindo_passed:
+                        return RuleDecision.reject(
+                            reason="S-Net震度过滤器",
+                            detail=(
+                                f"最大震度 {max_shindo_val if max_shindo_val is not None else '无'} "
+                                f"< {min_shindo}（all 模式需同时满足测站数）"
+                            ),
+                        )
+                    return RuleDecision.accept(reason="S-Net规则通过")
+
+                if not shindo_passed:
+                    return RuleDecision.reject(
+                        reason="S-Net震度过滤器",
+                        detail=(
+                            f"最大震度 {max_shindo_val if max_shindo_val is not None else '无'} "
+                            f"< {min_shindo}"
+                        ),
+                    )
             return RuleDecision.accept(reason="S-Net规则通过")
 
         # 模式 5：仅依赖震级阈值的来源统一走这一分支。

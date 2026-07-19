@@ -27,6 +27,12 @@ from astrbot.api import logger
 
 from ...parsers.snet_parser import MSIL_TILE_BASE, SNET_REAL_COORDS, _build_stations
 from ..query.source_runtime_query_service import SourceRuntimeQueryService
+from .snet_filter_constants import (
+    DEFAULT_MIN_SHINDO,
+    DEFAULT_STATION_MIN_SHINDO,
+    normalize_min_shindo,
+    normalize_station_min_shindo,
+)
 
 
 class SnetPollService:
@@ -79,24 +85,42 @@ class SnetPollService:
             min(interval * 0.9, self.MAX_TILE_CACHE_TTL),
         )
 
-    def _resolve_min_shindo(self) -> float:
+    def _get_snet_filter_config(self) -> dict[str, Any]:
+        """读取全局 earthquake_filters.snet_filter。"""
         filters = self.service.config.get("earthquake_filters", {})
         snet_filter = (
             filters.get("snet_filter", {}) if isinstance(filters, dict) else {}
         )
-        # 默认 0.5：日本震度 1 的計測震度起点
-        if not isinstance(snet_filter, dict) or not snet_filter.get("enabled", True):
-            return 0.5
-        try:
-            value = float(snet_filter.get("min_shindo", 0.5))
-        except (TypeError, ValueError):
-            value = 0.5
-        # 允许负震度阈值（MSIL 低端色阶可到负值），但钳制在配置合法范围
-        if value < -3.0:
-            value = -3.0
-        if value > 7.0:
-            value = 7.0
-        return value
+        return snet_filter if isinstance(snet_filter, dict) else {}
+
+    def _get_snet_filter_value(
+        self,
+        key: str,
+        default: float,
+        *,
+        normalizer,
+    ) -> float:
+        """统一解析 S-Net 过滤器中的震度类阈值。"""
+        snet_filter = self._get_snet_filter_config()
+        if not snet_filter or not snet_filter.get("enabled", True):
+            return float(default)
+        return normalizer(snet_filter.get(key, default))
+
+    def _resolve_min_shindo(self) -> float:
+        """解析最大震度门槛（默认 1.5）。"""
+        return self._get_snet_filter_value(
+            "min_shindo",
+            DEFAULT_MIN_SHINDO,
+            normalizer=normalize_min_shindo,
+        )
+
+    def _resolve_station_min_shindo(self) -> float:
+        """解析测站计数用震度门槛（默认 0.5）。"""
+        return self._get_snet_filter_value(
+            "station_min_shindo",
+            DEFAULT_STATION_MIN_SHINDO,
+            normalizer=normalize_station_min_shindo,
+        )
 
     async def start(self) -> None:
         """启动后台轮询任务。"""
@@ -164,17 +188,22 @@ class SnetPollService:
             return None
 
         threshold = (
-            self._resolve_min_shindo() if min_shindo is None else float(min_shindo)
+            self._resolve_min_shindo()
+            if min_shindo is None
+            else normalize_min_shindo(min_shindo)
         )
-        if threshold < -3.0:
-            threshold = -3.0
-        if threshold > 7.0:
-            threshold = 7.0
+
+        # 获取针对触发测站数判定的最小测站震度阈值
+        station_threshold = self._resolve_station_min_shindo()
+
+        # 前置过滤阈值：取 min_shindo 和 station_min_shindo 中较小者，以便震度低但测站多的情况也能解析出事件
+        fetch_min_shindo = min(threshold, station_threshold)
 
         raw_dict: dict[str, Any] = {
             "tiles": tiles_payload["tiles"],
             "timestamp": tiles_payload["timestamp"],
             "min_shindo": threshold,
+            "station_min_shindo": station_threshold,
         }
 
         # 峰值归档与推送解耦：只要拿到瓦片就解码并写入峰值档案，
@@ -182,13 +211,17 @@ class SnetPollService:
         stations = self._get_or_decode_stations(tiles_payload)
         if stations is not None:
             raw_dict["stations"] = stations
+            # 这里的 triggered 用于通过 parser_data，它需要支持两边的触发条件（低震度多站或高震度单站）
+            # 所以使用较小的 fetch_min_shindo 作为基础过滤线，具体的过滤由 intensity_rule 负责。
             raw_dict["triggered"] = [
-                s for s in stations if float(s.get("shindo", -999.0)) >= threshold
+                s
+                for s in stations
+                if float(s.get("shindo", -999.0)) >= fetch_min_shindo
             ]
             await self._observe_station_peaks(
                 stations,
                 timestamp=str(tiles_payload.get("timestamp") or ""),
-                hit_threshold=threshold,
+                hit_threshold=fetch_min_shindo,
             )
 
         if emit_event:

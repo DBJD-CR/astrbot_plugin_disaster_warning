@@ -8,6 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...services.snet.snet_filter_constants import (
+    normalize_combine_mode,
+    normalize_min_shindo,
+    normalize_min_triggered_stations,
+    normalize_station_min_shindo,
+)
 from .local_monitor import LocalMonitor
 
 
@@ -38,6 +44,9 @@ class MessageRuntimeComponentFactory:
         intensity_filter_config = earthquake_filters.get("intensity_filter", {})
         return {
             "enabled": intensity_filter_config.get("enabled", True),
+            "combine_mode": normalize_combine_mode(
+                intensity_filter_config.get("combine_mode")
+            ),
             "min_magnitude": intensity_filter_config.get("min_magnitude", 2.0),
             "min_intensity": intensity_filter_config.get("min_intensity", 4.0),
         }
@@ -50,6 +59,9 @@ class MessageRuntimeComponentFactory:
         scale_filter_config = earthquake_filters.get("scale_filter", {})
         return {
             "enabled": scale_filter_config.get("enabled", True),
+            "combine_mode": normalize_combine_mode(
+                scale_filter_config.get("combine_mode")
+            ),
             "min_magnitude": scale_filter_config.get("min_magnitude", 2.0),
             "min_scale": scale_filter_config.get("min_scale", 1.0),
         }
@@ -73,6 +85,9 @@ class MessageRuntimeComponentFactory:
         global_quake_filter_config = earthquake_filters.get("global_quake_filter", {})
         return {
             "enabled": global_quake_filter_config.get("enabled", True),
+            "combine_mode": normalize_combine_mode(
+                global_quake_filter_config.get("combine_mode")
+            ),
             "min_magnitude": global_quake_filter_config.get("min_magnitude", 4.5),
             "min_intensity": global_quake_filter_config.get("min_intensity", 5.0),
         }
@@ -89,16 +104,19 @@ class MessageRuntimeComponentFactory:
         min_shindo = snet_filter_config.get("min_shindo")
         if min_shindo is None and "min_magnitude" in snet_filter_config:
             min_shindo = snet_filter_config.get("min_magnitude")
-        # 默认 0.5：日本震度 1 的計測震度起点
-        try:
-            min_shindo_val = float(0.5 if min_shindo is None else min_shindo)
-        except (TypeError, ValueError):
-            min_shindo_val = 0.5
-        if min_shindo_val < -3.0:
-            min_shindo_val = 0.5
+
         return {
             "enabled": snet_filter_config.get("enabled", True),
-            "min_shindo": min_shindo_val,
+            "combine_mode": normalize_combine_mode(
+                snet_filter_config.get("combine_mode")
+            ),
+            "min_shindo": normalize_min_shindo(min_shindo),
+            "station_min_shindo": normalize_station_min_shindo(
+                snet_filter_config.get("station_min_shindo")
+            ),
+            "min_triggered_stations": normalize_min_triggered_stations(
+                snet_filter_config.get("min_triggered_stations")
+            ),
         }
 
     @staticmethod
