@@ -205,7 +205,8 @@ def _shindo_css_class(shindo: float) -> str:
 
 def _rgb_to_str(rgb: tuple[int, int, int] | list[int] | None) -> str:
     if not rgb or len(rgb) < 3:
-        return "31,228,96"
+        r, g, b = _SNET_BELOW_ZERO_RGB
+        return f"{r},{g},{b}"
     return f"{rgb[0]},{rgb[1]},{rgb[2]}"
 
 
@@ -432,6 +433,14 @@ class SnetMapRenderer:
                 sorted(station_list, key=lambda x: x["shindo"])
             ),
             "icon_svgs_json": icon_svgs_json,
+            # 渐变参数由 Python 常量注入 JSON payload，避免与模板 JS 双份维护漂移
+            "gradient_config_json": json.dumps(
+                {
+                    "color_neg3": list(_SNET_NEG3_RGB),
+                    "color_below_zero": list(_SNET_BELOW_ZERO_RGB),
+                    "gradient_end_shindo": _SNET_GRADIENT_END_SHINDO,
+                }
+            ),
             "display_time": display_time,
             "triggered_count": triggered_count,
             "total_stations": total_stations,
