@@ -27,6 +27,12 @@ from astrbot.api import logger
 
 from ...parsers.snet_parser import MSIL_TILE_BASE, SNET_REAL_COORDS, _build_stations
 from ..query.source_runtime_query_service import SourceRuntimeQueryService
+from .snet_filter_constants import (
+    DEFAULT_MIN_SHINDO,
+    DEFAULT_STATION_MIN_SHINDO,
+    normalize_min_shindo,
+    normalize_station_min_shindo,
+)
 
 
 class SnetPollService:
@@ -79,42 +85,42 @@ class SnetPollService:
             min(interval * 0.9, self.MAX_TILE_CACHE_TTL),
         )
 
-    def _resolve_min_shindo(self) -> float:
+    def _get_snet_filter_config(self) -> dict[str, Any]:
+        """读取全局 earthquake_filters.snet_filter。"""
         filters = self.service.config.get("earthquake_filters", {})
         snet_filter = (
             filters.get("snet_filter", {}) if isinstance(filters, dict) else {}
         )
-        # 默认从 0.5 提升到 1.5
-        if not isinstance(snet_filter, dict) or not snet_filter.get("enabled", True):
-            return 1.5
-        try:
-            value = float(snet_filter.get("min_shindo", 1.5))
-        except (TypeError, ValueError):
-            value = 1.5
-        # 允许负震度阈值（MSIL 低端色阶可到负值），但钳制在配置合法范围
-        if value < -3.0:
-            value = -3.0
-        if value > 7.0:
-            value = 7.0
-        return value
+        return snet_filter if isinstance(snet_filter, dict) else {}
+
+    def _get_snet_filter_value(
+        self,
+        key: str,
+        default: float,
+        *,
+        normalizer,
+    ) -> float:
+        """统一解析 S-Net 过滤器中的震度类阈值。"""
+        snet_filter = self._get_snet_filter_config()
+        if not snet_filter or not snet_filter.get("enabled", True):
+            return float(default)
+        return normalizer(snet_filter.get(key, default))
+
+    def _resolve_min_shindo(self) -> float:
+        """解析最大震度门槛（默认 1.5）。"""
+        return self._get_snet_filter_value(
+            "min_shindo",
+            DEFAULT_MIN_SHINDO,
+            normalizer=normalize_min_shindo,
+        )
 
     def _resolve_station_min_shindo(self) -> float:
-        filters = self.service.config.get("earthquake_filters", {})
-        snet_filter = (
-            filters.get("snet_filter", {}) if isinstance(filters, dict) else {}
+        """解析测站计数用震度门槛（默认 0.5）。"""
+        return self._get_snet_filter_value(
+            "station_min_shindo",
+            DEFAULT_STATION_MIN_SHINDO,
+            normalizer=normalize_station_min_shindo,
         )
-        # 默认 0.5
-        if not isinstance(snet_filter, dict) or not snet_filter.get("enabled", True):
-            return 0.5
-        try:
-            value = float(snet_filter.get("station_min_shindo", 0.5))
-        except (TypeError, ValueError):
-            value = 0.5
-        if value < -3.0:
-            value = -3.0
-        if value > 7.0:
-            value = 7.0
-        return value
 
     async def start(self) -> None:
         """启动后台轮询任务。"""
@@ -182,12 +188,10 @@ class SnetPollService:
             return None
 
         threshold = (
-            self._resolve_min_shindo() if min_shindo is None else float(min_shindo)
+            self._resolve_min_shindo()
+            if min_shindo is None
+            else normalize_min_shindo(min_shindo)
         )
-        if threshold < -3.0:
-            threshold = -3.0
-        if threshold > 7.0:
-            threshold = 7.0
 
         # 获取针对触发测站数判定的最小测站震度阈值
         station_threshold = self._resolve_station_min_shindo()
