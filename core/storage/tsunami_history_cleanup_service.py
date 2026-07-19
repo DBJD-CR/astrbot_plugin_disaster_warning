@@ -37,6 +37,15 @@ class TsunamiHistoryCleanupService:
         self._done = False
 
     def _marker_path(self) -> Path | None:
+        """按数据库文件名区分标记，避免多库共享目录时互相覆盖。"""
+        db_path = getattr(self.db, "db_path", None)
+        if db_path is None:
+            return None
+        path = Path(db_path)
+        return path.parent / f".tsunami_history_cleanup_v1_{path.stem}.done"
+
+    def _legacy_marker_path(self) -> Path | None:
+        """兼容旧版固定文件名标记。"""
         db_path = getattr(self.db, "db_path", None)
         if db_path is None:
             return None
@@ -44,7 +53,10 @@ class TsunamiHistoryCleanupService:
 
     def _is_marked_done(self) -> bool:
         marker = self._marker_path()
-        return bool(marker and marker.is_file())
+        if marker and marker.is_file():
+            return True
+        legacy = self._legacy_marker_path()
+        return bool(legacy and legacy.is_file())
 
     def _write_marker(self) -> None:
         marker = self._marker_path()
@@ -54,7 +66,8 @@ class TsunamiHistoryCleanupService:
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.write_text("done\n", encoding="utf-8")
         except Exception as exc:
-            logger.debug(f"[灾害预警] 写入海啸清理标记失败: {exc}")
+            # 写失败会导致插件重载后反复扫描，需可观测
+            logger.warning(f"[灾害预警] 写入海啸清理标记失败: {exc}")
 
     @staticmethod
     def _normalize_event_key(value: Any) -> str:
@@ -151,7 +164,8 @@ class TsunamiHistoryCleanupService:
             return True
         if cur_update < update_count:
             return True
-        if cur_report in (None, "", 0) and update_count:
+        # 与下方 SQL 的 COALESCE(report_num, ?) 对齐：仅 NULL 会被替换
+        if cur_report is None and update_count:
             return True
         return False
 
