@@ -1249,6 +1249,176 @@ class DatabaseManager:
             )
             params.extend([typhoon_levels[normalized], like, like])
 
+    @staticmethod
+    def _normalize_filter_time(value: str | None) -> str | None:
+        """将前端传入的时间过滤值规整为可比较的 ISO 文本。"""
+        text = str(value or "").strip()
+        if not text:
+            return None
+        # 兼容 datetime-local（YYYY-MM-DDTHH:MM）与空格分隔格式。
+        text = text.replace(" ", "T")
+        if len(text) == 16 and text[10] == "T":
+            text = f"{text}:00"
+        if text.endswith("Z"):
+            text = text[:-1]
+        # 仅剥离时间部分后的时区偏移（含负偏移），避免破坏日期中的 '-'。
+        # 例：2026-07-18T12:00:00+08:00 / 2026-07-18T12:00:00-05:00
+        body = text
+        if len(text) > 10 and text[10] == "T":
+            date_part = text[:10]
+            time_part = text[11:]
+            for marker in ("+", "-"):
+                idx = time_part.find(marker)
+                if idx > 0:
+                    time_part = time_part[:idx]
+                    break
+            body = f"{date_part}T{time_part}"
+        return body
+
+    def _append_common_event_filters(
+        self,
+        *,
+        event_type: str | None,
+        sources: list[str] | None,
+        min_magnitude: float | None,
+        keyword: str | None,
+        level_filter: str | None,
+        min_wind_speed: float | None,
+        time_from: str | None = None,
+        time_to: str | None = None,
+        min_depth: float | None = None,
+        max_depth: float | None = None,
+        min_intensity: float | None = None,
+        intensity_system: str | None = None,
+        max_pressure: float | None = None,
+        active_only: bool = False,
+        clauses: list[str],
+        params: list[Any],
+    ) -> None:
+        """统一装配事件列表筛选条件，避免 count / paginated 两套逻辑漂移。"""
+        if event_type:
+            # 兼容 "weather" => "weather_alarm"
+            norm_type = normalize_event_type(event_type) or ""
+            if norm_type == "weather_alarm":
+                clauses.append("(type='weather' OR type='weather_alarm')")
+            else:
+                clauses.append("type=?")
+                params.append(norm_type)
+
+        self._append_source_filter_clause(sources, clauses, params)
+
+        if min_magnitude is not None:
+            clauses.append(
+                "(type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)"
+            )
+            params.append(min_magnitude)
+
+        self._append_level_filter_clause(level_filter, clauses, params)
+
+        if min_wind_speed is not None:
+            clauses.append(
+                "(type='typhoon' AND wind_speed IS NOT NULL AND wind_speed >= ?)"
+            )
+            params.append(min_wind_speed)
+
+        if max_pressure is not None and max_pressure > 0:
+            # pressure 存历史最低中心气压，阈值越小表示越强。
+            clauses.append(
+                "(type='typhoon' AND pressure IS NOT NULL AND pressure > 0 AND pressure <= ?)"
+            )
+            params.append(max_pressure)
+
+        if active_only:
+            # 活跃态以 weather_detail 中的状态标记为准。
+            # 注意：不要一刀切排除 eqsc_rebuild——重建结果里也可能包含仍在编报的活跃台风。
+            # 旧数据没有状态标记时，仅排除明确“停编”文本，避免误伤。
+            clauses.append(
+                "("
+                "type='typhoon' AND "
+                "COALESCE(weather_detail, '') NOT LIKE '%状态 停编%' AND "
+                "("
+                "COALESCE(weather_detail, '') LIKE '%状态 活跃%' OR "
+                "("
+                "COALESCE(weather_detail, '') NOT LIKE '%状态 %' AND "
+                "COALESCE(weather_detail, '') NOT LIKE '%停编%'"
+                ")"
+                ")"
+                ")"
+            )
+
+        if min_depth is not None:
+            clauses.append(
+                "(type IN ('earthquake', 'earthquake_warning') AND depth IS NOT NULL AND depth >= ?)"
+            )
+            params.append(min_depth)
+
+        if max_depth is not None:
+            clauses.append(
+                "(type IN ('earthquake', 'earthquake_warning') AND depth IS NOT NULL AND depth <= ?)"
+            )
+            params.append(max_depth)
+
+        if min_intensity is not None:
+            # 地震 level 列存震度/烈度数值（TEXT），统一 CAST 后比较。
+            # intensity_system 用于隔离中国烈度与 JMA/CWA 震度，避免混比。
+            system = str(intensity_system or "").strip().lower()
+            source_expr = (
+                "LOWER(COALESCE(source, '') || ' ' || COALESCE(source_id, ''))"
+            )
+            jma_source_clause = (
+                f"({source_expr} LIKE '%jma%' OR "
+                f"{source_expr} LIKE '%cwa%' OR "
+                f"{source_expr} LIKE '%p2p%' OR "
+                f"{source_expr} LIKE '%snet%')"
+            )
+            cn_source_clause = f"(NOT {jma_source_clause})"
+
+            system_clause = ""
+            if system in {"jma", "shindo", "cwa"}:
+                system_clause = f" AND {jma_source_clause}"
+            elif system in {"cn", "china", "intensity"}:
+                system_clause = f" AND {cn_source_clause}"
+
+            clauses.append(
+                "("
+                "type IN ('earthquake', 'earthquake_warning') AND "
+                "COALESCE(TRIM(level), '') != '' AND "
+                "CAST(level AS REAL) >= ?"
+                f"{system_clause}"
+                ")"
+            )
+            params.append(min_intensity)
+
+        normalized_time_from = self._normalize_filter_time(time_from)
+        if normalized_time_from:
+            clauses.append(
+                "REPLACE(COALESCE(NULLIF(time, ''), updated_at, ''), ' ', 'T') >= ?"
+            )
+            params.append(normalized_time_from)
+
+        normalized_time_to = self._normalize_filter_time(time_to)
+        if normalized_time_to:
+            clauses.append(
+                "REPLACE(COALESCE(NULLIF(time, ''), updated_at, ''), ' ', 'T') <= ?"
+            )
+            params.append(normalized_time_to)
+
+        normalized_keyword = str(keyword or "").strip()
+        if normalized_keyword:
+            keyword_like = f"%{normalized_keyword}%"
+            clauses.append(
+                "("
+                "COALESCE(description, '') LIKE ? OR "
+                "COALESCE(subtitle, '') LIKE ? OR "
+                "COALESCE(place_name, '') LIKE ? OR "
+                "COALESCE(level, '') LIKE ? OR "
+                "COALESCE(info_type, '') LIKE ? OR "
+                "COALESCE(source, '') LIKE ? OR "
+                "COALESCE(source_id, '') LIKE ?"
+                ")"
+            )
+            params.extend([keyword_like] * 7)
+
     async def get_events_count(
         self,
         event_type: str | None = None,
@@ -1257,53 +1427,39 @@ class DatabaseManager:
         keyword: str | None = None,
         level_filter: str | None = None,
         min_wind_speed: float | None = None,
+        time_from: str | None = None,
+        time_to: str | None = None,
+        min_depth: float | None = None,
+        max_depth: float | None = None,
+        min_intensity: float | None = None,
+        intensity_system: str | None = None,
+        max_pressure: float | None = None,
+        active_only: bool = False,
     ) -> int:
-        """获取事件总数（支持按类型、数据源、最小震级与关键词过滤）"""
+        """获取事件总数（支持多维过滤）"""
         try:
             cursor = await self.connection.cursor()
-            clauses = []
+            clauses: list[str] = []
             params: list[Any] = []
 
-            if event_type:
-                # 兼容 "weather" => "weather_alarm"
-                norm_type = normalize_event_type(event_type) or ""
-                if norm_type == "weather_alarm":
-                    clauses.append("(type='weather' OR type='weather_alarm')")
-                else:
-                    clauses.append("type=?")
-                    params.append(norm_type)
-
-            self._append_source_filter_clause(sources, clauses, params)
-
-            if min_magnitude is not None:
-                clauses.append(
-                    "(type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)"
-                )
-                params.append(min_magnitude)
-
-            self._append_level_filter_clause(level_filter, clauses, params)
-
-            if min_wind_speed is not None:
-                clauses.append(
-                    "(type='typhoon' AND wind_speed IS NOT NULL AND wind_speed >= ?)"
-                )
-                params.append(min_wind_speed)
-
-            normalized_keyword = str(keyword or "").strip()
-            if normalized_keyword:
-                keyword_like = f"%{normalized_keyword}%"
-                clauses.append(
-                    "("
-                    "COALESCE(description, '') LIKE ? OR "
-                    "COALESCE(subtitle, '') LIKE ? OR "
-                    "COALESCE(place_name, '') LIKE ? OR "
-                    "COALESCE(level, '') LIKE ? OR "
-                    "COALESCE(info_type, '') LIKE ? OR "
-                    "COALESCE(source, '') LIKE ? OR "
-                    "COALESCE(source_id, '') LIKE ?"
-                    ")"
-                )
-                params.extend([keyword_like] * 7)
+            self._append_common_event_filters(
+                event_type=event_type,
+                sources=sources,
+                min_magnitude=min_magnitude,
+                keyword=keyword,
+                level_filter=level_filter,
+                min_wind_speed=min_wind_speed,
+                time_from=time_from,
+                time_to=time_to,
+                min_depth=min_depth,
+                max_depth=max_depth,
+                min_intensity=min_intensity,
+                intensity_system=intensity_system,
+                max_pressure=max_pressure,
+                active_only=active_only,
+                clauses=clauses,
+                params=params,
+            )
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
             # 前端列表按稳定事件键去重计数，避免海啸等同 unique_id 多行被重复统计
@@ -1329,55 +1485,41 @@ class DatabaseManager:
         keyword: str | None = None,
         level_filter: str | None = None,
         min_wind_speed: float | None = None,
+        time_from: str | None = None,
+        time_to: str | None = None,
+        min_depth: float | None = None,
+        max_depth: float | None = None,
+        min_intensity: float | None = None,
+        intensity_system: str | None = None,
+        max_pressure: float | None = None,
+        active_only: bool = False,
     ) -> list[dict[str, Any]]:
-        """分页获取事件（含 history，支持按类型、数据源、最小震级、关键词过滤与震级排序）"""
+        """分页获取事件（含 history，支持多维过滤与震级排序）"""
         try:
             offset = (page - 1) * limit
             cursor = await self.connection.cursor()
 
-            clauses = []
+            clauses: list[str] = []
             params: list[Any] = []
 
-            if event_type:
-                # 兼容 "weather" => "weather_alarm"
-                norm_type = normalize_event_type(event_type) or ""
-                if norm_type == "weather_alarm":
-                    clauses.append("(type='weather' OR type='weather_alarm')")
-                else:
-                    clauses.append("type=?")
-                    params.append(norm_type)
-
-            self._append_source_filter_clause(sources, clauses, params)
-
-            if min_magnitude is not None:
-                clauses.append(
-                    "(type IN ('earthquake', 'earthquake_warning') AND magnitude IS NOT NULL AND magnitude >= ?)"
-                )
-                params.append(min_magnitude)
-
-            self._append_level_filter_clause(level_filter, clauses, params)
-
-            if min_wind_speed is not None:
-                clauses.append(
-                    "(type='typhoon' AND wind_speed IS NOT NULL AND wind_speed >= ?)"
-                )
-                params.append(min_wind_speed)
-
-            normalized_keyword = str(keyword or "").strip()
-            if normalized_keyword:
-                keyword_like = f"%{normalized_keyword}%"
-                clauses.append(
-                    "("
-                    "COALESCE(description, '') LIKE ? OR "
-                    "COALESCE(subtitle, '') LIKE ? OR "
-                    "COALESCE(place_name, '') LIKE ? OR "
-                    "COALESCE(level, '') LIKE ? OR "
-                    "COALESCE(info_type, '') LIKE ? OR "
-                    "COALESCE(source, '') LIKE ? OR "
-                    "COALESCE(source_id, '') LIKE ?"
-                    ")"
-                )
-                params.extend([keyword_like] * 7)
+            self._append_common_event_filters(
+                event_type=event_type,
+                sources=sources,
+                min_magnitude=min_magnitude,
+                keyword=keyword,
+                level_filter=level_filter,
+                min_wind_speed=min_wind_speed,
+                time_from=time_from,
+                time_to=time_to,
+                min_depth=min_depth,
+                max_depth=max_depth,
+                min_intensity=min_intensity,
+                intensity_system=intensity_system,
+                max_pressure=max_pressure,
+                active_only=active_only,
+                clauses=clauses,
+                params=params,
+            )
 
             where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
 

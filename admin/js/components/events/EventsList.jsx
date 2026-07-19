@@ -46,6 +46,14 @@ function EventsList() {
         magnitudeOrder, setMagnitudeOrder,
         keyword, setKeyword,
         windSpeedFilter, setWindSpeedFilter,
+        timePreset, setTimePreset,
+        timeFrom, setTimeFrom,
+        timeTo, setTimeTo,
+        depthFilter, setDepthFilter,
+        intensityFilter, setIntensityFilter,
+        maxPressureFilter, setMaxPressureFilter,
+        activeOnly, setActiveOnly,
+        resetFilters,
         goToPage,
     } = query;
 
@@ -168,6 +176,20 @@ function EventsList() {
                 setKeyword={setKeyword}
                 windSpeedFilter={windSpeedFilter}
                 setWindSpeedFilter={setWindSpeedFilter}
+                timePreset={timePreset}
+                setTimePreset={setTimePreset}
+                timeFrom={timeFrom}
+                setTimeFrom={setTimeFrom}
+                timeTo={timeTo}
+                setTimeTo={setTimeTo}
+                depthFilter={depthFilter}
+                setDepthFilter={setDepthFilter}
+                intensityFilter={intensityFilter}
+                setIntensityFilter={setIntensityFilter}
+                maxPressureFilter={maxPressureFilter}
+                setMaxPressureFilter={setMaxPressureFilter}
+                activeOnly={activeOnly}
+                setActiveOnly={setActiveOnly}
                 availableSources={availableSources}
                 sourceFilterMode={sourceFilterMode}
                 onSourceFilterModeChange={handleSourceFilterModeChange}
@@ -176,6 +198,7 @@ function EventsList() {
                 onSourceCheckboxToggle={handleSourceCheckboxToggle}
                 setSelectedSources={setSelectedSources}
                 selectedSourceSummary={selectedSourceSummary}
+                onResetFilters={resetFilters}
             />
 
             {/* 加载、空列表与实际列表多态渲染 */}

@@ -459,9 +459,318 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
 /* 工具箱次行：高级细粒度筛选器字段（如震级阈值选择、发布机构选择、关键字搜索） */
 .event-filters-secondary-row {
     display: grid;
-    grid-template-columns: minmax(280px, 0.78fr) minmax(360px, 1fr) minmax(320px, 1.36fr);
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 12px;
     align-items: stretch;
+}
+
+.event-filters-time-row {
+    display: block;
+}
+
+/* 提高选择器优先级，避免被后文通用 .event-filter-inline-controls 覆盖 */
+.event-filter-field-card.event-filter-field-card-time {
+    min-width: 0;
+    width: 100%;
+    /* 时间卡内容可变高，不要被通用 74px 最小高度撑出空洞 */
+    min-height: 0 !important;
+    gap: 6px;
+    white-space: normal;
+    justify-content: flex-start;
+}
+
+.event-filter-field-card-time .event-filter-label {
+    margin: 0 !important;
+    line-height: 1.2 !important;
+    padding: 0;
+}
+
+/* 同时命中两个 class，确保覆盖后文 .event-filter-inline-controls 的 gap/align */
+.event-filter-field-card-time .event-filter-inline-controls.event-filter-inline-controls-time {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    /* 预设芯片与自定义起止时间要紧挨着 */
+    gap: 6px !important;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.event-filter-time-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+}
+
+.event-filter-time-chip {
+    --hover-lift: 1px;
+    position: relative;
+    isolation: isolate;
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 88%, transparent);
+    background: rgba(255, 255, 255, 0.72);
+    color: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+        background-color 0.16s ease-out,
+        border-color 0.16s ease-out,
+        box-shadow 0.16s ease-out,
+        transform 0.16s ease-out;
+}
+
+.event-filter-time-chip:hover {
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+    transform: translateY(-1px);
+}
+
+.event-filter-time-chip.active {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 16%, white 84%);
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
+    box-shadow: 0 6px 14px rgba(103, 80, 164, 0.12);
+    color: var(--md-sys-color-primary);
+}
+
+/* 开始 / 至 / 结束：默认强制同一行，避免被 min-width 或 wrap 拆成两行 */
+.event-filter-custom-time {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: end;
+    column-gap: 10px;
+    row-gap: 0;
+    width: min(100%, 34rem);
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.event-filter-datetime-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.82;
+    margin: 0;
+}
+
+.event-filter-datetime-input {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    /* datetime-local 自带图标，右侧留白别过大 */
+    padding-right: 10px;
+    /* 原生控件偏宽时允许收缩，避免把整行撑换行 */
+    box-sizing: border-box;
+}
+
+.event-filter-datetime-separator {
+    opacity: 0.55;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    /* 与输入框中线对齐 */
+    padding-bottom: 12px;
+    align-self: end;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.events-filters-active-count {
+    opacity: 0.62;
+    font-weight: 600 !important;
+    white-space: nowrap;
+}
+
+.event-filters-footer-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 88%, transparent);
+    margin-top: 2px;
+}
+
+.event-filters-footer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.event-filters-footer-hint {
+    opacity: 0.55;
+    font-weight: 600 !important;
+}
+
+.event-filter-reset-btn {
+    min-height: 36px;
+    padding: 0 16px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+    background: color-mix(in srgb, var(--md-sys-color-primary) 10%, white 90%);
+    color: var(--md-sys-color-primary);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+        background-color 0.16s ease-out,
+        border-color 0.16s ease-out,
+        opacity 0.16s ease-out,
+        box-shadow 0.16s ease-out;
+}
+
+.event-filter-reset-btn:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent);
+    background: color-mix(in srgb, var(--md-sys-color-primary) 16%, white 84%);
+    box-shadow: 0 6px 14px rgba(103, 80, 164, 0.12);
+}
+
+.event-filter-reset-btn:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+    border-color: color-mix(in srgb, var(--md-sys-color-outline-variant) 88%, transparent);
+    background: rgba(255, 255, 255, 0.62);
+    color: inherit;
+    box-shadow: none;
+}
+
+.event-filters-summary-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex: 1 1 220px;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+.event-filters-summary-label {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--md-sys-color-on-surface) 58%, transparent);
+    white-space: nowrap;
+}
+
+.event-filters-summary-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.event-filter-summary-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--md-sys-color-primary) 10%, white 90%);
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+    color: color-mix(in srgb, var(--md-sys-color-on-surface) 88%, transparent);
+    font-size: 12px;
+    font-weight: 650;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.event-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    width: 100%;
+    padding: 0 14px;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 90%, transparent);
+    background: rgba(255, 255, 255, 0.88);
+    box-sizing: border-box;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 650;
+    user-select: none;
+    transition:
+        background-color 0.16s ease-out,
+        border-color 0.16s ease-out,
+        box-shadow 0.16s ease-out;
+}
+
+.event-filter-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--md-sys-color-primary);
+}
+
+.event-filter-toggle.active {
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 36%, transparent);
+    background: color-mix(in srgb, var(--md-sys-color-primary) 12%, white 88%);
+    box-shadow: 0 0 0 4px rgba(103, 80, 164, 0.08);
+}
+
+body.dark-theme .event-filter-time-chip,
+html.theme-dark .event-filter-time-chip,
+body.dark-theme .event-filter-toggle,
+html.theme-dark .event-filter-toggle {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(208, 188, 255, 0.14);
+    color: var(--md-sys-color-on-surface);
+}
+
+body.dark-theme .event-filter-reset-btn,
+html.theme-dark .event-filter-reset-btn {
+    background: rgba(208, 188, 255, 0.12);
+    border-color: rgba(208, 188, 255, 0.28);
+    color: var(--md-sys-color-primary);
+}
+
+body.dark-theme .event-filter-reset-btn:disabled,
+html.theme-dark .event-filter-reset-btn:disabled {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(208, 188, 255, 0.14);
+    color: var(--md-sys-color-on-surface);
+}
+
+body.dark-theme .event-filter-time-chip.active,
+html.theme-dark .event-filter-time-chip.active,
+body.dark-theme .event-filter-toggle.active,
+html.theme-dark .event-filter-toggle.active {
+    background: rgba(208, 188, 255, 0.14);
+    border-color: rgba(208, 188, 255, 0.28);
+    color: var(--md-sys-color-primary);
+}
+
+body.dark-theme .event-filter-summary-chip,
+html.theme-dark .event-filter-summary-chip {
+    background: rgba(208, 188, 255, 0.1);
+    border-color: rgba(208, 188, 255, 0.18);
+    color: var(--md-sys-color-on-surface);
 }
 
 .event-filter-group-nowrap {
@@ -519,11 +828,21 @@ body.dark-theme .badge-weather { background: #E65100; color: #FFE0B2; }
     transition: transform 0.18s ease-out;
 }
 
+/* 时间卡内部子项不要整体上浮，避免 hover 时视觉间距被放大 */
+.event-filter-field-card-time > * {
+    transition: none;
+}
+
 .event-filter-field-card:hover::before,
 .event-filter-field-card:focus-within::before,
 .event-filter-field-card:hover > *,
 .event-filter-field-card:focus-within > * {
     transform: translateY(calc(-1 * var(--hover-lift)));
+}
+
+.event-filter-field-card-time:hover > *,
+.event-filter-field-card-time:focus-within > * {
+    transform: none;
 }
 
 .event-filter-field-card:hover::before,
@@ -701,15 +1020,21 @@ html.theme-dark .event-filter-source-menu {
 .event-filter-select {
     border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 90%, transparent);
     border-radius: 14px;
-    padding: 0 14px;
+    /* 右侧预留下拉箭头空间，避免选中文字被箭头/裁剪挡住 */
+    padding: 0 34px 0 14px;
     background: rgba(255,255,255,0.88);
     color: inherit;
     font-size: 13px;
     font-weight: 600;
+    line-height: 1.25;
     min-height: 42px;
     box-sizing: border-box;
     outline: none;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.45);
+    /* 防止原生 select 在窄容器里把文字裁到看不见 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     transition:
         background-color 0.16s ease-out,
         border-color 0.16s ease-out,
@@ -732,38 +1057,101 @@ html.theme-dark .event-filter-source-menu {
 }
 
 .event-filter-select-md {
-    min-width: 124px;
-    flex: 1 1 0;
+    min-width: 0;
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 100%;
 }
 
 .event-filter-select-sm {
-    min-width: 82px;
-    width: 82px;
-    flex: 0 0 82px;
+    min-width: 4.5rem;
+    width: auto;
+    flex: 0 0 auto;
+    max-width: 100%;
+    padding-left: 12px;
+    padding-right: 28px;
+}
+
+/* 烈度 / 震度同卡分轨：标签在上，避免横向挤占导致截断 */
+.event-filter-field-card-intensity {
+    min-width: min(100%, 300px);
+}
+
+.event-filter-intensity-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+}
+
+.event-filter-intensity-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+}
+
+.event-filter-intensity-rail {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.3;
+    color: color-mix(in srgb, var(--md-sys-color-on-surface) 68%, transparent);
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: keep-all;
+}
+
+.event-filter-intensity-row .event-filter-select {
+    min-width: 0;
+    width: 100%;
+}
+
+/* 数据源卡片：防止固定宽度把工具栏撑破，同时保证文字可读 */
+.event-filter-field-card-source {
+    min-width: min(100%, 280px);
+    overflow: visible;
+}
+
+.event-filter-inline-controls-source {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 8px;
 }
 
 /* 过滤发布源的多选框 */
 .event-filter-source-select,
 .event-filter-source-details {
-    width: 240px;
-    min-width: 180px;
-    max-width: min(320px, 100%);
+    flex: 1 1 12rem;
+    width: auto;
+    min-width: min(100%, 12rem);
+    max-width: 100%;
     box-sizing: border-box;
 }
 
 .event-filter-source-select {
-    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .event-filter-keyword-input {
     width: 100%;
     min-width: 0;
     flex: 1 1 100%;
+    padding-right: 14px;
 }
 
 .event-filter-source-details {
     position: relative;
-    flex: 1 1 240px;
+    flex: 1 1 12rem;
+    min-width: min(100%, 12rem);
     overflow: visible;
     z-index: 100;
 }
@@ -2248,7 +2636,7 @@ body.dark-theme .weather-query-error {
 /* 宽屏平板设备适配（最大宽 1280px） */
 @media (max-width: 1280px) {
     .event-filters-secondary-row {
-        grid-template-columns: minmax(240px, 0.82fr) minmax(320px, 1.18fr);
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
 
     .event-filter-field-card-keyword {
@@ -2293,10 +2681,18 @@ body.dark-theme .weather-query-error {
         flex-wrap: wrap;
     }
 
+    .event-filter-select-sm {
+        width: 100%;
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
     .event-filter-source-select,
     .event-filter-source-details {
         width: 100%;
+        flex: 1 1 100%;
         max-width: 100%;
+        min-width: 0;
     }
 
     .event-filter-source-menu {
@@ -2309,6 +2705,43 @@ body.dark-theme .weather-query-error {
     .events-filters-header {
         gap: 14px;
         margin-bottom: 24px;
+    }
+
+    .event-filters-footer-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .event-filters-footer-actions {
+        width: 100%;
+        justify-content: flex-end;
+        margin-left: 0;
+    }
+
+    /* 手机端也尽量保持「开始 至 结束」同一行，避免被强行拆成两行 */
+    .event-filter-custom-time {
+        display: grid;
+        width: 100%;
+        max-width: 100%;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: end;
+        column-gap: 8px;
+    }
+
+    .event-filter-datetime-field {
+        width: auto;
+        min-width: 0;
+    }
+
+    .event-filter-datetime-separator {
+        padding-bottom: 12px;
+        align-self: end;
+    }
+
+    .event-filters-summary-row {
+        flex-direction: column;
+        gap: 8px;
     }
 
     /* 主要分类胶囊在手机端拉伸自适应 */
