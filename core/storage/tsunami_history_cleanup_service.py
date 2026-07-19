@@ -7,15 +7,20 @@
 - 本文件将在后续版本中视情况移除
 
 不写入 DatabaseManager 本体，仅复用其连接生命周期。
+完成后写入磁盘标记，避免插件重载反复扫描/刷日志。
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from astrbot.api import logger
 
 from .source_compat import normalize_source_name
+
+# 标记版本：清理逻辑变更时可递增，强制再跑一轮
+_MARKER_NAME = ".tsunami_history_cleanup_v1.done"
 
 
 class TsunamiHistoryCleanupService:
@@ -30,6 +35,26 @@ class TsunamiHistoryCleanupService:
         """
         self.db = db
         self._done = False
+
+    def _marker_path(self) -> Path | None:
+        db_path = getattr(self.db, "db_path", None)
+        if db_path is None:
+            return None
+        return Path(db_path).parent / _MARKER_NAME
+
+    def _is_marked_done(self) -> bool:
+        marker = self._marker_path()
+        return bool(marker and marker.is_file())
+
+    def _write_marker(self) -> None:
+        marker = self._marker_path()
+        if marker is None:
+            return
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("done\n", encoding="utf-8")
+        except Exception as exc:
+            logger.debug(f"[灾害预警] 写入海啸清理标记失败: {exc}")
 
     @staticmethod
     def _normalize_event_key(value: Any) -> str:
@@ -98,10 +123,46 @@ class TsunamiHistoryCleanupService:
             return f"{source}|{bare}"
         return bare
 
+    @classmethod
+    def _needs_normalize(
+        cls,
+        keep: dict[str, Any],
+        *,
+        source: str,
+        real_event_id: str,
+        unique_id: str,
+        update_count: int,
+    ) -> bool:
+        """仅当字段确实需要修正时才 UPDATE。"""
+        cur_source = str(keep.get("source") or "").strip()
+        cur_source_id = str(keep.get("source_id") or "").strip()
+        cur_real = str(keep.get("real_event_id") or "").strip()
+        cur_unique = str(keep.get("unique_id") or "").strip()
+        cur_update = int(keep.get("update_count", 1) or 1)
+        cur_report = keep.get("report_num")
+
+        if cur_source != source:
+            return True
+        if cur_source_id != source:
+            return True
+        if real_event_id and cur_real != real_event_id:
+            return True
+        if unique_id and cur_unique != unique_id:
+            return True
+        if cur_update < update_count:
+            return True
+        if cur_report in (None, "", 0) and update_count:
+            return True
+        return False
+
     async def run_once(self, *, force: bool = False) -> dict[str, int]:
-        """执行一次清理；默认进程内只跑一次。"""
+        """执行一次清理；默认进程内 + 磁盘标记只跑一次。"""
         if self._done and not force:
-            return {"kept": 0, "deleted": 0, "groups": 0, "skipped": 1}
+            return {"kept": 0, "deleted": 0, "groups": 0, "skipped": 1, "updated": 0}
+        if not force and self._is_marked_done():
+            self._done = True
+            logger.debug("[灾害预警] 海啸历史清理：已有完成标记，跳过")
+            return {"kept": 0, "deleted": 0, "groups": 0, "skipped": 1, "updated": 0}
 
         connection = await self.db._ensure_connection()
         cursor = await connection.cursor()
@@ -117,27 +178,36 @@ class TsunamiHistoryCleanupService:
             rows = [dict(item) for item in await cursor.fetchall()]
             if not rows:
                 self._done = True
-                return {"kept": 0, "deleted": 0, "groups": 0, "skipped": 0}
+                self._write_marker()
+                return {
+                    "kept": 0,
+                    "deleted": 0,
+                    "groups": 0,
+                    "skipped": 0,
+                    "updated": 0,
+                }
 
             groups: dict[str, list[dict[str, Any]]] = {}
             for row in rows:
                 groups.setdefault(self._group_key(row), []).append(row)
 
             multi_groups = [items for items in groups.values() if len(items) > 1]
-
             delete_ids: list[int] = []
             kept = 0
-            # 无论是否存在重复组，都规范化单行（补齐 source_id / unique_id）。
+            updated = 0
+
             for items in groups.values():
                 if len(items) == 1:
                     only = items[0]
-                    await self._normalize_keep_row(cursor, [only], keep=only)
+                    if await self._normalize_keep_row(cursor, [only], keep=only):
+                        updated += 1
                     kept += 1
                     continue
 
                 items_sorted = sorted(items, key=self._row_sort_key)
                 keep = items_sorted[-1]
-                await self._fold_group_to_keep(cursor, items_sorted, keep=keep)
+                if await self._fold_group_to_keep(cursor, items_sorted, keep=keep):
+                    updated += 1
                 kept += 1
                 for item in items_sorted[:-1]:
                     delete_ids.append(int(item["id"]))
@@ -156,6 +226,7 @@ class TsunamiHistoryCleanupService:
 
             await connection.commit()
             self._done = True
+            self._write_marker()
 
             try:
                 from ..network.admin.api.events_routes import invalidate_sources_cache
@@ -169,14 +240,19 @@ class TsunamiHistoryCleanupService:
                 "deleted": len(delete_ids),
                 "groups": len(multi_groups),
                 "skipped": 0,
+                "updated": updated,
             }
             if multi_groups or delete_ids:
                 logger.info(
                     "[灾害预警] 海啸历史重复清理完成: "
                     f"保留 {kept}, 删除 {len(delete_ids)}, 多报折叠 {len(multi_groups)}"
                 )
+            elif updated:
+                logger.info(f"[灾害预警] 海啸历史清理：无重复组，已规范化 {updated} 行")
             else:
-                logger.info(f"[灾害预警] 海啸历史清理：无重复组，已规范化 {kept} 行")
+                logger.debug(
+                    f"[灾害预警] 海啸历史清理：无重复组且无需规范化（共 {kept} 行）"
+                )
             return result
         except Exception as exc:
             logger.error(f"[灾害预警] 海啸历史清理失败: {exc}")
@@ -189,13 +265,23 @@ class TsunamiHistoryCleanupService:
         rows: list[dict[str, Any]],
         *,
         keep: dict[str, Any],
-    ) -> None:
+    ) -> bool:
+        """规范化保留行；有实际变更返回 True。"""
         source = self._preferred_source(rows)
         real_event_id = self._preferred_real_event_id(rows)
         unique_id = self._preferred_unique_id(
             rows, source=source, real_event_id=real_event_id
         )
         update_count = max(len(rows), int(keep.get("update_count", 1) or 1))
+        if not self._needs_normalize(
+            keep,
+            source=source,
+            real_event_id=real_event_id,
+            unique_id=unique_id,
+            update_count=update_count,
+        ):
+            return False
+
         await cursor.execute(
             """
             UPDATE events
@@ -217,6 +303,7 @@ class TsunamiHistoryCleanupService:
                 keep["id"],
             ),
         )
+        return True
 
     async def _fold_group_to_keep(
         self,
@@ -224,8 +311,9 @@ class TsunamiHistoryCleanupService:
         items_sorted: list[dict[str, Any]],
         *,
         keep: dict[str, Any],
-    ) -> None:
+    ) -> bool:
         """把同组历史行折叠到 keep，并写入 event_updates 报次快照。"""
+        # 折叠组必然改写 updates；规范化结果无需单独使用
         await self._normalize_keep_row(cursor, items_sorted, keep=keep)
 
         keep_id = int(keep["id"])
@@ -275,3 +363,4 @@ class TsunamiHistoryCleanupService:
                     recorded_at,
                 ),
             )
+        return True
