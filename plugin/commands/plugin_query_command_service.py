@@ -21,6 +21,8 @@ from ...core.app.services import format_earthquake_list_text, quoted_plain_resul
 from ...core.domain.event_context import EarthquakeDisplayContext
 from ...core.message.presenters.earthquake_presenter import SnetPresenter
 from ...core.message.push.message_build_service import MessageBuildService
+from ...core.services.query.typhoon_query_parser import DETAIL_CURRENT, DETAIL_FULL
+from ...core.services.query.typhoon_query_presenter import attach_summary_text
 from ...core.services.query.typhoon_query_service import (
     build_typhoon_query_text,
     parse_typhoon_query_args,
@@ -29,6 +31,7 @@ from ...core.services.query.typhoon_query_service import (
 from ...core.services.query.weather_query_service import query_weather_alarm_data
 from ...core.services.simulation.simulation_service import build_earthquake_simulation
 from .telemetry_mixin import CommandTelemetryMixin
+from .typhoon_query_image_helper import append_typhoon_track_image
 
 
 class PluginQueryCommandService(CommandTelemetryMixin):
@@ -312,6 +315,8 @@ class PluginQueryCommandService(CommandTelemetryMixin):
 
         优先复用 EQSC 查询逻辑；配置无效或查询失败时回退本地数据库（Fan/EQSC重建）。
         支持指定 ID、名称、数量、活跃过滤与详细程度（当前信息/完整路径）。
+        单台风查询为渲染路径图可内部提升为完整轨迹，但返回文本仍按用户 detail。
+        当结果含 history_track 时，尝试附加台风路径图（列表仅渲首张）。
         """
 
         def _quoted_plain_result(text: str):
@@ -327,15 +332,33 @@ class PluginQueryCommandService(CommandTelemetryMixin):
             enrichment = getattr(
                 self.plugin.disaster_service, "typhoon_enrichment_service", None
             )
+            # 单台风（ID/名称）为出路径图，查询侧将 current 提升为 full 以拿到 history_track；
+            # 文本展示仍尊重用户原始 detail。列表查询（无 ID/名称）不提升，避免批量拉轨迹。
+            user_detail = parsed.get("detail") or DETAIL_CURRENT
+            query_detail = user_detail
+            if user_detail == DETAIL_CURRENT and (
+                parsed.get("typhoon_id") or parsed.get("keyword")
+            ):
+                query_detail = DETAIL_FULL
             result = await query_typhoon_data(
                 db,
                 enrichment,
                 typhoon_id=parsed.get("typhoon_id"),
                 keyword=parsed.get("keyword"),
                 count=parsed.get("count"),
-                detail=parsed.get("detail"),
+                detail=query_detail,
                 active_only=bool(parsed.get("active_only")),
             )
+
+            # 轨迹字段保留给路径图；summary_text / detail 按用户参数重写，避免文本被提升成完整路径。
+            if result.get("success") and query_detail != user_detail:
+                data_item = result.get("data")
+                if isinstance(data_item, dict):
+                    attach_summary_text(data_item, detail=user_detail)
+                for item in result.get("items") or []:
+                    if isinstance(item, dict):
+                        attach_summary_text(item, detail=user_detail)
+                result["detail"] = user_detail
 
             await self._track_command_feature(
                 "command_typhoon_query",
@@ -350,7 +373,33 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                     "result_count": int(result.get("total") or 0),
                 },
             )
-            yield _quoted_plain_result(build_typhoon_query_text(result))
+            text = build_typhoon_query_text(result)
+            chain_parts: list = [Comp.Plain(text)]
+            chain_parts = await append_typhoon_track_image(
+                plugin=self.plugin,
+                result=result,
+                chain_parts=chain_parts,
+            )
+            if len(chain_parts) > 1:
+                try:
+                    if hasattr(self.plugin, "_with_quote_reply"):
+                        yield event.chain_result(
+                            self.plugin._with_quote_reply(event, chain_parts)
+                        )
+                    else:
+                        yield event.chain_result(chain_parts)
+                    return
+                except Exception:
+                    yield _quoted_plain_result(text)
+                    try:
+                        await self.plugin.context.send_message(
+                            event.unified_msg_origin,
+                            MessageChain([chain_parts[1]]),
+                        )
+                    except Exception:
+                        pass
+                    return
+            yield _quoted_plain_result(text)
         except Exception as e:
             logger.error(f"[灾害预警] 查询台风信息失败: {e}")
             yield _quoted_plain_result(f"❌ 查询失败: {e}")
