@@ -119,7 +119,7 @@ def attach_summary_text(item: dict[str, Any], *, detail: str) -> dict[str, Any]:
 def build_typhoon_query_text(result: dict[str, Any]) -> str:
     """把查询结果格式化为命令侧可读文本。
 
-    - 单条（id）：输出完整摘要。
+    - 单条（id）：直接输出摘要正文。
     - 多条（list/search）：
       - current：紧凑列表
       - full：每条输出完整摘要，条目之间用分隔线区分
@@ -144,6 +144,11 @@ def build_typhoon_query_text(result: dict[str, Any]) -> str:
             lines.extend(f"• {line}" for line in usage)
         return "\n".join(lines)
 
+    # 单条详情不再附加“来源/模式”标题行，直接输出摘要正文。
+    if result.get("query_mode") == "id":
+        data = result.get("data") or {}
+        return str(data.get("summary_text") or "暂无详情")
+
     source = result.get("source") or "unknown"
     detail = result.get("detail") or DETAIL_CURRENT
     source_label = {
@@ -153,15 +158,6 @@ def build_typhoon_query_text(result: dict[str, Any]) -> str:
     fallback_hint = ""
     if result.get("fallback_from") == "eqsc":
         fallback_hint = "，EQSC不可用已回退"
-
-    if result.get("query_mode") == "id":
-        data = result.get("data") or {}
-        header = (
-            f"🌀 台风信息详情（来源：{source_label}{fallback_hint}，"
-            f"模式：{'完整路径' if detail == DETAIL_FULL else '当前信息'}）"
-        )
-        body = data.get("summary_text") or "暂无详情"
-        return f"{header}\n\n{body}"
 
     items = result.get("items") or []
     total = result.get("total", len(items))

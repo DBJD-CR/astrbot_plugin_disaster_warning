@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 from typing import Any
@@ -20,6 +21,7 @@ from ...domain.event_models import (
     EarthquakeEvent,
     EventEnvelope,
     TsunamiEvent,
+    TyphoonEvent,
     WeatherEvent,
 )
 from ...services.identity.event_identity import resolve_report_num
@@ -112,6 +114,66 @@ class MessageBuildService:
         # 全量排序指纹：同分钟同分布可跨推送/查询复用渲染结果
         fingerprint = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
         return f"snet_map|{timestamp}|{fingerprint}"
+
+    @staticmethod
+    def _build_typhoon_map_cache_key(
+        data: dict[str, Any] | TyphoonEvent,
+        *,
+        map_source: str,
+        playwright_mode: str,
+    ) -> str:
+        """构建台风路径图缓存键（编号 + 轨迹指纹 + 地图源）。"""
+        if isinstance(data, TyphoonEvent):
+            typhoon_id = str(data.typhoon_id or "")
+            history = list(data.history_track or [])
+            future = list(data.future_track or [])
+            updated_at = str(data.updated_at or "")
+        else:
+            typhoon_id = str(data.get("typhoon_id") or data.get("eqsc_id") or "")
+            history = list(data.get("history_track") or [])
+            future = list(data.get("future_track") or [])
+            updated_at = str(
+                data.get("updated_at") or data.get("updated_at_text") or ""
+            )
+
+        def _track_fingerprint(nodes: list[Any]) -> list[tuple[Any, ...]]:
+            rows: list[tuple[Any, ...]] = []
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                rows.append(
+                    (
+                        str(node.get("time") or ""),
+                        node.get("latitude")
+                        if node.get("latitude") is not None
+                        else node.get("lat"),
+                        node.get("longitude")
+                        if node.get("longitude") is not None
+                        else node.get("lon"),
+                        node.get("windSpeed")
+                        if node.get("windSpeed") is not None
+                        else node.get("wind_speed"),
+                        node.get("pressure"),
+                        str(
+                            node.get("typeNameCN")
+                            or node.get("type")
+                            or node.get("level")
+                            or ""
+                        ),
+                    )
+                )
+            return rows
+
+        key_obj = {
+            "type": "typhoon_map",
+            "typhoon_id": typhoon_id,
+            "updated_at": updated_at,
+            "history": _track_fingerprint(history),
+            "future": _track_fingerprint(future),
+            "map_source": map_source or "PetalMap矢量图暗",
+            "playwright_mode": playwright_mode or "local",
+        }
+        return json.dumps(key_obj, sort_keys=True, ensure_ascii=False, default=str)
 
     @staticmethod
     def _build_map_cache_key(lat: float, lon: float, config: dict[str, Any]) -> str:
@@ -279,6 +341,12 @@ class MessageBuildService:
 
         # S-Net 测站分布图（替代通用地图）
         await self._append_snet_map_if_needed(chain, event, source_id=source_id)
+        # 台风路径图（EQSC 富化轨迹）
+        await self._append_typhoon_map_if_needed(
+            chain,
+            event,
+            message_format_config=message_format_config,
+        )
         # 地图渲染与插入（S-Net 跳过，避免重复）
         if source_id != "snet_msil":
             await self._append_map_if_needed(
@@ -425,6 +493,69 @@ class MessageBuildService:
             # 不删除 out：交给 RenderImageCache / 临时目录清理服务回收
         except Exception as e:
             logger.error(f"[灾害预警] S-Net 测站图渲染失败: {e}")
+
+    async def _append_typhoon_map_if_needed(
+        self,
+        chain: MessageChain,
+        event: EventEnvelope,
+        *,
+        message_format_config: dict[str, Any],
+    ) -> None:
+        """为台风事件附加路径图（需 history_track，走 RenderImageCache）。"""
+        domain_event = self._get_domain_event(event)
+        if not isinstance(domain_event, TyphoonEvent):
+            return
+
+        renderer = getattr(self.manager, "typhoon_map_renderer", None)
+        if renderer is None:
+            return
+        can_render = getattr(renderer, "can_render", None)
+        if callable(can_render) and not can_render(domain_event):
+            return
+
+        # 台风路径图使用独立瓦片配置，不与地震通用地图 map_source 混用。
+        map_source = (
+            message_format_config.get("typhoon_map_source") or "PetalMap矢量图暗"
+        )
+        if not str(map_source).strip():
+            map_source = "PetalMap矢量图暗"
+        playwright_mode = message_format_config.get("playwright_mode") or (
+            self.manager.config.get("message_format", {}) or {}
+        ).get("playwright_mode", "local")
+        cache_key = self._build_typhoon_map_cache_key(
+            domain_event,
+            map_source=str(map_source),
+            playwright_mode=str(playwright_mode),
+        )
+        try:
+
+            async def _render_typhoon() -> str | None:
+                safe_id = str(domain_event.typhoon_id or "unknown").replace("/", "_")
+                # 文件名纳入 map_source / playwright_mode 指纹，避免多会话差异化配置
+                # 并发渲染时写入同一路径导致串图或文件损坏。
+                cfg_token = hashlib.sha1(
+                    f"{map_source}|{playwright_mode}".encode()
+                ).hexdigest()[:10]
+                img_path = os.path.join(
+                    str(self.manager.temp_dir),
+                    f"typhoon_map_{safe_id}_{cfg_token}.png",
+                )
+                return await renderer.render(
+                    domain_event,
+                    img_path,
+                    map_source=str(map_source),
+                    playwright_mode=str(playwright_mode),
+                )
+
+            out = await self.manager._render_with_cache(cache_key, _render_typhoon)
+            if not out or not os.path.exists(out):
+                return
+            with open(out, "rb") as f:
+                b64_data = base64.b64encode(f.read()).decode()
+            chain.chain.append(Comp.Image.fromBase64(b64_data))
+            logger.debug("[灾害预警] 已附加台风路径图")
+        except Exception as e:
+            logger.error(f"[灾害预警] 台风路径图渲染失败: {e}")
 
     async def _append_map_if_needed(
         self,

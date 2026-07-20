@@ -705,6 +705,10 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 - **地图瓦片源 (`map_source`)**:
   - WebUI 中文选项：`高德地图`、`PetalMap矢量图亮`、`PetalMap矢量图暗`、`ArcGIS卫星影像`、`ArcGIS地形图`、`ArcGIS山影图`、`中科星图卫星影像`。
   - 同时兼容英文 ID：`amap`、`petallight`、`petaldark`、`arcwi`、`arcwob`、`arcwh`、`geovis`。
+  - 用于地震通用地图、Global Quake 卡片等。
+- **台风路径图瓦片源 (`typhoon_map_source`)**:
+  - 选项与 `map_source` 相同，但**仅作用于台风路径图**，与通用地图源独立。
+  - 默认 `PetalMap矢量图暗`（匹配台风卡片暗色主题）。
 - **地图缩放级别 (`map_zoom_level`)**: 范围 0-18 ，数值越大，固定视野中展现的区域范围就越小。(默认值 5)
   - z=0-2：全球视图
   - z=3-5：国家视图
@@ -733,7 +737,8 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 ```json
 "message_format": {
   "include_map": false,                         // 是否在消息中附带地图图片
-  "map_source": "PetalMap矢量图亮",             // 地图源（可填中文名或英文ID）
+  "map_source": "PetalMap矢量图亮",             // 通用地图源（可填中文名或英文ID）
+  "typhoon_map_source": "PetalMap矢量图暗",    // 台风路径图专用瓦片源
   "map_zoom_level": 5,                         // 地图缩放级别（0-18）
   "playwright_mode": "local",                  // 渲染模式：local/remote
   "playwright_server_url": "",                 // remote 模式下填写远程服务地址

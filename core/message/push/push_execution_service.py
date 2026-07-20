@@ -168,6 +168,9 @@ class PushExecutionService:
                         "map_source": message_format_config.get(
                             "map_source", "PetalMap矢量图亮"
                         ),
+                        "typhoon_map_source": message_format_config.get(
+                            "typhoon_map_source", "PetalMap矢量图暗"
+                        ),
                         "map_zoom_level": message_format_config.get(
                             "map_zoom_level", 5
                         ),

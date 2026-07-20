@@ -720,7 +720,22 @@
           "中科星图卫星影像"
         ],
         "default": "PetalMap矢量图亮",
-        "hint": "选择地图渲染使用的瓦片源"
+        "hint": "选择地震通用地图 / Global Quake 卡片等渲染使用的瓦片源"
+      },
+      "typhoon_map_source": {
+        "description": "台风路径图瓦片源",
+        "type": "string",
+        "options": [
+          "高德地图",
+          "PetalMap矢量图亮",
+          "PetalMap矢量图暗",
+          "ArcGIS卫星影像",
+          "ArcGIS地形图",
+          "ArcGIS山影图",
+          "中科星图卫星影像"
+        ],
+        "default": "PetalMap矢量图暗",
+        "hint": "仅用于台风路径图渲染。与上方「地图瓦片源」独立；台风卡片默认暗色主题，建议使用暗色或卫星底图。"
       },
       "map_zoom_level": {
         "description": "地图缩放级别",

@@ -996,26 +996,52 @@ class ConfigValidator:
                 logger.warning("[灾害预警] 配置警告: 浏览器池大小过大，已限制为 10。")
                 cfg["browser_pool_size"] = 10
 
-        # 地图源校验
-        map_source = cfg.get("map_source")
+        # 地图源校验（通用地图 / 台风路径图共用选项表）
         valid_source_ids = set(MAP_TILE_SOURCES.keys())
         valid_source_names = set(MAP_SOURCE_NAME_TO_ID.keys())
-        if map_source is not None:
-            if not isinstance(map_source, str):
+
+        def _validate_map_source_field(
+            field_name: str,
+            *,
+            default_value: str,
+            label: str,
+        ) -> None:
+            value = cfg.get(field_name)
+            if value is None:
+                return
+            if not isinstance(value, str):
                 logger.warning(
-                    f"[灾害预警] 配置警告: 地图源类型错误 ({type(map_source).__name__})，已重置为 PetalMap矢量图亮。"
+                    f"[灾害预警] 配置警告: {label}类型错误 "
+                    f"({type(value).__name__})，已重置为 {default_value}。"
                 )
-                cfg["map_source"] = "PetalMap矢量图亮"
+                cfg[field_name] = default_value
+                return
+            text = value.strip()
+            if not text:
+                cfg[field_name] = default_value
+                return
+            normalized_source = normalize_map_source(text)
+            if (
+                text not in valid_source_names
+                and normalized_source not in valid_source_ids
+            ):
+                # 仅警告，不强制重置，以支持未来扩展或自定义源
+                logger.warning(
+                    f"[灾害预警] 配置警告: {label} {text} 不在标准列表中，请确认是否为自定义源。"
+                )
             else:
-                normalized_source = normalize_map_source(map_source)
-                if (
-                    map_source not in valid_source_names
-                    and normalized_source not in valid_source_ids
-                ):
-                    # 仅警告，不强制重置，以支持未来扩展或自定义源
-                    logger.warning(
-                        f"[灾害预警] 配置警告: 地图源 {map_source} 不在标准列表中，请确认是否为自定义源。"
-                    )
+                cfg[field_name] = text
+
+        _validate_map_source_field(
+            "map_source",
+            default_value="PetalMap矢量图亮",
+            label="地图源",
+        )
+        _validate_map_source_field(
+            "typhoon_map_source",
+            default_value="PetalMap矢量图暗",
+            label="台风路径图瓦片源",
+        )
 
         # Global Quake 模板校验
         gq_template = cfg.get("global_quake_template")
