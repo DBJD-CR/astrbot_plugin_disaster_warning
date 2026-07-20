@@ -15,6 +15,7 @@ const CONFIG_ICONS = {
     push_frequency_control: '⏱️',
     message_format: '🎨',
     weather_config: '⛈️',
+    tsunami_config: '🌊',
     typhoon_config: '🌀',
     websocket_config: '🔌',
     web_admin: '💻',

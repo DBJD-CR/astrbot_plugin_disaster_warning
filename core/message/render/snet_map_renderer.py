@@ -38,9 +38,10 @@ SNET_LIST_LIMIT = 18
 # S-Net 卡片固定画布；渲染时临时放大浏览器视口，避免 800×800 池默认值裁切
 SNET_VIEWPORT = {"width": 1400, "height": 1000}
 
-# 計測震度 -3 → #0000CD，0 → #3FFA36（与地图 canvas 渐变一致）
+# 計測震度 -3 → #0000CD，-0.5 → #1FE460（震度0 起点；与地图 canvas 渐变一致）
 _SNET_NEG3_RGB = (0, 0, 205)
-_SNET_ZERO_RGB = (63, 250, 54)
+_SNET_BELOW_ZERO_RGB = (31, 228, 96)  # #1FE460
+_SNET_GRADIENT_END_SHINDO = -0.5  # 日本震度 0 的計測震度起点
 
 # 图标文件映射: (shindo下限, SVG文件名)
 _SNET_ICON_FILES = [
@@ -204,16 +205,25 @@ def _shindo_css_class(shindo: float) -> str:
 
 def _rgb_to_str(rgb: tuple[int, int, int] | list[int] | None) -> str:
     if not rgb or len(rgb) < 3:
-        return "63,250,54"
+        r, g, b = _SNET_BELOW_ZERO_RGB
+        return f"{r},{g},{b}"
     return f"{rgb[0]},{rgb[1]},{rgb[2]}"
 
 
 def _neg_to_zero_gradient_rgb(shindo: float) -> tuple[int, int, int]:
-    """計測震度 -3～0 线性插值到 (#0000CD → #3FFA36)。"""
-    t = max(0.0, min(1.0, (float(shindo) + 3.0) / 3.0))
-    r = int(round(_SNET_NEG3_RGB[0] + (_SNET_ZERO_RGB[0] - _SNET_NEG3_RGB[0]) * t))
-    g = int(round(_SNET_NEG3_RGB[1] + (_SNET_ZERO_RGB[1] - _SNET_NEG3_RGB[1]) * t))
-    b = int(round(_SNET_NEG3_RGB[2] + (_SNET_ZERO_RGB[2] - _SNET_NEG3_RGB[2]) * t))
+    """計測震度 -3～-0.5 线性插值到 (#0000CD → #1FE460)。"""
+    # 震度 0 起点为 -0.5；区间长度 2.5
+    span = 3.0 + _SNET_GRADIENT_END_SHINDO  # 2.5
+    t = max(0.0, min(1.0, (float(shindo) + 3.0) / span))
+    r = int(
+        round(_SNET_NEG3_RGB[0] + (_SNET_BELOW_ZERO_RGB[0] - _SNET_NEG3_RGB[0]) * t)
+    )
+    g = int(
+        round(_SNET_NEG3_RGB[1] + (_SNET_BELOW_ZERO_RGB[1] - _SNET_NEG3_RGB[1]) * t)
+    )
+    b = int(
+        round(_SNET_NEG3_RGB[2] + (_SNET_BELOW_ZERO_RGB[2] - _SNET_NEG3_RGB[2]) * t)
+    )
     return (r, g, b)
 
 
@@ -223,7 +233,8 @@ def _list_dot_bg(shindo: float) -> str:
         value = float(shindo)
     except (TypeError, ValueError):
         return ""
-    if value > 0:
+    # 仅震度 0 以下（計測震度 < -0.5）使用渐变色点
+    if value >= _SNET_GRADIENT_END_SHINDO:
         return ""
     r, g, b = _neg_to_zero_gradient_rgb(value)
     return f"rgb({r},{g},{b})"
@@ -357,8 +368,8 @@ class SnetMapRenderer:
             rgb = s.get("rgb")
             rgb_str = _rgb_to_str(rgb)
             sc = _shindo_css_class(shindo_f)
-            # <=0 列表圆点用 -3~0 渐变；>0 走 CSS 震度色 class
-            if shindo_f > 0:
+            # < -0.5 列表圆点用 -3~-0.5 渐变；>= -0.5 走 CSS 震度色 class（含震度0）
+            if shindo_f >= _SNET_GRADIENT_END_SHINDO:
                 dot_class = sc.replace("shindo-", "dot-") if sc else "dot-none"
                 dot_bg = ""
             else:
@@ -396,13 +407,13 @@ class SnetMapRenderer:
             max_shindo_text = f"{top['shindo']:.3f}"
             top_station_name = top["name"]
             top_shindo = float(top["shindo"])
-            if top_shindo > 0:
-                # 正震度：用与列表一致的 shindo-*（对齐 earthquake_list 色相）
+            if top_shindo >= _SNET_GRADIENT_END_SHINDO:
+                # 震度0及以上：用与列表一致的 shindo-*（对齐 earthquake_list 色相）
                 max_shindo_class = top.get("shindo_class") or _shindo_css_class(
                     top_shindo
                 )
             else:
-                # ≤0：与地图 -3~0 渐变同色（内联，避免 style=Jinja 在 class 上爆红）
+                # 震度0以下：与地图 -3~-0.5 渐变同色（内联，避免 style=Jinja 在 class 上爆红）
                 r, g, b = _neg_to_zero_gradient_rgb(top_shindo)
                 max_shindo_color = f"rgb({r},{g},{b})"
         else:
@@ -422,6 +433,14 @@ class SnetMapRenderer:
                 sorted(station_list, key=lambda x: x["shindo"])
             ),
             "icon_svgs_json": icon_svgs_json,
+            # 渐变参数由 Python 常量注入 JSON payload，避免与模板 JS 双份维护漂移
+            "gradient_config_json": json.dumps(
+                {
+                    "color_neg3": list(_SNET_NEG3_RGB),
+                    "color_below_zero": list(_SNET_BELOW_ZERO_RGB),
+                    "gradient_end_shindo": _SNET_GRADIENT_END_SHINDO,
+                }
+            ),
             "display_time": display_time,
             "triggered_count": triggered_count,
             "total_stations": total_stations,

@@ -389,6 +389,7 @@ html, body {
 <script type="application/json" id="snet-japan-rings">{{ rings_json }}</script>
 <script type="application/json" id="snet-stations">{{ stations_json }}</script>
 <script type="application/json" id="snet-icon-svgs">{{ icon_svgs_json }}</script>
+<script type="application/json" id="snet-gradient-config">{{ gradient_config_json }}</script>
 
 <script>
 (function() {
@@ -401,9 +402,10 @@ var MAP_LON_MIN = 135.0, MAP_LON_MAX = 149.0;
 var MAP_LAT_MIN = 32.0,  MAP_LAT_MAX = 44.0;
 var MARGIN = 60;
 
-/* -3 → #0000CD, 0 → #3FFA36 线性渐变 */
+/* 渐变参数默认值；实际值由下方 snet-gradient-config 覆盖（Python 单源） */
 var COLOR_NEG3 = [0, 0, 205];
-var COLOR_ZERO = [63, 250, 54];
+var COLOR_BELOW_ZERO = [31, 228, 96];  // #1FE460
+var GRADIENT_END_SHINDO = -0.5;
 
 var ICON_KEYS = [
     [6.5, 52], [6.0, 48], [5.5, 44], [5.0, 40],
@@ -419,13 +421,14 @@ function lerpChannel(a, b, t) {
     return Math.round(a + (b - a) * t);
 }
 
-/** 計測震度 -3～0 → 蓝到绿渐变；低于 -3 钳制到 -3 色 */
+/** 計測震度 -3～-0.5 → 蓝到绿渐变；低于 -3 钳制到 -3 色 */
 function shindoToNegGradientRgb(sh) {
-    var t = clamp01((sh + 3.0) / 3.0);
+    var span = 3.0 + GRADIENT_END_SHINDO; // 2.5
+    var t = clamp01((sh + 3.0) / span);
     return [
-        lerpChannel(COLOR_NEG3[0], COLOR_ZERO[0], t),
-        lerpChannel(COLOR_NEG3[1], COLOR_ZERO[1], t),
-        lerpChannel(COLOR_NEG3[2], COLOR_ZERO[2], t)
+        lerpChannel(COLOR_NEG3[0], COLOR_BELOW_ZERO[0], t),
+        lerpChannel(COLOR_NEG3[1], COLOR_BELOW_ZERO[1], t),
+        lerpChannel(COLOR_NEG3[2], COLOR_BELOW_ZERO[2], t)
     ];
 }
 
@@ -437,13 +440,13 @@ function rgbCss(rgb, alpha) {
 }
 
 function shindoToIconSize(sh) {
-    // > 0 使用彩色震度图标；<= 0 用 -3~0 渐变色点
-    if (sh > 0) return 24;
+    // >= -0.5 使用彩色震度图标（含震度0）；< -0.5 用 -3~-0.5 渐变色点
+    if (sh >= GRADIENT_END_SHINDO) return 24;
     return 0;
 }
 
 function shindoToThreshold(sh) {
-    if (sh <= 0) return null;
+    if (sh < GRADIENT_END_SHINDO) return null;
     for (var i = 0; i < ICON_KEYS.length; i++) {
         if (sh >= ICON_KEYS[i][0]) return ICON_KEYS[i][0];
     }
@@ -466,6 +469,24 @@ function _readJsonPayload(id) {
 var JAPAN_RINGS = _readJsonPayload('snet-japan-rings') || [];
 var STATIONS = _readJsonPayload('snet-stations') || [];
 var ICON_SVGS = _readJsonPayload('snet-icon-svgs') || {};
+/* 覆盖渐变参数：与 snet_map_renderer._SNET_* 保持单源一致 */
+(function applyGradientConfig() {
+    var cfg = _readJsonPayload('snet-gradient-config');
+    if (!cfg || typeof cfg !== 'object') return;
+    if (Array.isArray(cfg.color_neg3) && cfg.color_neg3.length >= 3) {
+        COLOR_NEG3 = cfg.color_neg3;
+    }
+    if (Array.isArray(cfg.color_below_zero) && cfg.color_below_zero.length >= 3) {
+        COLOR_BELOW_ZERO = cfg.color_below_zero;
+    }
+    if (typeof cfg.gradient_end_shindo === 'number') {
+        GRADIENT_END_SHINDO = cfg.gradient_end_shindo;
+        // 同步 ICON_KEYS 末项阈值（震度0 起点）
+        if (ICON_KEYS.length) {
+            ICON_KEYS[ICON_KEYS.length - 1][0] = GRADIENT_END_SHINDO;
+        }
+    }
+})();
 
 /* ════════════════════════════════════════════
    坐标转换
@@ -502,7 +523,7 @@ function preloadIcons(callback) {
 }
 
 /* ════════════════════════════════════════════
-   绘制负震度 / 0 渐变色点
+   绘制震度0以下（計測震度 < -0.5）渐变色点
    ════════════════════════════════════════════ */
 function drawGradientDot(ctx, x, y, sh) {
     var rgb = shindoToNegGradientRgb(sh);
@@ -563,13 +584,13 @@ function renderMap() {
         ctx.stroke();
     }
 
-    // 测站：先画 <=0 渐变点，再画 >0 图标，保证触发站在上层
+    // 测站：先画 < -0.5 渐变点，再画 >= -0.5 图标，保证触发站在上层
     var positive = [];
     for (var si = 0; si < STATIONS.length; si++) {
         var s = STATIONS[si];
         var xy = lonlatToXY(s.lon, s.lat, mapW, mapH);
         var sh = s.shindo;
-        if (sh > 0) {
+        if (sh >= GRADIENT_END_SHINDO) {
             positive.push({ s: s, xy: xy, sh: sh });
         } else {
             drawGradientDot(ctx, xy[0], xy[1], sh);
@@ -586,8 +607,8 @@ function renderMap() {
             var hs = iconSize / 2;
             ctx.drawImage(icon, item.xy[0] - hs, item.xy[1] - hs, iconSize, iconSize);
         } else {
-            // 图标缺失时回退到 0 端点绿色，避免再次变灰
-            drawGradientDot(ctx, item.xy[0], item.xy[1], 0);
+            // 图标缺失时回退到渐变终点绿色（-0.5），避免再次变灰
+            drawGradientDot(ctx, item.xy[0], item.xy[1], GRADIENT_END_SHINDO);
         }
     }
 }
