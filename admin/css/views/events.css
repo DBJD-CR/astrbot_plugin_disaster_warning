@@ -2540,7 +2540,7 @@ body.dark-theme .weather-query-error {
 /* 查询结果正文第一行：台风编号 */
 .typhoon-query-id-line {
     font-weight: 600;
-    opacity: 0.95 !important;
+    opacity: 0.95;
 }
 
 .typhoon-query-source-line {
