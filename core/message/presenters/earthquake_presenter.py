@@ -165,8 +165,17 @@ def _resolve_shock_time(display_context: EarthquakeDisplayContext):
 def _append_local_estimation(
     lines: list[str],
     display_context: EarthquakeDisplayContext,
+    *,
+    include_travel_time: bool = True,
 ) -> None:
-    """把本地影响预估信息附加到文本尾部。"""
+    """把本地影响预估信息附加到文本尾部。
+
+    Args:
+        lines: 待追加的消息行列表。
+        display_context: 地震展示上下文。
+        include_travel_time: 是否附加 P/S 波预计到达时间。
+            仅地震预警（EEW）场景有意义；正式测定/情报类应传 False。
+    """
     local_est = display_context.local_estimation
     if not local_est:
         return
@@ -180,7 +189,10 @@ def _append_local_estimation(
     lines.append(f"📍{place}预估：")
     lines.append(f"距离震中 {dist:.1f} km，预估最大烈度 {inte:.1f} ({desc})")
 
-    # 追加 P/S 波预计到达时间
+    # P/S 波预计到达时间仅对预警类消息有意义（震后情报已无预警价值）
+    if not include_travel_time:
+        return
+
     p_sec = local_est.get("p_travel_sec")
     s_sec = local_est.get("s_travel_sec")
     if p_sec is not None:
@@ -307,8 +319,7 @@ class CeaEewPresenter(BasePresenter):
             return rendered
         lines = rendered.split("\n") if rendered else []
         # 本地预估仅在上下文携带 local_estimation 时输出（跟随会话级配置）
-        if not any("距离震中" in line for line in lines):
-            _append_local_estimation(lines, display_context)
+        _append_local_estimation(lines, display_context)
         # 追加中国影响区县预估列表（独立于本地监控配置）
         if not any("预估影响区县" in line for line in lines):
             _append_cn_district_estimation(lines, display_context)
@@ -392,8 +403,7 @@ class CwaEewPresenter(BasePresenter):
             if not inserted:
                 lines.append(f"⚠️影响区域：{impact_area_text}")
 
-        if not any("距离震中" in line for line in lines):
-            _append_local_estimation(lines, display_context)
+        _append_local_estimation(lines, display_context)
         return "\n".join(lines)
 
 
@@ -530,8 +540,7 @@ class JmaEewPresenter(BasePresenter):
                 ):
                     lines.append(f"💥预估震度范围：{shindo_range.strip()}")
 
-        if not any("距离震中" in line for line in lines):
-            _append_local_estimation(lines, display_context)
+        _append_local_estimation(lines, display_context)
         return "\n".join(lines)
 
 
@@ -606,6 +615,7 @@ class CencEarthquakePresenter(BasePresenter):
 
         本地预估跟随会话级 local_monitoring 配置生效。
         影响区县预估仅用于中国地震预警，正式测定不附加。
+        情报类不附加 P/S 波走时（震后测定已无预警价值）。
         """
         rendered = cls.format_message(
             display_context, _resolve_options(display_context, options)
@@ -614,8 +624,8 @@ class CencEarthquakePresenter(BasePresenter):
             return rendered
         lines = rendered.split("\n") if rendered else []
         # 本地预估仅在上下文携带 local_estimation 时输出（跟随会话级配置）
-        if not any("距离震中" in line for line in lines):
-            _append_local_estimation(lines, display_context)
+        # 情报类不附加 P/S 波预计到达时间
+        _append_local_estimation(lines, display_context, include_travel_time=False)
         return "\n".join(lines)
 
 
