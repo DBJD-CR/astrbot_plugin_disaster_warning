@@ -729,32 +729,6 @@ function formatHourLabel(timeText) {
 }
 
 /**
- * 中文移向 → 方位角（度，0=北，顺时针）。
- * 无法识别时返回 null。
- */
-function directionToBearing(text) {
-    var s = String(text || '').trim();
-    if (!s) return null;
-    var table = [
-        ['北北西', 337.5], ['西北北', 337.5],
-        ['北北东', 22.5], ['东北北', 22.5],
-        ['东东北', 67.5], ['东北东', 67.5],
-        ['东东南', 112.5], ['东南东', 112.5],
-        ['南东南', 157.5], ['东南南', 157.5],
-        ['南西南', 202.5], ['西南南', 202.5],
-        ['西西南', 247.5], ['西南西', 247.5],
-        ['西西北', 292.5], ['西北西', 292.5],
-        ['东北', 45], ['东南', 135], ['西南', 225], ['西北', 315],
-        ['正北', 0], ['正东', 90], ['正南', 180], ['正西', 270],
-        ['北', 0], ['东', 90], ['南', 180], ['西', 270]
-    ];
-    for (var i = 0; i < table.length; i++) {
-        if (s.indexOf(table[i][0]) >= 0) return table[i][1];
-    }
-    return null;
-}
-
-/**
  * 把 EQSC 原生轨迹节点规范化为画布点。
  * 保留 lat/lon/cat/ws/pr/ts 与 r7/r10/r12（来自 30/50/64KTS）。
  */
@@ -1273,71 +1247,6 @@ function drawRadiiPoly(cx, cy, lat, lon, radii, fillColor, edgeColor, dashed, li
     ctx.lineJoin = 'round';
     ctx.stroke();
     if (dashed) ctx.setLineDash([]);
-}
-
-function drawMoveArrow(cx, cy, bearing, color) {
-    if (bearing === null || bearing === undefined) return;
-    var rad = (bearing - 90) * Math.PI / 180; // canvas: 0°=东，转成北为 0
-    // 上面公式：地理 0=北 → canvas 角
-    rad = (bearing) * Math.PI / 180;
-    // 北=0：x = sin(b), y = -cos(b)
-    var len = 28;
-    var ex = cx + Math.sin(rad) * len;
-    var ey = cy - Math.cos(rad) * len;
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(ex, ey);
-    ctx.stroke();
-    // 箭头头部
-    var ah = 8;
-    var left = bearing - 150;
-    var right = bearing + 150;
-    var lr = left * Math.PI / 180;
-    var rr = right * Math.PI / 180;
-    ctx.beginPath();
-    ctx.moveTo(ex, ey);
-    ctx.lineTo(ex + Math.sin(lr) * ah, ey - Math.cos(lr) * ah);
-    ctx.lineTo(ex + Math.sin(rr) * ah, ey - Math.cos(rr) * ah);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-}
-
-function drawTyphoonSymbol(cx, cy, color) {
-    // 简化双臂螺旋 + 中心眼
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 1.8;
-    ctx.lineCap = 'round';
-    for (var arm = 0; arm < 2; arm++) {
-        ctx.beginPath();
-        for (var t = 0; t <= 28; t++) {
-            var ang = (t / 28) * Math.PI * 1.15 + arm * Math.PI;
-            var rad = 3 + t * 0.35;
-            var x = Math.cos(ang) * rad;
-            var y = Math.sin(ang) * rad;
-            if (t === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.arc(0, 0, 2.2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(0, 0, 3.4, 0, Math.PI * 2);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
-    ctx.restore();
 }
 
 /**

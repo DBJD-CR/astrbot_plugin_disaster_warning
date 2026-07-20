@@ -27,8 +27,9 @@ from ...domain.typhoon.typhoon_levels import level_weight
 from ...domain.typhoon.typhoon_values import clean_text, to_float
 from ...domain.typhoon.typhoon_winds import clean_wind_circle
 
-# 台风卡片固定画布；渲染时临时放大浏览器视口，避免 800×800 池默认值裁切。
-TYPHOON_VIEWPORT = {"width": 1600, "height": 1200}
+# 台风卡片固定画布（与 typhoon_track.html 的 1400×1000 对齐）；
+# 渲染时临时放大浏览器视口，避免 800×800 池默认值裁切。
+TYPHOON_VIEWPORT = {"width": 1400, "height": 1000}
 
 # 默认视野（西北太平洋常见台风活动区），轨迹过短时兜底。
 DEFAULT_LON_MIN = 100.0
@@ -159,8 +160,8 @@ def _format_panel_time(value: Any) -> str:
     return TimeConverter._safe_strftime(local, "%Y年%m月%d日%H:%M:%S")
 
 
-def _format_table_time(value: Any) -> str:
-    """表格时间：MM/DD HH:MM。"""
+def _format_compact_time(value: Any) -> str:
+    """紧凑时间：MM/DD HH:MM（表格行与迷你图刻度共用）。"""
     parsed = _parse_node_time(value)
     if parsed is None:
         text = clean_text(value)
@@ -208,7 +209,7 @@ def _build_table_rows(
         pr = to_float(node.get("pressure"))
         rows.append(
             {
-                "time": _format_table_time(node.get("time")),
+                "time": _format_compact_time(node.get("time")),
                 "pos": _format_pos(lat, lon),
                 "ws": f"{ws:g}" if ws is not None else "",
                 "pr": f"{pr:g}" if pr is not None else "",
@@ -307,16 +308,6 @@ def _compute_view_bounds(
         mid = (DEFAULT_LAT_MIN + DEFAULT_LAT_MAX) / 2.0
         la, ha = mid - 1.0, mid + 1.0
     return lo, hi, la, ha
-
-
-def _format_chart_time(value: Any) -> str:
-    """迷你图时间刻度：MM/DD HH:MM。"""
-    parsed = _parse_node_time(value)
-    if parsed is None:
-        text = clean_text(value)
-        return text[:11] if text else ""
-    local = parsed.astimezone(TimeConverter._get_timezone("UTC+8"))
-    return TimeConverter._safe_strftime(local, "%m/%d %H:%M")
 
 
 def _format_signed_delta(delta: float | None, unit: str, *, digits: int = 0) -> str:
@@ -423,6 +414,8 @@ class TyphoonMapRenderer:
         self.plugin_root = plugin_root
         self._template_cache: str | None = None
         self._template_mtime: float | None = None
+        self._helper_js_cache: str | None = None
+        self._helper_js_mtime: float | None = None
 
     def _get_template(self) -> str:
         """读取 HTML 模板原文（含占位符）。
@@ -449,6 +442,28 @@ class TyphoonMapRenderer:
             self._template_cache = f.read()
         self._template_mtime = mtime
         return self._template_cache
+
+    def _get_helper_js(self) -> str:
+        """读取 map_render_helper.js（按 mtime 缓存，避免每次渲染重复读盘）。"""
+        helper_path = os.path.join(
+            self.plugin_root,
+            "resources",
+            "card_templates",
+            "map_render_helper.js",
+        )
+        if not os.path.exists(helper_path):
+            raise FileNotFoundError(f"地图渲染辅助脚本未找到: {helper_path}")
+        mtime = os.path.getmtime(helper_path)
+        if (
+            self._helper_js_cache is not None
+            and self._helper_js_mtime is not None
+            and mtime == self._helper_js_mtime
+        ):
+            return self._helper_js_cache
+        with open(helper_path, encoding="utf-8") as f:
+            self._helper_js_cache = f.read()
+        self._helper_js_mtime = mtime
+        return self._helper_js_cache
 
     def can_render(self, data: TyphoonEvent | dict[str, Any] | None) -> bool:
         """是否具备可渲染轨迹（至少一个有效历史点）。"""
@@ -537,11 +552,7 @@ class TyphoonMapRenderer:
         leaflet_css_path = Path(
             os.path.abspath(os.path.join(resources_dir, "leaflet.css"))
         )
-        helper_path = os.path.abspath(
-            os.path.join(resources_dir, "map_render_helper.js")
-        )
-        with open(helper_path, encoding="utf-8") as f:
-            helper_js = f.read()
+        helper_js = self._get_helper_js()
 
         # remote Playwright 无法读本地 file:// 时，回退 CDN。
         if playwright_mode == "remote":
@@ -653,7 +664,7 @@ class TyphoonMapRenderer:
             for n in chart_nodes
         ]
         chart_press = [float(to_float(n.get("pressure")) or 0.0) for n in chart_nodes]
-        chart_times = [_format_chart_time(n.get("time")) for n in chart_nodes]
+        chart_times = [_format_compact_time(n.get("time")) for n in chart_nodes]
 
         lo, hi, la, ha = _compute_view_bounds(history, future)
         event_name = (
