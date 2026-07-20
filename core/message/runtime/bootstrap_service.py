@@ -20,6 +20,7 @@ from ..builders.map_attachment_builder import MapAttachmentBuilder
 from ..builders.text_message_builder import TextMessageBuilder
 from ..render.remote_media_fetcher import RemoteMediaFetcher
 from ..render.snet_map_renderer import SnetMapRenderer
+from ..render.typhoon_map_renderer import TyphoonMapRenderer
 from .browser_manager import BrowserManager
 
 
@@ -35,6 +36,7 @@ class MessageManagerBootstrapService:
         self.card_message_builder = None
         self.global_quake_card_builder = None
         self.snet_map_renderer = None
+        self.typhoon_map_renderer = None
         self.remote_media_fetcher = None
 
     def setup_filters(self, config: dict[str, Any]) -> None:
@@ -81,7 +83,7 @@ class MessageManagerBootstrapService:
 
         # 只有本地浏览器模式且确实需要图形渲染时才后台预热，
         # 这样既能缩短首次渲染等待，也能避免无地图场景白白消耗资源。
-        # include_map / GQ 卡 / S-Net 任一启用都预热。
+        # include_map / GQ 卡 / S-Net / 台风路径图任一启用都预热。
         data_sources = (
             self.manager.config.get("data_sources", {})
             if isinstance(self.manager.config, dict)
@@ -90,10 +92,15 @@ class MessageManagerBootstrapService:
         snet_cfg = (
             data_sources.get("snet", {}) if isinstance(data_sources, dict) else {}
         )
+        typhoon_cfg = (
+            data_sources.get("typhoon", {}) if isinstance(data_sources, dict) else {}
+        )
         need_browser = (
             msg_config.get("include_map", False)
             or msg_config.get("use_global_quake_card", False)
             or bool(isinstance(snet_cfg, dict) and snet_cfg.get("enabled", False))
+            # 台风路径图查询/推送也依赖 Playwright，启用台风源时一并预热。
+            or bool(isinstance(typhoon_cfg, dict) and typhoon_cfg.get("enabled", False))
         )
         if playwright_mode == "local" and need_browser:
             logger.debug("[灾害预警] 检测到已启用卡片渲染功能，正在后台预热浏览器...")
@@ -123,6 +130,10 @@ class MessageManagerBootstrapService:
             browser_manager=self.manager.browser_manager,
         )
         self.snet_map_renderer = SnetMapRenderer(
+            browser_manager=self.manager.browser_manager,
+            plugin_root=self.manager.plugin_root,
+        )
+        self.typhoon_map_renderer = TyphoonMapRenderer(
             browser_manager=self.manager.browser_manager,
             plugin_root=self.manager.plugin_root,
         )

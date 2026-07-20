@@ -185,6 +185,11 @@ class MessagePushManager:
         return self._bootstrap_service.snet_map_renderer
 
     @property
+    def typhoon_map_renderer(self):
+        """台风路径图渲染器。"""
+        return self._bootstrap_service.typhoon_map_renderer
+
+    @property
     def browser_manager(self):
         """浏览器管理器。"""
         return self.__dict__.get("_browser_manager")
