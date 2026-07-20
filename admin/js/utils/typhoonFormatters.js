@@ -172,9 +172,9 @@
                 return text.slice(-4);
             }
 
-            // 无名热带低压：NAMELESS_03 / NAMELESS_2604 -> TD03 / TD2604
-            // 保留 TD 前缀，避免与同年正式台风编号撞车
-            const namelessMatch = text.match(/^NAMELESS[_-]?(.+)$/i);
+            // 无名热带低压：NAMELESS / NAMELESS_03 / NAMELESS_2604 -> TD / TD03 / TD2604
+            // 保留 TD 前缀，避免与同年正式台风编号撞车；裸 NAMELESS 也统一为 TD
+            const namelessMatch = text.match(/^NAMELESS(?:[_-]?(.*))?$/i);
             if (namelessMatch) {
                 const suffix = String(namelessMatch[1] || '').trim();
                 if (!suffix) return 'TD';

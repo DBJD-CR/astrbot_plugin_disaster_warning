@@ -91,20 +91,37 @@ function TyphoonQueryPanel() {
         );
     };
 
-    const renderDetailCard = (item, { showExpand = false, expanded = true, onToggle = null, keyPrefix = 'detail' } = {}) => {
-        if (!item) return null;
-        const coords = formatCoords(item.latitude, item.longitude);
-        const level = item.typhoon_type || '未知等级';
-        // 统一 4 位短编号（2609）；兼容 eqsc_id / typhoon_id 等字段
-        const shortId = (typhoonFormatters?.formatTyphoonShortId
+    /**
+     * 统一短编号解析：eqsc_id → typhoon_id → real_event_id → unique_id
+     * 与后端 _format_typhoon_short_id / EventCard 保持一致。
+     */
+    const resolveShortId = (item, fallback = '未知') => {
+        if (!item) return fallback;
+        const resolved = typhoonFormatters?.formatTyphoonShortId
             ? typhoonFormatters.formatTyphoonShortId(
                 item.eqsc_id,
                 item.typhoon_id,
                 item.real_event_id,
                 item.unique_id,
             )
-            : (item.eqsc_id || item.typhoon_id || '')) || '未知';
-        const expandKey = `${keyPrefix}-${shortId}-${item.updated_at || ''}`;
+            : (item.eqsc_id || item.typhoon_id || item.real_event_id || item.unique_id || '');
+        return resolved || fallback;
+    };
+
+    const renderDetailCard = (item, {
+        showExpand = false,
+        expanded = true,
+        onToggle = null,
+        keyPrefix = 'detail',
+        shortId: shortIdProp = null,
+        expandKey: expandKeyProp = null,
+    } = {}) => {
+        if (!item) return null;
+        const coords = formatCoords(item.latitude, item.longitude);
+        const level = item.typhoon_type || '未知等级';
+        // 优先使用调用方传入的 shortId/expandKey，避免列表与详情各自计算导致折叠键不一致
+        const shortId = shortIdProp || resolveShortId(item, '未知');
+        const expandKey = expandKeyProp || `${keyPrefix}-${shortId}-${item.updated_at || ''}`;
 
         return (
             <div className="weather-query-result-card typhoon-query-result-card" key={expandKey}>
@@ -228,14 +245,8 @@ function TyphoonQueryPanel() {
                 </div>
 
                 {pagedItems.map((item, index) => {
-                    const shortId = (typhoonFormatters?.formatTyphoonShortId
-                        ? typhoonFormatters.formatTyphoonShortId(
-                            item.eqsc_id,
-                            item.typhoon_id,
-                            item.real_event_id,
-                            item.unique_id,
-                        )
-                        : (item.eqsc_id || item.typhoon_id || '')) || `idx-${startIndex + index}`;
+                    // 只算一次 shortId/expandKey，并下传给详情卡片，保证折叠状态键一致
+                    const shortId = resolveShortId(item, `idx-${startIndex + index}`);
                     const expandKey = `list-${shortId}-${item.updated_at || startIndex + index}`;
                     const expanded = Boolean(expandedIds[expandKey]);
                     return (
@@ -245,6 +256,8 @@ function TyphoonQueryPanel() {
                                 expanded,
                                 onToggle: toggleExpanded,
                                 keyPrefix: 'list',
+                                shortId,
+                                expandKey,
                             })}
                         </div>
                     );

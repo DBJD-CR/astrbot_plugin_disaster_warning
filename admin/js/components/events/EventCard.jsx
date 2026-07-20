@@ -161,14 +161,15 @@ function EventCard({
             evt._snapshot_longitude ?? evt.longitude,
         )
         : '';
-    // 编号优先 real_event_id（稳定台风编号），兼容 unique_id / event_id
+    // 短编号字段优先级与查询面板/后端对齐：eqsc_id → typhoon_id → real_event_id → unique_id
+    // event_id 仅作事件卡片兜底（查询结果项通常无此字段）
     const typhoonShortId = isTyphoon && typhoonFormatters?.formatTyphoonShortId
         ? typhoonFormatters.formatTyphoonShortId(
+            evt.eqsc_id,
+            evt.typhoon_id,
             evt.real_event_id,
             evt.unique_id,
             evt.event_id,
-            evt.typhoon_id,
-            evt.eqsc_id,
         )
         : '';
     const typhoonMeta = isTyphoon

@@ -38,9 +38,20 @@ def _format_typhoon_short_id(*candidates: object) -> str:
             return text[-4:]
 
         upper = text.upper()
-        if upper.startswith("NAMELESS"):
+        # 裸 NAMELESS / NAMELESS_03 / NAMELESS_2604 均统一为 TD 前缀
+        if (
+            upper == "NAMELESS"
+            or upper.startswith("NAMELESS_")
+            or upper.startswith("NAMELESS-")
+        ):
+            if upper == "NAMELESS":
+                return "TD"
             suffix = (
-                text.split("_", 1)[1].strip() if "_" in text else text[8:].lstrip("_-")
+                text.split("_", 1)[1].strip()
+                if "_" in text
+                else text.split("-", 1)[1].strip()
+                if "-" in text
+                else text[8:].lstrip("_-")
             )
             suffix = suffix.strip()
             if not suffix:
