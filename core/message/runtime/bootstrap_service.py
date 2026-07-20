@@ -92,15 +92,19 @@ class MessageManagerBootstrapService:
         snet_cfg = (
             data_sources.get("snet", {}) if isinstance(data_sources, dict) else {}
         )
-        typhoon_cfg = (
-            data_sources.get("typhoon", {}) if isinstance(data_sources, dict) else {}
+        # 台风源实际配置路径：data_sources.fan_studio.china_typhoon（bool）
+        fan_studio_cfg = (
+            data_sources.get("fan_studio", {}) if isinstance(data_sources, dict) else {}
         )
         need_browser = (
             msg_config.get("include_map", False)
             or msg_config.get("use_global_quake_card", False)
             or bool(isinstance(snet_cfg, dict) and snet_cfg.get("enabled", False))
             # 台风路径图查询/推送也依赖 Playwright，启用台风源时一并预热。
-            or bool(isinstance(typhoon_cfg, dict) and typhoon_cfg.get("enabled", False))
+            or bool(
+                isinstance(fan_studio_cfg, dict)
+                and fan_studio_cfg.get("china_typhoon", False)
+            )
         )
         if playwright_mode == "local" and need_browser:
             logger.debug("[灾害预警] 检测到已启用卡片渲染功能，正在后台预热浏览器...")

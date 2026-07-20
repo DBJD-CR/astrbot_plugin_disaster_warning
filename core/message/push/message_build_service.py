@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 from typing import Any
@@ -530,9 +531,14 @@ class MessageBuildService:
 
             async def _render_typhoon() -> str | None:
                 safe_id = str(domain_event.typhoon_id or "unknown").replace("/", "_")
+                # 文件名纳入 map_source / playwright_mode 指纹，避免多会话差异化配置
+                # 并发渲染时写入同一路径导致串图或文件损坏。
+                cfg_token = hashlib.sha1(
+                    f"{map_source}|{playwright_mode}".encode()
+                ).hexdigest()[:10]
                 img_path = os.path.join(
                     str(self.manager.temp_dir),
-                    f"typhoon_map_{safe_id}.png",
+                    f"typhoon_map_{safe_id}_{cfg_token}.png",
                 )
                 return await renderer.render(
                     domain_event,

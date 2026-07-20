@@ -26,8 +26,9 @@ async def append_typhoon_track_image(
     """若查询结果含可渲染轨迹，则向 chain_parts 追加路径图。
 
     策略：
-    - 优先 result["data"]，否则取 items 中首个含 history_track 的项
-    - 列表多条时只渲第一张，避免一次查询打爆浏览器池
+    - 候选顺序：优先 result["data"]，再按 items 顺序
+    - 遍历候选，渲染首个含有效 history_track 且可以渲染的项
+    - 列表多条时只渲一张，避免一次查询打爆浏览器池
     - 渲染失败不抛出，仅打 warning 并返回原 chain_parts
     """
     if not result.get("success"):
@@ -68,7 +69,7 @@ async def append_typhoon_track_image(
         map_source = "PetalMap矢量图暗"
     playwright_mode = msg_cfg.get("playwright_mode", "local")
 
-    for item in candidates[:1]:
+    for item in candidates:
         history = item.get("history_track") or []
         if not isinstance(history, list) or not history:
             continue
@@ -109,6 +110,8 @@ async def append_typhoon_track_image(
                 with open(out, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode()
                 chain_parts.append(Comp.Image.fromBase64(b64))
+                # 只渲首张可渲染路径图，避免列表查询打爆浏览器池。
+                break
         except Exception as render_err:
             logger.warning(f"[灾害预警] 台风查询路径图渲染失败: {render_err}")
     return chain_parts
