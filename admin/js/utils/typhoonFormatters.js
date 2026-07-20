@@ -153,6 +153,46 @@
         return `${Math.abs(latNum).toFixed(1)}°${latDir}, ${Math.abs(lonNum).toFixed(1)}°${lonDir}`;
     }
 
+    /**
+     * 统一输出台风短编号（优先 4 位 EQSC 形态，如 2609）。
+     * 兼容 6 位 Fan 编号、NAMELESS 无名低压，以及 eqsc_id / typhoon_id / real_event_id 等字段。
+     *
+     * 注意：NAMELESS_2604 不能再抽成 2604，否则会与正式编号 202604（森拉克）冲突。
+     * @param {...(string|number|null|undefined)} candidates
+     * @returns {string}
+     */
+    function formatTyphoonShortId(...candidates) {
+        for (const candidate of candidates) {
+            const text = String(candidate ?? '').trim();
+            if (!text) continue;
+            if (text.toLowerCase() === 'unknown' || text === '未知') continue;
+
+            // 纯数字官方编号：202609 -> 2609，2609 -> 2609
+            if (/^\d{4,}$/.test(text)) {
+                return text.slice(-4);
+            }
+
+            // 无名热带低压：NAMELESS_03 / NAMELESS_2604 -> TD03 / TD2604
+            // 保留 TD 前缀，避免与同年正式台风编号撞车
+            const namelessMatch = text.match(/^NAMELESS[_-]?(.+)$/i);
+            if (namelessMatch) {
+                const suffix = String(namelessMatch[1] || '').trim();
+                if (!suffix) return 'TD';
+                if (/^\d+$/.test(suffix)) return `TD${suffix}`;
+                return suffix.toUpperCase().startsWith('TD') ? suffix.toUpperCase() : `TD${suffix}`;
+            }
+
+            // 已是 TD 形态则规范化大小写
+            if (/^TD[_-]?\d+/i.test(text)) {
+                return text.replace(/^TD[_-]?/i, 'TD');
+            }
+
+            // 其他非标准编号原样返回，绝不从混合文本里硬抠 4 位数字
+            return text;
+        }
+        return '';
+    }
+
     const api = {
         TYPHOON_LEVEL_EMOJI,
         TYPHOON_LEVEL_FILTER_OPTIONS,
@@ -164,6 +204,7 @@
         getTyphoonWindColor,
         formatTyphoonWindCircle,
         formatTyphoonCoords,
+        formatTyphoonShortId,
         matchLevelKey,
     };
 

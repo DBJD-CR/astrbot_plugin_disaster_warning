@@ -95,7 +95,15 @@ function TyphoonQueryPanel() {
         if (!item) return null;
         const coords = formatCoords(item.latitude, item.longitude);
         const level = item.typhoon_type || '未知等级';
-        const shortId = item.eqsc_id || item.typhoon_id || '未知';
+        // 统一 4 位短编号（2609）；兼容 eqsc_id / typhoon_id 等字段
+        const shortId = (typhoonFormatters?.formatTyphoonShortId
+            ? typhoonFormatters.formatTyphoonShortId(
+                item.eqsc_id,
+                item.typhoon_id,
+                item.real_event_id,
+                item.unique_id,
+            )
+            : (item.eqsc_id || item.typhoon_id || '')) || '未知';
         const expandKey = `${keyPrefix}-${shortId}-${item.updated_at || ''}`;
 
         return (
@@ -104,12 +112,13 @@ function TyphoonQueryPanel() {
                     <Typography variant="subtitle1" className="weather-query-result-title">
                         {getLevelEmoji(level)} {item.display_name || '未知台风'}
                     </Typography>
-                    <Typography variant="caption" className="weather-query-result-meta">
-                        编号：{shortId}
-                    </Typography>
                 </div>
 
                 <div className="weather-query-result-body typhoon-query-result-body">
+                    {/* 结果正文第一行：编号 */}
+                    <Typography variant="body2" className="typhoon-query-meta-line typhoon-query-id-line">
+                        编号：{shortId}
+                    </Typography>
                     <Typography variant="body2" className="typhoon-query-meta-line">
                         等级：{level}{getLevelEmoji(level)}
                     </Typography>
@@ -219,7 +228,14 @@ function TyphoonQueryPanel() {
                 </div>
 
                 {pagedItems.map((item, index) => {
-                    const shortId = item.eqsc_id || item.typhoon_id || `idx-${startIndex + index}`;
+                    const shortId = (typhoonFormatters?.formatTyphoonShortId
+                        ? typhoonFormatters.formatTyphoonShortId(
+                            item.eqsc_id,
+                            item.typhoon_id,
+                            item.real_event_id,
+                            item.unique_id,
+                        )
+                        : (item.eqsc_id || item.typhoon_id || '')) || `idx-${startIndex + index}`;
                     const expandKey = `list-${shortId}-${item.updated_at || startIndex + index}`;
                     const expanded = Boolean(expandedIds[expandKey]);
                     return (
