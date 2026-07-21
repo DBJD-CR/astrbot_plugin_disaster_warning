@@ -151,12 +151,47 @@ class StatsEventSupportService:
         if isinstance(domain_event, EarthquakeEvent):
             place_name = domain_event.place_name or "未知地点"
             if domain_event.magnitude is None:
-                return (
+                base = (
                     "震源参数调查中"
                     if place_name in ["未知地点", "未知位置"]
                     else place_name
                 )
-            return f"M{domain_event.magnitude:.1f} {place_name}"
+            else:
+                base = f"M{domain_event.magnitude:.1f} {place_name}"
+
+            event_metadata = getattr(domain_event, "metadata", None)
+            if not isinstance(event_metadata, dict):
+                event_metadata = {}
+            envelope_metadata = (
+                envelope.metadata if isinstance(envelope.metadata, dict) else {}
+            )
+            info_type = str(
+                event_metadata.get("info_type")
+                or envelope_metadata.get("info_type")
+                or ""
+            ).strip()
+            from ..source_compat import is_cenc_intensity_report
+
+            if is_cenc_intensity_report(envelope.source_id or "", info_type=info_type):
+                intensity = domain_event.intensity
+                if intensity is None:
+                    intensity = event_metadata.get(
+                        "max_instrument_intensity"
+                    ) or envelope_metadata.get("max_instrument_intensity")
+                if intensity is not None:
+                    try:
+                        intensity_num = float(intensity)
+                        if intensity_num == int(intensity_num):
+                            intensity_text = str(int(intensity_num))
+                        else:
+                            intensity_text = f"{intensity_num:.1f}".rstrip("0").rstrip(
+                                "."
+                            )
+                    except (TypeError, ValueError):
+                        intensity_text = str(intensity).strip()
+                    if intensity_text:
+                        return f"{base} · 最高烈度{intensity_text}"
+            return base
 
         if isinstance(domain_event, TsunamiEvent):
             # 列表标题：级别 · 震中 震级（字段缺失时优雅降级）
