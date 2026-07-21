@@ -723,7 +723,9 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                 f"jma_hypo_{int(time.time())}.png",
             )
             renderer = JmaHypoRenderer(plugin_root=str(plugin_root))
-            out = renderer.render(
+            # PIL 渲染与读盘为 CPU/IO 密集同步操作，放到线程池避免阻塞事件循环
+            out = await asyncio.to_thread(
+                renderer.render,
                 events=list(result.get("events") or []),
                 mode=str(result.get("mode") or "经度纬度"),
                 output_path=img_path,
@@ -741,12 +743,17 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                 },
             )
             if out and os.path.exists(out):
-                with open(out, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode()
-                try:
-                    os.unlink(out)
-                except Exception:
-                    pass
+
+                def _read_and_cleanup(path: str) -> str:
+                    with open(path, "rb") as f:
+                        encoded = base64.b64encode(f.read()).decode()
+                    try:
+                        os.unlink(path)
+                    except Exception:
+                        pass
+                    return encoded
+
+                b64 = await asyncio.to_thread(_read_and_cleanup, out)
                 chain_parts = [Comp.Plain(caption), Comp.Image.fromBase64(b64)]
                 try:
                     if hasattr(self.plugin, "_with_quote_reply"):
