@@ -19,6 +19,7 @@ from ..domain.typhoon.typhoon_modes import resolve_data_mode
 # 包含各种历史插件版本产生的 key 以及 WebSocket 连接中发送的 label
 _ALIAS_MAP: dict[str, str] = {
     "fan_studio_cenc": "cenc_fanstudio",
+    "fan_studio_cenc_ir": "cenc_ir_fanstudio",
     "fan_studio_cea": "cea_fanstudio",
     "fan_studio_cea_pr": "cea_pr_fanstudio",
     "fan_studio_cwa": "cwa_fanstudio",
@@ -41,6 +42,9 @@ _ALIAS_MAP: dict[str, str] = {
     "taiwan_cwa_earthquake": "cwa_fanstudio",
     "taiwan_cwa_report": "cwa_fanstudio_report",
     "china_cenc_earthquake": "cenc_fanstudio",
+    "china_cenc_intensity_report": "cenc_ir_fanstudio",
+    "cenc-ir": "cenc_ir_fanstudio",
+    "cenc_ir": "cenc_ir_fanstudio",
     "usgs_earthquake": "usgs_fanstudio",
     "china_weather_alarm": "china_weather_fanstudio",
     "china_tsunami": "china_tsunami_fanstudio",
@@ -59,6 +63,9 @@ _ALIAS_MAP: dict[str, str] = {
     "中国地震台网(cenc)": "cenc_fanstudio",
     "中国地震台网（cenc）：地震测定": "cenc_fanstudio",
     "中国地震台网(cenc)：地震测定": "cenc_fanstudio",
+    "中国地震台网（cenc）：烈度速报": "cenc_ir_fanstudio",
+    "中国地震台网(cenc)：烈度速报": "cenc_ir_fanstudio",
+    "中国地震台网烈度速报": "cenc_ir_fanstudio",
     "中国地震预警网（cea）": "cea_fanstudio",
     "中国地震预警网(cea)": "cea_fanstudio",
     "中国地震预警网（省级）": "cea_pr_fanstudio",
@@ -83,6 +90,7 @@ _ALIAS_MAP: dict[str, str] = {
 # 展示名称映射表：用于把内部规范 key 转回更友好的前端展示标签。
 _DISPLAY_MAP: dict[str, str] = {
     "cenc_fanstudio": "中国地震台网 (CENC) - Fan",
+    "cenc_ir_fanstudio": "中国地震台网 (CENC) - 烈度速报",
     "cea_fanstudio": "中国地震预警网 (CEA)",
     "cea_pr_fanstudio": "中国地震预警网 (省级)",
     "cwa_fanstudio": "台湾中央气象署: 强震即时警报 - Fan",
@@ -131,6 +139,23 @@ def format_source_name(source: str) -> str:
     normalized = normalize_source_name(source)
     # 如果映射字典里找不到对应的漂亮展示名，则使用归一化后的去重字符串作为兜底
     return _DISPLAY_MAP.get(normalized) or str(source or "").strip() or "未知来源"
+
+
+def is_cenc_intensity_report(
+    source: str | None = None,
+    *,
+    info_type: str | None = None,
+) -> bool:
+    """判断是否为中国地震台网烈度速报。
+
+    烈度速报是同一物理地震的补充产品，不应计入全局地震事件数、
+    震级分布与时间序列；但仍保留来源贡献统计与事件列表落库。
+    """
+    normalized = normalize_source_name(source or "")
+    if normalized == "cenc_ir_fanstudio":
+        return True
+    info_text = str(info_type or "").strip()
+    return "烈度速报" in info_text
 
 
 def build_source_stats_key(
