@@ -14,6 +14,7 @@ from .base_presenter import BasePresenter
 from .earthquake_presenter import (
     CeaEewPresenter,
     CencEarthquakePresenter,
+    CencIntensityReportPresenter,
     CwaEewPresenter,
     CwaReportPresenter,
     GlobalQuakeTextPresenter,
@@ -34,6 +35,7 @@ _TEXT_PRESENTER_REGISTRY = {
     "jma_eew": JmaEewPresenter,
     "global_quake": GlobalQuakeTextPresenter,
     "cenc_report": CencEarthquakePresenter,
+    "cenc_ir_report": CencIntensityReportPresenter,
     "jma_report": JmaEarthquakeInfoPresenter,
     "usgs_report": UsgsEarthquakePresenter,
     "snet": SnetPresenter,
