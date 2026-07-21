@@ -2537,6 +2537,12 @@ body.dark-theme .weather-query-error {
     line-height: 1.45 !important;
 }
 
+/* 查询结果正文第一行：台风编号 */
+.typhoon-query-id-line {
+    font-weight: 600;
+    opacity: 0.95;
+}
+
 .typhoon-query-source-line {
     opacity: 0.7 !important;
     margin-top: 2px !important;

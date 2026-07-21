@@ -19,6 +19,56 @@ from ...domain.typhoon.typhoon_display_format import (
 from .typhoon_query_parser import DETAIL_CURRENT, DETAIL_FULL
 
 
+def _format_typhoon_short_id(*candidates: object) -> str:
+    """统一输出台风短编号，规则与前端 formatTyphoonShortId 对齐。
+
+    - 纯数字官方编号：202609 / 2609 -> 2609
+    - NAMELESS 无名低压：NAMELESS_2604 -> TD2604（避免与正式编号 2604 冲突）
+    - 其他非标准编号：原样返回，不从混合文本硬抠数字
+    """
+    for candidate in candidates:
+        text = str(candidate or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if lowered in {"unknown", "未知"}:
+            continue
+
+        if text.isdigit() and len(text) >= 4:
+            return text[-4:]
+
+        upper = text.upper()
+        # 裸 NAMELESS / NAMELESS_03 / NAMELESS_2604 均统一为 TD 前缀
+        if (
+            upper == "NAMELESS"
+            or upper.startswith("NAMELESS_")
+            or upper.startswith("NAMELESS-")
+        ):
+            if upper == "NAMELESS":
+                return "TD"
+            suffix = (
+                text.split("_", 1)[1].strip()
+                if "_" in text
+                else text.split("-", 1)[1].strip()
+                if "-" in text
+                else text[8:].lstrip("_-")
+            )
+            suffix = suffix.strip()
+            if not suffix:
+                return "TD"
+            if suffix.isdigit():
+                return f"TD{suffix}"
+            if suffix.upper().startswith("TD"):
+                return suffix.upper()
+            return f"TD{suffix}"
+
+        if upper.startswith("TD"):
+            return "TD" + text[2:].lstrip("_-")
+
+        return text
+    return ""
+
+
 def build_summary_text(item: dict[str, Any], *, detail: str) -> str:
     """生成单条台风摘要文本，供命令侧与详情卡片复用。"""
     lines: list[str] = []
@@ -30,11 +80,13 @@ def build_summary_text(item: dict[str, Any], *, detail: str) -> str:
         title = f"{title} · {typhoon_type}{level_emoji}"
     lines.append(title)
 
-    typhoon_id = item.get("typhoon_id") or item.get("eqsc_id") or ""
-    if typhoon_id:
-        short_id = (
-            str(typhoon_id)[-4:] if len(str(typhoon_id)) >= 4 else str(typhoon_id)
-        )
+    short_id = _format_typhoon_short_id(
+        item.get("eqsc_id"),
+        item.get("typhoon_id"),
+        item.get("real_event_id"),
+        item.get("unique_id"),
+    )
+    if short_id:
         lines.append(f"📌编号：{short_id}")
 
     if item.get("is_active") is False:
@@ -181,7 +233,15 @@ def build_typhoon_query_text(result: dict[str, Any]) -> str:
 
     for index, item in enumerate(items, start=1):
         lines.append(f"[{index}] {item.get('display_name') or '未知台风'}")
-        short_id = item.get("eqsc_id") or item.get("typhoon_id") or "未知"
+        short_id = (
+            _format_typhoon_short_id(
+                item.get("eqsc_id"),
+                item.get("typhoon_id"),
+                item.get("real_event_id"),
+                item.get("unique_id"),
+            )
+            or "未知"
+        )
         lines.append(f"编号：{short_id}")
         level = item.get("typhoon_type") or "未知等级"
         level_emoji = get_typhoon_level_emoji(level)

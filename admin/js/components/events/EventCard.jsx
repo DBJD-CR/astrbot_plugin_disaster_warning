@@ -153,7 +153,7 @@ function EventCard({
     const typhoonCurrentLevel = evt._snapshot_level || '';
     const typhoonPeakLevel = evt.level || '';
     const typhoonShowPeakDiff = typhoonCurrentLevel && typhoonPeakLevel && typhoonCurrentLevel !== typhoonPeakLevel;
-    // 台风中心位置：复用 typhoonFormatters 的坐标格式化工具
+    // 台风中心位置 / 编号：复用 typhoonFormatters 的统一格式化工具
     const typhoonFormatters = window.DisasterTyphoonFormatters;
     const typhoonCoords = isTyphoon && typhoonFormatters
         ? typhoonFormatters.formatTyphoonCoords(
@@ -161,8 +161,21 @@ function EventCard({
             evt._snapshot_longitude ?? evt.longitude,
         )
         : '';
+    // 短编号字段优先级与查询面板/后端对齐：eqsc_id → typhoon_id → real_event_id → unique_id
+    // event_id 仅作事件卡片兜底（查询结果项通常无此字段）
+    const typhoonShortId = isTyphoon && typhoonFormatters?.formatTyphoonShortId
+        ? typhoonFormatters.formatTyphoonShortId(
+            evt.eqsc_id,
+            evt.typhoon_id,
+            evt.real_event_id,
+            evt.unique_id,
+            evt.event_id,
+        )
+        : '';
     const typhoonMeta = isTyphoon
         ? [
+            // 小字最前统一附带编号，例如「编号：2609」
+            typhoonShortId ? `编号：${typhoonShortId}` : '',
             typhoonCurrentLevel
                 ? (typhoonShowPeakDiff
                     ? `当前强度：${typhoonCurrentLevel}（峰值：${typhoonPeakLevel}）`
