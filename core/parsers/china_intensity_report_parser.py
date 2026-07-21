@@ -43,7 +43,32 @@ class CencIntensityReportParser(BaseParser):
         super().__init__("cenc_ir_fanstudio", message_logger)
 
     @staticmethod
-    def _normalize_stations(raw_stations: Any) -> list[dict[str, Any]]:
+    def _first_present(mapping: dict[str, Any], *keys: str) -> Any:
+        """按优先级取第一个非 None 字段，保留合法 0 值。"""
+        for key in keys:
+            if key not in mapping:
+                continue
+            value = mapping.get(key)
+            if value is not None:
+                return value
+        return None
+
+    @staticmethod
+    def _first_nonempty_str(mapping: dict[str, Any], *keys: str) -> str:
+        """按优先级取第一个非空字符串字段。"""
+        for key in keys:
+            if key not in mapping:
+                continue
+            value = mapping.get(key)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
+
+    @classmethod
+    def _normalize_stations(cls, raw_stations: Any) -> list[dict[str, Any]]:
         """把台站仪器烈度数组规范化为内部结构，并按烈度降序。"""
         if not isinstance(raw_stations, list):
             return []
@@ -53,30 +78,16 @@ class CencIntensityReportParser(BaseParser):
             if not isinstance(item, dict):
                 continue
             intensity = safe_float_convert(
-                item.get("INT")
-                or item.get("int")
-                or item.get("intensity")
-                or item.get("Intensity")
+                cls._first_present(item, "INT", "int", "intensity", "Intensity")
             )
-            name = str(
-                item.get("stName")
-                or item.get("stationName")
-                or item.get("name")
-                or item.get("stCode")
-                or item.get("code")
-                or ""
-            ).strip()
+            name = cls._first_nonempty_str(
+                item, "stName", "stationName", "name", "stCode", "code"
+            )
             lat = safe_float_convert(
-                item.get("lat")
-                or item.get("latitude")
-                or item.get("stLat")
-                or item.get("epiLat")
+                cls._first_present(item, "lat", "latitude", "stLat", "epiLat")
             )
             lon = safe_float_convert(
-                item.get("lon")
-                or item.get("longitude")
-                or item.get("stLon")
-                or item.get("epiLon")
+                cls._first_present(item, "lon", "longitude", "stLon", "epiLon")
             )
             stations.append(
                 {
@@ -306,6 +317,14 @@ class CencIntensityReportParser(BaseParser):
 
             # 烈度速报至少应具备事件唯一标识，并与正式测定字段集区分开。
             uni_event_id = str(msg_data.get("uniEventId") or "").strip()
+            info_type_name = str(msg_data.get("infoTypeName") or "").strip()
+            # 正式/自动测定报文即使混入速报字段名，也不按烈度速报处理。
+            if "[正式测定]" in info_type_name or "[自动测定]" in info_type_name:
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 疑似 CENC 测定报文，跳过"
+                )
+                return None
+
             has_report_body = any(
                 key in msg_data
                 for key in (
@@ -318,13 +337,6 @@ class CencIntensityReportParser(BaseParser):
             if not uni_event_id or not has_report_body:
                 plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 非 CENC 烈度速报数据，跳过"
-                )
-                return None
-
-            # 正式测定报文带 infoTypeName，避免误吃 /cenc。
-            if "infoTypeName" in msg_data and not has_report_body:
-                plugin_logger.debug(
-                    f"[灾害预警] {self.source_id} 疑似 CENC 测定报文，跳过"
                 )
                 return None
 
