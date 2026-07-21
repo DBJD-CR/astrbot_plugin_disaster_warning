@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from astrbot.api import logger
+
 # 主通道：聚合 /all
 FAN_PRIMARY_CONNECTION = "fan_studio_all"
 
@@ -118,10 +120,22 @@ async def yield_secondary_for_primary(
 ) -> list[str]:
     """为保活主通道，主动释放次要 FAN 连接占用的配额。
 
+    释放后会在 connection_info 上标记 quota_hit，确保主通道恢复后
+    能被 _kick_deferred_fan_secondary_reconnects 重新唤醒。
+
     Returns:
         实际释放的次要连接名列表。
     """
     released: list[str] = []
+    connection_info = getattr(manager, "connection_info", None)
+    if not isinstance(connection_info, dict):
+        connection_info = {}
+        try:
+            manager.connection_info = connection_info
+        except Exception:
+            # manager 不可写时仍尝试释放连接，仅无法持久化唤醒标记
+            connection_info = {}
+
     for name in list_active_fan_secondary_names(manager):
         try:
             await manager._release_existing_connection(
@@ -134,8 +148,18 @@ async def yield_secondary_for_primary(
             task = reconnect_tasks.pop(name, None)
             if task is not None and not task.done():
                 task.cancel()
+
+            # 关键唤醒标记：仅释放句柄不会自动重连，必须让 kick 路径可见。
+            info = dict(connection_info.get(name) or {})
+            info["quota_hit"] = True
+            info.pop("quota_deferred", None)
+            connection_info[name] = info
+
             released.append(name)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                f"[灾害预警] 释放次要 FAN 连接失败: {name}，原因: {reason}，错误: {exc}"
+            )
             continue
     return released
 
