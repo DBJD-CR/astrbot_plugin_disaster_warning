@@ -611,22 +611,13 @@ class CencEarthquakePresenter(BasePresenter):
         display_context: EarthquakeDisplayContext,
         options: dict | None = None,
     ) -> str:
-        """展示中国地震台网测定，并附带本地预估。
+        """展示中国地震台网测定。
 
-        本地预估跟随会话级 local_monitoring 配置生效。
-        影响区县预估仅用于中国地震预警，正式测定不附加。
-        情报类不附加 P/S 波走时（震后测定已无预警价值）。
+        测定类型（自动测定/正式测定等地震情报类）不附加本地预估信息。
         """
-        rendered = cls.format_message(
+        return cls.format_message(
             display_context, _resolve_options(display_context, options)
         )
-        if not _is_earthquake_view(display_context):
-            return rendered
-        lines = rendered.split("\n") if rendered else []
-        # 本地预估仅在上下文携带 local_estimation 时输出（跟随会话级配置）
-        # 情报类不附加 P/S 波预计到达时间
-        _append_local_estimation(lines, display_context, include_travel_time=False)
-        return "\n".join(lines)
 
 
 class UsgsEarthquakePresenter(BasePresenter):
