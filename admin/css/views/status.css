@@ -326,6 +326,7 @@
     border: 1px solid var(--card-border-color);
     box-shadow: var(--card-shadow);
     pointer-events: none;
+    /* 短过渡无需常驻 will-change，避免每张卡都预建合成层 */
     transition:
         transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
         background 0.2s ease-out,
@@ -333,6 +334,14 @@
         box-shadow 0.22s ease-out;
 }
 
+/*
+ * 内容层：与视觉面同步上浮。
+ * 防糊策略：
+ * 1) 内容层不挂 will-change / font-smoothing（避免全局影响子树）
+ * 2) hover 用 translate3d 整像素位移
+ * 3) 子项 .connection-sub-source-item 禁止再挂 transform/will-change
+ * 4) 字体平滑仅落在真正易糊的小字选择器上
+ */
 .connection-item > * {
     transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -367,7 +376,8 @@
 
 .connection-item:hover::before,
 .connection-item:hover > * {
-    transform: translateY(calc(-1 * var(--hover-lift)));
+    /* translate3d 保持整像素位移，避免子像素采样导致文字发糊 */
+    transform: translate3d(0, calc(-1 * var(--hover-lift)), 0);
 }
 
 .connection-item:hover::before {
@@ -554,12 +564,13 @@ body.dark-theme .connection-sub-source-section {
     border-radius: 8px;
     background: var(--md-sys-color-surface);
     border: 1px solid rgba(76, 175, 80, 0.15);
+    /* 仅背景/描边反馈；不要 will-change:transform，否则嵌套在父级 hover 位移层内会糊字 */
     transition:
         background-color 0.18s ease-out,
         border-color 0.18s ease-out,
-        box-shadow 0.2s ease-out,
-        transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
-    will-change: transform, box-shadow, border-color;
+        box-shadow 0.2s ease-out;
+    transform: none;
+    will-change: auto;
 }
 
 .connection-sub-source-item:hover {
@@ -602,6 +613,15 @@ html.theme-dark .connection-sub-source-item.is-disabled:hover {
 
 .connection-sub-source-item.is-disabled .connection-sub-source-dot {
     background: #BDBDBD;
+}
+
+.connection-sub-source-name,
+.connection-sub-source-title,
+.connection-sub-source-count,
+.connection-sub-source-off-badge {
+    /* 仅小字号文案做字体平滑；不使用 text-rendering，避免影响字距/布局 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .connection-sub-source-name {
