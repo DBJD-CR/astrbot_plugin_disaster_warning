@@ -141,8 +141,17 @@ async def query_jma_hypo_data(
     requested_days = int(raw.get("requested_days") or len(dates))
     covered_days = int(raw.get("covered_days") or 0)
     missing_days = list(raw.get("missing_days") or [])
+    zero_event_days = list(raw.get("zero_event_days") or [])
 
-    # 数据源当前实测最早约 2025-07-11；更早日期会进入 missing_days
+    # 不写死历史窗口起始日；仅在确实存在缺失日时给出中性提示
+    if missing_days:
+        data_note = (
+            "JMA bosai/hypo 按日提供；部分日期暂无公开数据或拉取失败"
+            f"（缺失 {len(missing_days)} 天）。"
+        )
+    else:
+        data_note = "JMA bosai/hypo 按日提供。"
+
     return {
         "success": True,
         "start_date": start_date,
@@ -153,14 +162,12 @@ async def query_jma_hypo_data(
         "events": events,
         "day_counts": dict(raw.get("day_counts") or {}),
         "missing_days": missing_days,
+        "zero_event_days": zero_event_days,
         "requested_days": requested_days,
         "covered_days": covered_days,
         "stats": stats,
         "soft_hint": bool(soft_hint) or requested_days > SOFT_RANGE_HINT_DAYS,
-        "data_note": (
-            "JMA bosai/hypo 按日提供；当前公开窗口约从 2025-07-11 起，"
-            "更早日期可能无数据。"
-        ),
+        "data_note": data_note,
     }
 
 

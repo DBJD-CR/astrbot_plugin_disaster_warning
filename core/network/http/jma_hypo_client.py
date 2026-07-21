@@ -6,8 +6,10 @@ JMA 震央分布 HTTP 客户端。
 
 说明：
 - 官方按日提供 GeoJSON，响应可能是 gzip 或明文。
-- 当前实测可回溯窗口约从 2025-07-11 起（更早日期返回 404）。
-- 本客户端不假设固定历史深度，缺失日期返回空列表，由上层汇总。
+- 历史可回溯窗口会随官方数据源变化，客户端不假设固定起始日。
+- fetch_day 语义：
+  - list：请求成功（含合法零事件日）
+  - None：数据缺失/请求失败（404、非 200、解析异常等）
 """
 
 from __future__ import annotations
@@ -136,24 +138,29 @@ class JmaHypoClient:
         target_date: date,
         *,
         session: aiohttp.ClientSession | None = None,
-    ) -> list[dict[str, Any]]:
-        """拉取单日震央列表；404/失败返回空列表。"""
+    ) -> list[dict[str, Any]] | None:
+        """拉取单日震央列表。
+
+        Returns:
+            list: 请求成功（可为空列表，表示合法零事件日）
+            None: 数据缺失或请求失败（404 / 非 200 / 异常）
+        """
         url = self.build_url(target_date)
         owns_session = False
         client = session or self._external_session
         if client is None:
-            connector = aiohttp.TCPConnector(ssl=False)
-            client = aiohttp.ClientSession(connector=connector, timeout=self._timeout)
+            # 保持默认 TLS 证书校验，避免中间人篡改地震数据
+            client = aiohttp.ClientSession(timeout=self._timeout)
             owns_session = True
         try:
             async with client.get(url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                 if resp.status == 404:
-                    return []
+                    return None
                 if resp.status != 200:
                     logger.warning(
                         f"[灾害预警] JMA 震央 {target_date.isoformat()} 返回 HTTP 状态码 {resp.status}"
                     )
-                    return []
+                    return None
                 raw = await resp.read()
             try:
                 decoded = gzip.decompress(raw)
@@ -171,7 +178,7 @@ class JmaHypoClient:
             logger.warning(
                 f"[灾害预警] JMA 震央 {target_date.isoformat()} 拉取失败: {exc}"
             )
-            return []
+            return None
         finally:
             if owns_session and client is not None:
                 await client.close()
@@ -187,8 +194,9 @@ class JmaHypoClient:
         Returns:
             {
               "events": [...],
-              "day_counts": {"YYYYMMDD": n, ...},
-              "missing_days": ["YYYY-MM-DD", ...],
+              "day_counts": {"YYYYMMDD": n, ...},  # 仅成功覆盖日（含 0 事件）
+              "missing_days": ["YYYY-MM-DD", ...],  # 仅真正缺失/失败日
+              "zero_event_days": ["YYYY-MM-DD", ...],  # 成功但零事件
               "requested_days": int,
               "covered_days": int,
             }
@@ -198,6 +206,7 @@ class JmaHypoClient:
                 "events": [],
                 "day_counts": {},
                 "missing_days": [],
+                "zero_event_days": [],
                 "requested_days": 0,
                 "covered_days": 0,
             }
@@ -205,16 +214,17 @@ class JmaHypoClient:
         owns_session = False
         client = session or self._external_session
         if client is None:
-            connector = aiohttp.TCPConnector(ssl=False)
-            client = aiohttp.ClientSession(connector=connector, timeout=self._timeout)
+            # 保持默认 TLS 证书校验
+            client = aiohttp.ClientSession(timeout=self._timeout)
             owns_session = True
 
         sem = asyncio.Semaphore(self._concurrency)
         day_counts: dict[str, int] = {}
         missing_days: list[str] = []
+        zero_event_days: list[str] = []
         all_events: list[dict[str, Any]] = []
 
-        async def _one(d: date) -> tuple[date, list[dict[str, Any]]]:
+        async def _one(d: date) -> tuple[date, list[dict[str, Any]] | None]:
             async with sem:
                 events = await self.fetch_day(d, session=client)
                 return d, events
@@ -223,11 +233,16 @@ class JmaHypoClient:
             results = await asyncio.gather(*[_one(d) for d in dates])
             for d, events in results:
                 key = d.strftime("%Y%m%d")
+                if events is None:
+                    # 404 / 非 200 / 异常：真正缺失
+                    missing_days.append(d.isoformat())
+                    continue
+                # 成功覆盖（含合法零事件日）
+                day_counts[key] = len(events)
                 if events:
-                    day_counts[key] = len(events)
                     all_events.extend(events)
                 else:
-                    missing_days.append(d.isoformat())
+                    zero_event_days.append(d.isoformat())
         finally:
             if owns_session and client is not None:
                 await client.close()
@@ -236,6 +251,7 @@ class JmaHypoClient:
             "events": all_events,
             "day_counts": day_counts,
             "missing_days": missing_days,
+            "zero_event_days": zero_event_days,
             "requested_days": len(dates),
             "covered_days": len(day_counts),
         }
