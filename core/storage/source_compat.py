@@ -158,6 +158,41 @@ def is_cenc_intensity_report(
     return "烈度速报" in info_text
 
 
+def cenc_intensity_report_source_keys() -> tuple[str, ...]:
+    """返回可识别为 CENC 烈度速报的 source/source_id 键集合。
+
+    包含规范 key 与历史别名，供 SQL 侧过滤与 Python 判定保持一致。
+    """
+    keys: set[str] = {"cenc_ir_fanstudio"}
+    for alias, target in _ALIAS_MAP.items():
+        if target == "cenc_ir_fanstudio":
+            keys.add(str(alias))
+    return tuple(sorted(keys))
+
+
+def build_cenc_intensity_report_sql_predicate(
+    *,
+    source_expr: str = "source",
+    source_id_expr: str = "source_id",
+    info_type_expr: str = "info_type",
+) -> str:
+    """构建 SQLite 侧“是否为 CENC 烈度速报”布尔表达式。
+
+    仅拼接内部列名与静态别名字面量，不接受外部用户输入。
+    """
+    quoted_keys = ", ".join(
+        "'" + key.replace("'", "''") + "'"
+        for key in cenc_intensity_report_source_keys()
+    )
+    source_key_expr = (
+        f"COALESCE(NULLIF({source_id_expr}, ''), NULLIF({source_expr}, ''), '')"
+    )
+    return (
+        f"({source_key_expr} IN ({quoted_keys}) "
+        f"OR INSTR(COALESCE({info_type_expr}, ''), '烈度速报') > 0)"
+    )
+
+
 def build_source_stats_key(
     source: str | None = None,
     *,
