@@ -65,7 +65,8 @@ _PREF_MAP: dict[str, str] = {
     "OKINAWA": "冲绳",
 }
 
-# 方位词（县内分区）
+# 方位词（县内分区 + 海域方向）
+# 注意：单字母 N/S/E/W 必须存在，供 "E OFF ..." 规则回退使用
 _REGION_WORD_MAP: dict[str, str] = {
     "NORTHERN": "北部",
     "SOUTHERN": "南部",
@@ -81,6 +82,10 @@ _REGION_WORD_MAP: dict[str, str] = {
     "NW": "西北",
     "SE": "东南",
     "SW": "西南",
+    "N": "北",
+    "S": "南",
+    "E": "东",
+    "W": "西",
 }
 
 # 精确映射：覆盖实测 JMA hypo 英文地名（样本全集 + 示例对齐）
@@ -411,8 +416,9 @@ def _translate_by_rules(place: str) -> str:
         return "未知地点"
 
     # FAR? DIR OFF target
+    # 长匹配优先，避免 NE 被 N 抢先切分
     m = re.fullmatch(
-        r"(FAR\s+)?(N|S|E|W|NE|NW|SE|SW)\s+OFF\s+(.+)",
+        r"(FAR\s+)?(NE|NW|SE|SW|N|S|E|W)\s+OFF\s+(.+)",
         text,
     )
     if m:
