@@ -331,10 +331,24 @@
         background 0.2s ease-out,
         border-color 0.2s ease-out,
         box-shadow 0.22s ease-out;
+    /* 仅视觉面参与合成，避免文字层被连带光栅化发糊 */
+    will-change: transform, box-shadow, border-color;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 
+/*
+ * 内容层：与视觉面同步上浮。
+ * 小字号子数据源在 GPU 合成层上容易糊，因此：
+ * 1) 不用常驻 translateZ / will-change（避免平时就进合成层）
+ * 2) hover 时用 translate3d 整像素位移
+ * 3) 子项 .connection-sub-source-item 禁止再挂 transform/will-change
+ */
 .connection-item > * {
     transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
 }
 
 /* 堆叠列内的精简卡片（GQ / EQSC） */
@@ -367,7 +381,8 @@
 
 .connection-item:hover::before,
 .connection-item:hover > * {
-    transform: translateY(calc(-1 * var(--hover-lift)));
+    /* translate3d 保持整像素位移，避免子像素采样导致文字发糊 */
+    transform: translate3d(0, calc(-1 * var(--hover-lift)), 0);
 }
 
 .connection-item:hover::before {
@@ -554,12 +569,13 @@ body.dark-theme .connection-sub-source-section {
     border-radius: 8px;
     background: var(--md-sys-color-surface);
     border: 1px solid rgba(76, 175, 80, 0.15);
+    /* 仅背景/描边反馈；不要 will-change:transform，否则嵌套在父级 hover 位移层内会糊字 */
     transition:
         background-color 0.18s ease-out,
         border-color 0.18s ease-out,
-        box-shadow 0.2s ease-out,
-        transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
-    will-change: transform, box-shadow, border-color;
+        box-shadow 0.2s ease-out;
+    transform: none;
+    will-change: auto;
 }
 
 .connection-sub-source-item:hover {
@@ -610,6 +626,10 @@ html.theme-dark .connection-sub-source-item.is-disabled:hover {
     color: var(--md-sys-color-on-surface);
     flex: 1;
     line-height: 1.2 !important;
+    /* 跟随父级 hover 位移时保持清晰描边 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
 }
 
 .connection-sub-source-item.is-disabled .connection-sub-source-name {
