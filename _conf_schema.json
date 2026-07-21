@@ -8,7 +8,7 @@
   "admin_users": {
     "description": "插件管理员列表",
     "type": "list",
-    "hint": "输入用户ID（QQ号等）。这些用户拥有管理插件的高级权限（如查看日志、修改配置等）。AstrBot的全站管理员默认拥有权限，无需在此重复添加。",
+    "hint": "输入用户 ID（QQ号等）。这些用户拥有管理插件的高级权限（如查看日志、修改配置等）。AstrBot的全站管理员默认拥有权限，无需在此重复添加。",
     "default": null
   },
   "target_sessions": {
@@ -40,7 +40,7 @@
         "hint": "FAN Studio数据源总开关",
         "items": {
           "enabled": {
-            "description": "启用FAN Studio数据源",
+            "description": "启用FAN Studio 数据源",
             "type": "bool",
             "default": true
           },
@@ -48,71 +48,77 @@
             "description": "中国地震网地震预警",
             "type": "bool",
             "default": false,
-            "hint": "通过FAN Studio WebSocket接收中国地震网地震预警信息"
+            "hint": "通过 FAN Studio WebSocket 接收中国地震网地震预警信息"
           },
           "china_earthquake_warning_provincial": {
             "description": "中国地震网地震预警(省级)",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收中国地震网省级地震预警信息"
+            "hint": "通过 FAN Studio WebSocket 接收中国地震网省级地震预警信息"
           },
           "taiwan_cwa_earthquake": {
             "description": "台湾中央气象署：强震即时警报",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收台湾中央气象署强震即时警报(EEW)"
+            "hint": "通过 FAN Studio WebSocket 接收台湾中央气象署强震即时警报(EEW)"
           },
           "taiwan_cwa_report": {
             "description": "台湾中央气象署：地震报告",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收台湾中央气象署地震报告"
+            "hint": "通过 FAN Studio WebSocket 接收台湾中央气象署地震报告"
           },
           "china_cenc_earthquake": {
             "description": "中国地震台网（CENC）：地震测定",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收中国地震台网地震测定信息"
+            "hint": "通过 FAN Studio WebSocket 接收中国地震台网地震测定信息"
+          },
+          "china_cenc_intensity_report": {
+            "description": "中国地震台网（CENC）：烈度速报",
+            "type": "bool",
+            "default": true,
+            "hint": "通过 FAN Studio 独立 WebSocket 接收中国地震台网烈度速报。"
           },
           "japan_jma_eew": {
             "description": "日本气象厅（JMA）：紧急地震速报",
             "type": "bool",
             "default": false,
-            "hint": "通过FAN Studio WebSocket接收日本气象厅地震预警信息"
+            "hint": "通过 FAN Studio WebSocket 接收日本气象厅地震预警信息"
           },
           "usgs_earthquake": {
             "description": "美国地质调查局（USGS）：地震测定",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收USGS地震测定信息"
+            "hint": "通过 FAN Studio WebSocket 接收USGS地震测定信息"
           },
           "china_weather_alarm": {
             "description": "中国气象局：气象预警",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收中国气象局气象预警信息"
+            "hint": "通过 FAN Studio WebSocket 接收中国气象局气象预警信息"
           },
           "china_tsunami": {
             "description": "自然资源部海啸预警中心：海啸预警信息",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收自然资源部海啸预警中心海啸预警信息"
+            "hint": "通过 FAN Studio WebSocket 接收自然资源部海啸预警中心海啸预警信息"
           },
           "china_typhoon": {
             "description": "中国气象局：实时活跃台风",
             "type": "bool",
             "default": true,
-            "hint": "通过FAN Studio WebSocket接收实时活跃台风信息，并自动从EQSC拉取详细数据富化展示"
+            "hint": "通过 FAN Studio WebSocket 接收实时活跃台风信息，并自动从EQSC拉取详细数据富化展示"
           }
         }
       },
       "p2p_earthquake": {
-        "description": "P2P地震情報 WebSocket 数据源",
+        "description": "P2P 地震情報 WebSocket 数据源",
         "type": "object",
-        "hint": "P2P数据源总开关",
+        "hint": "P2P 数据源总开关",
         "items": {
           "enabled": {
-            "description": "启用P2P地震情報数据源",
+            "description": "启用 P2P 地震情報数据源",
             "type": "bool",
             "default": true
           },
@@ -120,29 +126,29 @@
             "description": "日本気象庁：緊急地震速報（警報）",
             "type": "bool",
             "default": true,
-            "hint": "通过P2P地震情報 WebSocket接收日本气象厅紧急地震速报（code:556）。注意：此源不包含予报信息。"
+            "hint": "通过 P2P 地震情報 WebSocket 接收日本气象厅紧急地震速报（code:556）。注意：此源不包含予报信息。"
           },
           "japan_jma_earthquake": {
             "description": "日本気象庁（JMA）：地震情報",
             "type": "bool",
             "default": true,
-            "hint": "通过P2P地震情報 WebSocket接收日本气象厅地震情报（code:551）"
+            "hint": "通过 P2P 地震情報 WebSocket接收日本气象厅地震情报（code:551）"
           },
           "japan_jma_tsunami": {
             "description": "日本気象庁：津波予報",
             "type": "bool",
             "default": true,
-            "hint": "通过P2P地震情報 WebSocket接收日本气象厅海啸预报（code:552）"
+            "hint": "通过 P2P 地震情報 WebSocket 接收日本气象厅海啸预报（code:552）"
           }
         }
       },
       "wolfx": {
         "description": "Wolfx Websocket 数据源",
         "type": "object",
-        "hint": "Wolfx数据源总开关",
+        "hint": "Wolfx 数据源总开关",
         "items": {
           "enabled": {
-            "description": "启用Wolfx数据源",
+            "description": "启用 Wolfx 数据源",
             "type": "bool",
             "default": true
           },
@@ -150,31 +156,31 @@
             "description": "日本気象庁：緊急地震速報",
             "type": "bool",
             "default": true,
-            "hint": "通过Wolfx API接收日本气象厅紧急地震速报"
+            "hint": "通过 Wolfx API 接收日本气象厅紧急地震速报"
           },
           "china_cenc_eew": {
             "description": "中国地震台网（CENC）：地震预警",
             "type": "bool",
             "default": false,
-            "hint": "通过Wolfx API接收中国地震台网地震预警"
+            "hint": "通过 Wolfx API 接收中国地震台网地震预警"
           },
           "taiwan_cwa_eew": {
             "description": "台湾中央气象署：地震预警",
             "type": "bool",
             "default": true,
-            "hint": "通过Wolfx API接收台湾中央气象署地震预警"
+            "hint": "通过 Wolfx API 接收台湾中央气象署地震预警"
           },
           "japan_jma_earthquake": {
             "description": "日本気象庁（JMA）：地震情報",
             "type": "bool",
             "default": false,
-            "hint": "通过Wolfx API接收日本气象厅地震情报列表"
+            "hint": "通过 Wolfx API 接收日本气象厅地震情报列表"
           },
           "china_cenc_earthquake": {
             "description": "中国地震台网（CENC）：地震测定",
             "type": "bool",
             "default": true,
-            "hint": "通过Wolfx API接收中国地震台网地震测定列表"
+            "hint": "通过 Wolfx API 接收中国地震台网地震测定列表"
           }
         }
       },
@@ -184,9 +190,9 @@
         "hint": "通过全球测站实时测算，精度有限",
         "items": {
           "enabled": {
-            "description": "启用Global Quake数据源",
+            "description": "启用 Global Quake 数据源",
             "type": "bool",
-            "hint": "连接到GlobalQuake Monitor服务器获取全球地震实时数据",
+            "hint": "连接到 GlobalQuake Monitor 服务器获取全球地震实时数据",
             "default": true
           }
         }
@@ -342,7 +348,7 @@
         "description": "通知阈值(烈度)",
         "type": "float",
         "hint": "只有当本地预估烈度大于等于此值时才通知",
-        "default": 4.0,
+        "default": 2.0,
         "slider": {
           "min": 0,
           "max": 12,
