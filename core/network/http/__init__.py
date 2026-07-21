@@ -7,10 +7,12 @@ from .eqsc_http_client import EqscHttpClient
 from .eqsc_token_manager import EqscTokenManager
 from .eqsc_tsunami_client import EqscTsunamiClient
 from .eqsc_typhoon_client import EqscTyphoonClient
+from .jma_hypo_client import JmaHypoClient
 
 __all__ = [
     "EqscHttpClient",
     "EqscTokenManager",
     "EqscTsunamiClient",
     "EqscTyphoonClient",
+    "JmaHypoClient",
 ]
