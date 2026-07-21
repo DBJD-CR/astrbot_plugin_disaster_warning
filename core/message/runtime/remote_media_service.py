@@ -85,6 +85,43 @@ class MessageRemoteMediaService:
         return mime.startswith("image/")
 
     @staticmethod
+    def looks_like_image_bytes(data: bytes | bytearray | memoryview | None) -> bool:
+        """根据文件头判断二进制内容是否像真实图片。
+
+        部分上游图标接口会在资源缺失时返回 Content-Type=image/png 的 HTML 错误页，
+        仅校验 MIME 会误判成功，导致后续 QQ 富媒体传输失败。
+        """
+        if not data:
+            return False
+
+        sample = bytes(data[:64])
+        if not sample:
+            return False
+
+        # 常见图片魔数
+        if sample.startswith(b"\x89PNG\r\n\x1a\n"):
+            return True
+        if sample.startswith(b"\xff\xd8\xff"):
+            return True
+        if sample.startswith((b"GIF87a", b"GIF89a")):
+            return True
+        if sample.startswith(b"BM"):
+            return True
+        if len(sample) >= 12 and sample.startswith(b"RIFF") and sample[8:12] == b"WEBP":
+            return True
+        if sample.lstrip().startswith((b"<svg", b"<?xml")):
+            return True
+
+        # 明确拒绝 HTML/文本伪图
+        stripped = sample.lstrip().lower()
+        if stripped.startswith(
+            (b"<!doctype", b"<html", b"<head", b"<body", b"{", b"[")
+        ):
+            return False
+
+        return False
+
+    @staticmethod
     def guess_image_content_type(url: str) -> str | None:
         """根据 URL 后缀猜测图片 MIME。"""
         guessed_type, _ = mimetypes.guess_type(url)
