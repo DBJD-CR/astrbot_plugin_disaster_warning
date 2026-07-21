@@ -100,6 +100,16 @@ class MessageJsonFormatterService:
         "EventID": "事件ID",  # JMA格式
         "event_id": "事件ID",  # 下划线版本
         "EventId": "事件编码",  # FAN Studio格式
+        "uniEventId": "事件唯一ID",  # CENC 烈度速报
+        "locName": "震中地名",
+        "nameByInfo": "报告标题",
+        "oriTime": "发震时间",
+        "gmtCreate": "报告生成时间",
+        "focDepth": "震源深度(km)",
+        "intensity_info_text": "烈度概述",
+        "instrument_intensity_json": "台站仪器烈度",
+        "contour_geojson": "等震线GeoJSON",
+        "subjectCodes": "报告主题编码",
         "Serial": "报序号",  # JMA格式
         "updates": "更新次数",
         "ReportNum": "发报数",  # Wolfx格式
