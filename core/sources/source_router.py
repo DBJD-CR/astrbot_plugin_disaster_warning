@@ -63,6 +63,27 @@ def _payload_matches_predicate(payload: dict[str, Any], predicate: str) -> bool:
         # 中国地震台网正式测定和自动测定消息都会在类型名中带出固定字样
         info_type_name = str(payload.get("infoTypeName", "") or "")
         return "[正式测定]" in info_type_name or "[自动测定]" in info_type_name
+    if predicate == "cenc_intensity_report":
+        # 烈度速报：必须有 uniEventId，且具备速报正文/台站/等震线之一；
+        # 同时排除正式测定报文（带 infoTypeName 且无速报特征）。
+        uni_event_id = str(payload.get("uniEventId", "") or "").strip()
+        if not uni_event_id:
+            return False
+        has_report_body = any(
+            key in payload
+            for key in (
+                "intensity_info_text",
+                "instrument_intensity_json",
+                "contour_geojson",
+                "nameByInfo",
+            )
+        )
+        if not has_report_body:
+            return False
+        info_type_name = str(payload.get("infoTypeName", "") or "")
+        if info_type_name and not has_report_body:
+            return False
+        return True
     if predicate == "usgs_report":
         # USGS 报文通常会附带官方详情地址，可作为辅助识别条件
         return "usgs.gov" in str(payload.get("url", "") or "")
