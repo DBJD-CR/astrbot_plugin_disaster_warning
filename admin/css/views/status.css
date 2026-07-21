@@ -326,29 +326,24 @@
     border: 1px solid var(--card-border-color);
     box-shadow: var(--card-shadow);
     pointer-events: none;
+    /* 短过渡无需常驻 will-change，避免每张卡都预建合成层 */
     transition:
         transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
         background 0.2s ease-out,
         border-color 0.2s ease-out,
         box-shadow 0.22s ease-out;
-    /* 仅视觉面参与合成，避免文字层被连带光栅化发糊 */
-    will-change: transform, box-shadow, border-color;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
 }
 
 /*
  * 内容层：与视觉面同步上浮。
- * 小字号子数据源在 GPU 合成层上容易糊，因此：
- * 1) 不用常驻 translateZ / will-change（避免平时就进合成层）
- * 2) hover 时用 translate3d 整像素位移
+ * 防糊策略：
+ * 1) 内容层不挂 will-change / font-smoothing（避免全局影响子树）
+ * 2) hover 用 translate3d 整像素位移
  * 3) 子项 .connection-sub-source-item 禁止再挂 transform/will-change
+ * 4) 字体平滑仅落在真正易糊的小字选择器上
  */
 .connection-item > * {
     transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: geometricPrecision;
 }
 
 /* 堆叠列内的精简卡片（GQ / EQSC） */
@@ -620,16 +615,21 @@ html.theme-dark .connection-sub-source-item.is-disabled:hover {
     background: #BDBDBD;
 }
 
+.connection-sub-source-name,
+.connection-sub-source-title,
+.connection-sub-source-count,
+.connection-sub-source-off-badge {
+    /* 仅小字号文案做字体平滑；不使用 text-rendering，避免影响字距/布局 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
 .connection-sub-source-name {
     font-size: 12px !important;
     font-weight: 600 !important;
     color: var(--md-sys-color-on-surface);
     flex: 1;
     line-height: 1.2 !important;
-    /* 跟随父级 hover 位移时保持清晰描边 */
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: geometricPrecision;
 }
 
 .connection-sub-source-item.is-disabled .connection-sub-source-name {
