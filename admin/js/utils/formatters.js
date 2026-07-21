@@ -208,6 +208,7 @@ function normalizeSourceName(source) {
     const aliasMap = {
         // 旧前端 key -> 新规范 key
         'fan_studio_cenc': 'cenc_fanstudio',
+        'fan_studio_cenc_ir': 'cenc_ir_fanstudio',
         'fan_studio_cea': 'cea_fanstudio',
         'fan_studio_cea_pr': 'cea_pr_fanstudio',
         'fan_studio_cwa': 'cwa_fanstudio',
@@ -232,6 +233,9 @@ function normalizeSourceName(source) {
         'taiwan_cwa_earthquake': 'cwa_fanstudio',
         'taiwan_cwa_report': 'cwa_fanstudio_report',
         'china_cenc_earthquake': 'cenc_fanstudio',
+        'china_cenc_intensity_report': 'cenc_ir_fanstudio',
+        'cenc-ir': 'cenc_ir_fanstudio',
+        'cenc_ir': 'cenc_ir_fanstudio',
         'usgs_earthquake': 'usgs_fanstudio',
         'china_weather_alarm': 'china_weather_fanstudio',
         'china_tsunami': 'china_tsunami_fanstudio',
@@ -252,6 +256,9 @@ function normalizeSourceName(source) {
         '中国地震台网(cenc)': 'cenc_fanstudio',
         '中国地震台网（cenc）：地震测定': 'cenc_fanstudio',
         '中国地震台网(cenc)：地震测定': 'cenc_fanstudio',
+        '中国地震台网（cenc）：烈度速报': 'cenc_ir_fanstudio',
+        '中国地震台网(cenc)：烈度速报': 'cenc_ir_fanstudio',
+        '中国地震台网烈度速报': 'cenc_ir_fanstudio',
         '中国地震预警网（cea）': 'cea_fanstudio',
         '中国地震预警网(cea)': 'cea_fanstudio',
         '中国地震预警网（省级）': 'cea_pr_fanstudio',
@@ -340,6 +347,7 @@ function formatSourceName(source) {
     const sourceMap = {
         // Fan Studio (新规范)
         'cenc_fanstudio': '中国地震台网 (CENC) - Fan',
+        'cenc_ir_fanstudio': '中国地震台网 (CENC) - 烈度速报',
         'cea_fanstudio': '中国地震预警网 (CEA)',
         'cea_pr_fanstudio': '中国地震预警网 (省级)',
         'cwa_fanstudio': '台湾中央气象署: 强震即时警报 - Fan',

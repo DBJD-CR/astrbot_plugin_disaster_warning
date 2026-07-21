@@ -247,6 +247,8 @@ function ConnectionsGrid() {
                 taiwan_cwa_earthquake: '台湾中央气象署: 强震即时警报',
                 taiwan_cwa_report: '台湾中央气象署: 地震报告',
                 china_cenc_earthquake: '中国地震台网 (CENC)',
+                china_cenc_intensity_report: '中国地震台网 (CENC) 烈度速报',
+                cenc_ir_fanstudio: '中国地震台网 (CENC) 烈度速报',
                 usgs_earthquake: '美国地质调查局 (USGS)',
                 china_weather_alarm: '中国气象局: 气象预警',
                 china_tsunami: '自然资源部海啸预警中心',
