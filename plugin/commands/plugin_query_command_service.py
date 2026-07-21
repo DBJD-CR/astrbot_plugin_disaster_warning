@@ -21,6 +21,15 @@ from ...core.app.services import format_earthquake_list_text, quoted_plain_resul
 from ...core.domain.event_context import EarthquakeDisplayContext
 from ...core.message.presenters.earthquake_presenter import SnetPresenter
 from ...core.message.push.message_build_service import MessageBuildService
+from ...core.message.render.jma_hypo_renderer import JmaHypoRenderer
+from ...core.services.query.jma_hypo_query_presenter import (
+    build_jma_hypo_list_text,
+    build_jma_hypo_plot_caption,
+)
+from ...core.services.query.jma_hypo_query_service import (
+    query_jma_hypo_list,
+    query_jma_hypo_plot,
+)
 from ...core.services.query.typhoon_query_parser import DETAIL_CURRENT, DETAIL_FULL
 from ...core.services.query.typhoon_query_presenter import attach_summary_text
 from ...core.services.query.typhoon_query_service import (
@@ -635,6 +644,142 @@ class PluginQueryCommandService(CommandTelemetryMixin):
                 yield result
         except TimeoutError:
             yield quoted_plain_result(self.plugin, event, "❌ 查询超时，请稍后重试")
+
+    async def handle_query_jma_hypo_list(
+        self,
+        event,
+        arg1: str | None = None,
+        arg2: str | None = None,
+    ):
+        """处理 JMA 震央分布文本查询。"""
+
+        def _quoted_plain_result(text: str):
+            return quoted_plain_result(self.plugin, event, text)
+
+        try:
+            result = await query_jma_hypo_list(arg1, arg2)
+            await self._track_command_feature(
+                "command_jma_hypo_list",
+                {
+                    "success": bool(result.get("success")),
+                    "requested_days": int(result.get("requested_days") or 0),
+                    "total_events": int((result.get("stats") or {}).get("total") or 0),
+                    "covered_days": int(result.get("covered_days") or 0),
+                },
+            )
+            yield _quoted_plain_result(build_jma_hypo_list_text(result))
+        except Exception as e:
+            logger.error(
+                f"[灾害预警] JMA 震央分布查询失败: {e}\n{traceback.format_exc()}"
+            )
+            yield _quoted_plain_result(f"❌ JMA 震央分布查询失败: {e}")
+
+    async def handle_query_jma_hypo_plot(
+        self,
+        event,
+        arg1: str | None = None,
+        arg2: str | None = None,
+        arg3: str | None = None,
+    ):
+        """处理 JMA 震央分布绘图查询。"""
+
+        def _quoted_plain_result(text: str):
+            return quoted_plain_result(self.plugin, event, text)
+
+        try:
+            result = await query_jma_hypo_plot(arg1, arg2, arg3)
+            caption = build_jma_hypo_plot_caption(result)
+            if not result.get("success"):
+                await self._track_command_feature(
+                    "command_jma_hypo_plot",
+                    {
+                        "success": False,
+                        "mode": str(result.get("mode") or ""),
+                    },
+                )
+                yield _quoted_plain_result(caption)
+                return
+
+            # 优先复用 message_manager 的临时目录；否则退到插件目录 temp
+            service = getattr(self.plugin, "disaster_service", None)
+            message_manager = (
+                getattr(service, "message_manager", None) if service else None
+            )
+            temp_dir = getattr(message_manager, "temp_dir", None)
+            if temp_dir is None:
+                plugin_root = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                temp_dir = os.path.join(plugin_root, "temp")
+                os.makedirs(temp_dir, exist_ok=True)
+            plugin_root = getattr(message_manager, "plugin_root", None)
+            if not plugin_root:
+                plugin_root = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+
+            img_path = os.path.join(
+                str(temp_dir),
+                f"jma_hypo_{int(time.time())}.png",
+            )
+            renderer = JmaHypoRenderer(plugin_root=str(plugin_root))
+            # PIL 渲染与读盘为 CPU/IO 密集同步操作，放到线程池避免阻塞事件循环
+            out = await asyncio.to_thread(
+                renderer.render,
+                events=list(result.get("events") or []),
+                mode=str(result.get("mode") or "经度纬度"),
+                output_path=img_path,
+                start_date=result.get("start_date"),
+                end_date=result.get("end_date"),
+                stats=result.get("stats") or {},
+            )
+            await self._track_command_feature(
+                "command_jma_hypo_plot",
+                {
+                    "success": bool(out),
+                    "mode": str(result.get("mode") or ""),
+                    "requested_days": int(result.get("requested_days") or 0),
+                    "total_events": int((result.get("stats") or {}).get("total") or 0),
+                },
+            )
+            if out and os.path.exists(out):
+
+                def _read_and_cleanup(path: str) -> str:
+                    with open(path, "rb") as f:
+                        encoded = base64.b64encode(f.read()).decode()
+                    try:
+                        os.unlink(path)
+                    except Exception:
+                        pass
+                    return encoded
+
+                b64 = await asyncio.to_thread(_read_and_cleanup, out)
+                chain_parts = [Comp.Plain(caption), Comp.Image.fromBase64(b64)]
+                try:
+                    if hasattr(self.plugin, "_with_quote_reply"):
+                        yield event.chain_result(
+                            self.plugin._with_quote_reply(event, chain_parts)
+                        )
+                    else:
+                        yield event.chain_result(chain_parts)
+                    return
+                except Exception:
+                    yield _quoted_plain_result(caption)
+                    try:
+                        await self.plugin.context.send_message(
+                            event.unified_msg_origin,
+                            MessageChain([Comp.Image.fromBase64(b64)]),
+                        )
+                    except Exception:
+                        pass
+                    return
+
+            yield _quoted_plain_result(caption + "\n❌ 震央分布图渲染失败")
+        except Exception as e:
+            logger.error(
+                f"[灾害预警] JMA 震央分布绘图失败: {e}\n{traceback.format_exc()}"
+            )
+            yield _quoted_plain_result(f"❌ JMA 震央分布绘图失败: {e}")
 
     async def handle_query_snet(self, event, arg: str | None = None):
         """处理 /snet 查询：即时抓取 MSIL 瓦片并渲染测站分布。
