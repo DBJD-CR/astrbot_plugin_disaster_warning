@@ -65,6 +65,8 @@ class ConnectionPlanBuilder:
             connections[group_key] = plan
             if group_key == "fan_studio_all":
                 logger.info("[灾害预警] 已配置 FAN Studio 全量数据连接")
+            elif group_key == "fan_studio_cenc_ir":
+                logger.info("[灾害预警] 已配置 FAN Studio 烈度速报独立连接")
             elif group_key == "p2p_main":
                 logger.info("[灾害预警] 已配置 P2P 地震情报连接")
             elif group_key == "wolfx_all":

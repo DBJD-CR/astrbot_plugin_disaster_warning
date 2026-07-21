@@ -277,6 +277,16 @@ class SourceMessageRouter:
                     ws_manager = getattr(self.service, "ws_manager", None)
                     if connection_name and ws_manager is not None:
                         try:
+                            apply_policy = getattr(
+                                ws_manager, "_apply_fan_quota_policy_on_error", None
+                            )
+                            if callable(apply_policy):
+                                await apply_policy(
+                                    connection_name,
+                                    RuntimeError(
+                                        error_message or "FAN Studio policy error"
+                                    ),
+                                )
                             websocket = ws_manager.connections.get(connection_name)
                             if websocket is not None and not websocket.closed:
                                 close_reason = (

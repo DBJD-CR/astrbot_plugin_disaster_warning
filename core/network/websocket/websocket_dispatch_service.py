@@ -209,11 +209,17 @@ class WebSocketDispatchService:
                 f"[灾害预警] WebSocket {name} 因策略违规关闭，关闭码为 {close_code}，"
                 "将释放本地连接后尝试重连"
             )
+            policy_error = RuntimeError(f"WebSocket策略违规关闭，代码 {close_code}")
+            apply_policy = getattr(
+                self.manager, "_apply_fan_quota_policy_on_error", None
+            )
+            if callable(apply_policy):
+                await apply_policy(name, policy_error)
             self.manager._handle_connection_error(
                 name,
                 uri,
                 headers,
-                RuntimeError(f"WebSocket策略违规关闭，代码 {close_code}"),
+                policy_error,
             )
             return
 
