@@ -131,6 +131,8 @@ class DisasterWarningPlugin(Star):
 • /地震预警查询 或 /地震预警 - 查询各机构 EEW 状态与无 EEW 计时
 • /气象预警查询 或 /气象预警 <省份/地名|全国> [预警类型] [预警颜色] 或 <预警ID>
 • /台风信息查询 或 /台风查询 [台风ID|名称|数量] [完整|简要] [活跃] - 查询台风信息（优先EQSC，失败回退本地）
+• /JMA震央分布 [开始日期] [结束日期] - 查询 JMA 震央分布统计（默认今天）
+• /JMA震央分布绘图 [投影类型] [开始日期] [结束日期] - 绘制 JMA 震央分布图
 • /灾害预警统计 - 查看详细的事件统计报告
 • /灾害预警统计清除 - 清除所有统计信息 (仅管理员)
 • /灾害预警推送开关 - 开启或关闭当前会话的推送 (仅管理员)
@@ -279,6 +281,56 @@ class DisasterWarningPlugin(Star):
             source=source,
             count=count,
             mode=mode,
+        ):
+            yield result
+
+    @filter.command(
+        "JMA震央分布",
+        alias={
+            "JMA震中分布",
+            "JMA震源分布",
+            "jma震央分布",
+            "jma震中分布",
+            "jma震源分布",
+        },
+    )
+    async def query_jma_hypo_list(
+        self,
+        event: AstrMessageEvent,
+        arg1: str = None,
+        arg2: str = None,
+    ):
+        """查询 JMA 震央分布统计（纯文本）"""
+        async for result in self._query_command_service.handle_query_jma_hypo_list(
+            event,
+            arg1=arg1,
+            arg2=arg2,
+        ):
+            yield result
+
+    @filter.command(
+        "JMA震央分布绘图",
+        alias={
+            "JMA震中分布绘图",
+            "JMA震源分布绘图",
+            "jma震央分布绘图",
+            "jma震中分布绘图",
+            "jma震源分布绘图",
+        },
+    )
+    async def query_jma_hypo_plot(
+        self,
+        event: AstrMessageEvent,
+        arg1: str = None,
+        arg2: str = None,
+        arg3: str = None,
+    ):
+        """绘制 JMA 震央分布图（支持 6 种投影）"""
+        async for result in self._query_command_service.handle_query_jma_hypo_plot(
+            event,
+            arg1=arg1,
+            arg2=arg2,
+            arg3=arg3,
         ):
             yield result
 
