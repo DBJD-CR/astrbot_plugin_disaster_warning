@@ -113,7 +113,15 @@ class WebSocketRuntimeService:
                 await self.cancel_and_wait(reconnect_tasks)
                 self.manager.reconnect_tasks.clear()
 
-                # 2. 取消所有还在运行的心跳保活任务
+                # 2 取消 FAN 次要通道静默等待任务，避免停机后仍尝试建连
+                wait_tasks = list(
+                    getattr(self.manager, "_fan_secondary_wait_tasks", {}).values()
+                )
+                await self.cancel_and_wait(wait_tasks)
+                if hasattr(self.manager, "_fan_secondary_wait_tasks"):
+                    self.manager._fan_secondary_wait_tasks.clear()
+
+                # 3. 取消所有还在运行的心跳保活任务
                 heartbeat_tasks = [
                     task
                     for task in self.manager.heartbeat_tasks.values()
@@ -122,16 +130,16 @@ class WebSocketRuntimeService:
                 await self.cancel_and_wait(heartbeat_tasks)
                 self.manager.heartbeat_tasks.clear()
 
-                # 3. 物理切断所有现存的 WebSocket 连接句柄
+                # 4. 物理切断所有现存的 WebSocket 连接句柄
                 for name in list(self.manager.connections.keys()):
                     await self.disconnect(name)
 
-                # 4. 彻底释放并关闭共享的 ClientSession
+                # 5. 彻底释放并关闭共享的 ClientSession
                 if self.manager.session:
                     await self.manager.session.close()
                     self.manager.session = None
 
-                # 5. 彻底清空所有状态缓存
+                # 6. 彻底清空所有状态缓存
                 self.manager.connections.clear()
                 self.manager.connection_info.clear()
                 self.manager.connection_retry_counts.clear()

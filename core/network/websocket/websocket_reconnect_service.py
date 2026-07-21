@@ -11,6 +11,12 @@ from typing import Any
 
 from astrbot.api import logger
 
+from .fan_studio_connection_policy import (
+    is_fan_secondary_connection,
+    is_primary_fan_connected,
+    resolve_secondary_reconnect_interval,
+)
+
 
 class WebSocketReconnectService:
     """WebSocket 重连与离线通知服务。"""
@@ -119,6 +125,13 @@ class WebSocketReconnectService:
             # 读取管理器配置文件中关于短重试、兜底长周期重试的详细策略
             max_retries = self.manager.config.get("max_reconnect_retries", 3)
             reconnect_interval = self.manager.config.get("reconnect_interval", 10)
+            # FAN 次要通道：主通道离线或命中配额时拉长退避，避免与 /all 抢连接。
+            if is_fan_secondary_connection(name):
+                reconnect_interval = resolve_secondary_reconnect_interval(
+                    default_interval=int(reconnect_interval or 10),
+                    quota_hit=bool(connection_info.get("quota_hit")),
+                    primary_online=is_primary_fan_connected(self.manager),
+                )
             fallback_enabled = self.manager.config.get("fallback_retry_enabled", True)
             fallback_interval = self.manager.config.get("fallback_retry_interval", 1800)
             fallback_max_count = self.manager.config.get("fallback_retry_max_count", -1)
