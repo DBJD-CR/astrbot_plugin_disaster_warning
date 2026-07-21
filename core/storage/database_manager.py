@@ -1671,6 +1671,20 @@ class DatabaseManager:
             opt.get("source_label", "") for opt in options if opt.get("source_label")
         ]
 
+    @staticmethod
+    def _is_cenc_intensity_report_row(
+        source: str | None = None,
+        source_id: str | None = None,
+        info_type: str | None = None,
+    ) -> bool:
+        """判断数据库行是否为 CENC 烈度速报。"""
+        from .source_compat import is_cenc_intensity_report
+
+        return is_cenc_intensity_report(
+            source_id or source or "",
+            info_type=info_type,
+        )
+
     async def get_statistics(self) -> dict[str, Any]:
         """获取数据库统计信息（按稳定事件集合去重，而非按物理行计数）。"""
         try:
@@ -1679,15 +1693,46 @@ class DatabaseManager:
 
             dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
 
+            # 先按去重键取最新行，再在 Python 侧排除烈度速报，
+            # 保证 total_events / by_type 与运行时聚合口径一致。
             await cursor.execute(
-                f"SELECT COUNT(DISTINCT {dedup_group_expr}) FROM events"
+                f"""
+                WITH ranked AS (
+                    SELECT
+                        type,
+                        source,
+                        source_id,
+                        info_type,
+                        {dedup_group_expr} AS dedup_key,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY {dedup_group_expr}
+                            ORDER BY
+                                CASE WHEN NULLIF(updated_at, '') IS NULL THEN 1 ELSE 0 END ASC,
+                                updated_at DESC,
+                                time DESC,
+                                id DESC
+                        ) AS rn
+                    FROM events
+                )
+                SELECT type, source, source_id, info_type, dedup_key
+                FROM ranked
+                WHERE rn = 1
+                """
             )
-            total = (await cursor.fetchone())[0]
+            rows = await cursor.fetchall()
 
-            await cursor.execute(
-                f"SELECT type, COUNT(DISTINCT {dedup_group_expr}) FROM events GROUP BY type"
-            )
-            by_type_raw = {r[0]: r[1] for r in await cursor.fetchall()}
+            total = 0
+            by_type_raw: dict[str, int] = {}
+            for row in rows:
+                evt_type = row[0]
+                source = row[1]
+                source_id = row[2]
+                info_type = row[3]
+                if self._is_cenc_intensity_report_row(source, source_id, info_type):
+                    continue
+                total += 1
+                type_key = str(evt_type or "unknown")
+                by_type_raw[type_key] = by_type_raw.get(type_key, 0) + 1
 
             # 将数据库中历史遗留的 'weather' 类型统一归并到 standards 中的 'weather_alarm'
             by_type: dict[str, int] = {}
@@ -1697,6 +1742,7 @@ class DatabaseManager:
 
             # 贡献统计：台风 fan/enriched 合并为 typhoon_fanstudio；
             # eqsc_rebuild 单独计入 typhoon_eqsc_rebuild。
+            # 注意：by_source 仍统计烈度速报，保留来源贡献可见性。
             await cursor.execute(
                 f"""
                 SELECT COALESCE(NULLIF(source_id, ''), source) AS source_key,
@@ -1794,6 +1840,9 @@ class DatabaseManager:
                     SELECT
                         {dedup_group_expr} AS dedup_key,
                         {normalized_time_expr} AS event_time,
+                        source,
+                        source_id,
+                        info_type,
                         ROW_NUMBER() OVER (
                             PARTITION BY {dedup_group_expr}
                             ORDER BY
@@ -1805,7 +1854,7 @@ class DatabaseManager:
                     FROM events
                     WHERE {normalized_time_expr} IS NOT NULL
                 )
-                SELECT event_time
+                SELECT event_time, source, source_id, info_type
                 FROM ranked
                 WHERE rn = 1
                 """
@@ -1817,6 +1866,9 @@ class DatabaseManager:
             for row in rows:
                 raw_time = row[0]
                 if not raw_time:
+                    continue
+                # 烈度速报不进入时间序列，避免与正式测定双计。
+                if self._is_cenc_intensity_report_row(row[1], row[2], row[3]):
                     continue
                 try:
                     from datetime import datetime, timezone
