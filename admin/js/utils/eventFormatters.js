@@ -737,9 +737,10 @@
     /**
      * 根据气象预警编码解析颜色关键词。
      *
-     * 支持两种编码格式：
+     * 支持编码格式：
      * - 新格式 11B20_yellow：下划线后即为颜色关键词（统一转小写以兼容 _Yellow / _YELLOW）
      * - 旧格式 p0002002：最后一位数字表示颜色（1=红, 2=橙, 3=黄, 4=蓝）
+     * - 紧凑 11B 格式 11B3102 / 11B2002：末两位 01/02/03/04 表示蓝/黄/橙/红
      *
      * @param {string} weatherTypeCode  气象预警编码
      * @returns {string|null}           颜色关键词，如 'red' / 'yellow' / 'orange' / 'blue'
@@ -751,14 +752,28 @@
             '3': 'yellow',
             '4': 'blue',
         };
+        // 与事件 ID 尾部紧凑编码一致：01蓝 02黄 03橙 04红
+        const COMPACT_11B_MAP = {
+            '01': 'blue',
+            '02': 'yellow',
+            '03': 'orange',
+            '04': 'red',
+        };
+        const VALID_COLORS = new Set(['blue', 'yellow', 'orange', 'red']);
         const code = String(weatherTypeCode || '').trim();
         if (!code) return null;
 
         if (code.includes('_')) {
-            return code.split('_').pop().toLowerCase();
+            const color = code.split('_').pop().toLowerCase();
+            return VALID_COLORS.has(color) ? color : null;
         }
         if (code.startsWith('p') && code.length >= 8) {
             return P_FORMAT_MAP[code.slice(-1)] || null;
+        }
+        // 仅当末两位明确是 01/02/03/04 时才认作颜色，避免 11B31 这类类型码误判。
+        if (code.length >= 2) {
+            const color = COMPACT_11B_MAP[code.slice(-2)];
+            if (color) return color;
         }
         return null;
     }
