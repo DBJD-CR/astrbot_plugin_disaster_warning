@@ -1,6 +1,7 @@
 """
 全球地震源解析器。
-负责解析 Global Quake 与美国地质调查局来源的全球地震数据，并统一为领域事件。
+负责解析 Global Quake、美国地质调查局与美国 ShakeAlert 来源的全球地震数据，
+并统一为领域事件。
 """
 
 from __future__ import annotations
@@ -653,6 +654,167 @@ class UsgsEarthquakeParser(BaseParser):
                 is_event_linked=True,
             )
 
+            return envelope
+        except Exception as exc:
+            plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
+            return None
+
+
+class ShakeAlertEewParser(BaseParser):
+    """美国 ShakeAlert 地震预警解析器 - FAN Studio。"""
+
+    def __init__(self, message_logger=None):
+        super().__init__("sa_fanstudio", message_logger)
+
+    @staticmethod
+    def _get_field(data: dict[str, Any], field_name: str):
+        # ShakeAlert 字段大小写可能不稳定，兼容首字母大写与原样键名。
+        return data.get(field_name) or data.get(field_name.capitalize())
+
+    def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
+        """解析美国 ShakeAlert 地震预警数据。"""
+        try:
+            msg_data = self._extract_data(data)
+            if not msg_data:
+                plugin_logger.debug(f"[灾害预警] {self.source_id} 消息中没有有效数据")
+                return None
+
+            if self._is_heartbeat_message(msg_data):
+                return None
+
+            # 与 USGS 区分：ShakeAlert 预警载荷不含官方事件页 url
+            if self._get_field(msg_data, "url"):
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 检测到 USGS 特征字段 url，跳过"
+                )
+                return None
+
+            required_fields = ["id", "magnitude", "latitude", "longitude", "shockTime"]
+            missing_fields = []
+            for field in required_fields:
+                if field not in msg_data and field.capitalize() not in msg_data:
+                    missing_fields.append(field)
+                elif field in msg_data and msg_data[field] is None:
+                    missing_fields.append(field)
+                elif (
+                    field.capitalize() in msg_data
+                    and msg_data[field.capitalize()] is None
+                ):
+                    missing_fields.append(field)
+            if missing_fields:
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 数据缺少部分字段: {missing_fields}，继续处理..."
+                )
+
+            magnitude = safe_float_convert(self._get_field(msg_data, "magnitude"))
+            if magnitude is not None:
+                magnitude = round(magnitude, 1)
+
+            depth = safe_float_convert(self._get_field(msg_data, "depth"))
+            if depth is not None:
+                depth = round(depth, 1)
+
+            event_raw_id = self._get_field(msg_data, "id") or ""
+            latitude = safe_float_convert(self._get_field(msg_data, "latitude")) or 0.0
+            longitude = (
+                safe_float_convert(self._get_field(msg_data, "longitude")) or 0.0
+            )
+            place_name_en = self._get_field(msg_data, "placeName") or ""
+
+            if not event_raw_id:
+                if not self._is_heartbeat_message(msg_data):
+                    warning_msg = f"[灾害预警] {self.source_id} 缺少地震ID，跳过处理"
+                    if self._should_log_warning("missing_sa_id", warning_msg):
+                        plugin_logger.warning(warning_msg)
+                return None
+
+            if latitude == 0 and longitude == 0:
+                return None
+
+            if not place_name_en and magnitude is None:
+                if not self._is_heartbeat_message(msg_data):
+                    warning_msg = (
+                        f"[灾害预警] {self.source_id} 缺少地点名称和震级信息，跳过处理"
+                    )
+                    if self._should_log_warning(
+                        "missing_sa_place_magnitude", warning_msg
+                    ):
+                        plugin_logger.warning(warning_msg)
+                return None
+
+            place_name = region_service.translate_place_name(
+                place_name_en,
+                latitude,
+                longitude,
+                fallback_to_original=True,
+            )
+
+            source_entry = get_source_entry(self.source_id)
+            raw_payload = dict(msg_data)
+            # 统计/入库语义按地震事件处理（与 Global Quake 一致），不计入 EEW 预警类型
+            metadata = {
+                "source_family": "fan_studio",
+                "source_enum": source_entry.source_enum if source_entry else "",
+                "source_type": source_entry.source_type.value
+                if source_entry
+                else "earthquake_info",
+                "event_id": str(event_raw_id),
+                "md5": data.get("md5") if isinstance(data, dict) else None,
+            }
+            event_id = str(event_raw_id)
+
+            domain_event = EarthquakeEvent(
+                occurred_at=self._parse_datetime(
+                    self._get_field(msg_data, "shockTime")
+                ),
+                latitude=latitude,
+                longitude=longitude,
+                depth=depth,
+                magnitude=magnitude,
+                place_name=place_name,
+                metadata=dict(metadata),
+            )
+
+            identity = EventIdentity(
+                event_id=event_id,
+                source_id=self.source_id,
+                event_type="earthquake",
+                provider_family=source_entry.provider_family.value
+                if source_entry
+                else "fan_studio",
+                source_enum=source_entry.source_enum if source_entry else "",
+                published_at=domain_event.occurred_at,
+                aliases=tuple(
+                    item for item in (str(event_raw_id or "").strip(),) if item
+                ),
+                attributes={
+                    "parser_name": self.source_entry.parser_name
+                    if self.source_entry
+                    else "",
+                    "config_key": source_entry.config_key if source_entry else "",
+                },
+            )
+
+            envelope = EventEnvelope(
+                identity=identity,
+                event=domain_event,
+                received_at=datetime.now(timezone.utc),
+                payload=SourcePayload(
+                    source_id=self.source_id,
+                    provider_family=source_entry.provider_family.value
+                    if source_entry
+                    else "fan_studio",
+                    message_type=str(msg_data.get("type") or "update").strip(),
+                    raw=raw_payload,
+                    attributes=dict(metadata),
+                ),
+                metadata=metadata,
+            )
+
+            plugin_logger.info(
+                f"[灾害预警] ShakeAlert 地震解析成功: {domain_event.place_name} (M {domain_event.magnitude or 0.0}), 时间: {domain_event.occurred_at}",
+                is_event_linked=True,
+            )
             return envelope
         except Exception as exc:
             plugin_logger.error(f"[灾害预警] {self.source_id} 解析数据失败: {exc}")
