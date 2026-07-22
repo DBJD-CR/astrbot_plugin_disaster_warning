@@ -47,7 +47,20 @@ class DisasterServiceRuntimeService:
             except Exception as e:
                 logger.error(f"[灾害预警] WebSocket 连接任务 {name} 异常终止: {e}")
 
-        for conn_name, conn_config in self.service.connections.items():
+        # FAN Studio 先主后次：优先启动 /all，再启动独立次要通道。
+        ordered_items = list(self.service.connections.items())
+        ordered_items.sort(
+            key=lambda item: (
+                0
+                if item[0] == "fan_studio_all"
+                else 1
+                if str(item[0]).startswith("fan_studio_")
+                else 2,
+                item[0],
+            )
+        )
+
+        for conn_name, conn_config in ordered_items:
             # 这里只处理由连接计划生成的 WebSocket 连接；
             # 具体断线重连、备用地址切换等细节由连接管理器内部负责。
             if conn_config["handler"] in ["fan_studio", "p2p", "wolfx", "global_quake"]:

@@ -24,6 +24,7 @@ _CONNECTION_GROUP_ALIAS: dict[str, str] = {
 # 物理连接的友好展示名称，供管理后台和 API 使用
 _CONNECTION_DISPLAY_NAME: dict[str, str] = {
     "fan_studio_all": "FAN Studio",
+    "fan_studio_cenc_ir": "FAN Studio 烈度速报",
     "p2p_main": "P2P地震情報",
     "wolfx_all": "Wolfx",
     "global_quake": "Global Quake",

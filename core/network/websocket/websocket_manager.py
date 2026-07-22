@@ -14,6 +14,13 @@ from aiohttp import ClientWebSocketResponse
 
 from astrbot.api import logger
 
+from .fan_studio_connection_policy import (
+    is_connection_limit_signal,
+    is_fan_primary_connection,
+    is_fan_secondary_connection,
+    is_primary_fan_connected,
+    yield_secondary_for_primary,
+)
 from .websocket_dispatch_service import WebSocketDispatchService
 from .websocket_reconnect_service import WebSocketReconnectService
 from .websocket_runtime_service import WebSocketRuntimeService
@@ -32,6 +39,8 @@ class WebSocketManager:
         self.connections: dict[str, ClientWebSocketResponse] = {}
         self.message_handlers: dict[str, Callable] = {}
         self.reconnect_tasks: dict[str, asyncio.Task] = {}
+        # FAN 次要通道静默等待主通道的任务表（无感排队，不走错误重连日志）
+        self._fan_secondary_wait_tasks: dict[str, asyncio.Task] = {}
         self.connection_retry_counts: dict[str, int] = {}
         self.fallback_retry_counts: dict[str, int] = {}  # 兜底重试计数
         self.connection_info: dict[str, dict] = {}  # 存放连接 URI, header 等元数据
@@ -83,6 +92,17 @@ class WebSocketManager:
             reason="建连前清理旧连接",
             keep_connection_info=True,
         )
+
+        # FAN Studio：次要独立通道仅在主通道 /all 在线后才允许建连。
+        # 这是启动/恢复期的内部排队，不是故障重连，必须静默，避免误导用户。
+        if is_fan_secondary_connection(name) and not is_primary_fan_connected(self):
+            self._defer_fan_secondary_until_primary(
+                name,
+                uri=uri,
+                headers=headers,
+                connection_info=connection_info,
+            )
+            return
 
         websocket: ClientWebSocketResponse | None = None
         try:
@@ -142,12 +162,18 @@ class WebSocketManager:
                 )
                 self.connection_info[name].pop("offline_since", None)
                 self.connection_info[name].pop("short_retry_notified", None)
+                self.connection_info[name].pop("quota_hit", None)
+                self.connection_info[name].pop("quota_deferred", None)
                 logger.info(f"[灾害预警] WebSocket 连接成功: {name}")
 
                 # 重置重连相关的状态变量
                 self.connection_retry_counts[name] = 0
                 self.fallback_retry_counts[name] = 0
                 self.last_heartbeat_time[name] = asyncio.get_running_loop().time()
+
+                # 主通道恢复后，尽快唤醒此前因等待 /all 而暂缓的次要通道。
+                if is_fan_primary_connection(name):
+                    self._kick_deferred_fan_secondary_reconnects()
 
                 # 启动后台应用层心跳保活协程前，确保旧心跳任务不会残留
                 await self._cancel_heartbeat_task(name)
@@ -166,6 +192,7 @@ class WebSocketManager:
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             # 常见网络错误或握手超时，走重试容灾逻辑
             logger.warning(f"[灾害预警] 连接中断或失败 {name}: {e}")
+            await self._apply_fan_quota_policy_on_error(name, e)
             self._handle_connection_error(name, uri, headers, e)
 
         except asyncio.CancelledError:
@@ -188,6 +215,7 @@ class WebSocketManager:
                         e, module=f"core.websocket_manager.connect.{name}"
                     )
                 )
+            await self._apply_fan_quota_policy_on_error(name, e)
             self._handle_connection_error(name, uri, headers, e)
         finally:
             # 会话退出后做一次幂等清理，防止已关闭 socket / 心跳任务残留占位
@@ -267,6 +295,171 @@ class WebSocketManager:
             if self.connections.get(name) is websocket:
                 self.connections.pop(name, None)
             self.last_heartbeat_time.pop(name, None)
+
+    async def _apply_fan_quota_policy_on_error(
+        self,
+        name: str,
+        error: Exception,
+    ) -> None:
+        """在 FAN Studio 连接错误时应用配额优先级策略。"""
+        if not is_connection_limit_signal(error):
+            if is_fan_secondary_connection(name) and not is_primary_fan_connected(self):
+                info = self.connection_info.get(name, {})
+                info["quota_deferred"] = True
+                self.connection_info[name] = info
+            return
+
+        info = self.connection_info.get(name, {})
+        info["quota_hit"] = True
+        self.connection_info[name] = info
+
+        if is_fan_primary_connection(name):
+            released = await yield_secondary_for_primary(
+                self,
+                reason="主通道遇连接上限，释放次要 FAN 连接以保活 /all",
+            )
+            if released:
+                logger.warning(
+                    f"[灾害预警] {name} 命中连接上限，已释放次要 FAN 连接: {', '.join(released)}"
+                )
+            return
+
+        if is_fan_secondary_connection(name):
+            logger.warning(
+                f"[灾害预警] {name} 命中 FAN Studio 连接上限，将拉长退避并优先保活 /all"
+            )
+
+    def _defer_fan_secondary_until_primary(
+        self,
+        name: str,
+        *,
+        uri: str,
+        headers: dict | None,
+        connection_info: dict[str, Any] | None,
+    ) -> None:
+        """静默暂缓次要 FAN 通道，等待主通道 /all 在线后再建连。
+
+        不走错误重连链路，避免出现“将在 N 秒后重连”这类误导日志。
+        """
+        info = {
+            **(self.connection_info.get(name, {}) or {}),
+            **(connection_info or {}),
+            "uri": uri,
+            "headers": headers,
+            "quota_deferred": True,
+        }
+        # 暂缓不是故障，清掉离线告警相关标记，避免误发离线通知。
+        info.pop("offline_since", None)
+        info.pop("short_retry_notified", None)
+        self.connection_info[name] = info
+
+        # 取消可能已存在的重连任务，防止旧路径继续打 INFO。
+        existing_task = self.reconnect_tasks.pop(name, None)
+        if existing_task is not None and not existing_task.done():
+            existing_task.cancel()
+
+        # 已有静默等待任务则复用，避免重复排队。
+        wait_tasks = self._fan_secondary_wait_tasks
+        wait_task = wait_tasks.get(name)
+        if wait_task is not None and not wait_task.done():
+            return
+
+        wait_tasks[name] = asyncio.create_task(
+            self._wait_primary_then_connect_secondary(
+                name,
+                uri=uri,
+                headers=headers,
+                connection_info=info,
+            ),
+            name=f"dw_fan_secondary_wait_{name}",
+        )
+
+    async def _wait_primary_then_connect_secondary(
+        self,
+        name: str,
+        *,
+        uri: str,
+        headers: dict | None,
+        connection_info: dict[str, Any] | None,
+    ) -> None:
+        """静默轮询主通道状态，就绪后建立次要连接。"""
+        try:
+            while self.running:
+                if is_primary_fan_connected(self):
+                    break
+                # 短间隔静默等待，不输出用户可见日志。
+                await asyncio.sleep(1)
+            if not self.running or not is_primary_fan_connected(self):
+                return
+
+            info = dict(connection_info or {})
+            info.pop("quota_deferred", None)
+            self.connection_info[name] = {
+                **(self.connection_info.get(name, {}) or {}),
+                **info,
+                "uri": uri,
+                "headers": headers,
+            }
+            # 这是首次真正建连，不算失败重试。
+            await self.connect(
+                name,
+                uri,
+                headers,
+                is_retry=False,
+                connection_info=self.connection_info.get(name),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # 静默等待路径保持无感；真实建连失败会由 connect 内部重连处理。
+            return
+        finally:
+            current = self._fan_secondary_wait_tasks.get(name)
+            if current is not None and current.done():
+                self._fan_secondary_wait_tasks.pop(name, None)
+
+    def _kick_deferred_fan_secondary_reconnects(self) -> None:
+        """主通道在线后，尽快静默唤醒此前暂缓的次要通道。"""
+        for name, info in list((self.connection_info or {}).items()):
+            if not is_fan_secondary_connection(name):
+                continue
+            if not isinstance(info, dict):
+                continue
+            if not info.get("quota_deferred") and not info.get("quota_hit"):
+                continue
+            existing = self.connections.get(name)
+            if existing is not None and not getattr(existing, "closed", True):
+                continue
+            uri = str(info.get("uri") or "").strip()
+            if not uri:
+                continue
+            headers = info.get("headers")
+            if not isinstance(headers, dict):
+                headers = None
+
+            was_deferred = bool(info.get("quota_deferred"))
+            info.pop("quota_deferred", None)
+            self.connection_info[name] = info
+
+            # 取消静默等待任务与可能残留的重连任务，避免双开。
+            wait_task = self._fan_secondary_wait_tasks.pop(name, None)
+            if wait_task is not None and not wait_task.done():
+                wait_task.cancel()
+            task = self.reconnect_tasks.pop(name, None)
+            if task is not None and not task.done():
+                task.cancel()
+
+            asyncio.create_task(
+                self.connect(
+                    name,
+                    uri,
+                    headers,
+                    # 纯暂缓唤醒按首次建连处理；配额命中后的恢复仍按重试。
+                    is_retry=not was_deferred,
+                    connection_info=info,
+                ),
+                name=f"dw_fan_secondary_kick_{name}",
+            )
 
     def _handle_connection_error(
         self, name: str, uri: str, headers: dict | None, error: Exception

@@ -14,6 +14,7 @@ from ...domain.event_models import (
     TyphoonEvent,
     WeatherEvent,
 )
+from ..source_compat import build_source_stats_key, is_cenc_intensity_report
 
 
 class EventStatsAggregator:
@@ -39,6 +40,7 @@ class EventStatsAggregator:
         # 贡献统计键：台风 fan/enriched 合并；eqsc_rebuild 单独计数
         source_stats_key = self._resolve_source_stats_key(envelope)
         source_for_display = source_stats_key
+        intensity_report = self._is_intensity_report(envelope)
 
         event_unique_id = self.manager.get_unique_event_id(event)
         # 源内唯一键用于统计同一来源下是否重复收到同一事件。
@@ -61,28 +63,34 @@ class EventStatsAggregator:
             self.manager.rule_service.record_cenc_official_region_stats(event)
 
         if is_new_event:
-            # 全局首次出现时才更新总事件数、类型统计和详细聚合指标。
-            stats["total_events"] += 1
+            # 无论是否计入全局事件数，都先登记唯一键，避免同源重复报文反复进入写路径。
             self.manager._recorded_event_ids.add(event_unique_id)
             stats["recent_event_ids"].append(event_unique_id)
             if len(stats["recent_event_ids"]) > 500:
                 stats["recent_event_ids"] = stats["recent_event_ids"][-500:]
 
-            event_type = envelope.event_type or "unknown"
-            stats["by_type"][event_type] += 1
+            # 烈度速报是同一物理地震的补充产品：保留 by_source / 事件列表，
+            # 但不计入 total_events、by_type、震级分布与时间序列，避免与正式测定双计。
+            if not intensity_report:
+                stats["total_events"] += 1
 
-            if isinstance(envelope.event, EarthquakeEvent):
-                # 地震事件直接进入地震统计分桶与最大震级更新流程。
-                self.manager.rule_service.record_earthquake_stats(event)
-            elif isinstance(envelope.event, WeatherEvent):
-                # 气象事件需要先完成地区解析，成功后才写入详细气象统计。
-                weather_stats_recorded = (
-                    await self.manager.rule_service.record_weather_stats(envelope.event)
-                )
-                if not weather_stats_recorded:
-                    self.manager.rule_service.log_weather_stats_skip()
+                event_type = envelope.event_type or "unknown"
+                stats["by_type"][event_type] += 1
 
-            self.manager.rule_service.record_time_series(event)
+                if isinstance(envelope.event, EarthquakeEvent):
+                    # 地震事件直接进入地震统计分桶与最大震级更新流程。
+                    self.manager.rule_service.record_earthquake_stats(event)
+                elif isinstance(envelope.event, WeatherEvent):
+                    # 气象事件需要先完成地区解析，成功后才写入详细气象统计。
+                    weather_stats_recorded = (
+                        await self.manager.rule_service.record_weather_stats(
+                            envelope.event
+                        )
+                    )
+                    if not weather_stats_recorded:
+                        self.manager.rule_service.log_weather_stats_skip()
+
+                self.manager.rule_service.record_time_series(event)
 
         # 台风统计在 is_new_event 分支外调用，使 by_level 统计每次推送频次，
         # by_max_level 跟踪台风发展过程中的最高等级变化，max_wind_typhoons 更新最大风速。
@@ -95,33 +103,40 @@ class EventStatsAggregator:
             "source_for_display": source_for_display,
             "event_unique_id": event_unique_id,
             "is_new_event": is_new_event,
+            "is_intensity_report": intensity_report,
         }
 
     @staticmethod
-    def _resolve_source_stats_key(envelope: EventEnvelope) -> str:
-        """解析写入 by_source 的贡献统计键。"""
-        from ..source_compat import build_source_stats_key
-
-        source_id = envelope.source_id or "unknown"
-        event_type = envelope.event_type or ""
-        info_type = ""
-
+    def _resolve_info_type(envelope: EventEnvelope) -> str:
+        """从 envelope / 领域事件元数据中提取 info_type。"""
         metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
         for key in ("typhoon_data_mode", "info_type", "data_source"):
             raw = metadata.get(key)
             if raw:
-                info_type = str(raw).strip()
-                break
+                return str(raw).strip()
 
-        if not info_type and isinstance(envelope.event, TyphoonEvent):
-            event_metadata = getattr(envelope.event, "metadata", None)
-            if isinstance(event_metadata, dict):
-                for key in ("typhoon_data_mode", "info_type", "data_source"):
-                    raw = event_metadata.get(key)
-                    if raw:
-                        info_type = str(raw).strip()
-                        break
+        event_metadata = getattr(envelope.event, "metadata", None)
+        if isinstance(event_metadata, dict):
+            for key in ("typhoon_data_mode", "info_type", "data_source"):
+                raw = event_metadata.get(key)
+                if raw:
+                    return str(raw).strip()
+        return ""
 
+    @classmethod
+    def _is_intensity_report(cls, envelope: EventEnvelope) -> bool:
+        """判断当前事件是否为 CENC 烈度速报。"""
+        return is_cenc_intensity_report(
+            envelope.source_id or "",
+            info_type=cls._resolve_info_type(envelope),
+        )
+
+    @classmethod
+    def _resolve_source_stats_key(cls, envelope: EventEnvelope) -> str:
+        """解析写入 by_source 的贡献统计键。"""
+        source_id = envelope.source_id or "unknown"
+        event_type = envelope.event_type or ""
+        info_type = cls._resolve_info_type(envelope)
         return build_source_stats_key(
             source_id,
             event_type=event_type,

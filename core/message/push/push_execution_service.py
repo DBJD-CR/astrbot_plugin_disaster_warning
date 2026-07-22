@@ -26,6 +26,57 @@ class PushExecutionService:
         self.manager = manager  # 主消息管理器 MessagePushManager 实例
 
     @staticmethod
+    def _collect_exception_texts(exc: BaseException) -> list[str]:
+        """收集异常中可用于判定失败语义的文本片段。"""
+        texts: list[str] = [str(exc)]
+        for attr_name in ("message", "wording", "msg", "errMsg", "errmsg"):
+            value = getattr(exc, attr_name, None)
+            if isinstance(value, str) and value.strip():
+                texts.append(value)
+        return texts
+
+    @classmethod
+    def _is_rich_media_transfer_failure(cls, exc: BaseException) -> bool:
+        """判断是否为明确的富媒体传输失败（可安全降级重发）。"""
+        markers = (
+            "rich media transfer failed",
+            "rich media",
+            "transfer failed",
+            "media transfer",
+        )
+        for text in cls._collect_exception_texts(exc):
+            lowered = text.lower()
+            if any(marker in lowered for marker in markers):
+                return True
+        return False
+
+    @classmethod
+    def _is_ambiguous_timeout_failure(cls, exc: BaseException) -> bool:
+        """判断是否为“可能已送达”的超时类失败。
+
+        仅在失败语义明确像超时/事件检查超时时跳过降级重发，
+        避免把 retcode=1200 的富媒体传输失败误判为超时，导致缺失图标等场景无法降级。
+        """
+        # 明确的富媒体失败应优先走降级，而不是按超时吞掉。
+        if cls._is_rich_media_transfer_failure(exc):
+            return False
+
+        error_name = type(exc).__name__.lower()
+        if "timeout" in error_name:
+            return True
+
+        for text in cls._collect_exception_texts(exc):
+            lowered = text.lower()
+            # 仅在文案明确包含超时语义时跳过降级；
+            # EventChecker Failed 本身不等于超时（也可能是 rich media 失败）。
+            if "timeout" in lowered or "timed out" in lowered or "time out" in lowered:
+                return True
+
+        # 不再仅凭 retcode=1200/1400 判定超时：
+        # 平台适配器会把 rich media transfer failed 也包装成 retcode=1200。
+        return False
+
+    @staticmethod
     def _build_plaintext_fallback_message(message: MessageChain) -> MessageChain | None:
         """构建发送失败后的降级消息，保留文本与安全的本地图片组件。"""
         if not isinstance(message, MessageChain):
@@ -265,29 +316,10 @@ class PushExecutionService:
             except Exception as e:
                 error_name = type(e).__name__
 
-                # 检测是否为超时相关的异常。当发生超时时，QQ服务端实际上可能已经成功投递了消息。
-                # 为了防止降级重发导致重复发送，如果检测到超时，我们将直接记录日志，不执行 fallback 降级重发。
-                is_timeout = False
-                err_msg = str(e).lower()
-
-                # 检查属性以判定超时 (针对各种 ActionFailed 异常属性)
-                retcode = getattr(e, "retcode", None)
-                wording = getattr(e, "wording", None)
-                message_attr = getattr(e, "message", None)
-
-                if (
-                    "timeout" in error_name.lower()
-                    or "timeout" in err_msg
-                    or retcode in (1200, 1400)
-                    or (isinstance(wording, str) and "timeout" in wording.lower())
-                    or (
-                        isinstance(message_attr, str)
-                        and "timeout" in message_attr.lower()
-                    )
-                ):
-                    is_timeout = True
-
-                if is_timeout:
+                # 仅对“可能已送达”的超时类失败跳过降级，避免重复推送。
+                # 注意：retcode=1200 也会出现在 rich media transfer failed 场景，
+                # 这类失败应继续走纯文本/本地图降级，而不是直接吞掉。
+                if self._is_ambiguous_timeout_failure(e):
                     logger.warning(
                         f"[灾害预警] 推送到 {session_log} 时疑似超时，但实际推送成功却返回失败，为防止重复，跳过降级重发: {e}"
                     )
@@ -306,9 +338,14 @@ class PushExecutionService:
                         await self.manager.session_sender.send(
                             session, fallback_message
                         )
-                        logger.warning(
-                            f"[灾害预警] {session_log} 富媒体发送失败，已自动降级重发: {error_name}"
-                        )
+                        if self._is_rich_media_transfer_failure(e):
+                            logger.warning(
+                                f"[灾害预警] {session_log} 富媒体传输失败，已自动降级重发: {error_name}"
+                            )
+                        else:
+                            logger.warning(
+                                f"[灾害预警] {session_log} 富媒体发送失败，已自动降级重发: {error_name}"
+                            )
                         return (
                             True,
                             session,

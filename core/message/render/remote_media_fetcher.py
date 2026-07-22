@@ -18,6 +18,8 @@ class RemoteMediaFetcher:
         session_getter: Callable[[int | float | None], Awaitable[Any]],
         image_type_checker: Callable[[str | None], bool],
         content_type_guesser: Callable[[str | None], str | None],
+        image_bytes_checker: Callable[[bytes | bytearray | memoryview | None], bool]
+        | None = None,
     ):
         # 抓取器通过注入回调访问网络会话与内容类型判定能力，保持自身轻量。
         self._session_getter = session_getter  # 网络 session 异步获取回调
@@ -25,6 +27,8 @@ class RemoteMediaFetcher:
         self._content_type_guesser = (
             content_type_guesser  # URL 扩展名后缀 MIME 类型猜测回调
         )
+        # 可选：按文件头校验真实图片，避免 MIME 伪装的 HTML 错误页被当成图片。
+        self._image_bytes_checker = image_bytes_checker
 
     async def fetch(
         self,
@@ -91,6 +95,23 @@ class RemoteMediaFetcher:
                     content_type
                 ):
                     result["error"] = f"响应类型不是图片: {content_type or 'unknown'}"
+                    return result
+
+                # 进一步校验文件头，拦截 Content-Type 伪装成 image/* 的 HTML/JSON 错误页。
+                if (
+                    expected_kind == "image"
+                    and self._image_bytes_checker is not None
+                    and not self._image_bytes_checker(body)
+                ):
+                    preview = body[:48]
+                    try:
+                        preview_text = preview.decode("utf-8", errors="replace")
+                    except Exception:
+                        preview_text = repr(preview)
+                    result["error"] = (
+                        "响应体不是有效图片"
+                        f"（content_type={content_type or 'unknown'}, preview={preview_text!r}）"
+                    )
                     return result
 
                 result["data"] = body  # 写入读取到的二进制数据

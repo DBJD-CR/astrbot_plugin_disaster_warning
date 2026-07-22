@@ -23,6 +23,7 @@ from ...message.presenters.weather_constants import (
     SORTED_WEATHER_TYPES,
 )
 from ...services.identity.event_classifier import is_major_event
+from ..source_compat import is_cenc_intensity_report
 from .typhoon_stats_accumulator import record_typhoon_observation
 
 
@@ -45,6 +46,22 @@ class StatsRuleService:
         if not isinstance(data, EarthquakeEvent):
             return
 
+        event_metadata = getattr(data, "metadata", None)
+        if not isinstance(event_metadata, dict):
+            event_metadata = {}
+        envelope_metadata = (
+            envelope.metadata if isinstance(envelope.metadata, dict) else {}
+        )
+        info_type = str(
+            getattr(data, "info_type", "")
+            or event_metadata.get("info_type")
+            or envelope_metadata.get("info_type")
+            or ""
+        )
+        # 烈度速报是同一物理地震的补充产品，不参与震级分布 / 最大震级 / 地区统计。
+        if is_cenc_intensity_report(envelope.source_id or "", info_type=info_type):
+            return
+
         mag = data.magnitude
         if mag is not None:
             if mag < 3.0:
@@ -65,12 +82,6 @@ class StatsRuleService:
 
             is_reliable = False
             is_cenc_official = False
-            event_metadata = getattr(data, "metadata", None)
-            if not isinstance(event_metadata, dict):
-                event_metadata = {}
-            info_type = str(
-                getattr(data, "info_type", "") or event_metadata.get("info_type") or ""
-            )
             if info_type:
                 # 只有较可靠的正式报、审定报或完整参数报，才参与最大地震等派生统计。
                 info_lower = info_type.lower()

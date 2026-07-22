@@ -147,4 +147,5 @@ class MessageManagerBootstrapService:
             session_getter=self.manager.get_remote_media_session,
             image_type_checker=self.manager._remote_media_service.is_image_content_type,
             content_type_guesser=self.manager._remote_media_service.guess_image_content_type,
+            image_bytes_checker=self.manager._remote_media_service.looks_like_image_bytes,
         )

@@ -25,9 +25,11 @@ from ..services.identity.event_classifier import (
     is_major_record,
 )
 from .source_compat import (
+    build_cenc_intensity_report_sql_predicate,
     build_source_stats_key,
     expand_source_aliases,
     format_source_name,
+    is_cenc_intensity_report,
     normalize_source_name,
 )
 
@@ -1671,6 +1673,32 @@ class DatabaseManager:
             opt.get("source_label", "") for opt in options if opt.get("source_label")
         ]
 
+    @staticmethod
+    def _is_cenc_intensity_report_row(
+        source: str | None = None,
+        source_id: str | None = None,
+        info_type: str | None = None,
+    ) -> bool:
+        """判断数据库行是否为 CENC 烈度速报。"""
+        return is_cenc_intensity_report(
+            source_id or source or "",
+            info_type=info_type,
+        )
+
+    @staticmethod
+    def _cenc_intensity_report_sql_predicate(
+        *,
+        source_expr: str = "source",
+        source_id_expr: str = "source_id",
+        info_type_expr: str = "info_type",
+    ) -> str:
+        """SQL 侧烈度速报判定表达式（静态别名，无用户输入拼接）。"""
+        return build_cenc_intensity_report_sql_predicate(
+            source_expr=source_expr,
+            source_id_expr=source_id_expr,
+            info_type_expr=info_type_expr,
+        )
+
     async def get_statistics(self) -> dict[str, Any]:
         """获取数据库统计信息（按稳定事件集合去重，而非按物理行计数）。"""
         try:
@@ -1678,16 +1706,42 @@ class DatabaseManager:
             cursor = await connection.cursor()
 
             dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
+            intensity_pred = self._cenc_intensity_report_sql_predicate()
 
+            # 去重时优先保留非烈度速报行；聚合在 SQL 完成，避免全量拉回 Python。
+            # 烈度速报不计入 total_events / by_type，与运行时聚合口径一致。
             await cursor.execute(
-                f"SELECT COUNT(DISTINCT {dedup_group_expr}) FROM events"
+                f"""
+                WITH ranked AS (
+                    SELECT
+                        type,
+                        {dedup_group_expr} AS dedup_key,
+                        CASE WHEN {intensity_pred} THEN 1 ELSE 0 END AS is_intensity_report,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY {dedup_group_expr}
+                            ORDER BY
+                                CASE WHEN {intensity_pred} THEN 1 ELSE 0 END ASC,
+                                CASE WHEN NULLIF(updated_at, '') IS NULL THEN 1 ELSE 0 END ASC,
+                                updated_at DESC,
+                                time DESC,
+                                id DESC
+                        ) AS rn
+                    FROM events
+                )
+                SELECT
+                    type,
+                    COUNT(*) AS event_count
+                FROM ranked
+                WHERE rn = 1
+                  AND is_intensity_report = 0
+                GROUP BY type
+                """
             )
-            total = (await cursor.fetchone())[0]
-
-            await cursor.execute(
-                f"SELECT type, COUNT(DISTINCT {dedup_group_expr}) FROM events GROUP BY type"
-            )
-            by_type_raw = {r[0]: r[1] for r in await cursor.fetchall()}
+            by_type_raw = {
+                str(row[0] or "unknown"): int(row[1] or 0)
+                for row in await cursor.fetchall()
+            }
+            total = sum(by_type_raw.values())
 
             # 将数据库中历史遗留的 'weather' 类型统一归并到 standards 中的 'weather_alarm'
             by_type: dict[str, int] = {}
@@ -1697,6 +1751,7 @@ class DatabaseManager:
 
             # 贡献统计：台风 fan/enriched 合并为 typhoon_fanstudio；
             # eqsc_rebuild 单独计入 typhoon_eqsc_rebuild。
+            # 注意：by_source 仍统计烈度速报，保留来源贡献可见性。
             await cursor.execute(
                 f"""
                 SELECT COALESCE(NULLIF(source_id, ''), source) AS source_key,
@@ -1787,16 +1842,20 @@ class DatabaseManager:
 
             dedup_group_expr = "COALESCE(NULLIF(unique_id, ''), NULLIF(real_event_id, ''), CAST(id AS TEXT))"
             normalized_time_expr = "COALESCE(NULLIF(time, ''), NULLIF(updated_at, ''), NULLIF(created_at, ''))"
+            intensity_pred = self._cenc_intensity_report_sql_predicate()
 
+            # 去重优先非烈度速报，并在 SQL 侧直接排除烈度速报，减少 Python 过滤开销。
             await cursor.execute(
                 f"""
                 WITH ranked AS (
                     SELECT
                         {dedup_group_expr} AS dedup_key,
                         {normalized_time_expr} AS event_time,
+                        CASE WHEN {intensity_pred} THEN 1 ELSE 0 END AS is_intensity_report,
                         ROW_NUMBER() OVER (
                             PARTITION BY {dedup_group_expr}
                             ORDER BY
+                                CASE WHEN {intensity_pred} THEN 1 ELSE 0 END ASC,
                                 CASE WHEN NULLIF(updated_at, '') IS NULL THEN 1 ELSE 0 END ASC,
                                 updated_at DESC,
                                 time DESC,
@@ -1808,6 +1867,7 @@ class DatabaseManager:
                 SELECT event_time
                 FROM ranked
                 WHERE rn = 1
+                  AND is_intensity_report = 0
                 """
             )
             rows = await cursor.fetchall()

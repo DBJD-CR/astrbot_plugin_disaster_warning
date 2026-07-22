@@ -33,6 +33,7 @@ from ...domain.typhoon import (
     to_float,
 )
 from ...services.identity.event_identity import resolve_report_num, resolve_source_id
+from .cenc_intensity_record_fields import apply_cenc_intensity_report_fields
 
 
 def _adapt_event_envelope(event: EventEnvelope) -> EventEnvelope:
@@ -132,7 +133,12 @@ class EventRecordFactory:
         event_metadata = getattr(data, "metadata", None)
         if not isinstance(event_metadata, dict):
             event_metadata = {}
-        info_type = str(event_metadata.get("info_type") or "").strip()
+        envelope_metadata = (
+            envelope.metadata if isinstance(envelope.metadata, dict) else {}
+        )
+        info_type = str(
+            event_metadata.get("info_type") or envelope_metadata.get("info_type") or ""
+        ).strip()
         record.update(
             {
                 "latitude": data.latitude,
@@ -150,6 +156,15 @@ class EventRecordFactory:
         report_num = resolve_report_num(event)
         if report_num is not None:
             record["report_num"] = report_num
+
+        apply_cenc_intensity_report_fields(
+            record,
+            event,
+            earthquake_level=earthquake_level,
+            info_type=info_type,
+            event_metadata=event_metadata,
+            envelope_metadata=envelope_metadata,
+        )
         return record
 
     @staticmethod

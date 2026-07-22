@@ -1067,6 +1067,89 @@ class CwaReportPresenter(BasePresenter):
         return cls.format_message(display_context, merged_options)
 
 
+class CencIntensityReportPresenter(BasePresenter):
+    """中国地震台网烈度速报展示器。"""
+
+    presenter_name = "cenc_ir_report_presenter"
+    _TOP_N = 5
+
+    @classmethod
+    def format_message(
+        cls, data: EarthquakeDisplayContext, options: dict | None = None
+    ) -> str:
+        """构建中国地震台网烈度速报文本。"""
+        if not _is_earthquake_view(data):
+            return "🚨[烈度速报] 数据类型错误"
+
+        merged_options = dict(options or {})
+        timezone = merged_options.get("timezone", "UTC+8")
+        metadata = data.metadata if isinstance(data.metadata, dict) else {}
+        lines = ["🚨[烈度速报] 中国地震台网"]
+
+        shock_time = _resolve_shock_time(data)
+        if shock_time:
+            lines.append(
+                f"⏰发震时间：{TimeConverter.format_time(shock_time, timezone)}"
+            )
+
+        place_name = str(data.title or "").strip()
+        if place_name and data.latitude is not None and data.longitude is not None:
+            coords = _format_coordinates(data.latitude, data.longitude)
+            lines.append(f"📍震中：{place_name} ({coords})")
+        elif place_name:
+            lines.append(f"📍震中：{place_name}")
+
+        if data.magnitude is not None:
+            lines.append(f"📊震级：M {data.magnitude:.1f}")
+        if data.depth is not None:
+            lines.append(f"🏔️深度：{_format_depth(data.depth)}")
+        if data.intensity is not None:
+            emoji = _get_intensity_emoji(data.intensity, is_eew=False, is_shindo=False)
+            lines.append(f"💥最大仪器烈度：{data.intensity} {emoji}")
+
+        intensity_info_text = str(
+            metadata.get("intensity_info_text")
+            or merged_options.get("intensity_info_text")
+            or ""
+        ).strip()
+        if intensity_info_text:
+            lines.append(f"📝烈度概述：{intensity_info_text}")
+
+        stations = metadata.get("stations") or data.stations or []
+        if isinstance(stations, dict):
+            stations = list(stations.values())
+        if not isinstance(stations, list):
+            stations = []
+        station_rows = [item for item in stations if isinstance(item, dict)]
+        if station_rows:
+            lines.append(f"📡台站实测 Top{min(cls._TOP_N, len(station_rows))}：")
+            for row in station_rows[: cls._TOP_N]:
+                name = str(row.get("name") or "未知台站").strip() or "未知台站"
+                intensity = row.get("intensity")
+                if intensity is None:
+                    lines.append(f"  · {name}  烈度 --")
+                    continue
+                try:
+                    intensity_text = f"{float(intensity):.1f}"
+                except (TypeError, ValueError):
+                    intensity_text = str(intensity)
+                emoji = _get_intensity_emoji(intensity, is_eew=False, is_shindo=False)
+                lines.append(f"  · {name}  烈度 {intensity_text} {emoji}".rstrip())
+
+        return "\n".join(lines)
+
+    @classmethod
+    def present(
+        cls,
+        display_context: EarthquakeDisplayContext,
+        options: dict | None = None,
+    ) -> str:
+        """展示烈度速报。"""
+        return cls.format_message(
+            display_context, _resolve_options(display_context, options)
+        )
+
+
 class SnetPresenter(BasePresenter):
     """NIED S-Net 海底震度分布展示器。"""
 

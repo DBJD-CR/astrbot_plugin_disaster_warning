@@ -111,6 +111,10 @@ def get_simulation_params(
                     "label": "FAN Studio - 中国地震台网 (CENC)",
                 },
                 {
+                    "value": "cenc_ir_fanstudio",
+                    "label": "FAN Studio - 中国地震台网 (烈度速报)",
+                },
+                {
                     "value": "cwa_fanstudio",
                     "label": "FAN Studio - 台湾中央气象署 (强震即时警报)",
                 },
@@ -216,6 +220,40 @@ def build_earthquake_simulation(
     # 日本来源通常更依赖震度字段展示，因此按震级粗略补一个模拟震度。
     if source in ["jma_p2p", "jma_wolfx", "jma_p2p_info"]:
         earthquake.scale = max(0, min(7, int(magnitude - 2)))
+    # 烈度速报模拟：补最高烈度与全文概述，便于验证展示链路。
+    if source == "cenc_ir_fanstudio":
+        simulated_intensity = max(1.0, min(12.0, round(magnitude + 1.0, 1)))
+        earthquake.intensity = simulated_intensity
+        earthquake.headline = f"{final_place_name}{magnitude:.1f}级地震"
+        metadata.update(
+            {
+                "info_type": "烈度速报",
+                "headline": earthquake.headline,
+                "name_by_info": earthquake.headline,
+                "intensity_info_text": (
+                    f"基于'GB/T17742-2020中国地震烈度表'，结合台站实测仪器烈度，"
+                    f"本次地震推测最高烈度为{simulated_intensity:.0f}度。"
+                ),
+                "station_count": 1,
+                "stations": [
+                    {
+                        "name": "模拟台站",
+                        "intensity": simulated_intensity,
+                        "lat": lat,
+                        "lon": lon,
+                    }
+                ],
+                "stations_topn": [
+                    {
+                        "name": "模拟台站",
+                        "intensity": simulated_intensity,
+                        "lat": lat,
+                        "lon": lon,
+                    }
+                ],
+            }
+        )
+        earthquake.metadata = dict(metadata)
 
     identity = EventIdentity(
         event_id=f"sim_{sim_id_suffix}",

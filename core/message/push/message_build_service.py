@@ -51,6 +51,28 @@ class MessageBuildService:
         "4": "blue",
     }
 
+    # 紧凑 11B 编码末两位颜色映射（如 11B3102 / 11B2002）：
+    # 01=蓝, 02=黄, 03=橙, 04=红。与事件 ID 尾部编码保持一致。
+    _COMPACT_11B_COLOR_MAP: dict[str, str] = {
+        "01": "blue",
+        "02": "yellow",
+        "03": "orange",
+        "04": "red",
+    }
+
+    # 中文/英文颜色关键词 → 英文颜色键。
+    # 仅保留双字中文颜色词，避免“黄/蓝/红”等单字命中地名（黄河/蓝田/红河）。
+    _CN_COLOR_HINT_MAP: dict[str, str] = {
+        "蓝色": "blue",
+        "黄色": "yellow",
+        "橙色": "orange",
+        "红色": "red",
+        "blue": "blue",
+        "yellow": "yellow",
+        "orange": "orange",
+        "red": "red",
+    }
+
     def __init__(self, manager):
         # 通过主消息管理器复用构建器、发送器、缓存和配置能力。
         self.manager = manager  # 主消息管理器 MessagePushManager 实例
@@ -606,22 +628,62 @@ class MessageBuildService:
             logger.error(f"[灾害预警] 地图图片生成失败: {e}")
 
     @classmethod
-    def _resolve_weather_fallback_icon_path(cls, weather_type_code: str) -> str | None:
-        """根据气象预警编码解析本地回退图标路径。
+    def _resolve_weather_color_key(
+        cls,
+        weather_type_code: str,
+        *,
+        color_hint: str | None = None,
+    ) -> str | None:
+        """根据气象预警编码/颜色提示解析颜色关键词。
 
-        支持两种编码格式：
+        支持：
         - 新格式 11B20_yellow：下划线后即为颜色关键词
         - 旧格式 p0002002：最后一位数字表示颜色（1=红, 2=橙, 3=黄, 4=蓝）
+        - 紧凑 11B 格式 11B3102 / 11B2002：末两位 01/02/03/04 表示蓝/黄/橙/红
+        - 中文/英文颜色提示（标题、级别字段）
         """
-        color_key = None
-        if "_" in weather_type_code:
-            # 新格式：11B20_yellow
-            color_key = weather_type_code.rsplit("_", 1)[-1].lower()
-        elif weather_type_code.startswith("p") and len(weather_type_code) >= 8:
-            # 旧格式：p0002002，最后一位数字映射颜色
-            last_digit = weather_type_code[-1]
-            color_key = cls._P_FORMAT_COLOR_MAP.get(last_digit)
+        code = (weather_type_code or "").strip()
+        if code:
+            if "_" in code:
+                # 新格式：11B20_yellow。命中下划线格式后立即返回，
+                # 避免非法后缀继续回退到紧凑 11B 末两位造成误判。
+                color_key = code.rsplit("_", 1)[-1].lower()
+                return (
+                    color_key if color_key in cls._WEATHER_ICON_FALLBACK_MAP else None
+                )
+            if code.startswith("p") and len(code) >= 8:
+                # 旧格式：p0002002，最后一位数字映射颜色。
+                # 命中 p 格式后立即返回，保持与下划线格式互斥。
+                return cls._P_FORMAT_COLOR_MAP.get(code[-1])
+            # 紧凑 11B 编码：仅当末两位明确是 01/02/03/04 时才认作颜色，
+            # 避免把 11B31 这类类型码末位误判成颜色。
+            if len(code) >= 2 and code[-2:] in cls._COMPACT_11B_COLOR_MAP:
+                return cls._COMPACT_11B_COLOR_MAP[code[-2:]]
 
+        raw_hint = (color_hint or "").strip()
+        if raw_hint:
+            hint = raw_hint.lower()
+            # 直接英文键
+            if hint in cls._WEATHER_ICON_FALLBACK_MAP:
+                return hint
+            # 中文颜色提示：仅匹配双字颜色词，避免地名误伤。
+            for token, color_key in cls._CN_COLOR_HINT_MAP.items():
+                if token.lower() in hint or token in raw_hint:
+                    return color_key
+        return None
+
+    @classmethod
+    def _resolve_weather_fallback_icon_path(
+        cls,
+        weather_type_code: str,
+        *,
+        color_hint: str | None = None,
+    ) -> str | None:
+        """根据气象预警编码解析本地回退图标路径。"""
+        color_key = cls._resolve_weather_color_key(
+            weather_type_code,
+            color_hint=color_hint,
+        )
         relative_path = (
             cls._WEATHER_ICON_FALLBACK_MAP.get(color_key) if color_key else None
         )
@@ -678,8 +740,24 @@ class MessageBuildService:
             logger.debug(f"[灾害预警] 已附加气象预警图标: {icon_url}")
             return
 
-        # 官方接口下载失败时，根据颜色后缀回退到本地通用图标，保证所有预警类型都有图标展示。
-        fallback_path = self._resolve_weather_fallback_icon_path(weather_type_code)
+        # 官方接口下载失败时，根据颜色后缀/紧凑编码/标题颜色提示回退到本地通用图标。
+        color_hint_candidates = [
+            metadata.get("severity_color"),
+            metadata.get("level"),
+            metadata.get("headline"),
+            metadata.get("title"),
+            getattr(domain_event, "headline", None),
+            getattr(domain_event, "title", None),
+        ]
+        color_hint = " ".join(
+            str(item).strip()
+            for item in color_hint_candidates
+            if isinstance(item, str) and item.strip()
+        )
+        fallback_path = self._resolve_weather_fallback_icon_path(
+            weather_type_code,
+            color_hint=color_hint or None,
+        )
         if fallback_path:
             try:
                 with open(fallback_path, "rb") as f:

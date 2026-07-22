@@ -19,6 +19,7 @@ from ..domain.typhoon.typhoon_modes import resolve_data_mode
 # 包含各种历史插件版本产生的 key 以及 WebSocket 连接中发送的 label
 _ALIAS_MAP: dict[str, str] = {
     "fan_studio_cenc": "cenc_fanstudio",
+    "fan_studio_cenc_ir": "cenc_ir_fanstudio",
     "fan_studio_cea": "cea_fanstudio",
     "fan_studio_cea_pr": "cea_pr_fanstudio",
     "fan_studio_cwa": "cwa_fanstudio",
@@ -41,6 +42,9 @@ _ALIAS_MAP: dict[str, str] = {
     "taiwan_cwa_earthquake": "cwa_fanstudio",
     "taiwan_cwa_report": "cwa_fanstudio_report",
     "china_cenc_earthquake": "cenc_fanstudio",
+    "china_cenc_intensity_report": "cenc_ir_fanstudio",
+    "cenc-ir": "cenc_ir_fanstudio",
+    "cenc_ir": "cenc_ir_fanstudio",
     "usgs_earthquake": "usgs_fanstudio",
     "china_weather_alarm": "china_weather_fanstudio",
     "china_tsunami": "china_tsunami_fanstudio",
@@ -59,6 +63,9 @@ _ALIAS_MAP: dict[str, str] = {
     "中国地震台网(cenc)": "cenc_fanstudio",
     "中国地震台网（cenc）：地震测定": "cenc_fanstudio",
     "中国地震台网(cenc)：地震测定": "cenc_fanstudio",
+    "中国地震台网（cenc）：烈度速报": "cenc_ir_fanstudio",
+    "中国地震台网(cenc)：烈度速报": "cenc_ir_fanstudio",
+    "中国地震台网烈度速报": "cenc_ir_fanstudio",
     "中国地震预警网（cea）": "cea_fanstudio",
     "中国地震预警网(cea)": "cea_fanstudio",
     "中国地震预警网（省级）": "cea_pr_fanstudio",
@@ -83,6 +90,7 @@ _ALIAS_MAP: dict[str, str] = {
 # 展示名称映射表：用于把内部规范 key 转回更友好的前端展示标签。
 _DISPLAY_MAP: dict[str, str] = {
     "cenc_fanstudio": "中国地震台网 (CENC) - Fan",
+    "cenc_ir_fanstudio": "中国地震台网 (CENC) - 烈度速报",
     "cea_fanstudio": "中国地震预警网 (CEA)",
     "cea_pr_fanstudio": "中国地震预警网 (省级)",
     "cwa_fanstudio": "台湾中央气象署: 强震即时警报 - Fan",
@@ -131,6 +139,64 @@ def format_source_name(source: str) -> str:
     normalized = normalize_source_name(source)
     # 如果映射字典里找不到对应的漂亮展示名，则使用归一化后的去重字符串作为兜底
     return _DISPLAY_MAP.get(normalized) or str(source or "").strip() or "未知来源"
+
+
+def is_cenc_intensity_report(
+    source: str | None = None,
+    *,
+    info_type: str | None = None,
+) -> bool:
+    """判断是否为中国地震台网烈度速报。
+
+    烈度速报是同一物理地震的补充产品，不应计入全局地震事件数、
+    震级分布与时间序列；但仍保留来源贡献统计与事件列表落库。
+    """
+    normalized = normalize_source_name(source or "")
+    if normalized == "cenc_ir_fanstudio":
+        return True
+    info_text = str(info_type or "").strip()
+    return "烈度速报" in info_text
+
+
+def cenc_intensity_report_source_keys() -> tuple[str, ...]:
+    """返回可识别为 CENC 烈度速报的 source/source_id 键集合。
+
+    包含规范 key 与历史别名，供 SQL 侧过滤与 Python 判定保持一致。
+    统一折叠为 strip + lower 形态，避免大小写/空白导致 SQL 与 Python 分叉。
+    """
+    keys: set[str] = {"cenc_ir_fanstudio"}
+    for alias, target in _ALIAS_MAP.items():
+        if target == "cenc_ir_fanstudio":
+            keys.add(str(alias).strip().lower())
+    return tuple(sorted(keys))
+
+
+def build_cenc_intensity_report_sql_predicate(
+    *,
+    source_expr: str = "source",
+    source_id_expr: str = "source_id",
+    info_type_expr: str = "info_type",
+) -> str:
+    """构建 SQLite 侧“是否为 CENC 烈度速报”布尔表达式。
+
+    仅拼接内部列名与静态别名字面量，不接受外部用户输入。
+    对 source/source_id 使用 LOWER(TRIM(...))，与 normalize_source_name 对齐。
+    """
+    quoted_keys = ", ".join(
+        "'" + key.replace("'", "''") + "'"
+        for key in cenc_intensity_report_source_keys()
+    )
+    # 与 Python 侧 normalize_source_name 一致：优先 source_id，其次 source，并做 trim/lower。
+    source_key_expr = (
+        "LOWER(TRIM(COALESCE("
+        f"NULLIF(TRIM({source_id_expr}), ''), "
+        f"NULLIF(TRIM({source_expr}), ''), "
+        "'')))"
+    )
+    return (
+        f"({source_key_expr} IN ({quoted_keys}) "
+        f"OR INSTR(COALESCE({info_type_expr}, ''), '烈度速报') > 0)"
+    )
 
 
 def build_source_stats_key(

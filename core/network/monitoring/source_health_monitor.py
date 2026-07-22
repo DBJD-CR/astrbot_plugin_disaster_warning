@@ -17,6 +17,7 @@ class SourceHealthMonitor:
     # 静态映射：数据源标识 -> 探测目标主机名/IP 地址
     HOST_MAP: dict[str, str] = {
         "fan_studio_all": "ws.fanstudio.tech",
+        "fan_studio_cenc_ir": "ws.fanstudio.tech",
         "p2p_main": "api.p2pquake.net",
         "wolfx_all": "ws-api.wolfx.jp",
         "global_quake": "gqm.aloys23.link",
@@ -29,6 +30,7 @@ class SourceHealthMonitor:
     # 静态映射：数据源标识 -> 在管理后台展示的可读中文名称
     DISPLAY_MAP: dict[str, str] = {
         "fan_studio_all": "FAN Studio",
+        "fan_studio_cenc_ir": "FAN Studio 烈度速报",
         "p2p_main": "P2P地震情報",
         "wolfx_all": "Wolfx",
         "global_quake": "Global Quake",
