@@ -308,16 +308,19 @@ class EarthquakeThresholdRule(BaseRule):
                     )
             return RuleDecision.accept(reason="S-Net规则通过")
 
-        # 模式 5：仅依赖震级阈值的来源统一走这一分支。
-        if source_id == "usgs_fanstudio" or intensity_mode == "magnitude":
-            runtime_filter = policy_state.get("usgs_filter") or {}
+        # 模式 5：仅依赖震级阈值的来源统一走这一分支（USGS / ShakeAlert 等）。
+        if (
+            source_id in {"usgs_fanstudio", "sa_fanstudio"}
+            or intensity_mode == "magnitude"
+        ):
+            runtime_filter = policy_state.get("magnitude_filter") or {}
             if runtime_filter.get("enabled", True):
                 if (
                     earthquake.magnitude is not None
                     and earthquake.magnitude < runtime_filter.get("min_magnitude", 4.5)
                 ):
-                    return RuleDecision.reject(reason="USGS过滤器")
-            return RuleDecision.accept(reason="USGS规则通过")
+                    return RuleDecision.reject(reason="震级过滤器")
+            return RuleDecision.accept(reason="震级规则通过")
 
         # 其他未配置强度模式的数据源默认直接通过
         return RuleDecision.accept(reason="无需强度过滤")
