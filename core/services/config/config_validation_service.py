@@ -537,13 +537,13 @@ class ConfigValidator:
             ConfigValidator._ensure_bool(snet_filter, "enabled", True)
             cfg["snet_filter"] = snet_filter
 
-        # 5. 仅震级过滤器 (Magnitude Only Filter)
+        # 5. 震级过滤器（配置键 magnitude_only_filter，适用于 USGS / ShakeAlert 等）
         mag_filter = cfg.get("magnitude_only_filter", {})
         if isinstance(mag_filter, dict):
             min_mag = mag_filter.get("min_magnitude")
             if isinstance(min_mag, (int, float)) and (min_mag < 0 or min_mag > 10):
                 logger.warning(
-                    f"[灾害预警] 配置警告: 仅震级过滤器最小震级 {min_mag} 超出常规范围，已修正。"
+                    f"[灾害预警] 配置警告: 震级过滤器最小震级 {min_mag} 超出常规范围，已修正。"
                 )
                 mag_filter["min_magnitude"] = max(0.0, min(10.0, float(min_mag)))
 
@@ -1223,10 +1223,14 @@ class ConfigValidator:
                 )
                 snet_cfg["poll_interval_seconds"] = 60
 
-        # 校验 FAN Studio 下的台风开关
+        # 校验 FAN Studio 下的扩展开关
         fan_studio_cfg = cfg.get("fan_studio")
         if isinstance(fan_studio_cfg, dict):
             ConfigValidator._ensure_bool(fan_studio_cfg, "china_typhoon", True)
+            # 旧配置可能没有新键；缺省跟随 schema（默认关闭，高频源）
+            if "usa_shakealert" not in fan_studio_cfg:
+                fan_studio_cfg["usa_shakealert"] = False
+            ConfigValidator._ensure_bool(fan_studio_cfg, "usa_shakealert", False)
 
         # 校验 EQSC 数据源配置（组总闸 + 台风富化 + 海啸轮询子开关）
         eqsc_cfg = cfg.get("eqsc")
