@@ -109,11 +109,15 @@ class MessageRemoteMediaService:
             return True
         if len(sample) >= 12 and sample.startswith(b"RIFF") and sample[8:12] == b"WEBP":
             return True
-        if sample.lstrip().startswith((b"<svg", b"<?xml")):
+
+        # SVG：仅接受明确 SVG 内容，避免把 SOAP/RSS/Atom 等 XML 错误页当成图片。
+        stripped = sample.lstrip().lower()
+        if stripped.startswith(b"<svg"):
+            return True
+        if stripped.startswith(b"<?xml") and b"svg" in sample.lower():
             return True
 
         # 明确拒绝 HTML/文本伪图
-        stripped = sample.lstrip().lower()
         if stripped.startswith(
             (b"<!doctype", b"<html", b"<head", b"<body", b"{", b"[")
         ):
