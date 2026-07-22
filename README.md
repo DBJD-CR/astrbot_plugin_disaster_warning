@@ -116,6 +116,7 @@
 - **中国地震台网地震测定** (FAN Studio / Wolfx) - 正式地震测定信息。
 - **日本气象厅地震情报** (P2P / Wolfx) - 详细地震情报。
 - **USGS地震测定** (FAN Studio) - 美国地质调查局地震信息。
+- **美国 ShakeAlert 地震预警** (FAN Studio) - 美国西海岸 ShakeAlert 实时地震预警。
 - **Global Quake服务器** - 全球地震测站实时计算推送，精度有限。
 - **中国气象局气象预警** (FAN Studio) - 气象灾害预警。
 - **自然资源部海啸预警中心** (FAN Studio) - 海啸预警信息。
@@ -418,6 +419,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 | 日本气象厅地震情报 | P2P | Info | ✅ |
 | 日本气象厅地震情报 | Wolfx | Info | ✅ |
 | 美国地质调查局 | FAN Studio | Info | ✅ |
+| 美国 ShakeAlert | FAN Studio | EEW | ✅ |
 | 中国气象局 | FAN Studio | Weather | ✅ |
 | 中国海啸预警中心 | FAN Studio | Tsunami | ✅ |
 | 日本气象厅海啸预报 | P2P | Tsunami | 🧪 |
@@ -513,6 +515,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 - **中国地震台网 (`china_cenc_earthquake`)**: 接收地震测定正式报，信息包含确切的发震时间、经纬度、深度和震级。
 - **日本气象厅 EEW (`japan_jma_eew`)**: 通过 FAN Studio 链路获取的日本紧急地震速报，通常具备较低的跨境延迟。
 - **USGS 地震测定 (`usgs_earthquake`)**: 接入美国地质调查局全球测定数据。
+- **美国 ShakeAlert 地震预警 (`usa_shakealert`)**: 接入美国西海岸 ShakeAlert 实时地震预警。
 - **中国气象预警 (`china_weather_alarm`)**: 实时同步中国气象局下发的各类别、各等级气象灾害预警。
 - **自然资源部海啸预警 (`china_tsunami`)**: 接收权威的海啸预报和警报。
 
@@ -1078,6 +1081,7 @@ https://obs.nmefc.cn/Warning/TsunamiAdvice/202607111826_2_file/Earthquake_Pos.jp
 #
 # 国际/全球:
 # usgs_fanstudio (USGS)
+# sa_fanstudio (美国 ShakeAlert 地震预警)
 # global_quake (Global Quake)
 ```
 

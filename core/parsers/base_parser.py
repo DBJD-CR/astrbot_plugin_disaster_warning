@@ -118,6 +118,7 @@ class BaseParser:
         # 规则 2：根据各数据源特定的必填字段，检查是否大面积为空
         critical_fields = {
             "usgs_fanstudio": ["id", "magnitude", "placeName"],
+            "sa_fanstudio": ["id", "magnitude", "placeName"],
             "china_tsunami_fanstudio": ["warningInfo", "code", "timeInfo"],
             "china_weather_fanstudio": ["title", "description"],
         }

@@ -10,7 +10,11 @@ from ..sources.source_catalog import SOURCE_CATALOG, get_source_entry
 from .china_earthquake_parser import CencEarthquakeParser, CencEarthquakeWolfxParser
 from .china_eew_parser import CEAEEWParser, CEAEEWPRParser, CEAEEWWolfxParser
 from .china_intensity_report_parser import CencIntensityReportParser
-from .global_sources_parser import GlobalQuakeParser, UsgsEarthquakeParser
+from .global_sources_parser import (
+    GlobalQuakeParser,
+    ShakeAlertEewParser,
+    UsgsEarthquakeParser,
+)
 from .japan_earthquake_parser import JmaEarthquakeP2PParser, JmaEarthquakeWolfxParser
 from .japan_eew_parser import JmaEewFanStudioParser, JmaEewP2PParser, JmaEewWolfxParser
 from .snet_parser import SnetParser
@@ -35,6 +39,7 @@ PARSER_CLASS_BY_NAME = {
     "weather_alarm_parser": WeatherAlarmParser,
     "typhoon_parser": TyphoonParser,
     "global_report_parser": UsgsEarthquakeParser,
+    "shakealert_eew_parser": ShakeAlertEewParser,
     "global_quake_parser": GlobalQuakeParser,
     "snet_parser": SnetParser,
 }

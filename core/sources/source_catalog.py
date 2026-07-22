@@ -552,6 +552,40 @@ SOURCE_CATALOG: dict[str, SourceEntry] = {
         payload_signatures=(("url",),),
         payload_predicates=("usgs_report",),
     ),
+    # sa_fanstudio: 美国 ShakeAlert - 来自 FAN Studio
+    # 推送频率较高，统计语义按地震事件（earthquake）处理，不参与 EEW 机构状态卡片
+    # （与 Global Quake 一致：无 institution_key / query_group）。
+    "sa_fanstudio": SourceEntry(
+        source_id="sa_fanstudio",
+        source_enum="fan_studio_sa",
+        source_type=SourceType.EARTHQUAKE_INFO,
+        provider_family=ProviderFamily.FAN_STUDIO,
+        config_group="fan_studio",
+        config_key="usa_shakealert",
+        parser_name="shakealert_eew_parser",
+        presentation_type="earthquake_eew",
+        text_presenter_key="shakealert_eew",
+        report_policy="none",
+        intensity_mode="magnitude",
+        priority=1,
+        display_name="美国 ShakeAlert",
+        description="美国 ShakeAlert - FAN Studio WebSocket（高频源，统计归入地震事件）",
+        default_timezone="America/Los_Angeles",
+        publish_time_field="shockTime",
+        fingerprint_prefix="sa",
+        connection_group="fan_studio_all",
+        connection_handler="fan_studio",
+        connection_data_source="fan_studio_mixed",
+        connection_url="wss://ws.fanstudio.tech/all",
+        connection_backup_url="wss://ws.fanstudio.hk/all",
+        dispatch_family="fan_studio_report",
+        provider_source_names=("sa",),
+        provider_aliases=("fan_studio_sa", "sa", "shakealert", "usa_shakealert"),
+        routing_tags=("fan_studio", "usa", "report", "shakealert"),
+        # 与 USGS 区分：ShakeAlert 无 url，且无 infoTypeName
+        payload_signatures=(("placeName", "shockTime", "magnitude", "id"),),
+        payload_exclusions=(("url",),),
+    ),
     # china_tsunami_fanstudio: 自然资源部海啸预警中心的海啸警报推送
     "china_tsunami_fanstudio": SourceEntry(
         source_id="china_tsunami_fanstudio",

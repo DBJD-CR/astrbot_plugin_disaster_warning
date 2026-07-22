@@ -124,6 +124,10 @@ def get_simulation_params(
                 },
                 {"value": "jma_fanstudio", "label": "FAN Studio - 日本气象厅 (JMA)"},
                 {"value": "usgs_fanstudio", "label": "FAN Studio - USGS"},
+                {
+                    "value": "sa_fanstudio",
+                    "label": "FAN Studio - 美国 ShakeAlert 地震预警",
+                },
                 {"value": "jma_wolfx", "label": "Wolfx - 日本 JMA 紧急地震速报"},
                 {"value": "cea_wolfx", "label": "Wolfx - 中国 CENC 地震预警"},
                 {"value": "cwa_wolfx", "label": "Wolfx - 台湾 CWA 地震预警"},

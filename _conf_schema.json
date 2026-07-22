@@ -92,6 +92,12 @@
             "default": true,
             "hint": "通过 FAN Studio WebSocket 接收USGS地震测定信息"
           },
+          "usa_shakealert": {
+            "description": "美国 ShakeAlert：地震预警",
+            "type": "bool",
+            "default": false,
+            "hint": "通过 FAN Studio WebSocket 接收美国 ShakeAlert 地震预警信息"
+          },
           "china_weather_alarm": {
             "description": "中国气象局：气象预警",
             "type": "bool",
@@ -528,12 +534,12 @@
         }
       },
       "magnitude_only_filter": {
-        "description": "USGS震级过滤器",
+        "description": "震级过滤器",
         "type": "object",
-        "hint": "适用于USGS等只有震级信息的数据源",
+        "hint": "适用于 USGS、ShakeAlert 等仅依赖震级阈值、无烈度/震度字段的数据源",
         "items": {
           "enabled": {
-            "description": "启用仅震级过滤器",
+            "description": "启用震级过滤器",
             "type": "bool",
             "default": true
           },

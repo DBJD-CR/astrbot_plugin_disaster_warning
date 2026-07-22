@@ -250,6 +250,7 @@ function ConnectionsGrid() {
                 china_cenc_intensity_report: '中国地震台网 (CENC) 烈度速报',
                 cenc_ir_fanstudio: '中国地震台网 (CENC) 烈度速报',
                 usgs_earthquake: '美国地质调查局 (USGS)',
+                usa_shakealert: '美国 ShakeAlert 地震预警',
                 china_weather_alarm: '中国气象局: 气象预警',
                 china_tsunami: '自然资源部海啸预警中心',
                 china_typhoon: '中国气象局：实时活跃台风',

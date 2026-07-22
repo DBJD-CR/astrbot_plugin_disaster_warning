@@ -67,8 +67,10 @@ class MessageRuntimeComponentFactory:
         }
 
     @staticmethod
-    def _build_usgs_filter_config(earthquake_filters: dict[str, Any]) -> dict[str, Any]:
-        """构建以震级为主的过滤配置。"""
+    def _build_magnitude_filter_config(
+        earthquake_filters: dict[str, Any],
+    ) -> dict[str, Any]:
+        """构建仅震级阈值过滤配置。"""
         magnitude_only_filter_config = earthquake_filters.get(
             "magnitude_only_filter", {}
         )
@@ -245,7 +247,7 @@ class MessageRuntimeComponentFactory:
             "scale_filter": MessageRuntimeComponentFactory._build_scale_filter_config(
                 earthquake_filters
             ),
-            "usgs_filter": MessageRuntimeComponentFactory._build_usgs_filter_config(
+            "magnitude_filter": MessageRuntimeComponentFactory._build_magnitude_filter_config(
                 earthquake_filters
             ),
             "global_quake_filter": MessageRuntimeComponentFactory._build_global_quake_filter_config(

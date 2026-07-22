@@ -19,6 +19,7 @@ from .earthquake_presenter import (
     GlobalQuakeTextPresenter,
     JmaEarthquakeInfoPresenter,
     JmaEewPresenter,
+    ShakeAlertEewPresenter,
     SnetPresenter,
     UsgsEarthquakePresenter,
 )
@@ -49,6 +50,7 @@ _TEXT_KEY_PRESENTER_REGISTRY: dict[str, type[BasePresenter]] = {
     "cenc_ir_report": CencIntensityReportPresenter,
     "jma_report": JmaEarthquakeInfoPresenter,
     "usgs_report": UsgsEarthquakePresenter,
+    "shakealert_eew": ShakeAlertEewPresenter,
     "snet": SnetPresenter,
     "tsunami_cn": TsunamiAlertPresenter,
     "tsunami_jma": JmaTsunamiPresenter,
