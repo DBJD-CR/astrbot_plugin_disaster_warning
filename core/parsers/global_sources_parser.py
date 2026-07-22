@@ -506,8 +506,16 @@ class UsgsEarthquakeParser(BaseParser):
 
     @staticmethod
     def _get_field(data: dict[str, Any], field_name: str):
-        # USGS 来源字段大小写并不总是稳定，因此同时兼容首字母大写与全小写两种写法。
-        return data.get(field_name) or data.get(field_name.capitalize())
+        # USGS 来源字段大小写并不总是稳定；用显式 key 判断，避免 0 / 0.0 被 or 吞掉。
+        if field_name in data:
+            return data[field_name]
+        # camelCase → PascalCase（shockTime → ShockTime），比 str.capitalize() 更稳妥。
+        pascal_name = (
+            field_name[:1].upper() + field_name[1:] if field_name else field_name
+        )
+        if pascal_name in data:
+            return data[pascal_name]
+        return None
 
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
         """解析美国地质调查局地震数据。"""
@@ -521,19 +529,13 @@ class UsgsEarthquakeParser(BaseParser):
             if self._is_heartbeat_message(msg_data):
                 return None
 
-            # 检测关键字段完整度
+            # 检测关键字段完整度（复用 _get_field，兼容 camelCase / PascalCase）
             required_fields = ["id", "magnitude", "latitude", "longitude", "shockTime"]
-            missing_fields = []
-            for field in required_fields:
-                if field not in msg_data and field.capitalize() not in msg_data:
-                    missing_fields.append(field)
-                elif field in msg_data and msg_data[field] is None:
-                    missing_fields.append(field)
-                elif (
-                    field.capitalize() in msg_data
-                    and msg_data[field.capitalize()] is None
-                ):
-                    missing_fields.append(field)
+            missing_fields = [
+                field
+                for field in required_fields
+                if self._get_field(msg_data, field) is None
+            ]
             if missing_fields:
                 plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 数据缺少部分字段: {missing_fields}，继续处理..."
@@ -668,8 +670,16 @@ class ShakeAlertEewParser(BaseParser):
 
     @staticmethod
     def _get_field(data: dict[str, Any], field_name: str):
-        # ShakeAlert 字段大小写可能不稳定，兼容首字母大写与原样键名。
-        return data.get(field_name) or data.get(field_name.capitalize())
+        # ShakeAlert 字段大小写可能不稳定；用显式 key 判断，避免 0 / 0.0 被 or 吞掉。
+        if field_name in data:
+            return data[field_name]
+        # camelCase → PascalCase（shockTime → ShockTime），比 str.capitalize() 更稳妥。
+        pascal_name = (
+            field_name[:1].upper() + field_name[1:] if field_name else field_name
+        )
+        if pascal_name in data:
+            return data[pascal_name]
+        return None
 
     def _parse_data(self, data: dict[str, Any]) -> EventEnvelope | None:
         """解析美国 ShakeAlert 地震预警数据。"""
@@ -689,18 +699,13 @@ class ShakeAlertEewParser(BaseParser):
                 )
                 return None
 
+            # 检测关键字段完整度（复用 _get_field，兼容 camelCase / PascalCase）
             required_fields = ["id", "magnitude", "latitude", "longitude", "shockTime"]
-            missing_fields = []
-            for field in required_fields:
-                if field not in msg_data and field.capitalize() not in msg_data:
-                    missing_fields.append(field)
-                elif field in msg_data and msg_data[field] is None:
-                    missing_fields.append(field)
-                elif (
-                    field.capitalize() in msg_data
-                    and msg_data[field.capitalize()] is None
-                ):
-                    missing_fields.append(field)
+            missing_fields = [
+                field
+                for field in required_fields
+                if self._get_field(msg_data, field) is None
+            ]
             if missing_fields:
                 plugin_logger.debug(
                     f"[灾害预警] {self.source_id} 数据缺少部分字段: {missing_fields}，继续处理..."
