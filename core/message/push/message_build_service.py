@@ -60,16 +60,13 @@ class MessageBuildService:
         "04": "red",
     }
 
-    # 中文颜色关键词 → 英文颜色键
+    # 中文/英文颜色关键词 → 英文颜色键。
+    # 仅保留双字中文颜色词，避免“黄/蓝/红”等单字命中地名（黄河/蓝田/红河）。
     _CN_COLOR_HINT_MAP: dict[str, str] = {
         "蓝色": "blue",
         "黄色": "yellow",
         "橙色": "orange",
         "红色": "red",
-        "蓝": "blue",
-        "黄": "yellow",
-        "橙": "orange",
-        "红": "red",
         "blue": "blue",
         "yellow": "yellow",
         "orange": "orange",
@@ -648,15 +645,16 @@ class MessageBuildService:
         code = (weather_type_code or "").strip()
         if code:
             if "_" in code:
-                # 新格式：11B20_yellow
+                # 新格式：11B20_yellow。命中下划线格式后立即返回，
+                # 避免非法后缀继续回退到紧凑 11B 末两位造成误判。
                 color_key = code.rsplit("_", 1)[-1].lower()
-                if color_key in cls._WEATHER_ICON_FALLBACK_MAP:
-                    return color_key
+                return (
+                    color_key if color_key in cls._WEATHER_ICON_FALLBACK_MAP else None
+                )
             if code.startswith("p") and len(code) >= 8:
-                # 旧格式：p0002002，最后一位数字映射颜色
-                color_key = cls._P_FORMAT_COLOR_MAP.get(code[-1])
-                if color_key:
-                    return color_key
+                # 旧格式：p0002002，最后一位数字映射颜色。
+                # 命中 p 格式后立即返回，保持与下划线格式互斥。
+                return cls._P_FORMAT_COLOR_MAP.get(code[-1])
             # 紧凑 11B 编码：仅当末两位明确是 01/02/03/04 时才认作颜色，
             # 避免把 11B31 这类类型码末位误判成颜色。
             if len(code) >= 2 and code[-2:] in cls._COMPACT_11B_COLOR_MAP:
@@ -668,13 +666,8 @@ class MessageBuildService:
             # 直接英文键
             if hint in cls._WEATHER_ICON_FALLBACK_MAP:
                 return hint
-            # 中文/缩写提示：优先匹配更长的颜色词，避免“黄/蓝”等单字误伤。
-            ordered_tokens = sorted(
-                cls._CN_COLOR_HINT_MAP.items(),
-                key=lambda item: len(item[0]),
-                reverse=True,
-            )
-            for token, color_key in ordered_tokens:
+            # 中文颜色提示：仅匹配双字颜色词，避免地名误伤。
+            for token, color_key in cls._CN_COLOR_HINT_MAP.items():
                 if token.lower() in hint or token in raw_hint:
                     return color_key
         return None
