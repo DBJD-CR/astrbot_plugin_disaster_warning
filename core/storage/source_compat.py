@@ -162,11 +162,12 @@ def cenc_intensity_report_source_keys() -> tuple[str, ...]:
     """返回可识别为 CENC 烈度速报的 source/source_id 键集合。
 
     包含规范 key 与历史别名，供 SQL 侧过滤与 Python 判定保持一致。
+    统一折叠为 strip + lower 形态，避免大小写/空白导致 SQL 与 Python 分叉。
     """
     keys: set[str] = {"cenc_ir_fanstudio"}
     for alias, target in _ALIAS_MAP.items():
         if target == "cenc_ir_fanstudio":
-            keys.add(str(alias))
+            keys.add(str(alias).strip().lower())
     return tuple(sorted(keys))
 
 
@@ -179,13 +180,18 @@ def build_cenc_intensity_report_sql_predicate(
     """构建 SQLite 侧“是否为 CENC 烈度速报”布尔表达式。
 
     仅拼接内部列名与静态别名字面量，不接受外部用户输入。
+    对 source/source_id 使用 LOWER(TRIM(...))，与 normalize_source_name 对齐。
     """
     quoted_keys = ", ".join(
         "'" + key.replace("'", "''") + "'"
         for key in cenc_intensity_report_source_keys()
     )
+    # 与 Python 侧 normalize_source_name 一致：优先 source_id，其次 source，并做 trim/lower。
     source_key_expr = (
-        f"COALESCE(NULLIF({source_id_expr}, ''), NULLIF({source_expr}, ''), '')"
+        "LOWER(TRIM(COALESCE("
+        f"NULLIF(TRIM({source_id_expr}), ''), "
+        f"NULLIF(TRIM({source_expr}), ''), "
+        "'')))"
     )
     return (
         f"({source_key_expr} IN ({quoted_keys}) "
