@@ -690,6 +690,53 @@ class UsgsEarthquakePresenter(BasePresenter):
         )
 
 
+class ShakeAlertEewPresenter(BasePresenter):
+    """美国 ShakeAlert 地震预警展示器。"""
+
+    presenter_name = "shakealert_eew_presenter"
+
+    @classmethod
+    def format_message(
+        cls, data: EarthquakeDisplayContext, options: dict | None = None
+    ) -> str:
+        """构建 ShakeAlert 地震预警中文基础文本。"""
+        if not _is_earthquake_view(data):
+            return "🚨[地震预警] 数据类型错误"
+
+        merged_options = dict(options or {})
+        timezone = merged_options.get("timezone", "UTC+8")
+        lines = ["🚨[地震预警] 美国 ShakeAlert"]
+
+        shock_time = _resolve_shock_time(data)
+        if shock_time:
+            lines.append(
+                f"⏰发震时间：{TimeConverter.format_time(shock_time, timezone)}"
+            )
+
+        if data.title and data.latitude is not None and data.longitude is not None:
+            coords = _format_coordinates(data.latitude, data.longitude)
+            lines.append(f"📍震中：{data.title} ({coords})")
+
+        if data.magnitude is not None:
+            lines.append(f"📊震级：M {data.magnitude:.1f}")
+
+        if data.depth is not None:
+            lines.append(f"🏔️深度：{_format_depth(data.depth)}")
+
+        return "\n".join(lines)
+
+    @classmethod
+    def present(
+        cls,
+        display_context: EarthquakeDisplayContext,
+        options: dict | None = None,
+    ) -> str:
+        """展示 ShakeAlert 预警（不附加本地预估）。"""
+        return cls.format_message(
+            display_context, _resolve_options(display_context, options)
+        )
+
+
 class JmaEarthquakeInfoPresenter(BasePresenter):
     """日本气象厅地震情报展示器。"""
 
