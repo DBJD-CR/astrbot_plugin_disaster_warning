@@ -699,6 +699,22 @@ class ShakeAlertEewParser(BaseParser):
                 )
                 return None
 
+            # 与 FSSN 区分：FSSN 事件 ID 以 FSSN 开头，且常带 infoTypeName/createTime
+            event_raw_id_preview = str(self._get_field(msg_data, "id") or "").strip()
+            if event_raw_id_preview.upper().startswith("FSSN"):
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 检测到 FSSN 事件 ID，跳过"
+                )
+                return None
+            if any(
+                self._get_field(msg_data, field) is not None
+                for field in ("infoTypeName", "createTime", "placeName_zh")
+            ):
+                plugin_logger.debug(
+                    f"[灾害预警] {self.source_id} 检测到 FSSN 特征字段，跳过"
+                )
+                return None
+
             # 检测关键字段完整度（复用 _get_field，兼容 camelCase / PascalCase）
             required_fields = ["id", "magnitude", "latitude", "longitude", "shockTime"]
             missing_fields = [
