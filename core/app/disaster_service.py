@@ -295,10 +295,12 @@ class DisasterWarningService:
             self.http_fetcher = HTTPDataFetcher(self.config)  # 初始化 HTTP 轮询拉取组件
             self._register_handlers()
             self._configure_connections()
-            # EQSC 通道 / 台风轮询就绪日志（组总闸与子开关已解耦）
+            # 就绪日志以真实轮询服务为准（catalog 组总闸 + typhoon_enrichment）
+            typhoon_poll = getattr(self, "eqsc_typhoon_poll_service", None)
+            poll_enabled = bool(typhoon_poll is not None and typhoon_poll.is_enabled())
             enrichment = self.typhoon_enrichment_service
-            if enrichment.is_enabled:
-                logger.info("[灾害预警] EQSC 台风轮询/富化服务已就绪")
+            if poll_enabled:
+                logger.info("[灾害预警] EQSC 台风轮询服务已就绪")
             elif getattr(enrichment, "is_channel_enabled", False):
                 logger.info(
                     "[灾害预警] EQSC 通道已启用，但台风轮询子开关关闭；"

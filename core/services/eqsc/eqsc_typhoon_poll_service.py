@@ -61,12 +61,12 @@ class EqscTyphoonPollService:
 
     def _resolve_interval(self) -> int:
         cfg = self._eqsc_config()
-        try:
-            interval = int(
-                cfg.get("typhoon_poll_interval_seconds", self.DEFAULT_INTERVAL_SECONDS)
-            )
-        except (TypeError, ValueError):
+        raw = cfg.get("typhoon_poll_interval_seconds", self.DEFAULT_INTERVAL_SECONDS)
+        # bool 是 int 子类，不能当作合法间隔。
+        if isinstance(raw, bool) or not isinstance(raw, int):
             interval = self.DEFAULT_INTERVAL_SECONDS
+        else:
+            interval = raw
         return max(self.MIN_INTERVAL_SECONDS, min(interval, self.MAX_INTERVAL_SECONDS))
 
     def _get_shared_token_manager(self) -> EqscTokenManager | None:
@@ -234,20 +234,8 @@ class EqscTyphoonPollService:
                 domain.is_active = bool(raw.get("isActive"))
         return envelope
 
-    async def fetch_once(self, *, emit_event: bool = True) -> list[dict[str, Any]]:
-        """抓取一轮 EQSC 台风列表，可选投递变化事件。"""
-        client = self._ensure_client()
-        if client is None:
-            return []
-
-        # 轮询侧强制绕过短缓存，确保按间隔拿到最新列表。
-        typhoon_list = await client.fetch_typhoon_list(use_cache=False)
-        if not isinstance(typhoon_list, list):
-            self._consecutive_failures += 1
-            return []
-
-        # 客户端失败时常返回空列表；与“确实无台风”无法严格区分，
-        # 这里仅在拿到可解析对象时记成功。
+    def _filter_active_items(self, typhoon_list: list[Any]) -> list[dict[str, Any]]:
+        """从列表中筛出可处理的活跃台风对象。"""
         active_items: list[dict[str, Any]] = []
         for item in typhoon_list:
             if not isinstance(item, dict):
@@ -257,13 +245,10 @@ class EqscTyphoonPollService:
             if not self._is_active_typhoon(item):
                 continue
             active_items.append(item)
+        return active_items
 
-        self._consecutive_failures = 0
-        self._last_success_at = time.time()
-
-        if not emit_event:
-            return active_items
-
+    async def _process_typhoon_updates(self, active_items: list[dict[str, Any]]) -> int:
+        """按指纹去重后投递变化事件；单事件失败不中断整批。"""
         seen_ids: set[str] = set()
         emitted = 0
         for raw in active_items:
@@ -281,11 +266,22 @@ class EqscTyphoonPollService:
             if self._last_fingerprints.get(typhoon_id) == fingerprint:
                 continue
 
+            # 启动静默期：不进入推送链路，但仍提交指纹，避免静默结束后整批误报“推送”。
+            is_silence = getattr(self.service, "is_in_silence_period", None)
+            if callable(is_silence) and is_silence():
+                self._last_fingerprints[typhoon_id] = fingerprint
+                continue
+
             try:
                 await self.service._handle_disaster_event(envelope)
-            except Exception:
-                # 失败不提交指纹，下一轮可重试。
-                raise
+            except Exception as exc:
+                # 单台风软失败：记录后继续处理其余活跃台风；
+                # 不提交指纹，下一轮可重试该台风。
+                logger.error(
+                    f"[灾害预警] EQSC 台风事件推送失败，已跳过并继续本轮: "
+                    f"ID 为 {typhoon_id}, 错误信息：{exc}"
+                )
+                continue
             self._last_fingerprints[typhoon_id] = fingerprint
             emitted += 1
 
@@ -293,7 +289,31 @@ class EqscTyphoonPollService:
         stale_ids = [key for key in self._last_fingerprints if key not in seen_ids]
         for key in stale_ids:
             self._last_fingerprints.pop(key, None)
+        return emitted
 
+    async def fetch_once(self, *, emit_event: bool = True) -> list[dict[str, Any]]:
+        """抓取一轮 EQSC 台风列表，可选投递变化事件。"""
+        client = self._ensure_client()
+        if client is None:
+            return []
+
+        # 轮询侧强制绕过短缓存，确保按间隔拿到最新列表。
+        typhoon_list = await client.fetch_typhoon_list(use_cache=False)
+        if not isinstance(typhoon_list, list):
+            self._consecutive_failures += 1
+            return []
+
+        active_items = self._filter_active_items(typhoon_list)
+
+        # 客户端失败时常返回空列表；与“确实无台风”无法严格区分，
+        # 这里仅在拿到可解析对象时记成功。
+        self._consecutive_failures = 0
+        self._last_success_at = time.time()
+
+        if not emit_event:
+            return active_items
+
+        emitted = await self._process_typhoon_updates(active_items)
         if emitted:
             plugin_logger.info(
                 f"[灾害预警] EQSC 台风轮询本轮推送 {emitted} 条更新",

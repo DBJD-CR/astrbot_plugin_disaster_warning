@@ -179,6 +179,9 @@ def build_typhoon_event_envelope(
         latitude = to_float(latest_node.get("latitude"))
         longitude = to_float(latest_node.get("longitude"))
         pressure_value = to_float(latest_node.get("pressure"))
+        # 与历史峰值路径一致：气压/风速非正值视为缺失，避免写入 0 或负值。
+        if pressure_value is not None and pressure_value <= 0:
+            pressure_value = None
         wind_speed_value = to_float(latest_node.get("windSpeed"))
         if wind_speed_value is not None and wind_speed_value <= 0:
             wind_speed_value = None

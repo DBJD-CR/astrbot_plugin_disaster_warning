@@ -253,10 +253,11 @@ def format_typhoon_source_name(
     mode = resolve_data_mode(info_type, default="")
     if mode == "enriched":
         return "中国气象局：实时活跃台风 - Fan+EQSC"
-    if mode == "eqsc" or normalized == "typhoon_eqsc":
-        return "中国气象局：实时活跃台风 - EQSC"
+    # 与 build_source_stats_key 一致：先判历史重建，再判实时 EQSC。
     if mode == "eqsc_rebuild" or normalized == "typhoon_eqsc_rebuild":
         return "中国气象局：台风历史 - EQSC"
+    if mode == "eqsc" or normalized == "typhoon_eqsc":
+        return "中国气象局：实时活跃台风 - EQSC"
     # fan 或缺省：事件详情仍标明 Fan 触发
     return "中国气象局：实时活跃台风 - Fan"
 
