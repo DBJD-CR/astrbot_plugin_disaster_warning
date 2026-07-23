@@ -17,6 +17,7 @@ from ..domain.event_identity import EventIdentity
 from ..domain.event_models import EarthquakeEvent, EventEnvelope
 from ..domain.event_payload import SourcePayload
 from ..services.geo.region_service import region_service
+from ..sources.payload_guards import looks_like_fssn_payload
 from ..sources.source_catalog import get_source_entry
 from .base_parser import BaseParser
 
@@ -699,19 +700,13 @@ class ShakeAlertEewParser(BaseParser):
                 )
                 return None
 
-            # 与 FSSN 区分：FSSN 事件 ID 以 FSSN 开头，且常带 infoTypeName/createTime
-            event_raw_id_preview = str(self._get_field(msg_data, "id") or "").strip()
-            if event_raw_id_preview.upper().startswith("FSSN"):
-                plugin_logger.debug(
-                    f"[灾害预警] {self.source_id} 检测到 FSSN 事件 ID，跳过"
-                )
-                return None
-            if any(
-                self._get_field(msg_data, field) is not None
-                for field in ("infoTypeName", "createTime", "placeName_zh")
+            # 与 FSSN 区分：共享守卫（ID 前缀 + 特征字段）
+            if looks_like_fssn_payload(
+                msg_data,
+                get_value=lambda field: self._get_field(msg_data, field),
             ):
                 plugin_logger.debug(
-                    f"[灾害预警] {self.source_id} 检测到 FSSN 特征字段，跳过"
+                    f"[灾害预警] {self.source_id} 检测到 FSSN 特征，跳过"
                 )
                 return None
 

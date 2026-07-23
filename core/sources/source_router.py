@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .payload_guards import is_shakealert_compatible_payload
 from .source_catalog import (
     SOURCE_CATALOG,
     get_source_ids_by_family,
@@ -86,16 +87,8 @@ def _payload_matches_predicate(payload: dict[str, Any], predicate: str) -> bool:
         # USGS 报文通常会附带官方详情地址，可作为辅助识别条件
         return "usgs.gov" in str(payload.get("url", "") or "")
     if predicate == "shakealert_eew":
-        # ShakeAlert 与 FSSN 字段高度重合；显式排除 FSSN/USGS 特征，避免误路由。
-        event_id = str(payload.get("id") or "").strip().upper()
-        if event_id.startswith("FSSN"):
-            return False
-        if any(
-            key in payload
-            for key in ("url", "infoTypeName", "createTime", "placeName_zh")
-        ):
-            return False
-        return True
+        # ShakeAlert 与 FSSN 字段高度重合；共享守卫排除 FSSN/USGS 特征。
+        return is_shakealert_compatible_payload(payload)
     if predicate == "typhoon_active":
         # 台风数据必须包含移动方向、风速和气压字段，且数据为数组格式
         # FAN Studio 台风推送的 Data 字段是数组，unwrap 后可能仍为数组
