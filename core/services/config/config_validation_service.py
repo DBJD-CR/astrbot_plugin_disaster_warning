@@ -383,7 +383,10 @@ class ConfigValidator:
                     )
                     cenc_fusion["timeout"] = 60
 
-            ConfigValidator._ensure_bool(cenc_fusion, "enabled", True)
+            # FAN 停服后默认关闭，避免 Wolfx 被融合链路吞推；已有显式 true 配置不强制改写。
+            if "enabled" not in cenc_fusion:
+                cenc_fusion["enabled"] = False
+            ConfigValidator._ensure_bool(cenc_fusion, "enabled", False)
             cfg["cenc_fusion"] = cenc_fusion
 
         # CWA EEW 最大震度融合策略超时
@@ -402,7 +405,9 @@ class ConfigValidator:
                     )
                     cwa_eew_fusion["timeout"] = 60
 
-            ConfigValidator._ensure_bool(cwa_eew_fusion, "enabled", True)
+            if "enabled" not in cwa_eew_fusion:
+                cwa_eew_fusion["enabled"] = False
+            ConfigValidator._ensure_bool(cwa_eew_fusion, "enabled", False)
             cfg["cwa_eew_fusion"] = cwa_eew_fusion
 
         return cfg
@@ -1226,7 +1231,10 @@ class ConfigValidator:
         # 校验 FAN Studio 下的扩展开关
         fan_studio_cfg = cfg.get("fan_studio")
         if isinstance(fan_studio_cfg, dict):
-            ConfigValidator._ensure_bool(fan_studio_cfg, "china_typhoon", True)
+            # FAN 台风触发已不可用；缺省关闭，已有显式配置不强制改写。
+            if "china_typhoon" not in fan_studio_cfg:
+                fan_studio_cfg["china_typhoon"] = False
+            ConfigValidator._ensure_bool(fan_studio_cfg, "china_typhoon", False)
             # 旧配置可能没有新键；缺省跟随 schema（默认关闭，高频源）
             if "usa_shakealert" not in fan_studio_cfg:
                 fan_studio_cfg["usa_shakealert"] = False
@@ -1291,6 +1299,27 @@ class ConfigValidator:
                     "[灾害预警] 配置警告: EQSC 缓存 TTL 类型错误，已重置为 300。"
                 )
                 eqsc_cfg["cache_ttl"] = 300
+
+            # 台风轮询间隔
+            typhoon_poll_interval = eqsc_cfg.get("typhoon_poll_interval_seconds")
+            if isinstance(typhoon_poll_interval, int):
+                if typhoon_poll_interval < 30:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 台风轮询间隔 {typhoon_poll_interval} 过短，已修正为 30。"
+                    )
+                    eqsc_cfg["typhoon_poll_interval_seconds"] = 30
+                elif typhoon_poll_interval > 600:
+                    logger.warning(
+                        f"[灾害预警] 配置警告: EQSC 台风轮询间隔 {typhoon_poll_interval} 过长，已修正为 600。"
+                    )
+                    eqsc_cfg["typhoon_poll_interval_seconds"] = 600
+            elif typhoon_poll_interval is not None:
+                logger.warning(
+                    "[灾害预警] 配置警告: EQSC 台风轮询间隔类型错误，已重置为 120。"
+                )
+                eqsc_cfg["typhoon_poll_interval_seconds"] = 120
+            elif "typhoon_poll_interval_seconds" not in eqsc_cfg:
+                eqsc_cfg["typhoon_poll_interval_seconds"] = 120
 
             # 海啸轮询间隔
             poll_interval = eqsc_cfg.get("jma_tsunami_poll_interval_seconds")
